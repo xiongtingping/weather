@@ -21,6 +21,11 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import ForecastRevision
+from .native_ensemble_contract import (
+    P0_PROBABILITY_PATHWAY,
+    TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+    validate_cross_native_ensemble_weights,
+)
 
 
 TAF_ARTIFACT_SCHEMA = "bayes_basket_taf_revision_artifact_v2"
@@ -788,7 +793,11 @@ def _validate_live_nwp_compatibility_binding(
         ) from exc
     if not isinstance(raw, Mapping):
         raise ContractError("taf_p0_live_compatibility_lineage_invalid")
-    if raw.get("schema") != TAF_NWP_LIVE_FINGERPRINT_SCHEMA:
+    fingerprint_schema = str(raw.get("schema") or "")
+    if fingerprint_schema not in {
+        TAF_NWP_LIVE_FINGERPRINT_SCHEMA,
+        TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+    }:
         raise ContractError("taf_p0_live_compatibility_schema_invalid")
     supplied = str(raw.get("fingerprint_sha256") or "").lower()
     if supplied != fingerprint:
@@ -816,24 +825,89 @@ def _validate_live_nwp_compatibility_binding(
         str(root.lineage.get("settlement_definition") or ""),
     ):
         raise ContractError("taf_p0_live_compatibility_scope_mismatch")
-    calibrations = raw.get("model_calibration_artifacts")
-    models = raw.get("available_models")
-    weights = raw.get("resolved_weights")
-    if (
-        not isinstance(calibrations, Mapping)
-        or not isinstance(models, list)
-        or not isinstance(weights, Mapping)
-        or len(models) < 2
-        or set(str(item) for item in models) != set(calibrations)
-        or set(str(item) for item in models) != set(weights)
-    ):
-        raise ContractError(
-            "taf_p0_live_compatibility_model_lineage_incomplete"
+    if fingerprint_schema == TAF_NWP_LIVE_FINGERPRINT_SCHEMA:
+        calibrations = raw.get("model_calibration_artifacts")
+        models = raw.get("available_models")
+        weights = raw.get("resolved_weights")
+        if (
+            not isinstance(calibrations, Mapping)
+            or not isinstance(models, list)
+            or not isinstance(weights, Mapping)
+            or len(models) < 2
+            or set(str(item) for item in models) != set(calibrations)
+            or set(str(item) for item in models) != set(weights)
+        ):
+            raise ContractError(
+                "taf_p0_live_compatibility_model_lineage_incomplete"
+            )
+        live_ensemble_sha = _sha(
+            "taf_p0_live_ensemble_artifact_content_sha256",
+            raw.get("ensemble_artifact_content_sha256"),
         )
-    live_ensemble_sha = _sha(
-        "taf_p0_live_ensemble_artifact_content_sha256",
-        raw.get("ensemble_artifact_content_sha256"),
-    )
+    else:
+        systems = raw.get("ensemble_system_ids")
+        families = raw.get("independence_family_ids")
+        system_families = raw.get("system_family_ids")
+        weights = raw.get("resolved_system_weights")
+        family_caps = raw.get("family_weight_caps")
+        calibrations = raw.get("system_calibration_artifacts")
+        if (
+            raw.get("probability_pathway") != P0_PROBABILITY_PATHWAY
+            or not isinstance(systems, list)
+            or len(systems) < 2
+            or len(set(map(str, systems))) != len(systems)
+            or not isinstance(families, list)
+            or len(set(map(str, families))) < 2
+            or not isinstance(system_families, Mapping)
+            or not isinstance(weights, Mapping)
+            or not isinstance(family_caps, Mapping)
+            or not isinstance(calibrations, Mapping)
+            or set(map(str, systems)) != set(map(str, system_families))
+            or set(map(str, systems)) != set(map(str, weights))
+            or set(map(str, systems)) != set(map(str, calibrations))
+        ):
+            raise ContractError(
+                "taf_p0_live_compatibility_native_lineage_incomplete"
+            )
+        receipt = validate_cross_native_ensemble_weights(
+            system_weights={
+                str(key): float(value)
+                for key, value in weights.items()
+            },
+            systems_by_id={
+                str(system_id): {
+                    "independence_family_id": str(
+                        system_families[str(system_id)]
+                    ),
+                }
+                for system_id in systems
+            },
+            family_weight_caps={
+                str(key): float(value)
+                for key, value in family_caps.items()
+            },
+        )
+        if set(receipt["family_weights"]) != set(map(str, families)):
+            raise ContractError(
+                "taf_p0_live_compatibility_native_family_mismatch"
+            )
+        for binding in calibrations.values():
+            if not isinstance(binding, Mapping):
+                raise ContractError(
+                    "taf_p0_live_compatibility_native_lineage_incomplete"
+                )
+            _sha(
+                "taf_p0_native_system_artifact_sha256",
+                binding.get("artifact_content_sha256"),
+            )
+            _sha(
+                "taf_p0_native_system_activation_sha256",
+                binding.get("activation_content_sha256"),
+            )
+        live_ensemble_sha = _sha(
+            "taf_p0_live_cross_ensemble_artifact_sha256",
+            raw.get("cross_ensemble_artifact_sha256"),
+        )
     if (
         artifact.nwp_combination_artifact_sha256
         == live_ensemble_sha

@@ -1,7 +1,7 @@
 {
   "after_counts": {
     "cash_phase_authority_manifests": 45,
-    "decisions": 1183,
+    "decisions": 1196,
     "intents": 400,
     "order_events": 0,
     "training_facts": 720,
@@ -91,28 +91,28 @@
     "target_tables_present": true
   },
   "artifact_packet_validation": {
-    "cash_manifest_count": 1,
-    "cash_policy_count": 1,
+    "cash_manifest_count": 45,
+    "cash_policy_count": 45,
     "commit_counts": {
-      "calibration_activations": 3,
-      "calibration_artifacts": 2,
+      "calibration_activations": 0,
+      "calibration_artifacts": 0,
       "calibration_promotions": 0,
       "cash_phase_authority_manifests": 0,
       "cash_phase_policies": 0,
-      "ensemble_artifacts": 1,
-      "ensemble_selection_evidence": 1,
+      "ensemble_artifacts": 0,
+      "ensemble_selection_evidence": 0,
       "global_priors": 0,
       "policy_activations": 0,
       "policy_artifacts": 0,
       "policy_promotions": 0
     },
     "declared_counts": {
-      "calibration_activations": 3,
-      "calibration_artifacts": 2,
-      "cash_phase_authority_manifests": 1,
-      "cash_phase_policies": 1,
-      "ensemble_artifacts": 1,
-      "ensemble_selection_evidence": 1
+      "calibration_activations": 0,
+      "calibration_artifacts": 0,
+      "cash_phase_authority_manifests": 45,
+      "cash_phase_policies": 45,
+      "ensemble_artifacts": 0,
+      "ensemble_selection_evidence": 0
     },
     "idempotent_second_commit_counts": {
       "calibration_activations": 0,
@@ -127,24 +127,24 @@
       "policy_artifacts": 0,
       "policy_promotions": 0
     },
-    "packet_path": "/Users/xiong/weather/output/audits/bayes_basket_target_no_live_vertical_slice_RKPK_v3.json",
-    "packet_sha256": "91c30974a3e7bd8298607f4ef4b58a69599cd17d79ec4c55b70da688abe8f831",
+    "packet_path": "/Users/xiong/weather/output/audits/bayes_basket_target_no_live_candidate_artifacts_v1.json",
+    "packet_sha256": "005702f85f9d17774adc17295fbaab187cd320a1f4dd74cb3233c070534b5b57",
     "preview_counts": {
-      "calibration_activations": 3,
-      "calibration_artifacts": 2,
+      "calibration_activations": 0,
+      "calibration_artifacts": 0,
       "calibration_promotions": 0,
       "cash_phase_authority_manifests": 0,
       "cash_phase_policies": 0,
-      "ensemble_artifacts": 1,
-      "ensemble_selection_evidence": 1,
+      "ensemble_artifacts": 0,
+      "ensemble_selection_evidence": 0,
       "global_priors": 0,
       "policy_activations": 0,
       "policy_artifacts": 0,
       "policy_promotions": 0
     },
     "preview_rolled_back": true,
-    "state": "COMMITTED_IDEMPOTENT_ON_DISPOSABLE_CLONE",
-    "station_count": 1
+    "state": "ALREADY_MATERIALIZED_IDEMPOTENT_ON_DISPOSABLE_CLONE",
+    "station_count": 45
   },
   "backup_manifest_schema": {
     "columns": [
@@ -217,11 +217,11 @@
   },
   "before_plan": {
     "blocked_execution_vector_lineage": {
-      "blocked_decision_count": 939,
+      "blocked_decision_count": 952,
       "blockers": [],
       "calls_order_gateway": false,
       "candidate_decision_ids": [],
-      "covered_count": 939,
+      "covered_count": 952,
       "invalid": [],
       "invalid_count": 0,
       "missing_tables": [],
@@ -301,7 +301,7 @@
       ],
       "triggers_ok": true
     },
-    "legacy_decision_row_count": 1183,
+    "legacy_decision_row_count": 1196,
     "legacy_decision_table_collision": false,
     "legacy_decision_table_present": true,
     "live_submit_authorized": false,
@@ -570,11 +570,11 @@
   "migration_receipt": {
     "after": {
       "blocked_execution_vector_lineage": {
-        "blocked_decision_count": 939,
+        "blocked_decision_count": 952,
         "blockers": [],
         "calls_order_gateway": false,
         "candidate_decision_ids": [],
-        "covered_count": 939,
+        "covered_count": 952,
         "invalid": [],
         "invalid_count": 0,
         "missing_tables": [],
@@ -654,7 +654,7 @@
         ],
         "triggers_ok": true
       },
-      "legacy_decision_row_count": 1183,
+      "legacy_decision_row_count": 1196,
       "legacy_decision_table_collision": false,
       "legacy_decision_table_present": true,
       "live_submit_authorized": false,
@@ -757,20 +757,20 @@
       "writes_orders": false
     },
     "backup": {
-      "bytes": 191307776,
-      "page_count": 46706,
+      "bytes": 191328256,
+      "page_count": 46711,
       "page_size": 4096,
-      "path": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-v4-before.db",
+      "path": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-v4-before.db",
       "quick_check": "ok"
     },
-    "backup_path": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-v4-before.db",
+    "backup_path": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-v4-before.db",
     "before": {
       "blocked_execution_vector_lineage": {
-        "blocked_decision_count": 939,
+        "blocked_decision_count": 952,
         "blockers": [],
         "calls_order_gateway": false,
         "candidate_decision_ids": [],
-        "covered_count": 939,
+        "covered_count": 952,
         "invalid": [],
         "invalid_count": 0,
         "missing_tables": [],
@@ -850,7 +850,7 @@
         ],
         "triggers_ok": true
       },
-      "legacy_decision_row_count": 1183,
+      "legacy_decision_row_count": 1196,
       "legacy_decision_table_collision": false,
       "legacy_decision_table_present": true,
       "live_submit_authorized": false,
@@ -1038,11 +1038,11 @@
     },
     "execution_vector_repair": {
       "after": {
-        "blocked_decision_count": 939,
+        "blocked_decision_count": 952,
         "blockers": [],
         "calls_order_gateway": false,
         "candidate_decision_ids": [],
-        "covered_count": 939,
+        "covered_count": 952,
         "invalid": [],
         "invalid_count": 0,
         "missing_tables": [],
@@ -1054,11 +1054,11 @@
       },
       "append_only": true,
       "before": {
-        "blocked_decision_count": 939,
+        "blocked_decision_count": 952,
         "blockers": [],
         "calls_order_gateway": false,
         "candidate_decision_ids": [],
-        "covered_count": 939,
+        "covered_count": 952,
         "invalid": [],
         "invalid_count": 0,
         "missing_tables": [],
@@ -1085,27 +1085,28 @@
         "basket_target_market_registry"
       ]
     },
-    "migration_at_utc": "2026-07-30T02:59:38Z",
-    "pause_file": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-paused.flag",
+    "migration_at_utc": "2026-07-30T06:55:00Z",
+    "pause_file": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-paused.flag",
     "pause_marker_token": "bayes-basket-target-m5-migration-v1",
     "resource_after": {
-      "database_bytes": 191307776,
-      "database_path": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-v4-trial.db",
-      "free_bytes": 9721753600,
+      "database_bytes": 191328256,
+      "database_path": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-v4-trial.db",
+      "free_bytes": 43312664576,
       "limits": {
         "max_database_bytes": 268435456,
         "max_process_rss_bytes": 536870912,
         "max_research_raw_bytes": 1073741824,
+        "max_research_raw_files": 100000,
         "max_wal_bytes": 67108864,
         "min_free_bytes": 536870912
       },
       "memory_probe_available": true,
       "ok": true,
-      "process_rss_bytes": 48005120,
+      "process_rss_bytes": 50462720,
       "raw_bytes": 0,
       "raw_file_count": 0,
       "raw_root": null,
-      "required_free_bytes": 1110794240,
+      "required_free_bytes": 1110855680,
       "shm_bytes": 32768,
       "state": "within_budget",
       "violations": [],
@@ -1113,23 +1114,24 @@
       "working_copy_multiplier": 3
     },
     "resource_before": {
-      "database_bytes": 191307776,
-      "database_path": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-v4-trial.db",
-      "free_bytes": 9913094144,
+      "database_bytes": 191328256,
+      "database_path": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-v4-trial.db",
+      "free_bytes": 43504013312,
       "limits": {
         "max_database_bytes": 268435456,
         "max_process_rss_bytes": 536870912,
         "max_research_raw_bytes": 1073741824,
+        "max_research_raw_files": 100000,
         "max_wal_bytes": 67108864,
         "min_free_bytes": 536870912
       },
       "memory_probe_available": true,
       "ok": true,
-      "process_rss_bytes": 43958272,
+      "process_rss_bytes": 48627712,
       "raw_bytes": 0,
       "raw_file_count": 0,
       "raw_root": null,
-      "required_free_bytes": 1110794240,
+      "required_free_bytes": 1110855680,
       "shm_bytes": 32768,
       "state": "within_budget",
       "violations": [],
@@ -1380,17 +1382,17 @@
         "stops_services": false,
         "writes_production_db": false
       },
-      "database": "/private/tmp/bayes-target-v4-rehearsal-i9zuasva/target-v4-trial.db",
+      "database": "/private/tmp/bayes-target-v4-rehearsal-qwhpbx10/target-v4-trial.db",
       "database_identity": {
         "device": 16777233,
-        "inode": 1336064034,
-        "mtime_ns": 1785380376234612273,
-        "size_bytes": 191307776
+        "inode": 1339551820,
+        "mtime_ns": 1785394499072572209,
+        "size_bytes": 191328256
       },
-      "observed_at_utc": "2026-07-30T02:59:36Z",
+      "observed_at_utc": "2026-07-30T06:54:59Z",
       "probe_errors": [],
       "quiescent": true,
-      "receipt_sha256": "4224c03e8679c1d8c947ec13712c4a0c4e699eafdf0109a2baa4611584a8f9a5",
+      "receipt_sha256": "da30f0bc0e6f362d0c6583fb6a123efe5cd4e36d97702074326c37f52dc61a5b",
       "schema": "bayes_basket_target_writer_quiescence_receipt_v3",
       "service_states": {
         "system": {
@@ -1479,13 +1481,13 @@
     ]
   },
   "resource_budget": {
-    "backup_database_bytes": 191307776,
-    "free_bytes_before": 10105241600,
+    "backup_database_bytes": 191328256,
+    "free_bytes_before": 43696574464,
     "max_database_bytes": 268435456,
     "max_wal_bytes": 67108864,
     "minimum_free_bytes": 536870912,
-    "required_free_bytes": 1110609920,
-    "trial_database_bytes": 193605632,
+    "required_free_bytes": 1110794240,
+    "trial_database_bytes": 193609728,
     "trial_wal_bytes": 0
   },
   "schema": "bayes_basket_target_ssot_v4_migration_rehearsal_v1",
@@ -1538,7 +1540,7 @@
   },
   "snapshot_counts": {
     "cash_phase_authority_manifests": 45,
-    "decisions": 1183,
+    "decisions": 1196,
     "intents": 400,
     "order_events": 0,
     "training_facts": 720,
@@ -1547,20 +1549,20 @@
   "source_after": {
     "device": 16777233,
     "inode": 1235462603,
-    "mtime_ns": 1785377911941052104,
-    "sha256": "7a585648703f49c02c1fee7bfce2be56a42219ac534b090a768f58e3b5b9a2a8",
-    "size_bytes": 191246336
+    "mtime_ns": 1785393640185059331,
+    "sha256": "74bbd102c7814ee4514fe7fd8809c7be27a0d65d301a336a7bcf8bc4bf6fa1ab",
+    "size_bytes": 191307776
   },
   "source_before": {
     "device": 16777233,
     "inode": 1235462603,
-    "mtime_ns": 1785377911941052104,
-    "sha256": "7a585648703f49c02c1fee7bfce2be56a42219ac534b090a768f58e3b5b9a2a8",
-    "size_bytes": 191246336
+    "mtime_ns": 1785393640185059331,
+    "sha256": "74bbd102c7814ee4514fe7fd8809c7be27a0d65d301a336a7bcf8bc4bf6fa1ab",
+    "size_bytes": 191307776
   },
   "source_counts_before": {
     "cash_phase_authority_manifests": 45,
-    "decisions": 1183,
+    "decisions": 1196,
     "intents": 400,
     "order_events": 0,
     "training_facts": 720,
@@ -1638,11 +1640,11 @@
   },
   "source_plan_before": {
     "blocked_execution_vector_lineage": {
-      "blocked_decision_count": 939,
+      "blocked_decision_count": 952,
       "blockers": [],
       "calls_order_gateway": false,
       "candidate_decision_ids": [],
-      "covered_count": 939,
+      "covered_count": 952,
       "invalid": [],
       "invalid_count": 0,
       "missing_tables": [],
@@ -1722,7 +1724,7 @@
       ],
       "triggers_ok": true
     },
-    "legacy_decision_row_count": 1183,
+    "legacy_decision_row_count": 1196,
     "legacy_decision_table_collision": false,
     "legacy_decision_table_present": true,
     "live_submit_authorized": false,

@@ -45,6 +45,8 @@ TAF_NWP_LIVE_FINGERPRINT_SCHEMA = (
 TAF_NWP_TRANSPORT_EVIDENCE_SCHEMA = (
     "bayes_basket_taf_nwp_transport_oos_evidence_v1"
 )
+MIN_FORMAL_ENSEMBLE_TRAIN_N = 20
+MIN_FORMAL_ENSEMBLE_HOLDOUT_DAYS = 8
 
 
 def _formal_model_masks(candidate_models: Iterable[str]) -> set[str]:
@@ -93,6 +95,11 @@ def validate_formal_ensemble_artifact(
         < holdout_start <= holdout_end
     ):
         raise ContractError("formal_ensemble_train_holdout_not_disjoint")
+    if float(artifact.effective_sample_n or 0.0) < MIN_FORMAL_ENSEMBLE_TRAIN_N:
+        raise ContractError("formal_ensemble_training_sample_insufficient")
+    holdout_calendar_days = (holdout_end - holdout_start).days + 1
+    if holdout_calendar_days < MIN_FORMAL_ENSEMBLE_HOLDOUT_DAYS:
+        raise ContractError("formal_ensemble_holdout_sample_insufficient")
     # The artifact cannot exist before the last holdout label has at least
     # reached its registry-local event date.  Exact settlement close is
     # enforced by the evidence builder, which owns the registry timezone.
@@ -255,6 +262,9 @@ def bind_taf_artifact_to_live_nwp_compatibility(
         TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
         TafRevisionArtifact,
     )
+    from .native_ensemble_contract import (
+        TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+    )
 
     artifact = (
         taf_artifact
@@ -263,8 +273,10 @@ def bind_taf_artifact_to_live_nwp_compatibility(
     )
     if (
         not isinstance(live_fingerprint, Mapping)
-        or live_fingerprint.get("schema")
-        != TAF_NWP_LIVE_FINGERPRINT_SCHEMA
+        or live_fingerprint.get("schema") not in {
+            TAF_NWP_LIVE_FINGERPRINT_SCHEMA,
+            TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+        }
     ):
         raise ContractError("taf_nwp_live_fingerprint_schema_invalid")
     fingerprint_sha = str(
@@ -295,7 +307,9 @@ def bind_taf_artifact_to_live_nwp_compatibility(
     ):
         raise ContractError("taf_nwp_live_fingerprint_scope_mismatch")
     live_ensemble_sha = str(
-        live_fingerprint.get("ensemble_artifact_content_sha256") or ""
+        live_fingerprint.get("ensemble_artifact_content_sha256")
+        or live_fingerprint.get("cross_ensemble_artifact_sha256")
+        or ""
     ).lower()
     if artifact.nwp_combination_artifact_sha256 == live_ensemble_sha:
         raise ContractError(

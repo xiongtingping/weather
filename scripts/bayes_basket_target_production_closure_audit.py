@@ -39,7 +39,7 @@ TARGET_SERVICE_LABELS = (
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
-TARGET_SERVICE_DOMAINS = {label: "system" for label in TARGET_SERVICE_LABELS}
+TARGET_SERVICE_DOMAINS = {label: "user" for label in TARGET_SERVICE_LABELS}
 
 # The legacy trajectory engine is deliberately scanned as an authority input,
 # but is not part of the target source-closure manifest.  It owns the
@@ -171,9 +171,9 @@ _LIVE_TRUE_RE = re.compile(
     + "|".join(re.escape(item) for item in LIVE_FLAG_NAMES)
     + r")(?:\"|')?\s*(?:[:=]|\s+in\s+)\s*(?:true|1|yes)\b"
 )
-_USER_DOMAIN_RE = re.compile(
+_SYSTEM_DOMAIN_RE = re.compile(
     r"(?i)(?:WEATHER_SERVICE_DOMAIN|service_domain|launchctl[^\n]{0,80})[^\n]{0,120}"
-    r"(?:user|gui/|LaunchAgent)"
+    r"(?:system/|LaunchDaemon|[\"']system[\"'])"
 )
 _GATEWAY_CALL_RE = re.compile(
     r"(?i)\b(?:place[_ -]?order|submit[_ -]?order|"
@@ -438,8 +438,13 @@ def _semantic_marker_hits(semantic: Mapping[str, str]) -> list[dict[str, Any]]:
             )
         if _LIVE_TRUE_RE.search(active):
             _append_hit(hits, code="live_or_mutating_flag_true", file=relative, evidence="live/mutation flag enabled")
-        if _USER_DOMAIN_RE.search(active):
-            _append_hit(hits, code="user_domain_runtime_fallback", file=relative, evidence="user-domain branch")
+        if _SYSTEM_DOMAIN_RE.search(active):
+            _append_hit(
+                hits,
+                code="system_domain_runtime_fallback",
+                file=relative,
+                evidence="system-domain branch",
+            )
     return hits
 
 
@@ -576,8 +581,12 @@ def _launchd_contract(manifests: Sequence[Mapping[str, Any]], service_snapshot: 
             _append_hit(hits, code="target_service_program_mismatch", evidence={"label": label, "args": args_blob})
         if label == "com.weather.clob_order_service" and "clob_order_service.sh" not in args_blob:
             _append_hit(hits, code="target_service_program_mismatch", evidence={"label": label, "args": args_blob})
-        if str(item.get("environment", {}).get("WEATHER_SERVICE_DOMAIN") or "") == "user":
-            _append_hit(hits, code="target_service_user_domain_manifest", evidence=label)
+        if str(item.get("environment", {}).get("WEATHER_SERVICE_DOMAIN") or "") != "user":
+            _append_hit(
+                hits,
+                code="target_service_user_domain_manifest_missing",
+                evidence=label,
+            )
 
     forbidden_declarations: list[dict[str, Any]] = []
     for item in manifests:
@@ -598,10 +607,18 @@ def _launchd_contract(manifests: Sequence[Mapping[str, Any]], service_snapshot: 
     if service_snapshot is not None:
         loaded_system = {str(item) for item in service_snapshot.get("system", ())}
         loaded_user = {str(item) for item in service_snapshot.get("user", ())}
-        for label in sorted(loaded_user & set(TARGET_SERVICE_LABELS)):
-            _append_hit(hits, code="target_service_user_system_dual_active", evidence=label)
-        for label in sorted(set(TARGET_SERVICE_LABELS) - loaded_system):
-            _append_hit(hits, code="target_service_not_loaded_in_system_domain", evidence=label)
+        for label in sorted(loaded_system & set(TARGET_SERVICE_LABELS)):
+            _append_hit(
+                hits,
+                code="target_service_system_domain_residue",
+                evidence=label,
+            )
+        for label in sorted(set(TARGET_SERVICE_LABELS) - loaded_user):
+            _append_hit(
+                hits,
+                code="target_service_not_loaded_in_user_domain",
+                evidence=label,
+            )
         forbidden_loaded_services = sorted(
             label for label in (loaded_system | loaded_user)
             if any(marker in label.lower() for marker in LEGACY_SERVICE_MARKERS)
@@ -614,7 +631,11 @@ def _launchd_contract(manifests: Sequence[Mapping[str, Any]], service_snapshot: 
         "forbidden_service_declarations_absent": not forbidden_declarations,
         "forbidden_loaded_services_absent": snapshot_ok and not forbidden_loaded_services,
         "service_probe_or_snapshot_complete": snapshot_ok,
-        "target_services_system_only": snapshot_ok and loaded_system == set(TARGET_SERVICE_LABELS) and not (loaded_user & set(TARGET_SERVICE_LABELS)),
+        "target_services_user_only": (
+            snapshot_ok
+            and loaded_user == set(TARGET_SERVICE_LABELS)
+            and not (loaded_system & set(TARGET_SERVICE_LABELS))
+        ),
     }
     evidence = {
         "declared_label_count": len([label for label in labels if label]),
@@ -1610,7 +1631,7 @@ def audit(
         },
         "service_closure": {
             "target_services": list(TARGET_SERVICE_LABELS),
-            "required_domain": "system",
+            "required_domain": "user",
             "checks": service_checks,
             "evidence": service_evidence,
             "declared_manifest_count": len(manifests),

@@ -1,0 +1,3000 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "380049432d1880307a7ef23d0f727984a1fd78e5fdf11b32714ee4650440d382",
+  "end_date": "2026-07-29",
+  "excluded_sample_count": 0,
+  "excluded_samples": [],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 203601,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 67108864
+  },
+  "sample_count": 8,
+  "samples": [
+    {
+      "decision_anchor_utc": "2026-07-21T16:00:00Z",
+      "event_date": "2026-07-22",
+      "receipts": {
+        "metar_response_sha256": "50587542593e437dccdcae034be334f66d580ab0da67b9ff3d2bde8226310216",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260722_1500",
+        "taf_response_sha256": "be34a77ee1850ecb6e9ceb157cc9c2f050f4c0ddc4e6009799fde826f7988a1b",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-21T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-ad656a1db4bfd426c99d3b6f0f199734",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-22T15:00:00Z",
+        "start_utc": "2026-07-21T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-21T11:05:36Z",
+        "cloud_cover_fraction": 0.75,
+        "issue_time_utc": "2026-07-21T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKSI 211100Z 2112/2218 23006KT 6000 BKN004 TN24/2120Z TX28/2203Z BECMG 2113/2115 3500 BR TEMPO 2116/2120 28005KT 1500 BKN002 BECMG 2122/2124 15006KT 6000 NSW FEW008 BKN030 TEMPO 2207/2211 23007KT 4000 -RA FEW008CB BKN020 OVC070 BECMG 2216/2218 18007KT 3500 -RA FEW006 BKN020 OVC070",
+        "raw_taf_sha256": "a724437ddc3002d7524d3d28bfb58eca284ec01259cf689ee68a11b99042929d",
+        "tx_c": 28.0,
+        "tx_valid_at_utc": "2026-07-22T03:00:00Z",
+        "wind_speed_mps": 3.0866639999999994
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-21T15:00:00Z",
+            "raw_report": "METAR RKSI 211500Z 30003KT 4000 BR OVC002 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T15:04:38.719Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T15:30:00Z",
+            "raw_report": "METAR RKSI 211530Z 29003KT 250V330 7000 OVC002 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T15:34:22.796Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T16:00:00Z",
+            "raw_report": "METAR RKSI 211600Z 34001KT 7000 OVC003 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T16:04:30.293Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T16:30:00Z",
+            "raw_report": "METAR RKSI 211630Z 34001KT 8000 OVC004 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T16:34:34.521Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T17:00:00Z",
+            "raw_report": "METAR RKSI 211700Z 31003KT 9999 BKN005 BKN025 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T17:04:32.017Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T17:30:00Z",
+            "raw_report": "METAR RKSI 211730Z 03003KT 9999 SCT006 BKN025 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T17:34:29.126Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T18:00:00Z",
+            "raw_report": "METAR RKSI 211800Z 01003KT 9999 SCT006 BKN030 23/23 Q1007 NOSIG",
+            "received_at_utc": "2026-07-21T18:04:31.431Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T18:30:00Z",
+            "raw_report": "METAR RKSI 211830Z 05001KT 9999 SCT007 BKN030 23/23 Q1007 NOSIG",
+            "received_at_utc": "2026-07-21T18:34:36.639Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T19:00:00Z",
+            "raw_report": "METAR RKSI 211900Z 09003KT 060V120 9999 SCT008 BKN030 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T19:04:31.564Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T19:30:00Z",
+            "raw_report": "METAR RKSI 211930Z 11003KT 9999 SCT009 BKN030 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T19:34:30.364Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T20:00:00Z",
+            "raw_report": "METAR RKSI 212000Z 05002KT 9999 SCT010 BKN140 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T20:04:30.463Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T20:30:00Z",
+            "raw_report": "METAR RKSI 212030Z 10002KT 9999 SCT008 BKN140 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T20:34:38.436Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T21:00:00Z",
+            "raw_report": "METAR RKSI 212100Z 05002KT 9999 FEW035 BKN140 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T21:04:22.716Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T21:30:00Z",
+            "raw_report": "METAR RKSI 212130Z 04002KT 9999 FEW035 BKN150 23/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T21:34:35.472Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T22:00:00Z",
+            "raw_report": "METAR RKSI 212200Z 04005KT 9999 FEW035 BKN100 BKN200 24/23 Q1009 NOSIG",
+            "received_at_utc": "2026-07-21T22:04:30.336Z",
+            "report_type": "METAR",
+            "temperature_c": 24.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T22:30:00Z",
+            "raw_report": "METAR RKSI 212230Z 03005KT 9999 FEW008 BKN030 BKN100 24/23 Q1009 NOSIG",
+            "received_at_utc": "2026-07-21T22:34:35.624Z",
+            "report_type": "METAR",
+            "temperature_c": 24.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T23:00:00Z",
+            "raw_report": "METAR RKSI 212300Z 03005KT 9999 SCT008 BKN030 BKN100 25/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T23:04:28.762Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T23:30:00Z",
+            "raw_report": "METAR RKSI 212330Z 03005KT 8000 FEW008 BKN025 BKN095 25/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-21T23:34:23.668Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T00:00:00Z",
+            "raw_report": "METAR RKSI 220000Z 03005KT 8000 FEW008 BKN025 BKN095 25/23 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T00:04:26.508Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T00:30:00Z",
+            "raw_report": "METAR RKSI 220030Z 04005KT 9999 FEW010 BKN020 BKN100 26/24 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T00:34:24.346Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T01:00:00Z",
+            "raw_report": "METAR RKSI 220100Z 04005KT 010V080 9999 SCT010 BKN020 BKN100 26/24 Q1008 BECMG -RA",
+            "received_at_utc": "2026-07-22T01:15:23.842Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T01:30:00Z",
+            "raw_report": "METAR RKSI 220130Z 06004KT 020V100 8000 -RA SCT010 BKN020 OVC070 25/24 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T01:34:29.222Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T02:00:00Z",
+            "raw_report": "METAR RKSI 220200Z 12005KT 5000 -RA SCT009 BKN020 OVC070 25/24 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T02:04:35.125Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T02:30:00Z",
+            "raw_report": "METAR RKSI 220230Z 11005KT 5000 -RA SCT010 BKN025 OVC070 25/24 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T02:34:32.133Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T03:00:00Z",
+            "raw_report": "METAR RKSI 220300Z 11003KT 070V150 5000 -RA SCT007 BKN030 OVC070 25/25 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T03:04:30.624Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T03:30:00Z",
+            "raw_report": "METAR RKSI 220330Z 12004KT 070V140 6000 -RA SCT005 BKN020 OVC070 26/25 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T03:34:24.236Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T04:00:00Z",
+            "raw_report": "METAR RKSI 220400Z 12005KT 5000 -RA SCT008 BKN020 OVC070 26/25 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T04:04:28.582Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T04:30:00Z",
+            "raw_report": "METAR RKSI 220430Z 12005KT 6000 -RA SCT008 BKN020 OVC070 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T04:34:38.078Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T05:00:00Z",
+            "raw_report": "METAR RKSI 220500Z 14005KT 090V180 8000 SCT008 BKN020 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T05:04:51.249Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T05:30:00Z",
+            "raw_report": "METAR RKSI 220530Z 19008KT 160V220 7000 SCT007 BKN025 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T05:34:31.412Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T06:00:00Z",
+            "raw_report": "METAR RKSI 220600Z 21008KT 170V240 7000 SCT007 BKN025 BKN100 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T06:04:23.493Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T06:30:00Z",
+            "raw_report": "METAR RKSI 220630Z 21008KT 180V240 7000 SCT006 BKN025 BKN100 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T06:34:41.193Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T07:00:00Z",
+            "raw_report": "METAR RKSI 220700Z 21009KT 170V250 8000 SCT006 BKN025 BKN100 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T07:04:27.139Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T07:30:00Z",
+            "raw_report": "METAR RKSI 220730Z 22010KT 170V270 9000 SCT006 BKN030 BKN080 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T07:34:29.923Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T08:00:00Z",
+            "raw_report": "METAR RKSI 220800Z 21007KT 180V240 9999 SCT006 BKN030 BKN080 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T08:04:30.989Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T08:30:00Z",
+            "raw_report": "METAR RKSI 220830Z 20007KT 170V240 9999 SCT006 BKN040 BKN080 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T08:34:30.693Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T09:00:00Z",
+            "raw_report": "METAR RKSI 220900Z 22007KT 190V250 9999 SCT005 BKN030 BKN080 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T09:04:27.672Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T09:30:00Z",
+            "raw_report": "METAR RKSI 220930Z 22006KT 170V280 4500 -RA BR BKN003 OVC020 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T09:34:33.989Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T10:00:00Z",
+            "raw_report": "METAR RKSI 221000Z 19008KT 6000 SCT003 BKN020 BKN070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T10:04:19.601Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T10:30:00Z",
+            "raw_report": "METAR RKSI 221030Z 20008KT 6000 SCT006 BKN020 BKN070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T10:34:35.254Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T11:00:00Z",
+            "raw_report": "METAR RKSI 221100Z 20008KT 150V250 6000 SCT006 BKN025 BKN070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T11:04:21.257Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T11:30:00Z",
+            "raw_report": "METAR RKSI 221130Z 21009KT 180V240 7000 SCT006 BKN025 BKN090 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T11:34:38.800Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T12:00:00Z",
+            "raw_report": "METAR RKSI 221200Z 22007KT 7000 SCT004 BKN025 BKN090 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T12:04:33.700Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T12:30:00Z",
+            "raw_report": "METAR RKSI 221230Z 20008KT 7000 BKN005 BKN025 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T12:34:41.187Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T13:00:00Z",
+            "raw_report": "METAR RKSI 221300Z 20008KT 170V230 7000 BKN005 BKN025 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T13:04:28.855Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T13:30:00Z",
+            "raw_report": "METAR RKSI 221330Z 20008KT 170V240 7000 BKN005 BKN025 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T13:34:28.659Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T14:00:00Z",
+            "raw_report": "METAR RKSI 221400Z 18007KT 150V210 6000 -RA BKN005 BKN025 OVC070 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T14:04:29.921Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T14:30:00Z",
+            "raw_report": "METAR RKSI 221430Z 19009KT 6000 -RA BKN005 BKN025 OVC070 26/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-22T14:34:31.453Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 27.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-22T16:00:00Z",
+      "event_date": "2026-07-23",
+      "receipts": {
+        "metar_response_sha256": "c411b02fb2de1b5385b7be6f7fd30aa79925ef337e2e81389354179bcdc7a6b4",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260723_1500",
+        "taf_response_sha256": "763342a6feb776db3280741a395f28acae7b27aea6badd4a328e0382bce863a2",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-22T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-15847d8848a41ca5948a8f9adf756e99",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-23T15:00:00Z",
+        "start_utc": "2026-07-22T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-22T14:22:05Z",
+        "cloud_cover_fraction": 1.0,
+        "issue_time_utc": "2026-07-22T14:20:00Z",
+        "precipitation_probability": 1.0,
+        "raw_taf": "TAF AMD RKSI 221420Z 2214/2318 19007KT 6000 SCT008 BKN020 OVC070 TN24/2220Z TX27/2305Z TEMPO 2214/2216 3500 -RA BECMG 2217/2219 4000 -RA TEMPO 2220/2302 22010G20KT 2500 RA SCT008CB BKN020 OVC070 BECMG 2309/2310 22008KT 6000 NSW BECMG 2313/2315 4000 -RA",
+        "raw_taf_sha256": "de1041633575fefa6eeda09f3af3322af2c9e646878e021f57969f42f4d5f1f8",
+        "tx_c": 27.0,
+        "tx_valid_at_utc": "2026-07-23T05:00:00Z",
+        "wind_speed_mps": 4.152298000000001
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-22T15:00:00Z",
+            "raw_report": "METAR RKSI 221500Z 18009KT 6000 -RA BKN005 BKN025 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T15:04:23.157Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T15:30:00Z",
+            "raw_report": "METAR RKSI 221530Z 18007KT 2500 1200NW RA BR BKN006 BKN025 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T15:36:06.896Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T16:00:00Z",
+            "raw_report": "METAR RKSI 221600Z 16006KT 3500 -RA BR BKN005 BKN025 OVC070 25/25 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T16:04:12.013Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T16:30:00Z",
+            "raw_report": "METAR RKSI 221630Z 17007KT 4000 BR BKN006 BKN025 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T16:34:21.749Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T17:00:00Z",
+            "raw_report": "METAR RKSI 221700Z 18008KT 4000 BR BKN007 BKN025 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T17:04:25.351Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T17:30:00Z",
+            "raw_report": "METAR RKSI 221730Z 17010KT 5000 BR BKN007 BKN025 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T17:34:31.370Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T18:00:00Z",
+            "raw_report": "METAR RKSI 221800Z 17009KT 5000 BR BKN007 BKN025 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T18:04:44.907Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T18:30:00Z",
+            "raw_report": "METAR RKSI 221830Z 16007KT 130V190 4000 -RA BR BKN006 BKN025 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T18:34:31.428Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T19:00:00Z",
+            "raw_report": "METAR RKSI 221900Z 17010KT 5000 BR BKN005 BKN025 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T19:04:23.049Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T19:30:00Z",
+            "raw_report": "METAR RKSI 221930Z 17009KT 6000 BKN010 BKN030 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T19:34:37.534Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T20:00:00Z",
+            "raw_report": "METAR RKSI 222000Z 17010KT 7000 BKN010 BKN030 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T20:04:37.236Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T20:30:00Z",
+            "raw_report": "METAR RKSI 222030Z 17010KT 7000 BKN010 BKN030 OVC070 26/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T20:34:39.145Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T21:00:00Z",
+            "raw_report": "METAR RKSI 222100Z 19012KT 8000 BKN010 BKN030 OVC070 27/26 Q1006 NOSIG",
+            "received_at_utc": "2026-07-22T21:04:22.344Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T21:30:00Z",
+            "raw_report": "METAR RKSI 222130Z 19011KT 7000 BKN010 BKN030 OVC070 26/25 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T21:34:26.911Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T22:00:00Z",
+            "raw_report": "METAR RKSI 222200Z 20009KT 7000 BKN010 BKN030 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T22:04:31.086Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T22:30:00Z",
+            "raw_report": "METAR RKSI 222230Z 20009KT 6000 BKN008 BKN030 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T22:34:37.826Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T23:00:00Z",
+            "raw_report": "METAR RKSI 222300Z 21010KT 4000 -RA BR BKN008 BKN030 OVC070 26/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T23:04:37.837Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T23:30:00Z",
+            "raw_report": "METAR RKSI 222330Z 19010KT 6000 BKN008 BKN030 OVC070 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-22T23:35:44.199Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T00:00:00Z",
+            "raw_report": "METAR RKSI 230000Z 19011KT 160V220 7000 BKN010 BKN030 OVC070 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T00:04:18.089Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T00:30:00Z",
+            "raw_report": "METAR RKSI 230030Z 18010KT 8000 SCT011 BKN030 BKN070 27/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T00:34:33.140Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T01:00:00Z",
+            "raw_report": "METAR RKSI 230100Z 18013KT 9999 SCT014 BKN030 BKN070 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T01:04:36.632Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T01:30:00Z",
+            "raw_report": "METAR RKSI 230130Z 18016KT 9999 SCT014 BKN040 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T01:34:21.717Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T02:00:00Z",
+            "raw_report": "METAR RKSI 230200Z 19015KT 9999 SCT015 BKN040 BKN100 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T02:04:32.253Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T02:30:00Z",
+            "raw_report": "METAR RKSI 230230Z 19014KT 9999 SCT015 BKN040 BKN100 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T02:34:35.129Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T03:00:00Z",
+            "raw_report": "METAR RKSI 230300Z 19016KT 9999 FEW015 SCT040 BKN070 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T03:04:30.315Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T03:30:00Z",
+            "raw_report": "METAR RKSI 230330Z 21016KT 180V250 9999 SCT018 BKN065 30/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T03:34:27.342Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T04:00:00Z",
+            "raw_report": "METAR RKSI 230400Z 21016G26KT 180V240 9999 BKN017 BKN050 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T04:04:30.611Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T04:30:00Z",
+            "raw_report": "METAR RKSI 230430Z 20017KT 170V230 9999 BKN015 BKN050 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T04:34:36.109Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T05:00:00Z",
+            "raw_report": "METAR RKSI 230500Z 20017KT 9999 FEW012 BKN040 BKN080 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T05:04:30.384Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T05:30:00Z",
+            "raw_report": "METAR RKSI 230530Z 20017KT 9999 FEW014 BKN030 BKN070 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T05:36:25.074Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T06:00:00Z",
+            "raw_report": "METAR RKSI 230600Z 21016KT 9999 FEW011 SCT025 BKN060 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T06:04:33.066Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T06:30:00Z",
+            "raw_report": "METAR RKSI 230630Z 21015KT 9999 FEW025 BKN060 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T06:34:41.323Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T07:00:00Z",
+            "raw_report": "METAR RKSI 230700Z 21016KT CAVOK 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T07:04:29.819Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T07:30:00Z",
+            "raw_report": "METAR RKSI 230730Z 21014KT 9999 FEW010 BKN030 BKN070 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T07:34:40.358Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T08:00:00Z",
+            "raw_report": "METAR RKSI 230800Z 20013KT 9999 FEW010 BKN030 BKN065 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T08:04:39.990Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T08:30:00Z",
+            "raw_report": "METAR RKSI 230830Z 20013KT 9999 FEW010 BKN030 BKN070 29/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T08:34:31.841Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T09:00:00Z",
+            "raw_report": "METAR RKSI 230900Z 20011KT 160V250 9999 FEW010 BKN040 BKN070 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T09:04:27.894Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T09:30:00Z",
+            "raw_report": "METAR RKSI 230930Z 19012KT 9999 FEW011 BKN040 BKN065 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T09:34:41.117Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T10:00:00Z",
+            "raw_report": "METAR RKSI 231000Z 20010KT 9999 SCT012 BKN040 BKN065 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T10:04:37.685Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T10:30:00Z",
+            "raw_report": "METAR RKSI 231030Z 19009KT 160V230 9999 SCT014 BKN035 BKN065 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T10:34:32.415Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T11:00:00Z",
+            "raw_report": "METAR RKSI 231100Z 20007KT 130V230 9999 SCT012 BKN035 BKN200 28/26 Q1007 NOSIG",
+            "received_at_utc": "2026-07-23T11:04:29.506Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T11:30:00Z",
+            "raw_report": "METAR RKSI 231130Z 18009KT 9000 BKN011 BKN035 BKN200 27/26 Q1008 NOSIG",
+            "received_at_utc": "2026-07-23T11:34:32.062Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T12:00:00Z",
+            "raw_report": "METAR RKSI 231200Z 18011KT 9000 BKN012 BKN035 BKN200 27/25 Q1008 NOSIG",
+            "received_at_utc": "2026-07-23T12:04:25.765Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T12:30:00Z",
+            "raw_report": "METAR RKSI 231230Z 18012KT 9999 BKN014 BKN035 BKN200 27/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T12:34:41.972Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T13:00:00Z",
+            "raw_report": "METAR RKSI 231300Z 18011KT 150V210 9999 BKN014 BKN035 27/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T13:04:45.597Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T13:30:00Z",
+            "raw_report": "METAR RKSI 231330Z 19013G23KT 9999 BKN015 BKN035 27/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T13:34:29.204Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T14:00:00Z",
+            "raw_report": "METAR RKSI 231400Z 18012KT 9999 BKN014 BKN030 27/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T14:04:29.064Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T14:30:00Z",
+            "raw_report": "METAR RKSI 231430Z 18011KT 9999 BKN013 BKN025 27/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T14:34:34.226Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 30.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-23T16:00:00Z",
+      "event_date": "2026-07-24",
+      "receipts": {
+        "metar_response_sha256": "eb0b6d2ade369852ac77f5c19fab36319b36752e2847b6ddc3c4f6fe3e85b8d6",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260724_1500",
+        "taf_response_sha256": "5611c60f60eff738a63b8085d10c5e13e4679a58840d6f6e4b6ec3bd276206cd",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-23T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-de8867725a6047b239ab7ceea5c984b8",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-24T15:00:00Z",
+        "start_utc": "2026-07-23T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-23T11:05:30Z",
+        "cloud_cover_fraction": 0.7613636363636364,
+        "issue_time_utc": "2026-07-23T11:00:00Z",
+        "precipitation_probability": 0.18181818181818182,
+        "raw_taf": "TAF RKSI 231100Z 2312/2418 18007KT 6000 SCT010 BKN028 OVC070 TN25/2320Z TX30/2406Z BECMG 2314/2316 4000 BR TEMPO 2317/2323 -RA BECMG 2400/2402 21010KT 6000 NSW BECMG 2405/2407 SCT030 BECMG 2415/2417 16006KT 4000 BR",
+        "raw_taf_sha256": "10ad1570b0cbeddc6da7885d3b486295e314fd593cfed9922fbd00929d19a8f7",
+        "tx_c": 30.0,
+        "tx_valid_at_utc": "2026-07-24T06:00:00Z",
+        "wind_speed_mps": 3.788178545454546
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-23T15:00:00Z",
+            "raw_report": "METAR RKSI 231500Z 19011KT 9999 BKN013 BKN025 27/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T15:04:35.319Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T15:30:00Z",
+            "raw_report": "METAR RKSI 231530Z 18011KT 9999 BKN013 BKN035 27/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T15:34:43.176Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T16:00:00Z",
+            "raw_report": "METAR RKSI 231600Z 18011KT 9999 SCT012 BKN035 27/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T16:04:38.620Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T16:30:00Z",
+            "raw_report": "METAR RKSI 231630Z 18011KT 9999 BKN011 BKN035 27/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T16:34:34.915Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T17:00:00Z",
+            "raw_report": "METAR RKSI 231700Z 18010KT 8000 -RA BKN011 BKN035 27/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T17:04:32.124Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T17:30:00Z",
+            "raw_report": "METAR RKSI 231730Z 19007KT 8000 -RA BKN011 BKN035 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T17:34:29.456Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T18:00:00Z",
+            "raw_report": "METAR RKSI 231800Z 17008KT 5000 -RA BKN011 BKN035 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T18:04:30.199Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T18:30:00Z",
+            "raw_report": "METAR RKSI 231830Z 17006KT 5000 -RA BKN009 BKN035 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T18:34:33.855Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T19:00:00Z",
+            "raw_report": "METAR RKSI 231900Z 19009KT 6000 -RA BKN008 BKN030 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T19:04:34.334Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T19:30:00Z",
+            "raw_report": "METAR RKSI 231930Z 19010KT 6000 -RA BKN008 BKN030 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T19:34:35.830Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T20:00:00Z",
+            "raw_report": "METAR RKSI 232000Z 19010KT 9000 BKN010 BKN030 26/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T20:04:23.257Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T20:30:00Z",
+            "raw_report": "METAR RKSI 232030Z 19009KT 160V220 9000 BKN010 BKN030 26/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T20:34:38.719Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T21:00:00Z",
+            "raw_report": "METAR RKSI 232100Z 18010KT 9999 SCT011 BKN030 26/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T21:04:32.358Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T21:30:00Z",
+            "raw_report": "METAR RKSI 232130Z 18012KT 9999 SCT013 BKN030 26/25 Q1009 NOSIG",
+            "received_at_utc": "2026-07-23T21:34:35.702Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T22:00:00Z",
+            "raw_report": "METAR RKSI 232200Z 17008KT 9999 SCT013 BKN030 27/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-23T22:04:39.832Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T22:30:00Z",
+            "raw_report": "METAR RKSI 232230Z 17010KT 9999 SCT012 BKN030 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-23T22:34:44.533Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T23:00:00Z",
+            "raw_report": "METAR RKSI 232300Z 18011KT 9999 SCT012 BKN030 27/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-23T23:04:38.710Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T23:30:00Z",
+            "raw_report": "METAR RKSI 232330Z 18013KT 9999 SCT012 BKN030 28/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-23T23:34:45.161Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T00:00:00Z",
+            "raw_report": "METAR RKSI 240000Z 18012KT 9999 SCT015 BKN030 28/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T00:04:30.158Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T00:30:00Z",
+            "raw_report": "METAR RKSI 240030Z 18015KT 9999 SCT015 BKN030 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T00:34:22.293Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T01:00:00Z",
+            "raw_report": "METAR RKSI 240100Z 18013KT 9999 SCT015 BKN030 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T01:04:26.229Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T01:30:00Z",
+            "raw_report": "METAR RKSI 240130Z 19015KT 9999 SCT015 SCT030 BKN085 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T01:34:38.175Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T02:00:00Z",
+            "raw_report": "METAR RKSI 240200Z 19014KT 9999 SCT015 SCT030 BKN085 29/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T02:04:27.471Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T02:30:00Z",
+            "raw_report": "METAR RKSI 240230Z 21015G26KT 170V230 9999 SCT020 BKN090 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T02:34:37.843Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T03:00:00Z",
+            "raw_report": "METAR RKSI 240300Z 21013KT 180V240 9999 SCT020 BKN090 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T03:04:29.682Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T03:30:00Z",
+            "raw_report": "METAR RKSI 240330Z 20014KT 170V240 9999 SCT020 BKN090 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T03:34:40.510Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T04:00:00Z",
+            "raw_report": "METAR RKSI 240400Z 20014KT 170V230 9999 FEW020 SCT035 BKN100 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T04:04:30.283Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T04:30:00Z",
+            "raw_report": "METAR RKSI 240430Z 20016KT 9999 FEW020 SCT040 BKN100 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T04:34:35.705Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T05:00:00Z",
+            "raw_report": "METAR RKSI 240500Z 21015KT 170V230 9999 SCT020 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T05:04:34.442Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T05:30:00Z",
+            "raw_report": "METAR RKSI 240530Z 21014G26KT 170V240 9999 SCT020 31/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T05:34:42.553Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T06:00:00Z",
+            "raw_report": "METAR RKSI 240600Z 21012G23KT 180V240 9999 SCT020 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T06:04:26.551Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T06:30:00Z",
+            "raw_report": "METAR RKSI 240630Z 22014G25KT 180V250 9999 FEW020 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T06:34:32.904Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T07:00:00Z",
+            "raw_report": "METAR RKSI 240700Z 22012KT 9999 FEW025 30/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T07:04:31.626Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T07:30:00Z",
+            "raw_report": "METAR RKSI 240730Z 20008KT 140V280 9999 FEW025 31/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T07:34:40.519Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T08:00:00Z",
+            "raw_report": "METAR RKSI 240800Z 23011G23KT 190V260 9999 FEW025 30/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T08:04:37.523Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T08:30:00Z",
+            "raw_report": "METAR RKSI 240830Z 22012G24KT 190V250 9999 FEW025 30/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T08:34:33.775Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:00:00Z",
+            "raw_report": "METAR RKSI 240900Z 22010KT 180V270 9999 FEW025 30/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T09:05:03.198Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:30:00Z",
+            "raw_report": "METAR RKSI 240930Z 22011G22KT 190V250 9999 FEW025 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T09:34:23.812Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T10:00:00Z",
+            "raw_report": "METAR RKSI 241000Z 23011G21KT 190V260 9999 FEW030 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T10:04:39.479Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T10:30:00Z",
+            "raw_report": "METAR RKSI 241030Z 22009KT 9999 FEW030 BKN200 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T10:34:46.045Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T11:00:00Z",
+            "raw_report": "METAR RKSI 241100Z 20009KT 130V230 9999 FEW030 SCT200 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T11:04:36.647Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T11:30:00Z",
+            "raw_report": "METAR RKSI 241130Z 22007KT 170V250 9999 FEW030 SCT200 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-24T11:34:39.168Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T12:00:00Z",
+            "raw_report": "METAR RKSI 241200Z 22008G19KT 170V280 CAVOK 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T12:04:27.331Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T12:30:00Z",
+            "raw_report": "METAR RKSI 241230Z 22009KT CAVOK 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T12:34:35.935Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T13:00:00Z",
+            "raw_report": "METAR RKSI 241300Z 22009KT 180V240 CAVOK 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T13:04:31.075Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T13:30:00Z",
+            "raw_report": "METAR RKSI 241330Z 22007KT 180V250 CAVOK 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T13:34:40.151Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T14:00:00Z",
+            "raw_report": "METAR RKSI 241400Z 21006KT 160V240 9999 FEW040 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T14:04:42.483Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T14:30:00Z",
+            "raw_report": "METAR RKSI 241430Z 19007KT 160V220 9999 FEW040 SCT120 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T14:34:51.857Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 31.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-24T16:00:00Z",
+      "event_date": "2026-07-25",
+      "receipts": {
+        "metar_response_sha256": "706748155a795ecce66e5c4592074502a7474a635b14c0070a3bf4bc5697c12d",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260725_1500",
+        "taf_response_sha256": "89164c47f091e66e1b1880346c7177a4c54b0e0895d8f4e41fd35c85276d2f2a",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-24T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-3350f70dfe90f08497e302edded3fe17",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-25T15:00:00Z",
+        "start_utc": "2026-07-24T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-24T11:05:39Z",
+        "cloud_cover_fraction": 0.6527777777777778,
+        "issue_time_utc": "2026-07-24T11:00:00Z",
+        "precipitation_probability": 0.4444444444444444,
+        "raw_taf": "TAF RKSI 241100Z 2412/2518 20008KT 9999 SCT025 TN26/2420Z TX30/2506Z BECMG 2418/2420 17005KT 4000 BR BECMG 2421/2423 6000 NSW BECMG 2501/2503 21012KT -RA FEW010 BKN025 OVC060 BECMG 2505/2507 18008KT NSW SCT025 BECMG 2516/2518 FEW010 BKN025",
+        "raw_taf_sha256": "13b1b9afdcbecd22edd58ba63e8b7798784225adf83def44e3adb41981990b64",
+        "tx_c": 30.0,
+        "tx_valid_at_utc": "2026-07-25T06:00:00Z",
+        "wind_speed_mps": 4.344193777777777
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-24T15:00:00Z",
+            "raw_report": "METAR RKSI 241500Z 19006KT 160V230 9999 FEW040 SCT120 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T15:04:20.038Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T15:30:00Z",
+            "raw_report": "METAR RKSI 241530Z 19006KT 9999 FEW040 SCT120 BKN230 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T15:34:52.201Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:00:00Z",
+            "raw_report": "METAR RKSI 241600Z 18006KT 160V230 9999 FEW010 SCT040 BKN120 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T16:04:44.446Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:30:00Z",
+            "raw_report": "METAR RKSI 241630Z 18007KT 9999 FEW010 SCT140 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T16:34:37.904Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T17:00:00Z",
+            "raw_report": "METAR RKSI 241700Z 17007KT 9999 SCT011 BKN140 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T17:04:27.461Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T17:30:00Z",
+            "raw_report": "METAR RKSI 241730Z 20007KT 9999 SCT010 BKN120 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T17:34:19.648Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T18:00:00Z",
+            "raw_report": "METAR RKSI 241800Z 18006KT 140V210 9999 SCT012 BKN090 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T18:04:39.060Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T18:30:00Z",
+            "raw_report": "METAR RKSI 241830Z 17006KT 9999 SCT011 BKN090 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T18:34:54.906Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T19:00:00Z",
+            "raw_report": "METAR RKSI 241900Z 17006KT 9999 SCT010 BKN025 BKN080 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T19:04:24.980Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T19:30:00Z",
+            "raw_report": "METAR RKSI 241930Z 16005KT 9999 SCT010 BKN025 BKN080 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T19:34:44.482Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T20:00:00Z",
+            "raw_report": "METAR RKSI 242000Z 15005KT 9999 SCT011 BKN035 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T20:04:32.513Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T20:30:00Z",
+            "raw_report": "METAR RKSI 242030Z 16006KT 130V190 9999 SCT009 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T20:34:44.427Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T21:00:00Z",
+            "raw_report": "METAR RKSI 242100Z 15005KT 9999 BKN010 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T21:04:48.932Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T21:30:00Z",
+            "raw_report": "METAR RKSI 242130Z 14006KT 9999 BKN011 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T21:34:38.485Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T22:00:00Z",
+            "raw_report": "METAR RKSI 242200Z 14006KT 9999 SCT014 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T22:04:36.762Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T22:30:00Z",
+            "raw_report": "METAR RKSI 242230Z 16007KT 9999 BKN018 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T22:34:49.828Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T23:00:00Z",
+            "raw_report": "METAR RKSI 242300Z 17009KT 9999 BKN018 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T23:04:52.083Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T23:30:00Z",
+            "raw_report": "METAR RKSI 242330Z 17009KT 9999 SCT012 BKN040 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-24T23:36:00.312Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T00:00:00Z",
+            "raw_report": "METAR RKSI 250000Z 17010KT 9999 SCT013 BKN045 29/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T00:05:58.335Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T00:30:00Z",
+            "raw_report": "METAR RKSI 250030Z 17010KT 140V200 9999 SCT014 BKN045 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-25T00:34:25.672Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T01:00:00Z",
+            "raw_report": "METAR RKSI 250100Z 17012KT 9999 SCT015 BKN080 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T01:04:32.977Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T01:30:00Z",
+            "raw_report": "METAR RKSI 250130Z 18014KT 9999 FEW015 BKN030 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T01:34:44.558Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T02:00:00Z",
+            "raw_report": "METAR RKSI 250200Z 20015KT 9999 FEW015 BKN030 30/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-25T02:04:23.117Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T02:30:00Z",
+            "raw_report": "METAR RKSI 250230Z 19016KT 9999 FEW015 BKN030 31/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-25T02:34:24.493Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T03:00:00Z",
+            "raw_report": "METAR RKSI 250300Z 21016KT 9999 FEW015 BKN030 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T03:04:37.443Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T03:30:00Z",
+            "raw_report": "METAR RKSI 250330Z 20017KT 170V230 9999 FEW015 BKN030 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T03:34:48.635Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T04:00:00Z",
+            "raw_report": "METAR RKSI 250400Z 21017G27KT 9999 FEW015 BKN040 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T04:04:39.659Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T04:30:00Z",
+            "raw_report": "METAR RKSI 250430Z 21015G26KT 170V230 9999 FEW015 BKN035 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T04:34:32.552Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T05:00:00Z",
+            "raw_report": "METAR RKSI 250500Z 21017KT 180V280 9999 FEW015 BKN035 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T05:04:43.900Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T05:30:00Z",
+            "raw_report": "METAR RKSI 250530Z 21014KT 9999 FEW015 BKN035 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T05:34:53.825Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T06:00:00Z",
+            "raw_report": "METAR RKSI 250600Z 21014KT 180V240 9999 FEW015 BKN200 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T06:04:36.974Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T06:30:00Z",
+            "raw_report": "METAR RKSI 250630Z 21014KT 9999 FEW015 SCT030 BKN200 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T06:34:26.317Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T07:00:00Z",
+            "raw_report": "METAR RKSI 250700Z 22012KT CAVOK 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T07:04:37.841Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T07:30:00Z",
+            "raw_report": "METAR RKSI 250730Z 21012KT 180V240 CAVOK 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T07:34:24.597Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T08:00:00Z",
+            "raw_report": "METAR RKSI 250800Z 21012G24KT 180V260 9999 FEW015 BKN200 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T08:04:41.703Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T08:30:00Z",
+            "raw_report": "METAR RKSI 250830Z 21012KT 180V240 9999 FEW015 BKN200 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T08:34:28.131Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T09:00:00Z",
+            "raw_report": "METAR RKSI 250900Z 22011KT 220V280 CAVOK 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T09:04:35.691Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T09:30:00Z",
+            "raw_report": "METAR RKSI 250930Z 22011KT 180V240 CAVOK 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T09:34:26.867Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T10:00:00Z",
+            "raw_report": "METAR RKSI 251000Z 21011KT 9999 FEW030 BKN200 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T10:04:31.510Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T10:30:00Z",
+            "raw_report": "METAR RKSI 251030Z 21010KT 9999 FEW030 BKN200 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T10:34:37.013Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T11:00:00Z",
+            "raw_report": "METAR RKSI 251100Z 22011KT 170V260 9999 FEW030 BKN200 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T11:04:23.616Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T11:30:00Z",
+            "raw_report": "METAR RKSI 251130Z 21007KT 180V250 9999 SCT025 BKN200 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T11:34:29.317Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T12:00:00Z",
+            "raw_report": "METAR RKSI 251200Z 19007KT 9999 BKN030 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T12:04:24.992Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T12:30:00Z",
+            "raw_report": "METAR RKSI 251230Z 20006KT 170V230 9999 FEW015 SCT030 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T12:34:30.727Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T13:00:00Z",
+            "raw_report": "METAR RKSI 251300Z 21007G19KT 160V240 9999 FEW015 SCT030 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T13:04:28.527Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T13:30:00Z",
+            "raw_report": "METAR RKSI 251330Z 20007KT 9999 FEW015 SCT030 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T13:34:36.589Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T14:00:00Z",
+            "raw_report": "METAR RKSI 251400Z 20005KT 150V240 9999 FEW010 SCT030 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T14:04:48.495Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T14:30:00Z",
+            "raw_report": "METAR RKSI 251430Z 19008KT 9999 SCT010 BKN030 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T14:34:30.241Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 31.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-25T16:00:00Z",
+      "event_date": "2026-07-26",
+      "receipts": {
+        "metar_response_sha256": "dfc19e5d0a00a68dee83676ddd7d464c70c834659abbaffaefb22ef44697a92a",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260726_1500",
+        "taf_response_sha256": "bd5e516a5f685a6b468755d9a78abd4687c9344afb49c7148aca0f914cdcb895",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-25T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-1f3d827a4a66009657dca4c993157f41",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-26T15:00:00Z",
+        "start_utc": "2026-07-25T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-25T11:05:50Z",
+        "cloud_cover_fraction": 0.6590909090909091,
+        "issue_time_utc": "2026-07-25T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKSI 251100Z 2512/2618 19008KT 9999 SCT035 TN25/2520Z TX30/2606Z BECMG 2518/2520 6000 BKN035 TEMPO 2523/2601 -SHRA FEW010 BKN025 OVC060 BECMG 2602/2604 21015G25KT 9999 SCT035 BECMG 2605/2607 20008KT BECMG 2614/2616 6000 BKN035",
+        "raw_taf_sha256": "f4756b8d1955e706e97197ed15dce80db2698dba095bc67e9465c97425e6c57a",
+        "tx_c": 30.0,
+        "tx_valid_at_utc": "2026-07-26T06:00:00Z",
+        "wind_speed_mps": 4.349390181818182
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-25T15:00:00Z",
+            "raw_report": "METAR RKSI 251500Z 19006KT 160V230 9999 SCT010 BKN030 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T15:04:37.891Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T15:30:00Z",
+            "raw_report": "METAR RKSI 251530Z 19007KT 9999 SCT009 BKN030 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T15:34:25.928Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T16:00:00Z",
+            "raw_report": "METAR RKSI 251600Z 19007KT 9999 SCT009 BKN020 BKN035 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T16:04:34.015Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T16:30:00Z",
+            "raw_report": "METAR RKSI 251630Z 18006KT 9999 SCT011 BKN025 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T16:34:32.941Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T17:00:00Z",
+            "raw_report": "METAR RKSI 251700Z 17007KT 9999 SCT013 BKN030 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T17:04:28.794Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T17:30:00Z",
+            "raw_report": "METAR RKSI 251730Z 17007KT 9999 SCT012 BKN040 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T17:34:28.363Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T18:00:00Z",
+            "raw_report": "METAR RKSI 251800Z 18007KT 8000 -RA BKN011 OVC030 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T18:04:32.480Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T18:30:00Z",
+            "raw_report": "METAR RKSI 251830Z 19007KT 9999 SCT009 BKN045 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T18:34:32.000Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T19:00:00Z",
+            "raw_report": "METAR RKSI 251900Z 19006KT 9999 SCT009 BKN040 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T19:04:33.190Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T19:30:00Z",
+            "raw_report": "METAR RKSI 251930Z 20008KT 170V240 8000 -SHRA BKN008 OVC025 26/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T19:34:24.728Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T20:00:00Z",
+            "raw_report": "METAR RKSI 252000Z 21008KT 180V240 9999 SCT004 BKN020 26/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T20:04:22.380Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T20:30:00Z",
+            "raw_report": "METAR RKSI 252030Z 21008KT 180V240 6000 BKN003 BKN030 26/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T20:34:36.555Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T21:00:00Z",
+            "raw_report": "METAR RKSI 252100Z 21006KT 180V240 5000 2000W BR BKN003 BKN030 26/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T21:15:29.956Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T21:30:00Z",
+            "raw_report": "METAR RKSI 252130Z 20008KT 6000 SCT004 BKN035 26/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-25T21:34:34.251Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T22:00:00Z",
+            "raw_report": "METAR RKSI 252200Z 19007G18KT 9999 FEW003 BKN025 27/27 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T22:04:38.680Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T22:30:00Z",
+            "raw_report": "METAR RKSI 252230Z 20009KT 170V230 9999 FEW005 SCT040 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T22:34:31.177Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T23:00:00Z",
+            "raw_report": "METAR RKSI 252300Z 18008KT 9999 FEW008 SCT025 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T23:04:29.827Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T23:30:00Z",
+            "raw_report": "METAR RKSI 252330Z 18009KT 160V220 9999 SCT008 BKN025 28/27 Q1011 NOSIG",
+            "received_at_utc": "2026-07-25T23:34:19.947Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T00:00:00Z",
+            "raw_report": "METAR RKSI 260000Z 20008KT 170V230 9999 SCT008 BKN030 29/27 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T00:04:24.720Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T00:30:00Z",
+            "raw_report": "METAR RKSI 260030Z 21011KT 180V240 9999 SCT008 BKN030 29/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T00:34:31.910Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T01:00:00Z",
+            "raw_report": "METAR RKSI 260100Z 21012KT 9999 FEW012 SCT035 29/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T01:04:38.639Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T01:30:00Z",
+            "raw_report": "METAR RKSI 260130Z 21010KT 170V250 9999 FEW012 SCT035 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T01:34:41.992Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T02:00:00Z",
+            "raw_report": "METAR RKSI 260200Z 21010KT 170V260 9999 FEW015 SCT035 31/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T02:04:32.425Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T02:30:00Z",
+            "raw_report": "METAR RKSI 260230Z 21012KT 9999 FEW015 SCT035 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T02:34:36.706Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T03:00:00Z",
+            "raw_report": "METAR RKSI 260300Z 21011KT 9999 FEW015 SCT035 31/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T03:04:38.771Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T03:30:00Z",
+            "raw_report": "METAR RKSI 260330Z 22011KT 9999 SCT045 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T03:34:24.679Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T04:00:00Z",
+            "raw_report": "METAR RKSI 260400Z 23011KT 200V260 9999 SCT045 31/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T04:04:28.441Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T04:30:00Z",
+            "raw_report": "METAR RKSI 260430Z 21012KT 180V250 9999 SCT045 31/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T04:34:23.277Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T05:00:00Z",
+            "raw_report": "METAR RKSI 260500Z 22012KT 180V250 9999 SCT045 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T05:04:32.417Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T05:30:00Z",
+            "raw_report": "METAR RKSI 260530Z 21013KT 9999 SCT045 31/27 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T05:34:27.619Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T06:00:00Z",
+            "raw_report": "METAR RKSI 260600Z 22014G28KT 200V260 9999 SCT040 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T06:04:32.837Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T06:30:00Z",
+            "raw_report": "METAR RKSI 260630Z 22009G21KT 180V270 9999 SCT040 31/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T06:34:33.274Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T07:00:00Z",
+            "raw_report": "METAR RKSI 260700Z 22009KT 180V280 9999 SCT040 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T07:04:36.876Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T07:30:00Z",
+            "raw_report": "METAR RKSI 260730Z 24008KT 190V270 9999 SCT040 30/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T07:34:29.808Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T08:00:00Z",
+            "raw_report": "METAR RKSI 260800Z 25008KT 180V290 9999 SCT040 30/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-26T08:05:47.638Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T08:30:00Z",
+            "raw_report": "METAR RKSI 260830Z 25009KT 9999 FEW040 30/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-26T08:34:31.974Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T09:00:00Z",
+            "raw_report": "METAR RKSI 260900Z 22008KT 190V250 9999 FEW040 29/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-26T09:04:49.081Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T09:30:00Z",
+            "raw_report": "METAR RKSI 260930Z 23006KT 200V280 9999 FEW040 29/26 Q1009 NOSIG",
+            "received_at_utc": "2026-07-26T09:34:33.718Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T10:00:00Z",
+            "raw_report": "METAR RKSI 261000Z 23006KT 9999 FEW040 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T10:04:31.348Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T10:30:00Z",
+            "raw_report": "METAR RKSI 261030Z 24006KT CAVOK 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T10:34:34.165Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T11:00:00Z",
+            "raw_report": "METAR RKSI 261100Z 23007KT 210V270 CAVOK 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T11:04:30.025Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T11:30:00Z",
+            "raw_report": "METAR RKSI 261130Z 24005KT CAVOK 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T11:34:26.895Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T12:00:00Z",
+            "raw_report": "METAR RKSI 261200Z 23006KT 190V250 CAVOK 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T12:04:51.238Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T12:30:00Z",
+            "raw_report": "METAR RKSI 261230Z 23007KT 190V250 9999 SCT040 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T12:34:29.042Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T13:00:00Z",
+            "raw_report": "METAR RKSI 261300Z 22006KT 9999 BKN040 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-26T13:04:24.404Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T13:30:00Z",
+            "raw_report": "METAR RKSI 261330Z 21008KT 9999 BKN040 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T13:34:31.826Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T14:00:00Z",
+            "raw_report": "METAR RKSI 261400Z 21008KT 9999 BKN030 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T14:04:35.781Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T14:30:00Z",
+            "raw_report": "METAR RKSI 261430Z 20008KT 160V220 9999 BKN030 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T14:34:20.288Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 31.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-26T16:00:00Z",
+      "event_date": "2026-07-27",
+      "receipts": {
+        "metar_response_sha256": "80aa397a30cc8b55e32a1bbd5ebe24363e2c5052275f5dfef54616e21cf08743",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260727_1500",
+        "taf_response_sha256": "1bd5cf43d244687e4476571c08a4641946fc3da5ad503ddf86cc5136640643c8",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-26T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-4af603e818b88c495982f75813d326e2",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-27T15:00:00Z",
+        "start_utc": "2026-07-26T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-26T11:05:47Z",
+        "cloud_cover_fraction": 0.25,
+        "issue_time_utc": "2026-07-26T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKSI 261100Z 2612/2718 20008KT CAVOK TN25/2620Z TX29/2706Z BECMG 2613/2615 4000 BR BKN025 BECMG 2622/2624 CAVOK BECMG 2704/2706 9999 BKN035 BECMG 2713/2715 4000 BR",
+        "raw_taf_sha256": "3f8ce2260a7946c728fdde94f0fae0174fa3e5b99e326974178cdac693f4b3b1",
+        "tx_c": 29.0,
+        "tx_valid_at_utc": "2026-07-27T06:00:00Z",
+        "wind_speed_mps": 4.115552
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-26T15:00:00Z",
+            "raw_report": "METAR RKSI 261500Z 20008KT 9999 BKN030 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T15:04:36.555Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T15:30:00Z",
+            "raw_report": "METAR RKSI 261530Z 20007KT 9999 BKN030 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T15:34:32.478Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T16:00:00Z",
+            "raw_report": "METAR RKSI 261600Z 20005KT 9999 BKN030 BKN180 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T16:04:27.070Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T16:30:00Z",
+            "raw_report": "METAR RKSI 261630Z 20005KT 9999 BKN030 BKN180 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T16:34:24.856Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T17:00:00Z",
+            "raw_report": "METAR RKSI 261700Z 21005KT 9999 SCT010 BKN050 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T17:04:27.746Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T17:30:00Z",
+            "raw_report": "METAR RKSI 261730Z 19006KT 9999 -RA SCT010 BKN050 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T17:34:25.138Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T18:00:00Z",
+            "raw_report": "METAR RKSI 261800Z 18007KT 9999 SCT010 BKN050 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T18:04:33.319Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T18:30:00Z",
+            "raw_report": "METAR RKSI 261830Z 20008KT 9999 SCT010 BKN030 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T18:34:35.968Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T19:00:00Z",
+            "raw_report": "METAR RKSI 261900Z 21008KT 9999 BKN008 OVC030 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T19:04:29.421Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T19:30:00Z",
+            "raw_report": "METAR RKSI 261930Z 20008KT 170V230 9999 SCT008 OVC030 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T19:34:25.259Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T20:00:00Z",
+            "raw_report": "METAR RKSI 262000Z 20006KT 9999 SCT005 BKN030 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T20:04:31.234Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T20:30:00Z",
+            "raw_report": "METAR RKSI 262030Z 19009KT 160V220 9999 SCT005 BKN050 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T20:34:34.871Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T21:00:00Z",
+            "raw_report": "METAR RKSI 262100Z 21007KT 170V230 9999 FEW005 BKN050 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T21:04:34.266Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T21:30:00Z",
+            "raw_report": "METAR RKSI 262130Z 18007KT 150V220 9999 SCT005 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T21:34:29.615Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T22:00:00Z",
+            "raw_report": "METAR RKSI 262200Z 19006KT 150V240 9999 SCT005 BKN045 BKN200 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T22:04:45.164Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T22:30:00Z",
+            "raw_report": "METAR RKSI 262230Z 18006KT 140V220 9999 FEW005 SCT045 BKN200 28/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-26T22:34:32.802Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T23:00:00Z",
+            "raw_report": "METAR RKSI 262300Z 19007KT 150V220 9999 FEW008 BKN200 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-26T23:04:37.299Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T23:30:00Z",
+            "raw_report": "METAR RKSI 262330Z 21009KT 9999 FEW010 BKN035 BKN200 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-26T23:34:32.189Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T00:00:00Z",
+            "raw_report": "METAR RKSI 270000Z 22008KT 180V240 9999 FEW012 SCT050 BKN200 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T00:04:41.372Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T00:30:00Z",
+            "raw_report": "METAR RKSI 270030Z 20010KT 170V230 9999 FEW010 SCT020 BKN200 29/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T00:34:28.155Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T01:00:00Z",
+            "raw_report": "METAR RKSI 270100Z 20010KT 170V230 9999 FEW010 SCT020 BKN200 29/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T01:04:26.294Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T01:30:00Z",
+            "raw_report": "METAR RKSI 270130Z 22009KT 170V250 9999 SCT015 BKN200 29/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T01:34:38.396Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T02:00:00Z",
+            "raw_report": "METAR RKSI 270200Z 21009KT 170V240 9999 SCT015 BKN200 29/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T02:04:31.259Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T02:30:00Z",
+            "raw_report": "METAR RKSI 270230Z 21010KT 170V230 9999 SCT015 BKN200 30/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T02:34:39.719Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T03:00:00Z",
+            "raw_report": "METAR RKSI 270300Z 22010KT 180V240 9999 FEW015 BKN200 31/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T03:04:29.687Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T03:30:00Z",
+            "raw_report": "METAR RKSI 270330Z 22010KT 150V230 9999 FEW013 BKN055 BKN200 29/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T03:34:28.822Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T04:00:00Z",
+            "raw_report": "METAR RKSI 270400Z 21012KT 9999 FEW017 BKN055 BKN200 30/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T04:04:27.873Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T04:30:00Z",
+            "raw_report": "METAR RKSI 270430Z 22010KT 200V280 9999 FEW015 BKN055 29/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T04:34:30.233Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T05:00:00Z",
+            "raw_report": "METAR RKSI 270500Z 22009KT 190V250 9999 FEW015 BKN050 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T05:04:25.111Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T05:30:00Z",
+            "raw_report": "METAR RKSI 270530Z 22011G23KT 180V250 9999 BKN045 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T05:34:33.469Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T06:00:00Z",
+            "raw_report": "METAR RKSI 270600Z 22012KT 190V250 9999 BKN040 BKN070 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T06:04:38.627Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T06:30:00Z",
+            "raw_report": "METAR RKSI 270630Z 22012G23KT 9999 BKN040 BKN065 29/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T06:34:26.855Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T07:00:00Z",
+            "raw_report": "METAR RKSI 270700Z 23012KT 180V250 9999 SCT035 BKN070 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T07:04:36.496Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T07:30:00Z",
+            "raw_report": "METAR RKSI 270730Z 22013G25KT 170V240 9999 SCT035 SCT070 BKN180 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T07:34:36.014Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:00:00Z",
+            "raw_report": "METAR RKSI 270800Z 22013KT 9999 BKN035 BKN180 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T08:04:32.526Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:30:00Z",
+            "raw_report": "METAR RKSI 270830Z 22011G23KT 180V250 9999 BKN035 BKN180 29/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T08:34:46.255Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T09:00:00Z",
+            "raw_report": "METAR RKSI 270900Z 22013KT 9999 BKN035 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T09:04:43.775Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T09:30:00Z",
+            "raw_report": "METAR RKSI 270930Z 22012KT 9999 BKN030 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T09:34:23.203Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T10:00:00Z",
+            "raw_report": "METAR RKSI 271000Z 21012KT 9999 BKN030 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T10:04:43.120Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T10:30:00Z",
+            "raw_report": "METAR RKSI 271030Z 21010KT 9999 BKN030 28/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T10:34:35.562Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T11:00:00Z",
+            "raw_report": "METAR RKSI 271100Z 20009KT 180V240 9999 BKN030 27/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T11:04:27.897Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T11:30:00Z",
+            "raw_report": "METAR RKSI 271130Z 21009KT 170V250 9999 BKN030 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T11:34:23.665Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T12:00:00Z",
+            "raw_report": "METAR RKSI 271200Z 22010KT 190V250 9999 BKN025 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T12:04:29.664Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T12:30:00Z",
+            "raw_report": "METAR RKSI 271230Z 21010KT 9999 BKN025 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T12:34:32.807Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T13:00:00Z",
+            "raw_report": "METAR RKSI 271300Z 21008KT 190V250 9999 BKN025 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T13:04:34.093Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T13:30:00Z",
+            "raw_report": "METAR RKSI 271330Z 21010KT 9999 FEW010 BKN025 BKN180 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T13:34:19.098Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T14:00:00Z",
+            "raw_report": "METAR RKSI 271400Z 22009KT 9999 FEW010 BKN025 BKN180 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T14:05:27.631Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T14:30:00Z",
+            "raw_report": "METAR RKSI 271430Z 21008KT 180V240 9999 FEW010 BKN025 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T14:36:22.192Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 31.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-27T16:00:00Z",
+      "event_date": "2026-07-28",
+      "receipts": {
+        "metar_response_sha256": "c35bc4bc0da1e220f47026defe1325e331585ed658350de2cdd26f29ccde2432",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260728_1500",
+        "taf_response_sha256": "867484ea19f7e68ec7fba82b78ab24b8ff87d16603037888f1ecec6e71cb12d3",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-27T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-ed19d82b5634d6a161bdb560917922d1",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-28T15:00:00Z",
+        "start_utc": "2026-07-27T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-27T11:05:32Z",
+        "cloud_cover_fraction": 0.2916666666666667,
+        "issue_time_utc": "2026-07-27T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKSI 271100Z 2712/2818 22008KT 9999 SCT035 TN25/2720Z TX30/2806Z BECMG 2717/2719 26008KT 4000 BR SCT005 BKN025 BECMG 2721/2723 6000 NSW FEW008 SCT035 BECMG 2804/2806 26015G25KT CAVOK BECMG 2815/2817 26010KT",
+        "raw_taf_sha256": "ef1855450b7bfc20f6466584ce4f7ded5d206d512be5d3605c1fef8733736a29",
+        "tx_c": 30.0,
+        "tx_valid_at_utc": "2026-07-28T06:00:00Z",
+        "wind_speed_mps": 4.9157982222222225
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-27T15:00:00Z",
+            "raw_report": "METAR RKSI 271500Z 22006KT 180V250 9999 FEW010 BKN025 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T15:05:44.300Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T15:30:00Z",
+            "raw_report": "METAR RKSI 271530Z 22006KT 9999 SCT010 BKN025 OVC080 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T15:38:59.072Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T16:00:00Z",
+            "raw_report": "METAR RKSI 271600Z 22004KT 9999 SCT010 BKN025 OVC080 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T16:04:41.544Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T16:30:00Z",
+            "raw_report": "METAR RKSI 271630Z 22008KT 9999 SCT010 BKN025 OVC080 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T16:34:30.467Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T17:00:00Z",
+            "raw_report": "METAR RKSI 271700Z 23008KT 9999 SCT005 BKN040 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T17:04:19.894Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T17:30:00Z",
+            "raw_report": "METAR RKSI 271730Z 24008KT 9999 SCT005 BKN040 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T17:36:03.089Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T18:00:00Z",
+            "raw_report": "METAR RKSI 271800Z 23008KT 9999 SCT005 SCT040 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T18:05:40.180Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T18:30:00Z",
+            "raw_report": "METAR RKSI 271830Z 24007KT 9999 SCT005 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T18:34:36.266Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T19:00:00Z",
+            "raw_report": "METAR RKSI 271900Z 25006KT 230V290 9999 SCT005 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T19:04:28.208Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T19:30:00Z",
+            "raw_report": "METAR RKSI 271930Z 27005KT 240V300 9999 BKN005 BKN200 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T19:34:28.797Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T20:00:00Z",
+            "raw_report": "METAR RKSI 272000Z 27006KT 9999 BKN005 BKN200 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T20:04:35.574Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T20:30:00Z",
+            "raw_report": "METAR RKSI 272030Z 25005KT 6000 BKN004 BKN200 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T20:34:38.479Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T21:00:00Z",
+            "raw_report": "METAR RKSI 272100Z 25005KT 5000 BR BKN003 BKN200 26/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T21:04:36.956Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T21:30:00Z",
+            "raw_report": "METAR RKSI 272130Z 25005KT 220V280 5000 BR BKN003 BKN200 26/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T21:34:35.717Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T22:00:00Z",
+            "raw_report": "METAR RKSI 272200Z 26004KT 230V290 5000 1500SW BR BKN003 BKN200 26/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T22:15:28.062Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T22:30:00Z",
+            "raw_report": "METAR RKSI 272230Z 25005KT 210V270 7000 BKN003 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T22:34:27.080Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T23:00:00Z",
+            "raw_report": "METAR RKSI 272300Z 24006KT 7000 2000SW BKN003 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T23:15:45.399Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T23:30:00Z",
+            "raw_report": "METAR RKSI 272330Z 26005KT 210V290 7000 BKN003 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T23:34:38.281Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T00:00:00Z",
+            "raw_report": "METAR RKSI 280000Z 28005KT 240V330 8000 BKN003 28/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T00:04:40.770Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T00:30:00Z",
+            "raw_report": "METAR RKSI 280030Z 29006KT 8000 BKN003 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T00:34:32.429Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T01:00:00Z",
+            "raw_report": "METAR RKSI 280100Z 26005KT 210V330 9000 SCT007 28/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T01:04:38.094Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T01:30:00Z",
+            "raw_report": "METAR RKSI 280130Z 30006KT 9000 SCT010 28/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T01:34:34.047Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T02:00:00Z",
+            "raw_report": "METAR RKSI 280200Z 28006KT 240V320 9999 SCT013 30/25 Q1015 NOSIG",
+            "received_at_utc": "2026-07-28T02:04:45.027Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T02:30:00Z",
+            "raw_report": "METAR RKSI 280230Z 27008KT 220V310 9999 SCT015 30/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T02:34:42.945Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T03:00:00Z",
+            "raw_report": "METAR RKSI 280300Z 28008KT 9999 SCT015 29/26 Q1015 NOSIG",
+            "received_at_utc": "2026-07-28T03:04:44.550Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T03:30:00Z",
+            "raw_report": "METAR RKSI 280330Z 25010KT 220V280 9999 SCT012 30/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T03:34:34.655Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T04:00:00Z",
+            "raw_report": "METAR RKSI 280400Z 26008KT 220V290 9999 BKN013 30/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T04:04:39.818Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T04:30:00Z",
+            "raw_report": "METAR RKSI 280430Z 28009KT 250V320 9999 BKN014 29/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T04:34:41.624Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T05:00:00Z",
+            "raw_report": "METAR RKSI 280500Z 28011KT 250V320 9999 SCT016 30/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T05:04:35.752Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T05:30:00Z",
+            "raw_report": "METAR RKSI 280530Z 28010KT 250V320 9999 SCT017 30/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T05:34:36.208Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T06:00:00Z",
+            "raw_report": "METAR RKSI 280600Z 27010KT 9999 SCT017 30/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T06:04:32.525Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T06:30:00Z",
+            "raw_report": "METAR RKSI 280630Z 25009KT 210V330 9999 SCT015 30/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T06:34:40.410Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T07:00:00Z",
+            "raw_report": "METAR RKSI 280700Z 24009KT 210V270 9999 SCT012 SCT200 30/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T07:04:34.352Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T07:30:00Z",
+            "raw_report": "METAR RKSI 280730Z 26010KT 220V290 9999 SCT010 SCT200 29/25 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T07:34:40.902Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T08:00:00Z",
+            "raw_report": "METAR RKSI 280800Z 24010KT 9999 SCT010 SCT200 29/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T08:04:36.908Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T08:30:00Z",
+            "raw_report": "METAR RKSI 280830Z 25011KT 9999 SCT011 BKN200 28/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T08:34:34.531Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T09:00:00Z",
+            "raw_report": "METAR RKSI 280900Z 26011KT 9999 FEW011 SCT200 28/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T09:04:29.060Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T09:30:00Z",
+            "raw_report": "METAR RKSI 280930Z 26008KT 9999 FEW011 SCT200 28/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T09:34:43.784Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T10:00:00Z",
+            "raw_report": "METAR RKSI 281000Z 24010KT 9999 FEW008 SCT200 28/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T10:04:29.512Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T10:30:00Z",
+            "raw_report": "METAR RKSI 281030Z 25008KT 230V290 9999 FEW008 SCT200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T10:34:30.997Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T11:00:00Z",
+            "raw_report": "METAR RKSI 281100Z 25007KT 210V270 9999 SCT007 SCT200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T11:04:30.036Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T11:30:00Z",
+            "raw_report": "METAR RKSI 281130Z 24007KT 9999 SCT006 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T11:34:33.229Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T12:00:00Z",
+            "raw_report": "METAR RKSI 281200Z 25007KT 220V290 9999 SCT006 BKN200 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T12:04:35.327Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T12:30:00Z",
+            "raw_report": "METAR RKSI 281230Z 25007KT 9999 SCT006 BKN200 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T12:34:39.005Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:00:00Z",
+            "raw_report": "METAR RKSI 281300Z 26009KT 9999 SCT006 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T13:04:37.727Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:30:00Z",
+            "raw_report": "METAR RKSI 281330Z 25007KT 9999 SCT006 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T13:34:34.924Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T14:00:00Z",
+            "raw_report": "METAR RKSI 281400Z 25005KT 220V280 9999 SCT006 BKN200 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T14:04:32.151Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T14:30:00Z",
+            "raw_report": "METAR RKSI 281430Z 26006KT 240V300 9999 SCT005 BKN200 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T14:34:31.008Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 30.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-28T16:00:00Z",
+      "event_date": "2026-07-29",
+      "receipts": {
+        "metar_response_sha256": "6ed0c160cd8e2fcae3d3ccc6248e347199deb4f1960d996bfca9ce539720e75e",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKSI&format=json&taf=false&hours=24&date=20260729_1500",
+        "taf_response_sha256": "8003a566252eecd74736a2fc0a6454a85b6e83d7bf99ae4a84aa8401779dff59",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-28T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-5ffc1fc7925fca5ffc4b9da66a815c66",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-29T15:00:00Z",
+        "start_utc": "2026-07-28T15:00:00Z"
+      },
+      "station_id": "RKSI",
+      "taf": {
+        "available_time_utc": "2026-07-28T11:05:52Z",
+        "cloud_cover_fraction": 0.08333333333333333,
+        "issue_time_utc": "2026-07-28T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKSI 281100Z 2812/2918 26007KT 9999 SCT008 TN25/2821Z TX31/2906Z BECMG 2815/2817 29005KT 4000 BR BKN004 BECMG 2820/2822 26007KT 6000 NSW FEW006 BECMG 2903/2905 26015G25KT CAVOK BECMG 2909/2911 27008KT 6000 SCT010",
+        "raw_taf_sha256": "809aab28067385ea4513e8c27a7999189f2b42884a690c2c560d2a2fc1df66a1",
+        "tx_c": 31.0,
+        "tx_valid_at_utc": "2026-07-29T06:00:00Z",
+        "wind_speed_mps": 4.972958666666666
+      },
+      "truth": {
+        "observation_count": 48,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-28T15:00:00Z",
+            "raw_report": "METAR RKSI 281500Z 26006KT 220V300 9999 SCT005 BKN200 27/26 Q1014 NOSIG",
+            "received_at_utc": "2026-07-28T15:04:43.495Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T15:30:00Z",
+            "raw_report": "METAR RKSI 281530Z 26006KT 230V300 9999 SCT004 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T15:34:55.501Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T16:00:00Z",
+            "raw_report": "METAR RKSI 281600Z 26008KT 9999 SCT005 BKN200 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T16:04:41.750Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T16:30:00Z",
+            "raw_report": "METAR RKSI 281630Z 26006KT 220V290 9999 SCT004 SCT014 BKN190 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T16:34:35.141Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T17:00:00Z",
+            "raw_report": "METAR RKSI 281700Z 25007KT 210V290 9999 SCT004 BKN014 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T17:04:35.852Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T17:30:00Z",
+            "raw_report": "METAR RKSI 281730Z 26006KT 9999 SCT004 BKN014 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T17:34:35.828Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T18:00:00Z",
+            "raw_report": "METAR RKSI 281800Z 26006KT 240V300 9999 SCT003 BKN014 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T18:04:37.784Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T18:30:00Z",
+            "raw_report": "METAR RKSI 281830Z 25005KT 9999 SCT003 BKN014 26/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-28T18:34:30.325Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T19:00:00Z",
+            "raw_report": "METAR RKSI 281900Z 25005KT 9999 BKN002 BKN013 26/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-28T19:04:28.624Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T19:30:00Z",
+            "raw_report": "METAR RKSI 281930Z 26004KT 8000 2500S BKN002 BKN013 26/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-28T19:36:07.812Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T20:00:00Z",
+            "raw_report": "METAR RKSI 282000Z 26006KT 220V290 8000 1500W R33R/P2000N R33L/P2000N R34R/1000D R34L/0800N BKN002 BKN013 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T20:15:43.374Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T20:30:00Z",
+            "raw_report": "METAR RKSI 282030Z 28006KT 8000 1500S R33R/P2000N R33L/P2000N R34R/1100D R34L/0900N BKN002 BKN013 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T20:36:08.631Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T21:00:00Z",
+            "raw_report": "METAR RKSI 282100Z 28006KT 8000 BKN002 BKN011 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T21:04:27.291Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T21:30:00Z",
+            "raw_report": "METAR RKSI 282130Z 27006KT 9000 BKN002 BKN011 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T21:34:40.470Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T22:00:00Z",
+            "raw_report": "METAR RKSI 282200Z 28007KT 9000 SCT002 BKN020 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T22:04:46.129Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T22:30:00Z",
+            "raw_report": "METAR RKSI 282230Z 29006KT 9000 SCT002 BKN020 26/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T22:34:31.157Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T23:00:00Z",
+            "raw_report": "METAR RKSI 282300Z 27007KT 230V290 9000 FEW002 BKN020 27/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T23:04:28.288Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T23:30:00Z",
+            "raw_report": "METAR RKSI 282330Z 27008KT 9000 FEW003 SCT010 BKN020 28/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T23:34:35.492Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T00:00:00Z",
+            "raw_report": "METAR RKSI 290000Z 26007KT 210V310 9000 FEW003 SCT020 28/26 Q1013 NOSIG",
+            "received_at_utc": "2026-07-29T00:04:30.437Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T00:30:00Z",
+            "raw_report": "METAR RKSI 290030Z 27007KT 240V330 9000 FEW005 SCT020 28/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-29T00:34:45.331Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T01:00:00Z",
+            "raw_report": "METAR RKSI 290100Z 28006KT 240V320 9000 FEW007 29/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-29T01:04:28.409Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T01:30:00Z",
+            "raw_report": "METAR RKSI 290130Z 28006KT 250V320 9999 FEW015 29/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-29T01:34:33.820Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T02:00:00Z",
+            "raw_report": "METAR RKSI 290200Z 29007KT 260V320 9999 FEW010 30/25 Q1013 NOSIG",
+            "received_at_utc": "2026-07-29T02:04:31.700Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T02:30:00Z",
+            "raw_report": "METAR RKSI 290230Z 28007KT 220V330 9999 FEW011 30/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-29T02:34:38.447Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T03:00:00Z",
+            "raw_report": "METAR RKSI 290300Z 25007KT 200V300 9999 FEW011 30/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-29T03:04:19.602Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T03:30:00Z",
+            "raw_report": "METAR RKSI 290330Z 24008KT 210V300 9999 SCT013 30/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-29T03:34:33.968Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T04:00:00Z",
+            "raw_report": "METAR RKSI 290400Z 24011KT 9999 SCT013 30/25 Q1012 NOSIG",
+            "received_at_utc": "2026-07-29T04:04:35.586Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T04:30:00Z",
+            "raw_report": "METAR RKSI 290430Z 24011KT 210V290 9999 SCT011 30/26 Q1012 NOSIG",
+            "received_at_utc": "2026-07-29T04:34:30.743Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T05:00:00Z",
+            "raw_report": "METAR RKSI 290500Z 24012KT 210V270 9999 SCT011 30/25 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T05:04:33.491Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T05:30:00Z",
+            "raw_report": "METAR RKSI 290530Z 24012KT 210V280 9999 SCT011 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T05:34:33.187Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T06:00:00Z",
+            "raw_report": "METAR RKSI 290600Z 24013KT 9999 SCT010 30/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T06:04:33.461Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T06:30:00Z",
+            "raw_report": "METAR RKSI 290630Z 25013KT 220V320 9999 SCT009 29/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T06:34:28.589Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T07:00:00Z",
+            "raw_report": "METAR RKSI 290700Z 25013KT 9999 SCT009 29/25 Q1011 WS R15R R33L R15L R33R NOSIG",
+            "received_at_utc": "2026-07-29T07:15:26.642Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T07:30:00Z",
+            "raw_report": "METAR RKSI 290730Z 24012KT 9999 SCT009 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T07:34:30.279Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T08:00:00Z",
+            "raw_report": "METAR RKSI 290800Z 25013KT 9999 SCT010 29/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T08:04:46.013Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T08:30:00Z",
+            "raw_report": "METAR RKSI 290830Z 25013KT 9999 SCT010 29/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T08:34:26.039Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T09:00:00Z",
+            "raw_report": "METAR RKSI 290900Z 25012KT 9999 SCT010 29/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T09:04:31.721Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T09:30:00Z",
+            "raw_report": "METAR RKSI 290930Z 25012KT 9999 SCT010 28/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T09:34:36.355Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T10:00:00Z",
+            "raw_report": "METAR RKSI 291000Z 24011KT 9999 FEW010 28/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T10:04:32.068Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T10:30:00Z",
+            "raw_report": "METAR RKSI 291030Z 24010KT 9999 FEW008 27/25 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T10:34:38.347Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T11:00:00Z",
+            "raw_report": "METAR RKSI 291100Z 24009KT 9999 FEW008 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T11:04:28.252Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T11:30:00Z",
+            "raw_report": "METAR RKSI 291130Z 24010KT 9999 FEW007 27/26 Q1010 NOSIG",
+            "received_at_utc": "2026-07-29T11:34:33.016Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T12:00:00Z",
+            "raw_report": "METAR RKSI 291200Z 24008KT 9999 FEW009 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T12:04:32.709Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T12:30:00Z",
+            "raw_report": "METAR RKSI 291230Z 25008KT 220V300 9999 FEW008 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T12:36:48.212Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T13:00:00Z",
+            "raw_report": "METAR RKSI 291300Z 25008KT 230V330 9999 FEW007 27/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T13:04:30.266Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T13:30:00Z",
+            "raw_report": "METAR RKSI 291330Z 26009KT 9999 FEW007 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T13:34:25.229Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T14:00:00Z",
+            "raw_report": "METAR RKSI 291400Z 25009KT 230V300 9999 FEW007 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T14:04:26.281Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T14:30:00Z",
+            "raw_report": "METAR RKSI 291430Z 25008KT 9999 FEW007 26/26 Q1011 NOSIG",
+            "received_at_utc": "2026-07-29T14:34:24.742Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 30.0
+      }
+    }
+  ],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "Asia/Seoul",
+  "source_class": "official_date_addressed_historical_replay",
+  "start_date": "2026-07-22",
+  "station_id": "RKSI"
+}

@@ -200,6 +200,28 @@ def test_repeated_same_release_is_deterministic_zero_write(tmp_path):
         release_sha256=release["release_sha256"],
     )
     assert replay_again == replay
+    advanced_fingerprint = {
+        **receipt["target_database_fingerprint_after"],
+        "size": int(
+            receipt["target_database_fingerprint_after"]["size"]
+        ) + 4096,
+        "mtime_ns": int(
+            receipt["target_database_fingerprint_after"]["mtime_ns"]
+        ) + 1,
+    }
+    resident_advanced = build_idempotent_replay_receipt(
+        receipt,
+        station_ids=("EGLC", "RKPK"),
+        release_sha256=release["release_sha256"],
+        target_database_fingerprint_after=advanced_fingerprint,
+        target_service_pid_after=202,
+    )
+    assert resident_advanced["writes"] == 0
+    assert resident_advanced["target_database_fingerprint_after"] == (
+        advanced_fingerprint
+    )
+    assert resident_advanced["target_service_pid_after"] == 202
+    validate_cutover_receipt(resident_advanced)
     with pytest.raises(AtomicCutoverReceiptError, match="release_mismatch"):
         build_idempotent_replay_receipt(
             receipt,

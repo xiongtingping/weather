@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Mapping
 
 from .calibration import materialize_p0
@@ -12,8 +13,13 @@ from .contracts import (
     ModelCalibrationArtifact,
     ModelEnsembleArtifact,
     ProbabilityEnvelope,
+    content_sha256,
 )
 from .materialization import materialize_p0m, materialize_p1
+from .native_ensemble_contract import (
+    P0_PROBABILITY_PATHWAY,
+    validate_cross_native_ensemble_weights,
+)
 
 
 ALLOWED_KEYS = {
@@ -29,6 +35,7 @@ ALLOWED_KEYS = {
     "decision_at_utc", "fresh_until_utc",
     "bridge_sha256", "checkpoint_id", "posterior_version",
     "created_at_utc",
+    "probability_pathway", "native_probability_envelope",
 }
 
 
@@ -42,6 +49,152 @@ def build_probability_envelope(
         )
     stage = str(packet.get("stage") or "")
     if stage == "P0":
+        if packet.get("probability_pathway") == P0_PROBABILITY_PATHWAY:
+            raw_native = packet.get("native_probability_envelope")
+            if not isinstance(raw_native, Mapping):
+                raise ContractError(
+                    "native_ensemble_p0_envelope_missing"
+                )
+            envelope = ProbabilityEnvelope.from_mapping(raw_native)
+            if (
+                envelope.stage != "P0"
+                or envelope.station_id
+                != str(packet.get("station_id") or "")
+                or envelope.event_date
+                != str(packet.get("event_date") or "")
+                or envelope.settlement_timezone
+                != str(packet.get("settlement_timezone") or "")
+                or envelope.decision_at_utc
+                != str(packet.get("decision_at_utc") or "")
+                or envelope.fresh_until_utc
+                != str(packet.get("fresh_until_utc") or "")
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_scope_mismatch"
+                )
+            lineage = envelope.lineage
+            if (
+                lineage.get("probability_pathway")
+                != P0_PROBABILITY_PATHWAY
+                or lineage.get("p0_probability_pathway")
+                != P0_PROBABILITY_PATHWAY
+                or lineage.get("native_authority_scope")
+                != "PRODUCTION_NO_LIVE_ONLY"
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_lineage_authority_invalid"
+                )
+            required_hashes = (
+                "native_cross_ensemble_artifact_sha256",
+                "native_selection_evidence_sha256",
+                "native_cross_activation_sha256",
+                "native_probability_evidence_sha256",
+            )
+            if any(
+                len(str(lineage.get(key) or "")) != 64
+                for key in required_hashes
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_lineage_hash_missing"
+                )
+            try:
+                system_ids = json.loads(
+                    str(lineage["ensemble_system_ids_json"])
+                )
+                family_ids = json.loads(
+                    str(lineage["independence_family_ids_json"])
+                )
+                system_families = json.loads(
+                    str(lineage["system_family_ids_json"])
+                )
+                system_weights = json.loads(
+                    str(lineage["system_weights_json"])
+                )
+                family_caps = json.loads(
+                    str(lineage["family_weight_caps_json"])
+                )
+                bucket_intervals = json.loads(
+                    str(lineage["bucket_intervals_c_json"])
+                )
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise ContractError(
+                    "native_ensemble_p0_lineage_json_invalid"
+                ) from exc
+            if (
+                not isinstance(system_ids, list)
+                or len(system_ids) < 2
+                or len(set(map(str, system_ids)))
+                != len(system_ids)
+                or not isinstance(family_ids, list)
+                or len(set(map(str, family_ids))) < 2
+                or not isinstance(system_families, Mapping)
+                or set(map(str, system_ids))
+                != set(map(str, system_families))
+                or not isinstance(system_weights, Mapping)
+                or set(map(str, system_ids))
+                != set(map(str, system_weights))
+                or not isinstance(family_caps, Mapping)
+                or not isinstance(bucket_intervals, Mapping)
+                or set(map(str, bucket_intervals))
+                != set(envelope.probabilities)
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_lineage_shape_invalid"
+                )
+            weight_receipt = validate_cross_native_ensemble_weights(
+                system_weights={
+                    str(key): float(value)
+                    for key, value in system_weights.items()
+                },
+                systems_by_id={
+                    str(system_id): {
+                        "independence_family_id": str(
+                            system_families[str(system_id)]
+                        ),
+                    }
+                    for system_id in system_ids
+                },
+                family_weight_caps={
+                    str(key): float(value)
+                    for key, value in family_caps.items()
+                },
+            )
+            if set(weight_receipt["family_weights"]) != set(
+                map(str, family_ids)
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_family_set_mismatch"
+                )
+            expected_bridge_sha = content_sha256({
+                "bucket_intervals": bucket_intervals,
+                "settlement_definition": lineage.get(
+                    "settlement_definition"
+                ),
+                "settlement_timezone": envelope.settlement_timezone,
+            })
+            if envelope.bridge_sha256 != expected_bridge_sha:
+                raise ContractError(
+                    "native_ensemble_p0_bridge_sha_mismatch"
+                )
+            expected_posterior_sha = content_sha256({
+                "station_id": envelope.station_id,
+                "event_date": envelope.event_date,
+                "decision_at_utc": envelope.decision_at_utc,
+                "probabilities": dict(envelope.probabilities),
+                "native_probability_evidence_sha256": lineage[
+                    "native_probability_evidence_sha256"
+                ],
+            })
+            if envelope.posterior_sha256 != expected_posterior_sha:
+                raise ContractError(
+                    "native_ensemble_p0_posterior_sha_mismatch"
+                )
+            return envelope
         raw_runs = packet.get("current_model_runs")
         raw_diagnostic_runs = packet.get("diagnostic_model_runs")
         raw_artifacts = packet.get("calibration_artifacts")

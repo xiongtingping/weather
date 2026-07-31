@@ -18,6 +18,9 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .calibration import validate_formal_ensemble_artifact
 from .contracts import (
+    CALIBRATION_CANDIDATE_MODEL_IDS,
+    GLOBAL_FORMAL_MODEL_IDS,
+    REGIONAL_CALIBRATION_MODEL_IDS,
     CalibrationActivation,
     ContractError,
     ModelEnsembleArtifact,
@@ -78,6 +81,22 @@ MODEL_PROVIDER_IDS = {
     "HARMONIE-EU": "knmi_harmonie_arome_europe_open_meteo",
     "JMA-MSM": "jma_msm_open_meteo",
 }
+MODEL_RUN_HOURS = {
+    "ECMWF": (0, 12),
+    "GFS": (0, 6, 12, 18),
+    "ICON": (0, 6, 12, 18),
+    "GEM": (0, 12),
+    "CMA": (0, 12),
+    "HRRR": (12,),
+    "NBM": (12,),
+    "NAM": (12,),
+    "ICON-D2": (12,),
+    "AROME-FR": (12,),
+    "UKMO-2KM": (12,),
+    "HARMONIE-NL": (12,),
+    "HARMONIE-EU": (12,),
+    "JMA-MSM": (12,),
+}
 AGGREGATOR_MODEL_BY_PROVIDER = {
     provider: model
     for model, provider in MODEL_PROVIDER_IDS.items()
@@ -85,6 +104,15 @@ AGGREGATOR_MODEL_BY_PROVIDER = {
 }
 MAX_RUN_FALLBACKS = 4
 MAX_CANDIDATE_MODELS = 5
+REGIONAL_MODEL_POOL_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "bayes_basket_target"
+    / "station_regional_model_pool_v1.json"
+)
+REGIONAL_MODEL_POOL_SCHEMA = (
+    "bayes_basket_target_station_regional_model_pool_v1"
+)
 # Discovery and network execution are separate bounds.  A canonical
 # 45-station registry may expose current, d1 and d2 scopes at once, so the
 # scheduler must return the complete bounded catalog to its caller.  The
@@ -226,6 +254,25 @@ def _capture_paths(result: Mapping[str, Any]) -> list[Path]:
 
 
 def _provider_complete(result: Mapping[str, Any], paths: Sequence[Path]) -> bool:
+    fanout = result.get("fanout")
+    if isinstance(fanout, Mapping):
+        outputs = fanout.get("outputs")
+        captured_count = int(fanout.get("captured_count") or 0)
+        expected_count = int(fanout.get("expected_arrival_count") or 0)
+        return (
+            bool(paths)
+            and isinstance(outputs, list)
+            and expected_count > 0
+            and captured_count == expected_count
+            and len(outputs) == expected_count
+            and all(
+                isinstance(row, Mapping)
+                and row.get("status") in {"CAPTURED", "REUSED"}
+                for row in outputs
+            )
+            and int(fanout.get("blocked_count") or 0) == 0
+            and not list(fanout.get("blockers") or [])
+        )
     return (
         bool(paths)
         and int(result.get("blocked_count") or 0) == 0
@@ -263,6 +310,70 @@ def _normalize_candidate_models(values: Sequence[Any]) -> list[str]:
     if len(models) > MAX_CANDIDATE_MODELS:
         raise ContractError("official_nwp_candidate_model_count_exceeded")
     return models
+
+
+def candidate_model_batch_for_station(
+    *,
+    station_id: str,
+    run_initialization_utc: str,
+    regional_pool_path: Path = REGIONAL_MODEL_POOL_PATH,
+) -> list[str]:
+    """Select one bounded, rotating calibration-only acquisition batch."""
+
+    station = str(station_id or "").strip().upper()
+    if not station:
+        raise ContractError("official_nwp_candidate_station_missing")
+    raw = load_bounded_json(
+        regional_pool_path.expanduser().resolve(),
+        limit=1024 * 1024,
+    )
+    if (
+        not isinstance(raw, Mapping)
+        or raw.get("schema") != REGIONAL_MODEL_POOL_SCHEMA
+    ):
+        raise ContractError("official_nwp_regional_pool_invalid")
+    station_pool = raw.get("station_regional_pool")
+    if not isinstance(station_pool, Mapping):
+        raise ContractError("official_nwp_regional_pool_invalid")
+    regional_raw = station_pool.get(station, [])
+    if (
+        not isinstance(regional_raw, list)
+        or len(regional_raw) != len(set(regional_raw))
+    ):
+        raise ContractError("official_nwp_station_regional_pool_invalid")
+    regional = [
+        str(model or "").strip().upper()
+        for model in regional_raw
+        if str(model or "").strip()
+    ]
+    if any(
+        model not in REGIONAL_CALIBRATION_MODEL_IDS for model in regional
+    ):
+        raise ContractError("official_nwp_station_regional_model_invalid")
+    run = _parse_utc(run_initialization_utc)
+    pool = [
+        model
+        for model in list(GLOBAL_FORMAL_MODEL_IDS) + regional
+        if run.hour in MODEL_RUN_HOURS[model]
+    ]
+    if (
+        len(pool) != len(set(pool))
+        or any(model not in CALIBRATION_CANDIDATE_MODEL_IDS for model in pool)
+    ):
+        raise ContractError("official_nwp_station_candidate_pool_invalid")
+    if len(pool) <= MAX_CANDIDATE_MODELS:
+        return _normalize_candidate_models(pool)
+    # Regional candidates are currently bound to the 12Z station pool.  Use
+    # the UTC run date rather than the absolute six-hour cycle number:
+    # multiplying four daily cycles by a five-model batch would otherwise
+    # keep a ten-model pool forever pinned to the same half.
+    cycle_number = run.date().toordinal()
+    offset = (cycle_number * MAX_CANDIDATE_MODELS) % len(pool)
+    batch = [
+        pool[(offset + index) % len(pool)]
+        for index in range(min(MAX_CANDIDATE_MODELS, len(pool)))
+    ]
+    return _normalize_candidate_models(batch)
 
 
 def _candidate_sha(name: str, value: Any) -> str:
@@ -832,7 +943,16 @@ def _default_provider_runner(
             source_station_id=str(station_ids[0]),
             due_only=False,
         )
-        return execute_plan(plan, output_root=output_dir)
+        # Keep both ICON raw retention accounting and the retained objects
+        # inside this scheduler-owned, station/run-bounded scope.  Falling
+        # back to the adapter's historical DEFAULT_ARRIVAL_ROOT makes a new
+        # target capture scan unrelated legacy research objects and can
+        # falsely trip the provider budget before writing a single byte.
+        return execute_plan(
+            plan,
+            source_root=output_dir,
+            output_root=output_dir,
+        )
     if provider_id == "gem_gdps_official":
         from scripts.capture_bayes_basket_target_gem_exact_run import capture
 
@@ -1141,9 +1261,11 @@ __all__ = [
     "MAX_RUN_FALLBACKS",
     "MAX_DISCOVERED_SCOPES",
     "MAX_SCOPES_PER_CYCLE",
+    "MODEL_RUN_HOURS",
     "MODEL_PROVIDER_IDS",
     "PROVIDERS",
     "SCHEMA",
+    "candidate_model_batch_for_station",
     "candidate_run_initializations",
     "capture_scope",
     "prefetch_candidate_raw_training",

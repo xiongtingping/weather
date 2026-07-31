@@ -38,11 +38,17 @@ MODEL_PROVIDER_VARIANTS: Mapping[str, tuple[str, ...]] = {
     "cma_grapes_global_open_meteo": ("cma_grapes_global_open_meteo",),
 }
 
+HISTORICAL_REPLAY_ONLY_PROVIDERS: Mapping[str, str] = {
+    "ecmwf_ifs_open_meteo_previous_runs": "ecmwf_ifs025_official",
+    "gfs_global_open_meteo_previous_runs": "gfs_0p25_official",
+}
+
 MODEL_ROLE_BY_PROVIDER = {
     provider: role
     for role, providers in MODEL_PROVIDER_VARIANTS.items()
     for provider in providers
 }
+MODEL_ROLE_BY_PROVIDER.update(HISTORICAL_REPLAY_ONLY_PROVIDERS)
 MODEL_ROLE_BY_PROVIDER["gem_gdps_official"] = "gem_global_open_meteo"
 REGIONAL_MODEL_ID_BY_PROVIDER = {
     "ncep_hrrr_conus_open_meteo": "HRRR",
@@ -97,6 +103,8 @@ def has_one_provider_per_model_role(providers: Iterable[Any]) -> bool:
     values = [str(provider or "").strip().lower() for provider in providers]
     if len(values) != len(set(values)):
         return False
+    if any(value in HISTORICAL_REPLAY_ONLY_PROVIDERS for value in values):
+        return False
     try:
         roles = provider_roles(values)
     except ContractError:
@@ -134,7 +142,7 @@ def provider_source_class(provider_id: Any) -> str:
         "icon_global_open_meteo",
         "gem_global_open_meteo",
         "cma_grapes_global_open_meteo",
-    } or provider in REGIONAL_MODEL_ID_BY_PROVIDER:
+    } or provider in REGIONAL_MODEL_ID_BY_PROVIDER or provider in HISTORICAL_REPLAY_ONLY_PROVIDERS:
         return "aggregator_republisher"
     if provider in ALLOWED_MODEL_PROVIDERS:
         return "native_or_official_cloud_replica"
@@ -144,6 +152,7 @@ def provider_source_class(provider_id: Any) -> str:
 __all__ = [
     "ALLOWED_MODEL_PROVIDERS",
     "CANONICAL_MODEL_PROVIDERS",
+    "HISTORICAL_REPLAY_ONLY_PROVIDERS",
     "MODEL_PROVIDER_VARIANTS",
     "MODEL_ROLE_BY_PROVIDER",
     "MODEL_ROLES",

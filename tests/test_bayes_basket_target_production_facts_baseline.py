@@ -14,8 +14,12 @@ def _write_fixture(root: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.suffix == ".json":
             path.write_text("{}\n", encoding="utf-8")
-        elif relative == Path("scripts/cutover_basket_plus_hard_no_production.py"):
-            path.write_text("basket_activation_not_live_enabled\n", encoding="utf-8")
+        elif relative == Path("scripts/targetctl.sh"):
+            path.write_text(
+                "production_no_live=true\n"
+                "touch \"$PAUSE\"\n",
+                encoding="utf-8",
+            )
         else:
             path.write_text("fixture\n", encoding="utf-8")
     (root / baseline.TARGET_ACTIVATION).write_text(json.dumps({

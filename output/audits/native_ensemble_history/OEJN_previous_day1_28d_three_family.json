@@ -1,0 +1,749 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/previous-runs-api",
+    "fixed_previous_day_lag": 1,
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "offline_chronological_oos_candidate": true,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-07-31T00:04:48.055Z",
+  "bucket_contract_sha256": "80f107b41c31610023e2b717adc46e0ec39cdba28ef2d7fffb2a2708246d356a",
+  "bucket_intervals": {
+    "36°C or below": [
+      null,
+      36.5
+    ],
+    "37°C": [
+      36.5,
+      37.5
+    ],
+    "38°C": [
+      37.5,
+      38.5
+    ],
+    "39°C": [
+      38.5,
+      39.5
+    ],
+    "40°C": [
+      39.5,
+      40.5
+    ],
+    "41°C": [
+      40.5,
+      41.5
+    ],
+    "42°C": [
+      41.5,
+      42.5
+    ],
+    "43°C": [
+      42.5,
+      43.5
+    ],
+    "44°C": [
+      43.5,
+      44.5
+    ],
+    "45°C": [
+      44.5,
+      45.5
+    ],
+    "46°C or higher": [
+      45.5,
+      null
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3b96e21b2d74907f6317a3a4a13676eafb213fb91d148b4c5149acbfe237b1e3",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "dd8df21afbac1310b1d204e802b5663916476d0ceff65cd6f8b46c7ffc65aaa6",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "fd3a3c62d12a54d8f1407ced56fda4c520bcc01605cfdc0b1a5666e37ba914b3",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "02705a9368577e09d070b64aaae718042a3ba6234c5da0dfd819084a6e7db374",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "dc4e5677307cb50d6314fa3efd449b9470faf57c58c10c072476ad428512c174",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9f8e885d95b449029f739dc908d66447f54f9cedb8a1909971f96a22e0b6f363",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "c3e84e550f0a5d760645097496dcb6e00d8b993fc707eaed64c7276f0bfb1747",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a71cbf8571a407d47e5583cf69adb7a0f9703f6f602a62220f8d30d8f725e497",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "702eac30c03e0197ac50db2f02130a40c32282008c3556b35a4add494763968c",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0003b9911d252e0808d31a33ae8301b76aa4031394c70df5f459822b9948ef0d",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a6094ca2dc93f1cfc981fd990185d75742f0e33df0e79bfed79af3838df6aa7a",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a6ef9b2a0ca10c9e2e31913aabd42f9c7fbb6dd2509d6cffd2d1189ed67d2ff5",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ce5467ebd629d59831b740f2ef5805c29bfb9569ebc754edf256f30616aeecb5",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "e40a708ae1d013e07db98a50be4b684c14dcef4296a958023c91bd9bad93d560",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "4e8e2d95ddbe907a7d745d25187d10e2c80012a562c6f37b3ffbea806559b02a",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "b4331528ce4aefa8fb343de7e3644f0f2b5c58f8e5cd4728898805f04beb0600",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "cb06016a747d6dc952c71e44b16c342ff35b489bd4bbd68fecdf0c8f179e30a5",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "2bf3a2f5aedba499235e615659d8c1f97655c5471efb48bd9983d9dc679c9076",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6ee9fa519caf4da17420db6c9525d408dd8d68e63201e65da87188a8adcdda3f",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f2d52e53ab9662ce9fcbe77b04baebfec2f7179ffd7be1796ccc0eabe2519b63",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "44aabb30457080fac8bbd37cfd41309765dee40831bd51084723cdadb642366f",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "5c0d40a87130ce48fb6ed113e06f338316b7046a3ffad06ee310b1d0fa151cd6",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "67ec289b3990601fdd7c20d7d9b00bb2d2d0c2579c20a94d9f32489f2e20d3c7",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9effa2cb646c0d27ff2766c040acef81f215a00814d373379e1445c15189d6bb",
+      "event_date": "2026-07-26",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3d52145b7186b63590fa6bd1c29f6fc8b15f2afbee5e8e8909b6f6615e393cd6",
+      "event_date": "2026-07-27",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6d70a4fd050137306899ecf6885819669ab13ca7ad6c3f5bb712ab5e28e6da04",
+      "event_date": "2026-07-28",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "e4ece7dbb4fd68120906c807616dc38c0ee36f9a50de513a9cc84321963d7e44",
+      "event_date": "2026-07-29",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f884be5cddd493e7b3125bb7a702805f1ac84bb29f9c35f5db1c772c9c4a6663",
+      "event_date": "2026-07-30",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "reason": "previous_day1_members_unavailable"
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "reason": "previous_day1_members_unavailable"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "6bc11eb56c40285a594b83f097a4f32839376f22539dec5693bec10821cff86f",
+  "event_date_count": 28,
+  "event_dates": [
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27",
+    "2026-07-28",
+    "2026-07-29",
+    "2026-07-30"
+  ],
+  "extraction_version": "open_meteo_previous_day1_hourly_tmax_member_v1",
+  "latitude": 21.685,
+  "live_submit_authorized": false,
+  "longitude": 39.166,
+  "orders_submitted": 0,
+  "request_receipts": [
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "request_url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=21.685&longitude=39.166&hourly=temperature_2m_previous_day1&models=icon_global_eps&timezone=Asia%2FRiyadh&start_date=2026-07-03&end_date=2026-07-30",
+      "response_bytes": 178589,
+      "response_sha256": "a62f5f62fdf80a4a8b67cea12196f0358826ea8ab2b8afda4b903635ea424a35",
+      "successful_event_date_count": 0
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+      "error": "ContractError:open_meteo_ensemble_transport_failed:ConnectError",
+      "request_url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=21.685&longitude=39.166&hourly=temperature_2m_previous_day1&models=ecmwf_ifs025_ensemble&timezone=Asia%2FRiyadh&start_date=2026-07-03&end_date=2026-07-30",
+      "response_bytes": 0,
+      "response_sha256": "",
+      "successful_event_date_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_025",
+      "request_url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=21.685&longitude=39.166&hourly=temperature_2m_previous_day1&models=ncep_gefs025&timezone=Asia%2FRiyadh&start_date=2026-07-03&end_date=2026-07-30",
+      "response_bytes": 141481,
+      "response_sha256": "9f66e06f04231594b3a22c931b79a80138748dc79855c120607e4883faee808b",
+      "successful_event_date_count": 0
+    }
+  ],
+  "request_url": "open_meteo_previous_runs_request_set:ffcdfae970bd8383137d897ccc6b2e381ca59475909ffd91c42b7d81e75669b1",
+  "response_sha256": "ffcdfae970bd8383137d897ccc6b2e381ca59475909ffd91c42b7d81e75669b1",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "settlement_timezone": "Asia/Riyadh",
+  "station_id": "OEJN",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 28
+}

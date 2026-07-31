@@ -21,6 +21,7 @@ from .cash_phase_authority import (
     FORMAL_AUTHORITY_SCOPE,
     CashPhaseAuthorityManifest,
 )
+from .calibration import validate_formal_ensemble_artifact
 from .contracts import (
     CalibrationActivation,
     ContractError,
@@ -253,6 +254,12 @@ def ingest_artifact_bundle(
         for row in _rows(packet, "ensemble_selection_evidence")
     ]
     ensembles = [ModelEnsembleArtifact.from_mapping(row) for row in _rows(packet, "ensemble_artifacts")]
+    # Ingress is an authority boundary, not merely a serializer.  Enforce the
+    # same immutable formal OOS contract used by every production consumer so
+    # an old packet cannot append a short-window or single-model ensemble and
+    # rely on a later reader to reject it.
+    for item in ensembles:
+        validate_formal_ensemble_artifact(item)
     selection_by_sha = {item.content_sha256: item for item in selection_evidence}
     for item in ensembles:
         if item.governance_complete:

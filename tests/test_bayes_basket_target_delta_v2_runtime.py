@@ -293,6 +293,53 @@ def test_exact_prior_core_is_not_inferred_from_all_active_inventory() -> None:
     ]
 
 
+def test_sparse_candidate_support_persists_contiguous_probability_core() -> None:
+    raw = _snapshot().to_dict()
+    raw["buckets"] = [
+        {
+            **copy.deepcopy(raw["buckets"][0]),
+            "bucket": "35",
+            "ordinal": 35,
+            "probability": 0.45,
+        },
+        {
+            **copy.deepcopy(raw["buckets"][0]),
+            "bucket": "36",
+            "ordinal": 36,
+            "probability": 0.10,
+        },
+        {
+            **copy.deepcopy(raw["buckets"][1]),
+            "bucket": "37",
+            "ordinal": 37,
+            "probability": 0.45,
+        },
+    ]
+    policy = TargetBasketPolicy.from_mapping({
+        **_basket_policy().to_dict(),
+        "base_coverage": 0.80,
+        "maximum_coverage": 0.80,
+    })
+
+    result = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=policy,
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+
+    assert result["candidate_support"] == ["35", "37"]
+    assert result["core_buckets"] == ["35", "36", "37"]
+    assert result["core_transition"]["next_core_buckets"] == [
+        "35",
+        "36",
+        "37",
+    ]
+
+
 def test_multi_bucket_target_starts_every_gap_leg_in_one_bundle() -> None:
     raw = _snapshot().to_dict()
     raw["buckets"][0]["probability"] = 0.5

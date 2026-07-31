@@ -5,25 +5,33 @@ ROOT="/Users/xiong/weather"
 TARGET_LABEL="com.weather.reported_trajectory_no"
 MARKET_LABEL="com.weather.market_ws"
 ORDER_LABEL="com.weather.clob_order_service"
-INSTALLED_PLIST="/Library/LaunchDaemons/com.weather.reported_trajectory_no.plist"
+UID_VALUE="$(id -u)"
+DOMAIN="gui/${UID_VALUE}"
+INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.reported_trajectory_no.plist"
 PAUSE="$ROOT/data/live_paused.flag"
 CONFIRM="${1:-}"
 
 if [ "$CONFIRM" != "--confirm-prepared-supersession-production-no-live" ]; then
-  echo "用法：sudo $0 --confirm-prepared-supersession-production-no-live" >&2
+  echo "用法：$0 --confirm-prepared-supersession-production-no-live" >&2
   exit 2
 fi
-if [ "$(id -u)" -ne 0 ]; then
-  echo "必须以 root 运行：sudo $0 --confirm-prepared-supersession-production-no-live" >&2
+if [ "$(id -u)" -eq 0 ]; then
+  echo "必须以登录用户运行，禁止 root/sudo" >&2
   exit 1
 fi
 if [ ! -f "$INSTALLED_PLIST" ]; then
   echo "prepared_supersession_installed_plist_missing" >&2
   exit 1
 fi
+for service_label in "$TARGET_LABEL" "$MARKET_LABEL" "$ORDER_LABEL"; do
+  if launchctl print "system/${service_label}" >/dev/null 2>&1; then
+    echo "prepared_supersession_system_domain_residue:${service_label}" >&2
+    exit 1
+  fi
+done
 
 service_pid() {
-  launchctl print "system/$1" 2>/dev/null \
+  launchctl print "${DOMAIN}/$1" 2>/dev/null \
     | /usr/bin/awk '/^[[:space:]]*pid = [0-9]+/{print $3; exit}'
 }
 
@@ -32,7 +40,7 @@ order_pid_before="$(service_pid "$ORDER_LABEL")"
 target_pid_before="$(service_pid "$TARGET_LABEL")"
 if [ -z "$market_pid_before" ] || [ -z "$order_pid_before" ] \
   || [ -z "$target_pid_before" ]; then
-  echo "prepared_supersession_requires_three_running_system_services" >&2
+  echo "prepared_supersession_requires_three_running_user_services" >&2
   exit 1
 fi
 
@@ -87,22 +95,22 @@ target_stopped=0
 restore_target() {
   touch "$PAUSE"
   if [ "$target_stopped" = "1" ] \
-    && ! launchctl print "system/$TARGET_LABEL" >/dev/null 2>&1; then
-    launchctl bootstrap system "$INSTALLED_PLIST" >/dev/null 2>&1 || true
+    && ! launchctl print "${DOMAIN}/$TARGET_LABEL" >/dev/null 2>&1; then
+    launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST" >/dev/null 2>&1 || true
   fi
 }
 trap restore_target ERR
 
-launchctl bootout "system/$TARGET_LABEL"
+launchctl bootout "${DOMAIN}/$TARGET_LABEL"
 target_stopped=1
 deadline=$((SECONDS + 30))
 while [ "$SECONDS" -lt "$deadline" ]; do
-  if ! launchctl print "system/$TARGET_LABEL" >/dev/null 2>&1; then
+  if ! launchctl print "${DOMAIN}/$TARGET_LABEL" >/dev/null 2>&1; then
     break
   fi
   sleep 0.25
 done
-if launchctl print "system/$TARGET_LABEL" >/dev/null 2>&1; then
+if launchctl print "${DOMAIN}/$TARGET_LABEL" >/dev/null 2>&1; then
   echo "prepared_supersession_target_did_not_stop" >&2
   exit 1
 fi
@@ -131,7 +139,7 @@ if value.get("quick_check") != "ok":
     raise SystemExit("prepared_supersession_migration_replay_quick_check_failed")
 PY
 
-launchctl bootstrap system "$INSTALLED_PLIST"
+launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST"
 target_stopped=0
 deadline=$((SECONDS + 30))
 target_pid_after=""

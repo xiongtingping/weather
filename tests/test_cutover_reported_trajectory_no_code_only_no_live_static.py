@@ -2,38 +2,27 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = (
-    ROOT
-    / "scripts/cutover_reported_trajectory_no_code_only_no_live.sh"
-)
+SCRIPT = ROOT / "scripts/cutover_reported_trajectory_no_code_only_no_live.sh"
+USER_DOMAIN_ENTRY = "scripts/install_reported_trajectory_no_user_services.sh"
 
 
-def test_code_only_cutover_never_restarts_non_target_services() -> None:
+def test_retired_code_only_entry_fails_before_any_service_control() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
-    assert 'launchctl kickstart -k "system/$LABEL"' in text
-    assert 'launchctl kickstart -k "system/$MARKET_LABEL"' not in text
-    assert 'launchctl kickstart -k "system/$ORDER_LABEL"' not in text
+
+    assert "exit 78" in text
+    assert "launchctl" not in text
+    assert "sudo" not in text
+    assert "/Library/LaunchDaemons" not in text
+    assert USER_DOMAIN_ENTRY in text
+    assert "当前登录用户" in text
+
+
+def test_retired_code_only_entry_has_no_old_cutover_logic() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "bootstrap" not in text
+    assert "bootout" not in text
+    assert "kickstart" not in text
+    assert "system/" not in text
     assert "install_reported_trajectory_no_system_services.sh" not in text
     assert "cutover_reported_trajectory_no_system_generation.sh" not in text
-    assert "bootout" not in text
-
-
-def test_code_only_cutover_retains_no_live_pause_and_pid_guards() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
-    assert 'CONFIRM="${1:-}"' in text
-    assert "--confirm-code-only-production-no-live" in text
-    assert 'touch "$PAUSE"' in text
-    assert 'rm -f "$PAUSE"' not in text
-    assert "production_no_live" in text
-    assert "live_submit_authorized" in text
-    assert "authorizes_order" in text
-    assert "market_pid_after" in text
-    assert "order_pid_after" in text
-    assert "code_only_cutover_non_target_pid_changed" in text
-
-
-def test_code_only_cutover_updates_only_reported_trajectory_activation() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
-    assert "UPDATE reported_trajectory_activation_state SET" in text
-    assert "UPDATE basket_" not in text
-    assert "INSERT INTO basket_" not in text

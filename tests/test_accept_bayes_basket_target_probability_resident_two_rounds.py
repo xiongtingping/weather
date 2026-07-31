@@ -5,6 +5,7 @@ import sqlite3
 
 import pytest
 
+import scripts.accept_bayes_basket_target_probability_resident_two_rounds as acceptance
 from scripts.accept_bayes_basket_target_probability_resident_two_rounds import (
     CANONICAL_STATION_IDS,
     MAX_CORE_ROWS,
@@ -12,7 +13,9 @@ from scripts.accept_bayes_basket_target_probability_resident_two_rounds import (
     _probability_authority,
     _station_counts,
     _validate_core_chain_rows,
+    compare_migration_rounds,
     compare_rounds,
+    migration_round_from_strict,
     normalize_station_scope,
 )
 
@@ -41,7 +44,9 @@ def _round() -> dict:
             "mode": "allowlist",
             "station_ids": list(SCOPE),
         },
+        "registry_started_station_ids": list(SCOPE),
         "started_station_ids": list(SCOPE),
+        "candidate_accumulation_station_ids": [],
         "not_started_station_ids": [],
         "services": {
             "com.weather.reported_trajectory_no": 1,
@@ -72,6 +77,81 @@ def test_default_scope_is_exact_frozen_45() -> None:
         normalize_station_scope(("RKPK", "RKPK"))
     with pytest.raises(RuntimeError, match="not_canonical"):
         normalize_station_scope(("XXXX",))
+
+
+def test_formal_p0_eligibility_requires_exact_two_model_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        acceptance,
+        "load_production_artifacts",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "candidate_run_initializations",
+        lambda **_kwargs: ["2026-07-29T00:00:00Z"],
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "compatible_run_candidates",
+        lambda **_kwargs: [{
+            "run_initialization_utc": "2026-07-29T00:00:00Z",
+            "activation_binding": {
+                "selected_models": ["ECMWF", "GFS"],
+            },
+        }],
+    )
+    result = acceptance._formal_p0_scope_eligibility(
+        sqlite3.connect(":memory:"),
+        station_id="RKPK",
+        registry_rows=[{
+            "station_id": "RKPK",
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+        }],
+        as_of_utc="2026-07-29T12:00:00Z",
+    )
+    assert result["eligible"] is True
+    assert result["compatible_scopes"][0]["selected_models"] == [
+        "ECMWF",
+        "GFS",
+    ]
+
+
+def test_single_model_binding_stays_candidate_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        acceptance,
+        "load_production_artifacts",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "candidate_run_initializations",
+        lambda **_kwargs: ["2026-07-29T00:00:00Z"],
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "compatible_run_candidates",
+        lambda **_kwargs: [{
+            "run_initialization_utc": "2026-07-29T00:00:00Z",
+            "activation_binding": {"selected_models": ["ECMWF"]},
+        }],
+    )
+    result = acceptance._formal_p0_scope_eligibility(
+        sqlite3.connect(":memory:"),
+        station_id="RKPK",
+        registry_rows=[{
+            "station_id": "RKPK",
+            "event_date": "2026-07-30",
+            "settlement_timezone": "Asia/Seoul",
+        }],
+        as_of_utc="2026-07-29T12:00:00Z",
+    )
+    assert result["eligible"] is False
+    assert result["compatible_scopes"] == []
 
 
 def test_station_counts_separate_scope_from_outside_scope() -> None:
@@ -257,6 +337,7 @@ def test_two_round_acceptance_rejects_per_station_replay_drift() -> None:
 
 def test_future_station_can_become_started_without_waiting_for_settlement() -> None:
     first = _round()
+    first["registry_started_station_ids"] = ["EGLC"]
     first["started_station_ids"] = ["EGLC"]
     first["not_started_station_ids"] = ["RKPK"]
     first["station_results"]["RKPK"] = {
@@ -268,3 +349,58 @@ def test_future_station_can_become_started_without_waiting_for_settlement() -> N
     second["round_sha256"] = "b" * 64
     result = compare_rounds(first, second)
     assert result["state"] == "PASS"
+
+
+def test_migration_round_separates_materialization_from_safety_blockers() -> None:
+    strict = _round()
+    strict["state"] = "BLOCKED_FAIL_CLOSED"
+    strict["blockers"] = [
+        "RKPK:candidate_artifact_missing",
+        "EGLC:formal_two_model_scope_missing_p0",
+    ]
+    migration = migration_round_from_strict(strict)
+    assert migration["state"] == "PASS"
+    assert migration["blockers"] == []
+    assert migration["materialization_pending_blockers"] == [
+        "EGLC:formal_two_model_scope_missing_p0",
+        "RKPK:candidate_artifact_missing",
+    ]
+
+    strict["blockers"].append("probability_evidence_schema_incomplete")
+    blocked = migration_round_from_strict(strict)
+    assert blocked["state"] == "BLOCKED_FAIL_CLOSED"
+    assert blocked["blockers"] == [
+        "probability_evidence_schema_incomplete"
+    ]
+
+
+def test_migration_two_rounds_allow_pending_materialization_but_not_drift() -> None:
+    first = migration_round_from_strict({
+        **_round(),
+        "state": "BLOCKED_FAIL_CLOSED",
+        "blockers": ["RKPK:directional_core_decision_missing"],
+        "probability_evidence_runtime": {
+            "missing_tables": [],
+            "missing_bridge_tables": [],
+            "candidate_activation_count_all": 0,
+        },
+        "forbidden_execution_counts": {"order_events": 0},
+        "resources": {
+            "database_bytes": 1024,
+            "wal_bytes": 0,
+            "free_bytes": 4 * 1024 * 1024 * 1024,
+        },
+    })
+    second = copy.deepcopy(first)
+    second["round_sha256"] = "b" * 64
+    passed = compare_migration_rounds(first, second)
+    assert passed["state"] == "PASS"
+    assert passed["started_station_ids"] == list(SCOPE)
+    assert passed["materialization_pending_blockers"] == [
+        "RKPK:directional_core_decision_missing"
+    ]
+
+    second["services"]["com.weather.market_ws"] = 99
+    blocked = compare_migration_rounds(first, second)
+    assert blocked["state"] == "BLOCKED_FAIL_CLOSED"
+    assert "service_pid_drift" in blocked["blockers"]

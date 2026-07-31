@@ -1,0 +1,1566 @@
+{
+  "as_of_utc": "2026-07-30T13:46:12Z",
+  "boundary": {
+    "activation_written": false,
+    "calls_order_gateway": false,
+    "formal_promotion_written": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "production_no_live_only": true,
+    "writes_production_database": false
+  },
+  "checks": {
+    "activation_packet_ready_station_count": 12,
+    "activation_written": false,
+    "all_input_or_join_complete": true,
+    "all_selected_winners_at_least_two_models": true,
+    "calls_order_gateway": false,
+    "exact_45_station_scope": true,
+    "live_submit_authorized": false,
+    "single_model_winner_count": 0
+  },
+  "content_sha256": "545450c89ffe835223486aa7bde920c054a8c2aff21338ca4808b0f6cc594753",
+  "inputs": {
+    "model_evidence": {
+      "AROME-FR": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/AROME-FR.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/AROME-FR_2026-07-29.json"
+      ],
+      "CMA": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/CMA.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/gaps/CMA_2026-07-29.json"
+      ],
+      "HARMONIE-EU": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/HARMONIE-EU.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/HARMONIE-EU_2026-07-29.json"
+      ],
+      "HARMONIE-NL": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/HARMONIE-NL.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/HARMONIE-NL_2026-07-29.json"
+      ],
+      "HRRR": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/HRRR.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/HRRR_2026-07-29.json"
+      ],
+      "ICON": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/ICON.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/gaps/ICON_2026-07-29.json"
+      ],
+      "ICON-D2": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/ICON-D2.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/ICON-D2_2026-07-29.json"
+      ],
+      "JMA-MSM": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v1/JMA-MSM.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/JMA-MSM_2026-07-29.json"
+      ],
+      "NAM": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/NAM.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/NAM_2026-07-29.json"
+      ],
+      "NBM": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/NBM.json",
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/gaps/NBM_2026-07-29.json"
+      ],
+      "UKMO-2KM": [
+        "/Users/xiong/weather/output/audits/bayes_basket_target_regional_28d_v2/UKMO-2KM.json"
+      ]
+    },
+    "regional_pool": "/Users/xiong/weather/config/bayes_basket_target/station_regional_model_pool_v1.json",
+    "registry": "/Users/xiong/weather/data/bayes_basket_target_market_registry_snapshot.json",
+    "truth_manifest": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/manifest.json"
+  },
+  "lead_bucket": "d1",
+  "model_ids": [
+    "AROME-FR",
+    "CMA",
+    "HARMONIE-EU",
+    "HARMONIE-NL",
+    "HRRR",
+    "ICON",
+    "ICON-D2",
+    "JMA-MSM",
+    "NAM",
+    "NBM",
+    "UKMO-2KM"
+  ],
+  "run_cycle": "12Z",
+  "schema": "bayes_basket_target_45station_model_pool_oos_v2",
+  "station_count": 45,
+  "station_results": [
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/CYYZ/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "NAM",
+        "NBM"
+      ],
+      "selected_weights": {
+        "NAM": 0.65,
+        "NBM": 0.35
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "CYYZ",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/EDDM/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "AROME-FR",
+        "HARMONIE-EU",
+        "ICON-D2"
+      ],
+      "selected_models": [
+        "HARMONIE-EU",
+        "ICON-D2"
+      ],
+      "selected_weights": {
+        "HARMONIE-EU": 0.25,
+        "ICON-D2": 0.75
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "EDDM",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/EFHK/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HARMONIE-EU"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "EFHK",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/EGLC/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "AROME-FR",
+        "HARMONIE-EU",
+        "HARMONIE-NL",
+        "ICON-D2"
+      ],
+      "selected_models": [
+        "AROME-FR",
+        "ICON-D2"
+      ],
+      "selected_weights": {
+        "AROME-FR": 0.15,
+        "ICON-D2": 0.85
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "EGLC",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 28,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/EHAM/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "AROME-FR",
+        "HARMONIE-EU",
+        "HARMONIE-NL",
+        "ICON-D2",
+        "UKMO-2KM"
+      ],
+      "selected_models": [
+        "CMA",
+        "HARMONIE-EU",
+        "UKMO-2KM"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "HARMONIE-EU": 0.2,
+        "UKMO-2KM": 0.5
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "EHAM",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/EPWA/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HARMONIE-EU"
+      ],
+      "selected_models": [
+        "HARMONIE-EU",
+        "ICON"
+      ],
+      "selected_weights": {
+        "HARMONIE-EU": 0.4,
+        "ICON": 0.6
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "EPWA",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/FACT/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.5,
+        "ICON": 0.5
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "FACT",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KATL/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "KATL",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KAUS/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "HRRR",
+        "NAM"
+      ],
+      "selected_weights": {
+        "HRRR": 0.75,
+        "NAM": 0.25
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KAUS",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KBKF/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "HRRR",
+        "NAM"
+      ],
+      "selected_weights": {
+        "HRRR": 0.95,
+        "NAM": 0.05
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KBKF",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KDAL/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "ICON",
+        "NAM"
+      ],
+      "selected_weights": {
+        "ICON": 0.45,
+        "NAM": 0.55
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KDAL",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KHOU/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "ICON",
+        "NBM"
+      ],
+      "selected_weights": {
+        "ICON": 0.7,
+        "NBM": 0.3
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KHOU",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KLAX/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "HRRR",
+        "NAM"
+      ],
+      "selected_weights": {
+        "HRRR": 0.25,
+        "NAM": 0.75
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KLAX",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KLGA/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "ICON",
+        "NBM"
+      ],
+      "selected_weights": {
+        "ICON": 0.65,
+        "NBM": 0.35
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KLGA",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KMIA/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "ICON",
+        "NBM"
+      ],
+      "selected_weights": {
+        "ICON": 0.4,
+        "NBM": 0.6
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KMIA",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KORD/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "NAM",
+        "NBM"
+      ],
+      "selected_weights": {
+        "NAM": 0.2,
+        "NBM": 0.8
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KORD",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KSEA/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "CMA",
+        "NAM"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "NAM": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KSEA",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/KSFO/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "HRRR",
+        "NAM",
+        "NBM"
+      ],
+      "selected_models": [
+        "CMA",
+        "NBM"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "NBM": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "KSFO",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/LEMD/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "AROME-FR"
+      ],
+      "selected_models": [
+        "AROME-FR",
+        "ICON"
+      ],
+      "selected_weights": {
+        "AROME-FR": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "LEMD",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 28,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/LFPB/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "AROME-FR",
+        "HARMONIE-EU",
+        "ICON-D2",
+        "UKMO-2KM"
+      ],
+      "selected_models": [
+        "HARMONIE-EU",
+        "ICON"
+      ],
+      "selected_weights": {
+        "HARMONIE-EU": 0.45,
+        "ICON": 0.55
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "LFPB",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/LIMC/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "AROME-FR",
+        "HARMONIE-EU",
+        "ICON-D2"
+      ],
+      "selected_models": [
+        "ICON",
+        "ICON-D2"
+      ],
+      "selected_weights": {
+        "ICON": 0.4,
+        "ICON-D2": 0.6
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "LIMC",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/LTAC/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "LTAC",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/MMMX/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "MMMX",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/MPMG/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "MPMG",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/NZWN/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.4,
+        "ICON": 0.6
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "NZWN",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/OEJN/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "OEJN",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/OPKC/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "OPKC",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/RCSS/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "RCSS",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/RJTT/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "RJTT",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/RKPK/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "CMA",
+        "JMA-MSM"
+      ],
+      "selected_weights": {
+        "CMA": 0.35,
+        "JMA-MSM": 0.65
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "RKPK",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/RKSI/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "RKSI",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/RPLL/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "RPLL",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/SAEZ/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.6,
+        "ICON": 0.4
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "SAEZ",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/SBGR/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "SBGR",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/VILK/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.5,
+        "ICON": 0.5
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "VILK",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/WMKK/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "WMKK",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [],
+        "diagnostics": [],
+        "passed": true
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/WSSS/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.4,
+        "ICON": 0.6
+      },
+      "state": "ACTIVATION_PACKET_READY",
+      "station_id": "WSSS",
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZBAA/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.35,
+        "ICON": 0.65
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZBAA",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZGGG/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.7,
+        "ICON": 0.3
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZGGG",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZGSZ/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.55,
+        "ICON": 0.45
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZGSZ",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZHHH/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.7,
+        "ICON": 0.3
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZHHH",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZSPD/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.65,
+        "ICON": 0.35
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZSPD",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "regional_model_formal_artifact_schema_not_promotable"
+        ],
+        "diagnostics": [],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZSQD/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": true,
+      "probability_non_degradation_vs_uniform": true,
+      "regional_candidate_models": [
+        "JMA-MSM"
+      ],
+      "selected_models": [
+        "ICON",
+        "JMA-MSM"
+      ],
+      "selected_weights": {
+        "ICON": 0.6,
+        "JMA-MSM": 0.4
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZSQD",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZUCK/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.6,
+        "ICON": 0.4
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZUCK",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "exact_join_row_count": 29,
+      "formal_quality_gate": {
+        "activation_written": false,
+        "blockers": [
+          "formal_truth_authority_required",
+          "probability_oos_non_degradation_gate_failed"
+        ],
+        "diagnostics": [
+          "point_oos_non_degradation_diagnostic_failed"
+        ],
+        "passed": false
+      },
+      "global_candidate_models": [
+        "CMA",
+        "ICON"
+      ],
+      "output": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_regional_oos_12z_d1_20260730_v5/ZUUU/explicit_d1_oos.json",
+      "point_non_degradation_vs_uniform": false,
+      "probability_non_degradation_vs_uniform": false,
+      "regional_candidate_models": [],
+      "selected_models": [
+        "CMA",
+        "ICON"
+      ],
+      "selected_weights": {
+        "CMA": 0.3,
+        "ICON": 0.7
+      },
+      "state": "BLOCKED_FORMAL_QUALITY_GATE",
+      "station_id": "ZUUU",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    }
+  ]
+}

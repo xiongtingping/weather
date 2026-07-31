@@ -1,0 +1,40 @@
+{
+  "schema": "bayes_basket_target_target_v2_station_policy_no_live_manifest_v1",
+  "station_ids": [
+    "CYYZ", "EDDM", "EFHK", "EGLC", "EHAM", "EPWA", "FACT", "KATL", "KAUS",
+    "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
+    "LEMD", "LFPB", "LIMC", "LTAC", "MMMX", "MPMG", "NZWN", "OEJN", "OPKC",
+    "RCSS", "RJTT", "RKPK", "RKSI", "RPLL", "SAEZ", "SBGR", "VILK", "WMKK",
+    "WSSS", "ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD", "ZUCK", "ZUUU"
+  ],
+  "strategy_version": "target-v2",
+  "stages": ["P0", "P1"],
+  "season_bin": "summer",
+  "maturity_bins": ["d0", "d1", "d2", "d2_fallback"],
+  "liquidity_bin": "liquid",
+  "global_prior_id": "target-v2-global-no-live-prior-g4",
+  "generation": 4,
+  "valid_from_utc": "2026-07-30T22:00:00Z",
+  "valid_until_utc": "2026-08-31T00:00:00Z",
+  "activated_at_utc": "2026-07-30T22:00:00Z",
+  "family_parameters": {
+    "target": {},
+    "reserve": {},
+    "cadence": {
+      "gate_seconds_intercept": 1.0
+    }
+  },
+  "default_policy": {
+    "policy_id": "target-v2-global-delta-basket-score-no-live-g4",
+    "total_budget_usdc": 20.0,
+    "clip_min_notional_usdc": 0.01,
+    "clip_max_notional_usdc": 2.0
+  },
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "execution_mode": "production_no_live",
+  "production_no_live": true,
+  "live_submit_authorized": false,
+  "calls_order_gateway": false,
+  "places_orders": false,
+  "orders_submitted": 0
+}

@@ -8,6 +8,7 @@ import pytest
 from bayes_basket_target.calibration_ingress import (
     FORMAL_NATIVE,
     NO_LIVE_REPLAY,
+    TEMPORARY_AWC_LABEL,
     ingest_calibration_base_facts,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256
@@ -135,6 +136,286 @@ def test_candidate_and_native_base_rows_share_ssot_but_keep_authority_separate()
         }
 
 
+def test_incremental_packet_can_bind_existing_truth_without_duplication() -> None:
+    first = _packet()
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        ingest_calibration_base_facts(conn, first, commit=True)
+        existing = dict(conn.execute(
+            "SELECT truth_id,station_id,local_date,official_tmax_c,"
+            "source_lane,settlement_definition,revision_no,qc_status,"
+            "source_role,authority_scope,content_sha256 "
+            "FROM calibration_station_daily_high_truth"
+        ).fetchone())
+        reference = dict(existing)
+        reference["reference_sha256"] = content_sha256(reference)
+
+        incremental = copy.deepcopy(first)
+        incremental["truth_evidence"] = []
+        incremental["truth_references"] = [reference]
+        for model in incremental["calibration_model_rows"]:
+            old_id = model["model_run_id"]
+            model["model_run_id"] = old_id + "-12z"
+            model["run_init_utc"] = "2026-07-19T12:00:00Z"
+            model["run_cycle"] = "12Z"
+            model["content_sha256"] = content_sha256({
+                key: value
+                for key, value in model.items()
+                if key != "content_sha256"
+            })
+        for residual in incremental["residual_evidence"]:
+            residual["residual_id"] += "-12z"
+            residual["model_run_id"] += "-12z"
+            residual["run_cycle"] = "12Z"
+            residual["paired_asof_utc"] = "2026-07-19T12:00:00Z"
+            residual["content_sha256"] = content_sha256({
+                key: value
+                for key, value in residual.items()
+                if key != "content_sha256"
+            })
+
+        result = ingest_calibration_base_facts(
+            conn,
+            incremental,
+            commit=True,
+        )
+        assert result["counts"] == {
+            "stations": 0,
+            "truths": 0,
+            "model_runs": 5,
+            "residuals": 5,
+        }
+        assert result["validated_counts"]["truth_references"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_station_daily_high_truth"
+        ).fetchone()[0] == 1
+
+        tampered = copy.deepcopy(incremental)
+        tampered["truth_references"][0]["official_tmax_c"] = 99.0
+        tampered["truth_references"][0]["reference_sha256"] = content_sha256({
+            key: value
+            for key, value in tampered["truth_references"][0].items()
+            if key != "reference_sha256"
+        })
+        with pytest.raises(
+            ContractError,
+            match="truth_reference_content_mismatch",
+        ):
+            ingest_calibration_base_facts(conn, tampered)
+
+
+def test_truth_revision_can_bind_existing_model_runs_by_hash() -> None:
+    first = _packet()
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        ingest_calibration_base_facts(conn, first, commit=True)
+
+        revised = copy.deepcopy(first)
+        truth = revised["truth_evidence"][0]
+        truth["truth_id"] = "truth-2"
+        truth["revision_no"] = 1
+        truth["official_tmax_c"] = 31.0
+        truth["content_sha256"] = content_sha256({
+            key: value
+            for key, value in truth.items()
+            if key != "content_sha256"
+        })
+        model_references = []
+        for row in conn.execute(
+            "SELECT model_run_id,model_id,station_id,target_local_date,"
+            "run_init_utc,lead_bucket,maturity_key,run_cycle,raw_tmax_c,"
+            "settlement_definition,authority_scope,content_sha256 "
+            "FROM calibration_historical_asof_model_run "
+            "ORDER BY model_id"
+        ):
+            reference = dict(row)
+            reference["reference_sha256"] = content_sha256(reference)
+            model_references.append(reference)
+        revised["calibration_model_rows"] = []
+        revised["model_references"] = model_references
+        for residual in revised["residual_evidence"]:
+            residual["residual_id"] += "-revision-1"
+            residual["truth_id"] = "truth-2"
+            residual["e_y_minus_f_raw_c"] = 2.0
+            residual["content_sha256"] = content_sha256({
+                key: value
+                for key, value in residual.items()
+                if key != "content_sha256"
+            })
+
+        tampered = copy.deepcopy(revised)
+        tampered["model_references"][0]["raw_tmax_c"] = 99.0
+        tampered["model_references"][0]["reference_sha256"] = content_sha256({
+            key: value
+            for key, value in tampered["model_references"][0].items()
+            if key != "reference_sha256"
+        })
+        with pytest.raises(
+            ContractError,
+            match="calibration_model_reference_content_mismatch",
+        ):
+            ingest_calibration_base_facts(conn, tampered)
+
+        result = ingest_calibration_base_facts(
+            conn,
+            revised,
+            commit=True,
+        )
+        assert result["counts"] == {
+            "stations": 0,
+            "truths": 1,
+            "model_runs": 0,
+            "residuals": 5,
+        }
+        assert result["validated_counts"]["model_references"] == 5
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_historical_asof_model_run"
+        ).fetchone()[0] == 5
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_model_station_residual"
+        ).fetchone()[0] == 10
+
+
+def test_temporary_awc_truth_is_explicit_and_never_formal_or_realtime() -> None:
+    packet = copy.deepcopy(_packet())
+    station = packet["station_registry"][0]
+    station["source_lane"] = "AMSC"
+    station["content_sha256"] = content_sha256({
+        key: value
+        for key, value in station.items()
+        if key != "content_sha256"
+    })
+    truth = packet["truth_evidence"][0]
+    truth["source_role"] = TEMPORARY_AWC_LABEL
+    truth["content_sha256"] = content_sha256({
+        key: value
+        for key, value in truth.items()
+        if key != "content_sha256"
+    })
+    packet["checks"] = {
+        "truth_source_canonical_ingress": False,
+        "temporary_awc_calibration_label_explicit": True,
+    }
+    packet["boundary"].update({
+        "enters_realtime_truth": False,
+        "enters_p1": False,
+        "enters_hard_no": False,
+    })
+
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        result = ingest_calibration_base_facts(conn, packet, commit=True)
+
+        assert result["temporary_awc_truth_rows"] == 1
+        assert tuple(conn.execute(
+            "SELECT source_lane,source_role,authority_scope "
+            "FROM calibration_station_daily_high_truth"
+        ).fetchone()) == (
+            "AWC",
+            TEMPORARY_AWC_LABEL,
+            NO_LIVE_REPLAY,
+        )
+        assert {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT authority_scope "
+                "FROM calibration_model_station_residual"
+            )
+        } == {NO_LIVE_REPLAY}
+
+
+def test_temporary_awc_truth_without_isolation_boundary_fails_closed() -> None:
+    packet = copy.deepcopy(_packet())
+    truth = packet["truth_evidence"][0]
+    truth["source_role"] = TEMPORARY_AWC_LABEL
+    truth["content_sha256"] = content_sha256({
+        key: value
+        for key, value in truth.items()
+        if key != "content_sha256"
+    })
+    packet["checks"] = {
+        "truth_source_canonical_ingress": False,
+        "temporary_awc_calibration_label_explicit": True,
+    }
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        with pytest.raises(
+            ContractError,
+            match="temporary_awc_calibration_boundary_invalid",
+        ):
+            ingest_calibration_base_facts(conn, packet)
+
+
+def test_open_meteo_previous_runs_are_historical_replay_only() -> None:
+    packet = _packet()
+    replacements = {
+        "ECMWF": "ecmwf_ifs_open_meteo_previous_runs",
+        "GFS": "gfs_global_open_meteo_previous_runs",
+    }
+    for row in packet["calibration_model_rows"]:
+        provider = replacements.get(row["model_id"])
+        if provider is None:
+            continue
+        row.update({
+            "provider_id": provider,
+            "source_class": "aggregator_republisher",
+            "aggregator_or_republisher": True,
+            "open_meteo": True,
+            "published_at_utc": None,
+            "received_at_utc": "2026-07-22T00:00:00Z",
+            "timestamps_complete": False,
+            "asof_status": "HISTORICAL_REPLAY_ONLY",
+            "historical_replay_eligible": True,
+            "prospective_strict_asof_eligible": False,
+        })
+        row["content_sha256"] = content_sha256({
+            key: value for key, value in row.items()
+            if key != "content_sha256"
+        })
+
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        result = ingest_calibration_base_facts(conn, packet, commit=True)
+        assert result["formal_native_model_rows"] == 0
+        assert {
+            authority
+            for authority, in conn.execute(
+                "SELECT DISTINCT authority_scope "
+                "FROM calibration_historical_asof_model_run"
+            )
+        } == {NO_LIVE_REPLAY}
+
+
+def test_open_meteo_previous_runs_cannot_claim_native_arrival() -> None:
+    packet = _packet()
+    row = packet["calibration_model_rows"][0]
+    row.update({
+        "provider_id": "ecmwf_ifs_open_meteo_previous_runs",
+        "source_class": "aggregator_republisher",
+        "aggregator_or_republisher": True,
+        "open_meteo": True,
+        "asof_status": "PROSPECTIVE_STRICT_ASOF",
+        "historical_replay_eligible": True,
+        "prospective_strict_asof_eligible": True,
+    })
+    row["content_sha256"] = content_sha256({
+        key: value for key, value in row.items()
+        if key != "content_sha256"
+    })
+
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        with pytest.raises(
+            ContractError,
+            match="calibration_aggregator_native_arrival_forbidden",
+        ):
+            ingest_calibration_base_facts(conn, packet)
+
+
 def test_empty_three_model_tables_upgrade_to_five_model_constraints() -> None:
     legacy_ddl = DDL.replace(
         "('ECMWF','GFS','ICON','GEM','CMA')",
@@ -183,6 +464,40 @@ def test_bad_content_address_rolls_back_all_rows() -> None:
         with pytest.raises(ContractError, match="content_sha256_mismatch"):
             ingest_calibration_base_facts(conn, packet, commit=True)
         assert conn.execute("SELECT COUNT(*) FROM calibration_station_registry").fetchone()[0] == 0
+
+
+def test_any_single_model_scope_fails_closed() -> None:
+    packet = copy.deepcopy(_packet())
+    second_scope_model = copy.deepcopy(packet["calibration_model_rows"][0])
+    second_scope_model["model_run_id"] = "run-ECMWF-d1"
+    second_scope_model["lead_bucket"] = "d1"
+    second_scope_model["maturity_key"] = "D1"
+    second_scope_model["content_sha256"] = content_sha256({
+        key: value
+        for key, value in second_scope_model.items()
+        if key != "content_sha256"
+    })
+    packet["calibration_model_rows"].append(second_scope_model)
+
+    second_scope_residual = copy.deepcopy(packet["residual_evidence"][0])
+    second_scope_residual["residual_id"] = "res-ECMWF-d1"
+    second_scope_residual["model_run_id"] = "run-ECMWF-d1"
+    second_scope_residual["lead_bucket"] = "d1"
+    second_scope_residual["maturity_key"] = "D1"
+    second_scope_residual["content_sha256"] = content_sha256({
+        key: value
+        for key, value in second_scope_residual.items()
+        if key != "content_sha256"
+    })
+    packet["residual_evidence"].append(second_scope_residual)
+
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        with pytest.raises(
+            ContractError,
+            match="calibration_single_model_scope_forbidden",
+        ):
+            ingest_calibration_base_facts(conn, packet)
 
 
 def test_future_et_truth_is_rejected() -> None:

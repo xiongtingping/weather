@@ -17,7 +17,7 @@
     "max_ws_snapshot_age_sec": 120.0,
     "max_writer_lock_wait_ms": 250.0,
     "max_process_rss_bytes": 536870912,
-    "max_database_bytes": 268435456,
+    "max_database_bytes": 4294967296,
     "max_wal_bytes": 67108864,
     "max_raw_bytes": 1073741824,
     "min_free_bytes": 536870912

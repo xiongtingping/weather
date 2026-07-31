@@ -58,10 +58,20 @@ def capture_forward_awc_taf(
         end=end,
         event_date=event_date,
         timezone_name=settlement_timezone,
+        require_tx=False,
     )
     issued_at = _parse_utc(taf["issue_time_utc"])
     if issued_at > received_at:
         raise ContractError("awc_forward_taf_issue_after_local_receipt")
+    provider_available_at = _parse_utc(taf["available_time_utc"])
+    if not issued_at <= provider_available_at <= received_at:
+        # AWC occasionally returns a current bulletin with a stale dbPopTime
+        # from the preceding revision.  It is not safe to invent an earlier
+        # native availability timestamp from that response; reject this
+        # capture and let the station scope retry on the next rotation.
+        raise ContractError(
+            "awc_forward_taf_provider_timestamp_order_invalid"
+        )
     valid_from = _parse_utc(raw.get("validTimeFrom"))
     valid_until = _parse_utc(raw.get("validTimeTo"))
     local_received = _iso(received_at)
@@ -90,7 +100,7 @@ def capture_forward_awc_taf(
         "source_url": url,
         "response_sha256": response_sha,
         "response_bytes": response_bytes,
-        "provider_available_at_utc": taf["available_time_utc"],
+        "provider_available_at_utc": _iso(provider_available_at),
         "local_received_at_utc": local_received,
         "forecast_revision": {
             "revision_id": revision_id,
@@ -133,6 +143,76 @@ def refresh_forward_taf_inbox(
             for item in raw.get("captures", [])
             if isinstance(item, dict)
         ]
+    # A resident may first observe an upstream AMD/COR after the original TAF
+    # has already scrolled out of the local capture window.  The immutable
+    # ForecastRevision relation must still start at a local TAF root; preserve
+    # the bulletin's native marker separately and re-key the observed chain.
+    by_scope: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for item in existing:
+        revision = item.get("forecast_revision")
+        if not isinstance(revision, dict):
+            continue
+        by_scope.setdefault(
+            (
+                str(item.get("station_id") or ""),
+                str(item.get("event_date") or ""),
+            ),
+            [],
+        ).append(item)
+    repaired: dict[int, dict[str, object]] = {}
+    for scope, group in by_scope.items():
+        group.sort(
+            key=lambda item: int(
+                (item.get("forecast_revision") or {}).get("sequence")
+                or 0
+            )
+        )
+        first_revision = group[0].get("forecast_revision")
+        if (
+            not isinstance(first_revision, dict)
+            or int(first_revision.get("sequence") or 0) != 1
+            or str(first_revision.get("revision_kind") or "") == "TAF"
+        ):
+            continue
+        previous_id = None
+        for index, item in enumerate(group, start=1):
+            revision = dict(item["forecast_revision"])
+            native_kind = str(
+                item.get("native_revision_kind")
+                or revision.get("revision_kind")
+                or "TAF"
+            ).upper()
+            source_sha = str(
+                revision.get("source_object_sha256") or ""
+            )
+            revision_id = "taf-revision-" + content_sha256({
+                "station_id": scope[0],
+                "event_date": scope[1],
+                "source_object_sha256": source_sha,
+                "observed_chain_root_normalized": True,
+                "sequence": index,
+            })[:32]
+            revision.update({
+                "revision_id": revision_id,
+                "revision_kind": (
+                    "TAF" if index == 1 else native_kind
+                ),
+                "sequence": index,
+                "supersedes_revision_id": previous_id,
+            })
+            normalized = {
+                key: value
+                for key, value in item.items()
+                if key != "content_sha256"
+            }
+            normalized["native_revision_kind"] = native_kind
+            normalized["forecast_revision"] = revision
+            repaired[id(item)] = {
+                **normalized,
+                "content_sha256": content_sha256(normalized),
+            }
+            previous_id = revision_id
+    existing = [repaired.get(id(item), item) for item in existing]
     retained = list(existing)
     source_keys = {
         (
@@ -179,11 +259,12 @@ def refresh_forward_taf_inbox(
             if predecessors else None
         )
         raw_taf = str(capture.get("raw_taf") or "").upper()
-        kind = (
+        native_kind = (
             "COR" if " TAF COR " in f" {raw_taf} "
             else "AMD" if " TAF AMD " in f" {raw_taf} "
             else "TAF"
         )
+        kind = "TAF" if sequence == 1 else native_kind
         normalized_revision = {
             **revision,
             "revision_id": "taf-revision-" + content_sha256({
@@ -201,6 +282,7 @@ def refresh_forward_taf_inbox(
             if key != "content_sha256"
         }
         normalized_identity["forecast_revision"] = normalized_revision
+        normalized_identity["native_revision_kind"] = native_kind
         retained.append({
             **normalized_identity,
             "content_sha256": content_sha256(normalized_identity),

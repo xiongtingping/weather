@@ -61,13 +61,13 @@ def test_live_pause_rejects_before_persistence_signing_or_exchange(tmp_path):
     assert json.loads(result.stdout)["error"] == "clob_order_service_live_paused"
 
 
-def test_gateway_wrapper_is_system_production_no_live_only():
+def test_gateway_wrapper_is_user_production_no_live_only():
     shell = (ROOT / "scripts" / "clob_order_service.sh").read_text(encoding="utf-8")
-    assert 'if [ "${WEATHER_SERVICE_DOMAIN:-}" != "system" ]; then' in shell
-    assert 'echo "[clob_order_service] system_domain_required"' in shell
+    assert 'if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then' in shell
+    assert 'echo "[clob_order_service] user_domain_required"' in shell
     assert 'if [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live" ]; then' in shell
     assert 'echo "[clob_order_service] production_no_live_required"' in shell
-    assert "export WEATHER_SERVICE_DOMAIN=system" in shell
+    assert "export WEATHER_SERVICE_DOMAIN=user" in shell
     assert "export PM_TARGET_EXECUTION_MODE=production_no_live" in shell
     assert "export PM_CLOB_ORDER_SERVICE_READ_ONLY=1" in shell
     assert "sequential_bayes_execution_contract" not in shell
@@ -83,7 +83,7 @@ def test_gateway_launchd_entry_uses_the_current_wrapper_contract():
     )
     assert "/Users/xiong/weather/scripts/clob_order_service.sh" in plist
     assert "<key>WEATHER_SERVICE_DOMAIN</key>" in plist
-    assert "<string>system</string>" in plist
+    assert "<string>user</string>" in plist
     assert "<key>PM_TARGET_EXECUTION_MODE</key>" in plist
     assert "<string>production_no_live</string>" in plist
     assert "sequential_bayes_execution_contract" not in plist

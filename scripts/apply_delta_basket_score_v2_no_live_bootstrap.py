@@ -13,6 +13,7 @@ import argparse
 from datetime import datetime, timezone
 from decimal import Decimal
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -49,7 +50,7 @@ DEFAULT_MANIFEST = (
     / "config/trading/"
     "delta_basket_score_v2_rkpk_no_live_bootstrap_v1.json"
 ).resolve()
-SERVICE_LABEL = "system/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_WAL_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 1024 * 1024 * 1024

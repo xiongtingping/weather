@@ -176,6 +176,31 @@ def test_formal_ensemble_rejects_artifact_valid_before_holdout() -> None:
         validate_formal_ensemble_artifact(artifact)
 
 
+def test_formal_ensemble_rejects_legacy_small_training_window() -> None:
+    artifact = _rehash_ensemble(
+        _ensemble(),
+        effective_sample_n=19.0,
+    )
+    with pytest.raises(
+        ContractError,
+        match="formal_ensemble_training_sample_insufficient",
+    ):
+        validate_formal_ensemble_artifact(artifact)
+
+
+def test_formal_ensemble_rejects_legacy_short_holdout_window() -> None:
+    artifact = _rehash_ensemble(
+        _ensemble(),
+        holdout_start_date="2026-06-25",
+        holdout_end_date="2026-06-30",
+    )
+    with pytest.raises(
+        ContractError,
+        match="formal_ensemble_holdout_sample_insufficient",
+    ):
+        validate_formal_ensemble_artifact(artifact)
+
+
 def test_low_high_low_rewind_and_hash_seed_are_deterministic() -> None:
     base = _ensemble()
     high = _rehash_ensemble(

@@ -16,14 +16,13 @@ fi
 
 install -d "$DST_DIR" "$ROOT/data" "$ROOT/data/logs"
 
-ALL_PLISTS=(
+DEFAULT_PLISTS=(
+  com.weather.reported_trajectory_no.plist
   com.weather.market_ws.plist
-  com.weather.auto_trade_entry_1m.plist
-  com.weather.daily_trade_sms_summary.plist
-  com.weather.archive_db_governance_offpeak.plist
-  com.weather.archive_db_auto_guard.plist
+  com.weather.clob_order_service.plist
 )
-PLISTS=("${ALL_PLISTS[@]}")
+SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}")
+PLISTS=("${DEFAULT_PLISTS[@]}")
 if [ -n "${PM_LAUNCHD_ONLY:-}" ]; then
   IFS=',' read -r -a requested_plists <<< "${PM_LAUNCHD_ONLY}"
   PLISTS=()
@@ -33,7 +32,7 @@ if [ -n "${PM_LAUNCHD_ONLY:-}" ]; then
     if [[ "$requested" != *.plist ]]; then
       requested="${requested}.plist"
     fi
-    for allowed in "${ALL_PLISTS[@]}"; do
+    for allowed in "${SUPPORTED_PLISTS[@]}"; do
       if [ "$requested" = "$allowed" ]; then
         PLISTS+=("$allowed")
         break
@@ -120,17 +119,29 @@ for name in plist_names:
     # LaunchAgents run as the current user; remove UserName/GroupName.
     data.pop("UserName", None)
     data.pop("GroupName", None)
+    label = data.get("Label", "")
     env = data.get("EnvironmentVariables") or {}
     env.setdefault("HOME", default_home(user))
     env.setdefault("USER", user)
     env.setdefault("LOGNAME", user)
     env.setdefault("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+    if label in {
+        "com.weather.reported_trajectory_no",
+        "com.weather.market_ws",
+        "com.weather.clob_order_service",
+    }:
+        env["WEATHER_SERVICE_DOMAIN"] = "user"
+        env["PM_TARGET_EXECUTION_MODE"] = "production_no_live"
+    if label == "com.weather.reported_trajectory_no":
+        env["PM_TARGET_PRODUCTION_WRITER"] = "1"
+    if label == "com.weather.clob_order_service":
+        env["PM_CLOB_ORDER_SERVICE_READ_ONLY"] = "1"
+        env["PM_LIVE_PAUSE_FILE"] = str(root / "data/live_paused.flag")
     data["EnvironmentVariables"] = env
     data["WorkingDirectory"] = str(root)
     dst = dst_dir / name
     with dst.open("wb") as f:
         plistlib.dump(data, f, fmt=plistlib.FMT_XML, sort_keys=False)
-    label = data.get("Label", "")
     if label:
         print(f"{label}\t{dst}")
 PY
@@ -139,6 +150,24 @@ ENTRIES_FILE="$ROOT/data/.launchd_entries.tmp"
 if [ ! -s "$ENTRIES_FILE" ]; then
   echo "No plist files installed." >&2
   exit 1
+fi
+
+# The three production owners must never be loaded in user and system domains
+# at the same time. Initial migration retires the root-owned jobs first; every
+# subsequent user-domain install remains passwordless.
+if [ "$BOOTSTRAP" = "1" ]; then
+  while IFS=$'\t' read -r label _dest; do
+    case "$label" in
+      com.weather.reported_trajectory_no|com.weather.market_ws|com.weather.clob_order_service)
+        if launchctl print "system/${label}" >/dev/null 2>&1; then
+          echo "[launchagent] system owner still loaded: ${label}" >&2
+          echo "[launchagent] user-domain bootstrap refused to prevent dual-active" >&2
+          rm -f "$ENTRIES_FILE"
+          exit 3
+        fi
+        ;;
+    esac
+  done < "$ENTRIES_FILE"
 fi
 
 for name in "${LEGACY_PLISTS[@]}"; do

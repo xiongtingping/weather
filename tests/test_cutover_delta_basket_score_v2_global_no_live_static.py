@@ -1,27 +1,72 @@
+from __future__ import annotations
+
+import subprocess
 from pathlib import Path
 
 
-ROOT = Path(__file__).parents[1]
-SCRIPT = (
-    ROOT / "scripts/cutover_delta_basket_score_v2_global_no_live.sh"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts/cutover_delta_basket_score_v2_global_no_live.sh"
+REPLACEMENT = "scripts/cutover_delta_basket_score_v2_no_live.sh"
+
+FORBIDDEN_LEGACY_CONTROL = (
+    "system/",
+    "LaunchDaemon",
+    "sudo",
+    "launchctl",
+    "sqlite",
+    "psql",
+    "curl",
+    "python",
+    "touch",
+    "mkdir",
+    "rm ",
+    "mv ",
+    "cp ",
+    "tee ",
 )
 
 
-def test_global_delta_v2_cutover_keeps_no_live_and_service_boundaries() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
+def _text() -> str:
+    return SCRIPT.read_text(encoding="utf-8")
 
-    assert "--confirm-global-delta-v2-production-no-live" in text
-    assert "delta_basket_score_v2_global_no_live_bootstrap_v1.json" in text
-    assert 'launchctl bootout "system/$TARGET_LABEL"' in text
-    assert 'launchctl bootstrap system "$TARGET_PLIST"' in text
-    assert 'launchctl bootout "system/$MARKET_LABEL"' not in text
-    assert 'launchctl bootout "system/$ORDER_LABEL"' not in text
-    assert "oos_gate_passed" in text
-    assert "future_preselection_waits_for_settlement=false" in text
-    assert "registry_export_decoupled_from_nwp=true" in text
-    assert "current_catalog_only" in text
-    assert "forward_oos_blocks_production_no_live=false" in text
-    assert "live_pause_retained=true" in text
-    assert "basket_target_order_events" in text
-    assert "MAX_DATABASE_BYTES" in text
-    assert "MAX_GROWTH_BYTES" in text
+
+def _non_comment_commands(text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def test_retired_entry_fails_before_any_legacy_control_or_state_change() -> None:
+    text = _text()
+    commands = _non_comment_commands(text)
+
+    assert commands[0] == "exit 78"
+    assert commands.count("exit 78") == 1
+    assert REPLACEMENT in text
+    assert all(marker not in text for marker in FORBIDDEN_LEGACY_CONTROL)
+
+
+def test_retired_entry_invocation_is_side_effect_free(tmp_path: Path) -> None:
+    before = sorted(
+        path.relative_to(tmp_path)
+        for path in tmp_path.rglob("*")
+    )
+
+    for args in ([], ["--legacy-confirmation"]):
+        completed = subprocess.run(
+            ["/bin/bash", str(SCRIPT), *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert completed.returncode == 78
+        assert completed.stdout == ""
+        assert completed.stderr == ""
+        assert sorted(
+            path.relative_to(tmp_path)
+            for path in tmp_path.rglob("*")
+        ) == before

@@ -12,6 +12,13 @@
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/xiong/weather</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PM_TARGET_EXECUTION_MODE</key>
+      <string>production_no_live</string>
+      <key>WEATHER_SERVICE_DOMAIN</key>
+      <string>user</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

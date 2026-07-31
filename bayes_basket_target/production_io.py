@@ -48,6 +48,11 @@ from .policy import (
 )
 from .production import compile_production_plan
 from .probability_bridge import load_current_probability_bridge
+from .native_ensemble_contract import (
+    P0_PROBABILITY_PATHWAY,
+    TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+    validate_cross_native_ensemble_weights,
+)
 from .regime_materialization import load_regime_artifact
 from .ssot import PRODUCTION_TARGET_TABLES, production_ssot_schema_status
 from .stages import select_current_stage
@@ -227,6 +232,12 @@ def load_production_artifacts(
             conn, "calibration_artifact_promotion", "MODEL_ENSEMBLE", raw["ensemble_artifact_id"]
         )
         artifact = ModelEnsembleArtifact.from_mapping(raw)
+        # Do not validate every historical row as though it were the active
+        # authority.  Older databases may contain a pre-contract short-window
+        # artifact that is not selected by the current generation.  The exact
+        # activation resolver validates the one artifact it selects, so an
+        # unrelated historical row cannot poison a newer compatible run while
+        # an actually selected invalid artifact still fails closed.
         if artifact.governance_complete:
             evidence = ensemble_selection_evidence.get(str(artifact.selection_evidence_sha256))
             if evidence is None or evidence.selected_models != artifact.candidate_models:
@@ -347,6 +358,7 @@ def load_materialized_probability_envelopes(
     station_id: str,
     event_date: str,
     evaluation_at_utc: str,
+    required_probability_pathway: str | None = P0_PROBABILITY_PATHWAY,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -367,7 +379,7 @@ def load_materialized_probability_envelopes(
         "probabilities_json", "posterior_version", "posterior_sha256",
         "bridge_sha256", "lineage_json", "content_sha256",
     )
-    envelopes: list[ProbabilityEnvelope] = []
+    validated: list[ProbabilityEnvelope] = []
     for row in conn.execute(
         "SELECT " + ",".join(columns) +
         " FROM basket_probability_envelope"
@@ -392,7 +404,41 @@ def load_materialized_probability_envelopes(
         if supplied_sha != envelope.content_sha256:
             raise ContractError("probability_envelope_content_sha_mismatch")
         if timestamp_lte(envelope.decision_at_utc, evaluation_at_utc):
-            envelopes.append(envelope)
+            validated.append(envelope)
+    if required_probability_pathway is None:
+        envelopes = validated
+    else:
+        native_roots = {
+            envelope.checkpoint_id
+            for envelope in validated
+            if envelope.stage == "P0"
+            and str(
+                envelope.lineage.get("p0_probability_pathway")
+                or envelope.lineage.get("probability_pathway")
+                or ""
+            )
+            == required_probability_pathway
+        }
+        envelopes = [
+            envelope
+            for envelope in validated
+            if (
+                envelope.checkpoint_id in native_roots
+                or (
+                    envelope.stage in {"P0-M", "P1"}
+                    and str(
+                        envelope.lineage.get("p0_root_checkpoint_id") or ""
+                    )
+                    in native_roots
+                    and str(
+                        envelope.lineage.get("p0_probability_pathway")
+                        or envelope.lineage.get("probability_pathway")
+                        or required_probability_pathway
+                    )
+                    == required_probability_pathway
+                )
+            )
+        ]
     if not envelopes:
         raise ContractError("materialized_probability_envelope_missing")
     return envelopes
@@ -487,6 +533,183 @@ def assert_formal_probability_model_authority(
         raise ContractError("probability_p0_root_scope_mismatch")
 
     lineage = root.lineage
+    if lineage.get("probability_pathway") == P0_PROBABILITY_PATHWAY:
+        required_native = (
+            "native_cross_ensemble_artifact_sha256",
+            "native_selection_evidence_sha256",
+            "native_cross_activation_sha256",
+            "native_probability_evidence_sha256",
+            "ensemble_system_ids_json",
+            "independence_family_ids_json",
+            "system_family_ids_json",
+            "system_weights_json",
+            "family_weight_caps_json",
+            "system_artifact_shas_json",
+            "system_activation_shas_json",
+            "taf_nwp_live_compatibility_fingerprint_sha256",
+            "taf_nwp_live_compatibility_json",
+        )
+        if any(
+            not str(lineage.get(key) or "").strip()
+            for key in required_native
+        ):
+            raise ContractError(
+                "native_probability_model_authority_incomplete"
+            )
+        try:
+            system_ids = json.loads(
+                str(lineage["ensemble_system_ids_json"])
+            )
+            family_ids = json.loads(
+                str(lineage["independence_family_ids_json"])
+            )
+            system_families = json.loads(
+                str(lineage["system_family_ids_json"])
+            )
+            system_weights = json.loads(
+                str(lineage["system_weights_json"])
+            )
+            family_caps = json.loads(
+                str(lineage["family_weight_caps_json"])
+            )
+            system_artifacts = json.loads(
+                str(lineage["system_artifact_shas_json"])
+            )
+            system_activations = json.loads(
+                str(lineage["system_activation_shas_json"])
+            )
+            fingerprint = json.loads(
+                str(lineage["taf_nwp_live_compatibility_json"])
+            )
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ContractError(
+                "native_probability_model_authority_json_invalid"
+            ) from exc
+        if (
+            not isinstance(system_ids, list)
+            or len(system_ids) < 2
+            or len(set(map(str, system_ids))) != len(system_ids)
+            or not isinstance(family_ids, list)
+            or len(set(map(str, family_ids))) < 2
+            or not isinstance(system_families, Mapping)
+            or not isinstance(system_weights, Mapping)
+            or not isinstance(family_caps, Mapping)
+            or not isinstance(system_artifacts, Mapping)
+            or not isinstance(system_activations, Mapping)
+            or not isinstance(fingerprint, Mapping)
+            or set(map(str, system_ids)) != set(map(str, system_families))
+            or set(map(str, system_ids)) != set(map(str, system_weights))
+            or set(map(str, system_ids)) != set(map(str, system_artifacts))
+            or set(map(str, system_ids)) != set(map(str, system_activations))
+        ):
+            raise ContractError(
+                "native_probability_model_authority_shape_invalid"
+            )
+        receipt = validate_cross_native_ensemble_weights(
+            system_weights={
+                str(key): float(value)
+                for key, value in system_weights.items()
+            },
+            systems_by_id={
+                str(system_id): {
+                    "independence_family_id": str(
+                        system_families[str(system_id)]
+                    ),
+                }
+                for system_id in system_ids
+            },
+            family_weight_caps={
+                str(key): float(value)
+                for key, value in family_caps.items()
+            },
+        )
+        if set(receipt["family_weights"]) != set(map(str, family_ids)):
+            raise ContractError(
+                "native_probability_family_scope_mismatch"
+            )
+        fingerprint_sha = str(
+            lineage[
+                "taf_nwp_live_compatibility_fingerprint_sha256"
+            ]
+        ).lower()
+        fingerprint_identity = {
+            str(key): value
+            for key, value in fingerprint.items()
+            if key != "fingerprint_sha256"
+        }
+        if (
+            fingerprint.get("schema")
+            != TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA
+            or fingerprint.get("probability_pathway")
+            != P0_PROBABILITY_PATHWAY
+            or str(fingerprint.get("fingerprint_sha256") or "").lower()
+            != fingerprint_sha
+            or content_sha256(fingerprint_identity) != fingerprint_sha
+            or fingerprint.get("ensemble_system_ids") != system_ids
+            or fingerprint.get("independence_family_ids") != family_ids
+            or fingerprint.get("system_family_ids") != system_families
+            or fingerprint.get("resolved_system_weights")
+            != system_weights
+            or fingerprint.get("family_weight_caps") != family_caps
+            or str(
+                fingerprint.get("cross_ensemble_artifact_sha256")
+                or ""
+            ) != str(
+                lineage["native_cross_ensemble_artifact_sha256"]
+            )
+            or str(
+                fingerprint.get("cross_selection_evidence_sha256")
+                or ""
+            ) != str(lineage["native_selection_evidence_sha256"])
+            or str(fingerprint.get("cross_activation_sha256") or "")
+            != str(lineage["native_cross_activation_sha256"])
+        ):
+            raise ContractError(
+                "native_probability_compatibility_binding_mismatch"
+            )
+        calibration_bindings = fingerprint.get(
+            "system_calibration_artifacts"
+        )
+        if not isinstance(calibration_bindings, Mapping):
+            raise ContractError(
+                "native_probability_calibration_binding_invalid"
+            )
+        for system_id in system_ids:
+            binding = calibration_bindings.get(str(system_id))
+            if (
+                not isinstance(binding, Mapping)
+                or binding.get("artifact_content_sha256")
+                != system_artifacts[str(system_id)]
+                or binding.get("activation_content_sha256")
+                != system_activations[str(system_id)]
+            ):
+                raise ContractError(
+                    "native_probability_calibration_binding_mismatch"
+                )
+        for value in (
+            lineage["native_cross_ensemble_artifact_sha256"],
+            lineage["native_selection_evidence_sha256"],
+            lineage["native_cross_activation_sha256"],
+            lineage["native_probability_evidence_sha256"],
+            fingerprint_sha,
+            *system_artifacts.values(),
+            *system_activations.values(),
+        ):
+            normalized = str(value).lower()
+            if (
+                len(normalized) != 64
+                or any(char not in "0123456789abcdef" for char in normalized)
+            ):
+                raise ContractError(
+                    "native_probability_authority_sha_invalid"
+                )
+        return root
+
     required = (
         "model_run_ids",
         "calibration_artifact_ids",
@@ -1127,7 +1350,15 @@ def compile_production_cycle_from_ssot(
     except ResourceBoundError as exc:
         raise ContractError("delta_v2_resource_probe_failed:" + str(exc)) from exc
     envelopes = load_materialized_probability_envelopes(
-        conn, station_id=station_id, event_date=event_date, evaluation_at_utc=evaluation_at_utc
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        evaluation_at_utc=evaluation_at_utc,
+        required_probability_pathway=(
+            P0_PROBABILITY_PATHWAY
+            if strategy_version == "target-v2"
+            else None
+        ),
     )
     current_envelope = select_current_stage(
         envelopes,

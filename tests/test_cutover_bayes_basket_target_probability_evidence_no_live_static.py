@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -18,11 +19,17 @@ def _text() -> str:
     return SCRIPT.read_text(encoding="utf-8")
 
 
+def _transaction_text() -> str:
+    return TRANSACTION_SCRIPT.read_text(encoding="utf-8")
+
+
 def test_narrow_cutover_stops_only_target_and_preserves_shared_pids() -> None:
     text = _text()
-    assert 'launchctl bootout "system/$TARGET_LABEL"' in text
-    assert 'launchctl bootout "system/$MARKET_WS_LABEL"' not in text
-    assert 'launchctl bootout "system/$CLOB_LABEL"' not in text
+    assert 'launchctl bootout "${SERVICE_DOMAIN}/$TARGET_LABEL"' in text
+    assert 'SERVICE_DOMAIN="gui/${UID_VALUE}"' in text
+    assert "sudo -u" not in text
+    assert 'launchctl bootout "${SERVICE_DOMAIN}/$MARKET_WS_LABEL"' not in text
+    assert 'launchctl bootout "${SERVICE_DOMAIN}/$CLOB_LABEL"' not in text
     assert "market_ws_pid_changed" in text
     assert "clob_order_service_pid_changed" in text
     assert "market_ws_pid_changed_before_target_restart" in text
@@ -31,6 +38,42 @@ def test_narrow_cutover_stops_only_target_and_preserves_shared_pids() -> None:
     assert "migrate_reported_trajectory_hard_no_timezone.py" not in text
     assert "initialize_forward_observation_store" not in text
     assert "archive.db" not in text
+    assert 'if [ ! -x "$PY" ]; then' in text
+    assert '"$PY" "$TARGET_PLIST"' not in text
+    assert '\n} 2>/dev/null\n)"' in text
+    assert '\n})"' not in text
+
+
+def test_transaction_fenced_probe_is_user_domain_only_and_rejects_system_residue() -> None:
+    text = _transaction_text()
+    assert 'SERVICE_DOMAIN = f"gui/{os.getuid()}"' in text
+    assert 'SYSTEM_SERVICE_DOMAIN = "system"' in text
+    assert 'f"{domain}/{label}"' in text
+    assert "_launchctl_print(SERVICE_DOMAIN, label)" in text
+    assert "_launchctl_print(SYSTEM_SERVICE_DOMAIN, label)" in text
+    assert "forbidden_system_service_residue" in text
+    assert "required_user_service_pid_missing" in text
+    assert '"required_domain": REQUIRED_SERVICE_DOMAIN' in text
+    assert 'REQUIRED_SERVICE_DOMAIN = "user"' in text
+    assert "sudo" not in text.lower()
+    assert "launchdaemon" not in text.lower()
+
+
+def test_transaction_fenced_rkpk_is_schema_bootstrap_not_production_scope() -> None:
+    text = _transaction_text()
+    assert "_validate_schema_bootstrap_packet" in text
+    assert "schema_bootstrap_artifact" in text
+    assert '"artifact_type": "schema_bootstrap"' in text
+    assert '"not_production_station_scope": True' in text
+    assert '"caller_scope_contract": "canonical45"' in text
+    assert "transaction_fenced_schema_bootstrap_station_binding_invalid" in text
+    assert "transaction-fenced-schema-bootstrap-v3" in text
+    assert "transaction-fenced-rkpk-v2" not in text
+    assert '"packet": str(packet_file)' not in text
+    assert '"station_scope":' not in text
+    assert '"execution_mode": "production_no_live"' in text
+    assert '"calls_order_gateway": False' in text
+    assert '"orders_submitted": 0' in text
 
 
 def test_narrow_cutover_checkpoints_before_transaction_and_reprobes() -> None:
@@ -60,6 +103,28 @@ def test_narrow_cutover_checkpoints_before_transaction_and_reprobes() -> None:
     assert "probability_evidence_packet=\"\"" in text
     assert "--expected-probability-station-id RKPK" not in text
     assert '"${transaction_args[@]}"' in text
+
+
+def test_no_live_cutover_does_not_require_forward_oos_or_exact_45_scope() -> None:
+    text = _text()
+    assert 'receipt.get("unfinished_target_inputs") != []' in text
+    assert 'probability_stage_counts.get("P0")' in text
+    assert 'probability_stage_counts.get("P0-M")' in text
+    assert 'probability_stage_counts.get("P1")' in text
+    assert 'target_inputs.get("ready") is not True' not in text
+    assert 'exact.get("ready") is not True' not in text
+    assert 'exact.get("blocked_scope_count")' not in text
+    assert "formal_promotion_ready" not in text
+
+
+def test_two_round_acceptance_requires_user_residents_and_no_system_residue() -> None:
+    text = _text()
+    assert "assert_user_domain_resident" in text
+    assert "assert_user_domain_quiescent" not in text
+    assert '["launchctl", "print", f"system/{label}"]' in text
+    assert '["launchctl", "print", f"gui/{uid}/{label}"]' in text
+    assert "forbidden_system_service_residue" in text
+    assert "resident_core_service_missing_user_domain" in text
 
 
 def test_narrow_cutover_retains_live_pause_and_has_local_rollback() -> None:
@@ -92,6 +157,11 @@ def test_narrow_cutover_retains_live_pause_and_has_local_rollback() -> None:
     )
     assert "delete_recovery_after_success" in text
     assert "bayes_basket_target_m9_06_atomic_cutover" in text
+    assert "m9_06_schema_activation_source_invalid" in text
+    assert "target_database_mutated" in text
+    assert 'source("schema_activation_replace", cutover_raw)' not in text
+    assert '"round": round_payload' not in text
+    assert '"materialization_pending_blockers": round_payload.get(' in text
 
 
 def test_narrow_cutover_requires_schema_resource_ws_and_no_live_postcheck() -> None:
@@ -105,24 +175,31 @@ def test_narrow_cutover_requires_schema_resource_ws_and_no_live_postcheck() -> N
     assert 'boundary.get("live_submit_authorized") is not False' in text
     assert 'boundary.get("places_orders") is not False' in text
     assert 'boundary.get("orders_submitted")' in text
-    assert 'exact.get("ready") is not True' in text
-    assert 'exact.get("exact_scope_count")' in text
+    assert 'receipt.get("unfinished_target_inputs") != []' in text
+    assert 'target_inputs.get("probability_materialized") is not True' in text
+    assert 'target_inputs.get("order_state_materialized") is not True' in text
     assert "probability_packet_materialized is not True" in text
     assert "bound_activation_count != len(set(packet_activation_ids))" in text
     assert "event_date='2026-07-27'" not in text
     assert "basket_probability_bridge_bucket_probability" in text
     assert 'resources.get("wal_bytes")' in text
-    assert "forward_oos" not in text.lower()
+    assert 'target_inputs.get("ready") is not True' not in text
 
 
 def test_canonical_two_round_scope_and_future_day_contract_are_explicit() -> None:
     text = _text()
-    assert "capture_round(db)" in text
+    assert "capture_migration_round(db)" in text
+    assert "compare_migration_rounds(first, second)" in text
+    assert "verify_migration_two_round_resident_receipts(" in text
     assert "probability_scope_snapshot(Path(sys.argv[1]))" in text
     assert "OUTSIDE_SCOPE_BEFORE" in text
     assert "OUTSIDE_SCOPE_AFTER" in text
     assert "NON_RKPK" not in text
     assert "started_station_ids" in text
+    assert "bayes_basket_target_daily_no_live_canonical_index_v2" in text
+    assert "daily_no_live_safety_boundary_invalid" in text
+    assert "materialization_pending_blockers" in text
+    assert "completed.returncode not in (0, 2)" in text
     assert "not_started_station_ids" in text
     assert '"${SETTLEMENT_STATION_ARGS[@]}"' in text
 
@@ -194,3 +271,5 @@ def test_probability_evidence_is_staged_inside_cutover_transaction() -> None:
     assert begin < schema < evidence < commit
     assert "finalize_transaction=False" in text[evidence:commit]
     assert "transaction_fenced_probability_evidence_replay_not_idempotent" in text
+    assert "required_user_service_pid_missing" in text
+    assert "required_system_service_pid_missing" not in text

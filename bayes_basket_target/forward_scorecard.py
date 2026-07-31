@@ -450,6 +450,7 @@ def _empty_counts() -> dict[str, Any]:
     return {
         "fact_rows_read": 0,
         "fact_rows_evaluated": 0,
+        "retired_non_v2_fact_rows_excluded": 0,
         "label_rows_read": 0,
         "valid_label_revisions": 0,
         "invalid_label_revisions": 0,
@@ -1602,6 +1603,13 @@ def build_forward_scorecard(
                 fact_id = str(row.get("fact_id") or "")
                 if not fact_id:
                     blockers.add("fact_id_missing")
+                    continue
+                # This scorecard is the formal DeltaBasketScore v2 authority.
+                # Older ``sdfact_`` rows remain immutable audit evidence, but
+                # their content address was built under a retired schema and
+                # must not be reinterpreted as FACT_SCHEMA v2 evidence.
+                if not fact_id.startswith("d2fact_"):
+                    counts["retired_non_v2_fact_rows_excluded"] += 1
                     continue
                 try:
                     timestamps = [

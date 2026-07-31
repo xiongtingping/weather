@@ -440,6 +440,50 @@ def test_no_live_authority_activates_each_optimized_supported_mask() -> None:
         for row in ensemble_activations
     } == set(ensemble.supported_masks)
 
+    binding_identity = {
+        "station_id": "ZUUU",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+        "source_lane": "AWC",
+        "dataset_path": "/bounded/ZUUU/calibration_truth_dataset.json",
+        "dataset_content_sha256": "d" * 64,
+        "enters_realtime_truth": False,
+        "enters_p1": False,
+        "enters_hard_no": False,
+        "replacement_required_when_canonical_history_available": True,
+    }
+    temporary_evidence = {
+        **evidence,
+        "checks": {
+            **evidence["checks"],
+            "truth_source_canonical_ingress": False,
+            "truth_source_no_live_calibration_authority_valid": True,
+            "temporary_awc_calibration_label_explicit": True,
+        },
+        "boundary": {
+            **evidence["boundary"],
+            "enters_realtime_truth": False,
+            "enters_p1": False,
+            "enters_hard_no": False,
+        },
+        "truth_authority_bindings": [{
+            **binding_identity,
+            "content_sha256": content_sha256(binding_identity),
+        }],
+    }
+    temporary_packet = build_no_live_calibration_artifact_packet(
+        temporary_evidence,
+        oos_audit=oos_audit,
+        calibration_generation=3,
+        ensemble_generation=4,
+    )
+    assert temporary_packet["authority_receipt"][
+        "temporary_awc_calibration_station_ids"
+    ] == ["ZUUU"]
+    assert temporary_packet["authority_receipt"][
+        "temporary_awc_realtime_truth_authorized"
+    ] is False
+    assert temporary_packet["calibration_promotions"] == []
+
     # Point MAE/RMSE remain diagnostics.  The formal artifact optimizes bucket
     # probabilities and is governed by Brier/NLL/CRPS non-degradation.
     oos_audit["ensemble_report_rows"][0][

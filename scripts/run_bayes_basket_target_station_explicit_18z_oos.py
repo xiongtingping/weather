@@ -221,9 +221,10 @@ def _load_aggregator_rows(
             station = str(row.get("station_id") or "").strip().upper()
             event_date = str(row.get("event_date") or "")
             run = _normalized_run(row.get("model_run_initialization_utc"))
+            if station != station_id:
+                continue
             if (
-                station != station_id
-                or str(row.get("target_timezone") or "") != target_timezone
+                str(row.get("target_timezone") or "") != target_timezone
                 or run != _expected_run_cycle(
                     event_date, run_cycle, lead_days=lead_days
                 )
@@ -550,6 +551,7 @@ def run(
         season_bin=season,
         model_ids=models,
         run_cycle=run_cycle,
+        allow_extended_models=True,
     )
     point_oos = _point_oos(
         oos=oos,
@@ -561,10 +563,19 @@ def run(
         isinstance(winner, Mapping)
         and winner.get("probability_non_degradation_vs_uniform") is True
     )
+    selected_models = {
+        str(model).strip().upper()
+        for model in (
+            winner.get("selected_models") if isinstance(winner, Mapping) else ()
+        )
+    }
+    selected_regional_models = selected_models - set(MODEL_PROVIDERS)
+    selected_regional_models -= set(NATIVE_MODEL_PROVIDERS)
     point_passed = point_oos.get("passed_vs_uniform") is True
     formal_quality_gate_passed = (
         truth_authority == "FORMAL_STATION_LANE_TRUTH"
         and probability_passed
+        and not selected_regional_models
     )
     quality_blockers = []
     if truth_authority != "FORMAL_STATION_LANE_TRUTH":
@@ -572,6 +583,10 @@ def run(
     if not probability_passed:
         quality_blockers.append(
             "probability_oos_non_degradation_gate_failed"
+        )
+    if selected_regional_models:
+        quality_blockers.append(
+            "regional_model_formal_artifact_schema_not_promotable"
         )
     quality_diagnostics = []
     if not point_passed:

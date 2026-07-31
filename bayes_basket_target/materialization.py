@@ -51,6 +51,24 @@ _LINEAGE_FORBIDDEN_KEYS = frozenset(
     }
 )
 
+_NATIVE_FORWARD_CORE_KEYS = (
+    "run_cycle_scope",
+    "run_cycle_by_system_json",
+    "run_init_utc_by_system_json",
+    "archive_query_at_utc_by_system_json",
+    "native_forward_availability_evidence_json",
+    "native_forward_lineage_sha256",
+)
+_NATIVE_FORWARD_TAF_KEYS = (
+    "taf_nwp_live_compatibility_json",
+    "taf_nwp_live_compatibility_fingerprint_sha256",
+)
+_NATIVE_FORWARD_SCOPES = frozenset(
+    {"SAME_NATIVE_CYCLE", "PER_SYSTEM_NATIVE_CYCLE"}
+)
+_NATIVE_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
+_MIXED_NATIVE_CYCLES = "MIXED_NATIVE_CYCLES"
+
 
 def _text(name: str, value: Any) -> str:
     result = str(value or "").strip()
@@ -75,6 +93,226 @@ def _timestamp(name: str, value: Any) -> str:
     if parsed.tzinfo is None:
         raise ContractError(f"{name}_timezone_required")
     return result
+
+
+def _lineage_json_mapping(name: str, value: Any) -> dict[str, Any]:
+    """Decode a content-addressed lineage JSON object without coercion."""
+
+    try:
+        decoded = json.loads(_text(name, value))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ContractError(f"{name}_invalid_json") from exc
+    if not isinstance(decoded, Mapping):
+        raise ContractError(f"{name}_invalid_json")
+    return {str(key): item for key, item in decoded.items()}
+
+
+def _lineage_json_identity(name: str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a JSON object with a valid embedded content hash."""
+
+    content = value.get("content_sha256")
+    _sha(f"{name}_content_sha256", content)
+    identity = {key: item for key, item in value.items() if key != "content_sha256"}
+    if str(content).lower() != content_sha256(identity):
+        raise ContractError(f"{name}_content_sha256_mismatch")
+    return identity
+
+
+def _native_forward_lineage(
+    stage: str,
+    *,
+    root: ProbabilityEnvelope,
+    predecessor: ProbabilityEnvelope,
+) -> dict[str, str]:
+    """Validate and return native-forward fields owned by the P0 root.
+
+    A legacy deterministic/same-cycle envelope can omit all native-forward
+    fields. Once any native-forward field is present, the materialization
+    boundary requires the complete scope and evidence set. This keeps old
+    same-cycle fixtures readable while making a mixed-cycle omission or
+    mutation impossible to propagate into P0-M/P1.
+    """
+
+    root_lineage = root.lineage
+    predecessor_lineage = predecessor.lineage
+
+    def _has_core(lineage: Mapping[str, str]) -> bool:
+        if any(key in lineage for key in _NATIVE_FORWARD_CORE_KEYS):
+            return True
+        compatibility = lineage.get("taf_nwp_live_compatibility_json")
+        if compatibility is None:
+            return False
+        try:
+            decoded = _lineage_json_mapping(
+                "taf_nwp_live_compatibility_json", compatibility
+            )
+        except ContractError:
+            return False
+        return isinstance(decoded.get("native_forward_lineage"), Mapping)
+
+    root_has_core = _has_core(root_lineage)
+    predecessor_has_core = _has_core(predecessor_lineage)
+    if not root_has_core:
+        if predecessor_has_core:
+            raise ContractError(f"{stage}_native_forward_root_lineage_missing")
+        return {}
+    if not predecessor_has_core:
+        raise ContractError(f"{stage}_native_forward_predecessor_lineage_missing")
+
+    for key in _NATIVE_FORWARD_CORE_KEYS:
+        if key not in root_lineage or not str(root_lineage.get(key) or "").strip():
+            raise ContractError(f"{stage}_native_forward_lineage_missing:{key}")
+
+    scope = _text("run_cycle_scope", root_lineage.get("run_cycle_scope"))
+    run_cycle = _text("run_cycle", root_lineage.get("run_cycle"))
+    if scope not in _NATIVE_FORWARD_SCOPES:
+        raise ContractError(f"{stage}_native_forward_run_cycle_scope_invalid")
+    mixed = scope == "PER_SYSTEM_NATIVE_CYCLE" or run_cycle == _MIXED_NATIVE_CYCLES
+    if mixed and (scope != "PER_SYSTEM_NATIVE_CYCLE" or run_cycle != _MIXED_NATIVE_CYCLES):
+        raise ContractError(f"{stage}_native_forward_mixed_scope_mismatch")
+    if not mixed and (scope != "SAME_NATIVE_CYCLE" or run_cycle not in _NATIVE_RUN_CYCLES):
+        raise ContractError(f"{stage}_native_forward_same_scope_mismatch")
+
+    cycles = _lineage_json_mapping(
+        "run_cycle_by_system_json", root_lineage["run_cycle_by_system_json"]
+    )
+    inits = _lineage_json_mapping(
+        "run_init_utc_by_system_json", root_lineage["run_init_utc_by_system_json"]
+    )
+    queries = _lineage_json_mapping(
+        "archive_query_at_utc_by_system_json",
+        root_lineage["archive_query_at_utc_by_system_json"],
+    )
+    if set(cycles) != set(inits) or set(cycles) != set(queries):
+        raise ContractError(f"{stage}_native_forward_system_lineage_incomplete")
+    if mixed and not cycles:
+        raise ContractError(f"{stage}_native_forward_system_lineage_empty")
+    if not mixed and any(str(value or "").strip() != run_cycle for value in cycles.values()):
+        raise ContractError(f"{stage}_native_forward_same_cycle_mismatch")
+
+    for system_id in sorted(cycles):
+        cycle = _text("run_cycle_by_system", cycles[system_id]).upper()
+        if cycle not in _NATIVE_RUN_CYCLES:
+            raise ContractError(f"{stage}_native_forward_cycle_invalid")
+        if mixed or inits[system_id] or queries[system_id]:
+            init = datetime.fromisoformat(
+                _timestamp("run_init_utc_by_system", inits[system_id]).replace(
+                    "Z", "+00:00"
+                )
+            )
+            query = datetime.fromisoformat(
+                _timestamp(
+                    "archive_query_at_utc_by_system", queries[system_id]
+                ).replace("Z", "+00:00")
+            )
+            if init.tzinfo is None or query.tzinfo is None or query < init:
+                raise ContractError(f"{stage}_native_forward_timestamp_mismatch")
+            if init.hour != int(cycle[:2]):
+                raise ContractError(f"{stage}_native_forward_cycle_timestamp_mismatch")
+
+    availability = _lineage_json_mapping(
+        "native_forward_availability_evidence_json",
+        root_lineage["native_forward_availability_evidence_json"],
+    )
+    availability_identity = _lineage_json_identity(
+        "native_forward_availability_evidence", availability
+    )
+    availability_by_system = availability.get("by_system")
+    if not isinstance(availability_by_system, Mapping):
+        raise ContractError(f"{stage}_native_forward_availability_invalid")
+    if set(str(key) for key in availability_by_system) != set(cycles):
+        raise ContractError(f"{stage}_native_forward_availability_incomplete")
+    for system_id in sorted(cycles):
+        receipt = availability_by_system[system_id]
+        if not isinstance(receipt, Mapping):
+            raise ContractError(f"{stage}_native_forward_availability_invalid")
+        if (
+            str(receipt.get("run_cycle") or "") != str(cycles[system_id])
+            or str(receipt.get("run_init_utc") or "") != str(inits[system_id])
+            or str(receipt.get("archive_query_at_utc") or "")
+            != str(queries[system_id])
+        ):
+            raise ContractError(f"{stage}_native_forward_availability_mismatch")
+
+    native_lineage_sha = _sha(
+        "native_forward_lineage_sha256",
+        root_lineage["native_forward_lineage_sha256"],
+    )
+    compatibility_json = root_lineage.get("taf_nwp_live_compatibility_json")
+    compatibility_fingerprint = root_lineage.get(
+        "taf_nwp_live_compatibility_fingerprint_sha256"
+    )
+    compatibility: dict[str, Any] | None = None
+    if compatibility_json:
+        compatibility = _lineage_json_mapping(
+            "taf_nwp_live_compatibility_json", compatibility_json
+        )
+        embedded_fingerprint = _sha(
+            "taf_nwp_live_compatibility_fingerprint_sha256",
+            compatibility.get("fingerprint_sha256"),
+        )
+        compatibility_identity = {
+            key: item
+            for key, item in compatibility.items()
+            if key != "fingerprint_sha256"
+        }
+        if embedded_fingerprint != content_sha256(compatibility_identity):
+            raise ContractError(
+                f"{stage}_taf_nwp_live_compatibility_fingerprint_mismatch"
+            )
+        if compatibility_fingerprint is not None and _sha(
+            "taf_nwp_live_compatibility_fingerprint_sha256", compatibility_fingerprint
+        ) != embedded_fingerprint:
+            raise ContractError(
+                f"{stage}_taf_nwp_live_compatibility_fingerprint_mismatch"
+            )
+        native_in_compatibility = compatibility.get("native_forward_lineage")
+        if not isinstance(native_in_compatibility, Mapping):
+            raise ContractError(
+                f"{stage}_taf_nwp_live_compatibility_native_lineage_missing"
+            )
+        if content_sha256(native_in_compatibility) != native_lineage_sha:
+            raise ContractError(f"{stage}_native_forward_lineage_hash_mismatch")
+        expected_native = {
+            "run_cycle_scope": scope,
+            "run_cycle": run_cycle,
+            "run_cycle_by_system": cycles,
+            "run_init_utc_by_system": inits,
+            "archive_query_at_utc_by_system": queries,
+            "availability_evidence": availability,
+        }
+        for key, expected in expected_native.items():
+            if native_in_compatibility.get(key) != expected:
+                raise ContractError(
+                    f"{stage}_native_forward_compatibility_mismatch"
+                )
+    elif compatibility_fingerprint is None:
+        raise ContractError(
+            f"{stage}_taf_nwp_live_compatibility_missing"
+        )
+    else:
+        _sha(
+            "taf_nwp_live_compatibility_fingerprint_sha256",
+            compatibility_fingerprint,
+        )
+
+    native_values = {"run_cycle": run_cycle}
+    native_values.update({
+        key: _text(key, root_lineage.get(key))
+        for key in _NATIVE_FORWARD_CORE_KEYS
+    })
+    for key in _NATIVE_FORWARD_TAF_KEYS:
+        if root_lineage.get(key) is not None:
+            native_values[key] = _text(key, root_lineage[key])
+
+    # Every descendant must carry exactly the root-owned native fields. A
+    # changed JSON string is rejected even if its parsed object is equivalent;
+    # this preserves the content-addressed root evidence byte-for-byte.
+    for key, expected in native_values.items():
+        supplied = predecessor_lineage.get(key)
+        if supplied is None or str(supplied) != expected:
+            raise ContractError(f"{stage}_native_forward_lineage_conflict:{key}")
+    return native_values
 
 
 def _likelihoods(
@@ -128,6 +366,8 @@ def _lineage(
         "selection_evidence_sha256",
         "ensemble_artifact_content_sha256",
         "ensemble_activation_content_sha256",
+        "probability_pathway",
+        "p0_probability_pathway",
         "season_bin",
         "lead_bucket",
         "run_cycle",
@@ -268,6 +508,11 @@ def materialize_p0m(
         raise ContractError("p0m_predecessor_stage_invalid")
     if root.stage != "P0":
         raise ContractError("p0m_root_stage_invalid")
+    native_values = _native_forward_lineage(
+        stage,
+        root=root,
+        predecessor=previous,
+    )
     proof = validate_taf_revision_proof(
         taf_revision_proof,
         artifact=taf_revision_artifact,
@@ -277,6 +522,7 @@ def materialize_p0m(
     values = _lineage(
         stage,
         {
+            **native_values,
             "forecast_revision_id": proof.forecast_revision_id,
             "forecast_source_object_sha256": proof.forecast_source_object_sha256,
             "taf_revision_artifact_id": proof.artifact_id,
@@ -378,6 +624,11 @@ def materialize_p1(
             raise ContractError("p1_prediction_root_branch_mismatch")
     elif previous.checkpoint_id != root.checkpoint_id:
         raise ContractError("p1_initial_predecessor_must_equal_prediction_root")
+    native_values = _native_forward_lineage(
+        "P1",
+        root=root,
+        predecessor=previous,
+    )
     proof = validate_metar_trajectory_update_proof(
         trajectory_proof,
         prediction_root=root,
@@ -419,6 +670,7 @@ def materialize_p1(
     values = _lineage(
         "P1",
         {
+            **native_values,
             "canonical_observation_event_id": last_event_id,
             "canonical_observation_sha256": (
                 last_observation.event.raw_sha256

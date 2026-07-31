@@ -1,41 +1,72 @@
+from __future__ import annotations
+
+import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = (
-    ROOT / "scripts/cutover_delta_v2_official_tick_grid_no_live.sh"
+SCRIPT = ROOT / "scripts/cutover_delta_v2_official_tick_grid_no_live.sh"
+REPLACEMENT = "scripts/cutover_delta_basket_score_v2_no_live.sh"
+
+FORBIDDEN_LEGACY_CONTROL = (
+    "system/",
+    "LaunchDaemon",
+    "sudo",
+    "launchctl",
+    "sqlite",
+    "psql",
+    "curl",
+    "python",
+    "touch",
+    "mkdir",
+    "rm ",
+    "mv ",
+    "cp ",
+    "tee ",
 )
 
 
-def test_tick_grid_cutover_is_target_only_and_no_live() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
+def _text() -> str:
+    return SCRIPT.read_text(encoding="utf-8")
 
-    assert (
-        "--confirm-delta-v2-official-tick-grid-no-live" in text
+
+def _non_comment_commands(text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def test_retired_entry_fails_before_any_legacy_control_or_state_change() -> None:
+    text = _text()
+    commands = _non_comment_commands(text)
+
+    assert commands[0] == "exit 78"
+    assert commands.count("exit 78") == 1
+    assert REPLACEMENT in text
+    assert all(marker not in text for marker in FORBIDDEN_LEGACY_CONTROL)
+
+
+def test_retired_entry_invocation_is_side_effect_free(tmp_path: Path) -> None:
+    before = sorted(
+        path.relative_to(tmp_path)
+        for path in tmp_path.rglob("*")
     )
-    assert (
-        "delta_basket_score_v2_rkpk_no_live_bootstrap_v3.json"
-        in text
-    )
-    assert (
-        "bayes_basket_target_target_v2_station_policy_no_live_v2.json"
-        in text
-    )
-    assert '/bin/launchctl bootout "system/$TARGET_LABEL"' in text
-    assert '/bin/launchctl bootstrap system "$TARGET_PLIST"' in text
-    assert 'bootout "system/$MARKET_LABEL"' not in text
-    assert 'bootout "system/$ORDER_LABEL"' not in text
-    assert "delta_v2_tick_grid_protected_service_pid_changed" in text
-    assert "live_submit_authorized" in text
-    assert "calls_order_gateway" in text
-    assert "orders_submitted" in text
-    assert "live_pause_retained" in text
-    assert "PRAGMA quick_check" in text
-    assert "PRAGMA foreign_key_check" in text
-    assert "PRAGMA journal_mode" in text
-    assert "price=0.004" in text
-    assert "p004of1000" in text
-    assert "DELTA_BASKET_SCORE_V2" in text
-    assert "cash_template_caps_target" in text
-    assert "ready_no_live" in text
-    assert "write_bounded_json" in text
+
+    for args in ([], ["--legacy-confirmation"]):
+        completed = subprocess.run(
+            ["/bin/bash", str(SCRIPT), *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert completed.returncode == 78
+        assert completed.stdout == ""
+        assert completed.stderr == ""
+        assert sorted(
+            path.relative_to(tmp_path)
+            for path in tmp_path.rglob("*")
+        ) == before

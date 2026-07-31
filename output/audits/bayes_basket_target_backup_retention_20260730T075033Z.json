@@ -1,0 +1,314 @@
+{
+  "active_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "calls_order_gateway": false,
+  "generated_at_ns": 1785397868893181000,
+  "group_count": 4,
+  "groups": [
+    {
+      "apply": {
+        "deleted": [
+          "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T074519Z.backup.db"
+        ],
+        "deleted_bytes": 191328256,
+        "deleted_count": 1,
+        "directory": "/Users/xiong/weather/data",
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "4b76d134b7774573033ef3e304a576e47652d374e7b40858f2a89d3a11118e85",
+        "retained_bytes": 382656512,
+        "retained_count": 2,
+        "schema": "bayes_basket_target_maintenance_retention_apply_v1"
+      },
+      "name": "target_backups",
+      "plan": {
+        "active_db_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+        "delete_bytes": 191328256,
+        "delete_count": 1,
+        "directory": "/Users/xiong/weather/data",
+        "directory_device": 16777233,
+        "directory_inode": 468904898,
+        "entries": [
+          {
+            "action": "delete",
+            "device": 16777233,
+            "inode": 1340578167,
+            "kind": "backup",
+            "mtime_ns": 1785397528137195765,
+            "name": "bayes_basket_target_ssot.pre_probability_evidence_20260730T074519Z.backup.db",
+            "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T074519Z.backup.db",
+            "reason": "max_count_exceeded",
+            "recoverable": true,
+            "size": 191328256
+          },
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1340653089,
+            "kind": "backup",
+            "mtime_ns": 1785397752583142999,
+            "name": "bayes_basket_target_ssot.pre_probability_evidence_20260730T074904Z.backup.db",
+            "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T074904Z.backup.db",
+            "reason": "within_retention_limits",
+            "recoverable": true,
+            "size": 191328256
+          },
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1340676280,
+            "kind": "backup",
+            "mtime_ns": 1785397840510414944,
+            "name": "bayes_basket_target_ssot.pre_probability_evidence_20260730T075033Z.backup.db",
+            "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T075033Z.backup.db",
+            "reason": "newest_recoverable_backup",
+            "recoverable": true,
+            "size": 191328256
+          }
+        ],
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "4b76d134b7774573033ef3e304a576e47652d374e7b40858f2a89d3a11118e85",
+        "planned_at_ns": 1785397866637975000,
+        "policy": {
+          "backup_prefix": "bayes_basket_target_ssot.pre_",
+          "backup_suffixes": [
+            ".db"
+          ],
+          "failed_receipt_prefix": "__no_failed_receipt_match__",
+          "keep_failed_receipts": 0,
+          "max_age_seconds": 2592000,
+          "max_backup_bytes": 268435456,
+          "max_count": 2,
+          "max_scan_bytes": 2147483648,
+          "max_scan_entries": 4096,
+          "max_total_bytes": 536870912,
+          "receipt_suffixes": [
+            ".json"
+          ],
+          "require_recoverable_backup": true
+        },
+        "retained_bytes": 382656512,
+        "retained_count": 2,
+        "schema": "bayes_basket_target_maintenance_retention_plan_v1",
+        "workspace_root": "/Users/xiong/weather"
+      }
+    },
+    {
+      "apply": {
+        "deleted": [],
+        "deleted_bytes": 0,
+        "deleted_count": 0,
+        "directory": "/Users/xiong/weather/data",
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "6ec8dc7d1e81e07a2fa9fa0050c6d29a06c8900df1aba64c65a688783084c88c",
+        "retained_bytes": 409600,
+        "retained_count": 1,
+        "schema": "bayes_basket_target_maintenance_retention_apply_v1"
+      },
+      "name": "target_activation_snapshot_backups",
+      "plan": {
+        "active_db_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+        "delete_bytes": 0,
+        "delete_count": 0,
+        "directory": "/Users/xiong/weather/data",
+        "directory_device": 16777233,
+        "directory_inode": 468904898,
+        "entries": [
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1235466898,
+            "kind": "backup",
+            "mtime_ns": 1784811693163578263,
+            "name": "bayes_basket_target_ssot.activation-20260723.backup.db",
+            "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.activation-20260723.backup.db",
+            "reason": "newest_recoverable_backup",
+            "recoverable": true,
+            "size": 409600
+          }
+        ],
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "6ec8dc7d1e81e07a2fa9fa0050c6d29a06c8900df1aba64c65a688783084c88c",
+        "planned_at_ns": 1785397868585629000,
+        "policy": {
+          "backup_prefix": "bayes_basket_target_ssot.activation-",
+          "backup_suffixes": [
+            ".db"
+          ],
+          "failed_receipt_prefix": "__no_failed_receipt_match__",
+          "keep_failed_receipts": 0,
+          "max_age_seconds": 2592000,
+          "max_backup_bytes": 268435456,
+          "max_count": 2,
+          "max_scan_bytes": 2147483648,
+          "max_scan_entries": 4096,
+          "max_total_bytes": 536870912,
+          "receipt_suffixes": [
+            ".json"
+          ],
+          "require_recoverable_backup": true
+        },
+        "retained_bytes": 409600,
+        "retained_count": 1,
+        "schema": "bayes_basket_target_maintenance_retention_plan_v1",
+        "workspace_root": "/Users/xiong/weather"
+      }
+    },
+    {
+      "apply": {
+        "deleted": [],
+        "deleted_bytes": 0,
+        "deleted_count": 0,
+        "directory": "/Users/xiong/weather/data",
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "8efc4a7e9e568299498e36206b3faf200468b72df1f56675c1842db097cc6763",
+        "retained_bytes": 180224,
+        "retained_count": 1,
+        "schema": "bayes_basket_target_maintenance_retention_apply_v1"
+      },
+      "name": "hard_no_backups",
+      "plan": {
+        "active_db_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+        "delete_bytes": 0,
+        "delete_count": 0,
+        "directory": "/Users/xiong/weather/data",
+        "directory_device": 16777233,
+        "directory_inode": 468904898,
+        "entries": [
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1301752759,
+            "kind": "backup",
+            "mtime_ns": 1785166666464711212,
+            "name": "hard_no_decisions.pre_timezone_20260727T153740Z.backup.db",
+            "path": "/Users/xiong/weather/data/hard_no_decisions.pre_timezone_20260727T153740Z.backup.db",
+            "reason": "newest_recoverable_backup",
+            "recoverable": true,
+            "size": 180224
+          }
+        ],
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "8efc4a7e9e568299498e36206b3faf200468b72df1f56675c1842db097cc6763",
+        "planned_at_ns": 1785397868608847000,
+        "policy": {
+          "backup_prefix": "hard_no_decisions.pre_timezone_",
+          "backup_suffixes": [
+            ".db"
+          ],
+          "failed_receipt_prefix": "__no_failed_receipt_match__",
+          "keep_failed_receipts": 0,
+          "max_age_seconds": 2592000,
+          "max_backup_bytes": 268435456,
+          "max_count": 2,
+          "max_scan_bytes": 2147483648,
+          "max_scan_entries": 4096,
+          "max_total_bytes": 536870912,
+          "receipt_suffixes": [
+            ".json"
+          ],
+          "require_recoverable_backup": true
+        },
+        "retained_bytes": 180224,
+        "retained_count": 1,
+        "schema": "bayes_basket_target_maintenance_retention_plan_v1",
+        "workspace_root": "/Users/xiong/weather"
+      }
+    },
+    {
+      "apply": {
+        "deleted": [],
+        "deleted_bytes": 0,
+        "deleted_count": 0,
+        "directory": "/Users/xiong/weather/output/audits",
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "e4e51a7c8fa308ceaac38315ab1e6670efc7de24f8ad028d42eb99becfbb1aa6",
+        "retained_bytes": 1467,
+        "retained_count": 3,
+        "schema": "bayes_basket_target_maintenance_retention_apply_v1"
+      },
+      "name": "failed_cutover_receipts",
+      "plan": {
+        "active_db_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+        "delete_bytes": 0,
+        "delete_count": 0,
+        "directory": "/Users/xiong/weather/output/audits",
+        "directory_device": 16777233,
+        "directory_inode": 1044786153,
+        "entries": [
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1303242456,
+            "kind": "failed_receipt",
+            "mtime_ns": 1785194905298705958,
+            "name": "bayes_basket_target_ssot_v4_cutover_failed_20260727T232824Z.json",
+            "path": "/Users/xiong/weather/output/audits/bayes_basket_target_ssot_v4_cutover_failed_20260727T232824Z.json",
+            "reason": "recent_failed_receipt_minimum",
+            "recoverable": null,
+            "size": 489
+          },
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1303300459,
+            "kind": "failed_receipt",
+            "mtime_ns": 1785198771464496281,
+            "name": "bayes_basket_target_ssot_v4_cutover_failed_20260728T003251Z.json",
+            "path": "/Users/xiong/weather/output/audits/bayes_basket_target_ssot_v4_cutover_failed_20260728T003251Z.json",
+            "reason": "recent_failed_receipt_minimum",
+            "recoverable": null,
+            "size": 489
+          },
+          {
+            "action": "keep",
+            "device": 16777233,
+            "inode": 1303303086,
+            "kind": "failed_receipt",
+            "mtime_ns": 1785199272971202904,
+            "name": "bayes_basket_target_ssot_v4_cutover_failed_20260728T004112Z.json",
+            "path": "/Users/xiong/weather/output/audits/bayes_basket_target_ssot_v4_cutover_failed_20260728T004112Z.json",
+            "reason": "recent_failed_receipt_minimum",
+            "recoverable": null,
+            "size": 489
+          }
+        ],
+        "limit_notes": [],
+        "limits_satisfied": true,
+        "plan_sha256": "e4e51a7c8fa308ceaac38315ab1e6670efc7de24f8ad028d42eb99becfbb1aa6",
+        "planned_at_ns": 1785397868613316000,
+        "policy": {
+          "backup_prefix": "__no_backup_match__",
+          "backup_suffixes": [
+            ".db"
+          ],
+          "failed_receipt_prefix": "bayes_basket_target_ssot_v4_cutover_failed_",
+          "keep_failed_receipts": 8,
+          "max_age_seconds": 2592000,
+          "max_backup_bytes": 268435456,
+          "max_count": 8,
+          "max_scan_bytes": 67108864,
+          "max_scan_entries": 4096,
+          "max_total_bytes": 16777216,
+          "receipt_suffixes": [
+            ".json"
+          ],
+          "require_recoverable_backup": false
+        },
+        "retained_bytes": 1467,
+        "retained_count": 3,
+        "schema": "bayes_basket_target_maintenance_retention_plan_v1",
+        "workspace_root": "/Users/xiong/weather"
+      }
+    }
+  ],
+  "orders_submitted": 0,
+  "places_orders": false,
+  "schema": "bayes_basket_target_maintenance_retention_run_v1",
+  "state": "applied"
+}

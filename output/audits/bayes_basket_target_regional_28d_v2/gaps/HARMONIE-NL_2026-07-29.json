@@ -1,0 +1,283 @@
+{
+  "as_of_utc": "2026-07-30T11:00:00Z",
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "checks": {
+    "all_expected_station_dates_complete": true,
+    "future_data_used": false,
+    "historical_closed_targets_only": true,
+    "native_arrival_not_claimed": true,
+    "native_publication_not_claimed": true,
+    "online_weight_update": false
+  },
+  "content_sha256": "acffbb59d0b060150b0b16f6c472f1d6f01702d1621a0021898450cfc1faf22a",
+  "end_date": "2026-07-29",
+  "excluded_dates": [],
+  "inputs": [
+    {
+      "event_date": "2026-07-29",
+      "raw_message_sha256": "f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/harmonie-nl/raw/f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=51.505%2C52.315&longitude=0.055%2C4.79&hourly=temperature_2m&models=knmi_harmonie_arome_netherlands&timezone=UTC&run=2026-07-28T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-07-28T12:00:00Z"
+    }
+  ],
+  "model_id": "HARMONIE-NL",
+  "model_rows": [
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-29",
+      "forecast_daily_max_c": 35.6,
+      "future_data_used": false,
+      "model_id": "HARMONIE-NL",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-07-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-07-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-07-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-07-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.6,
+          "valid_time_utc": "2026-07-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-07-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.8,
+          "valid_time_utc": "2026-07-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.7,
+          "valid_time_utc": "2026-07-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-07-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-07-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.0,
+          "valid_time_utc": "2026-07-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-07-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.3,
+          "valid_time_utc": "2026-07-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.0,
+          "valid_time_utc": "2026-07-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.3,
+          "valid_time_utc": "2026-07-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.6,
+          "valid_time_utc": "2026-07-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.1,
+          "valid_time_utc": "2026-07-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.5,
+          "valid_time_utc": "2026-07-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-07-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-07-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.4,
+          "valid_time_utc": "2026-07-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-07-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-07-29T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.8,
+          "valid_time_utc": "2026-07-29T22:00:00Z"
+        }
+      ],
+      "provider_id": "knmi_harmonie_arome_netherlands_open_meteo",
+      "raw_message_sha256": "f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/harmonie-nl/raw/f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098.json",
+      "receipt_sha256": "c7c6c8ed9cd1b9d6813b01df34f908a936250ea00165d5b43e3eecaf198cfd00",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "EGLC",
+      "target_timezone": "Europe/London"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-29",
+      "forecast_daily_max_c": 35.4,
+      "future_data_used": false,
+      "model_id": "HARMONIE-NL",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-28T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-07-28T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-07-28T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-07-29T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.4,
+          "valid_time_utc": "2026-07-29T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-07-29T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.8,
+          "valid_time_utc": "2026-07-29T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-07-29T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-07-29T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-07-29T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.8,
+          "valid_time_utc": "2026-07-29T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.4,
+          "valid_time_utc": "2026-07-29T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.8,
+          "valid_time_utc": "2026-07-29T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.0,
+          "valid_time_utc": "2026-07-29T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.6,
+          "valid_time_utc": "2026-07-29T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.6,
+          "valid_time_utc": "2026-07-29T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.4,
+          "valid_time_utc": "2026-07-29T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.6,
+          "valid_time_utc": "2026-07-29T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.1,
+          "valid_time_utc": "2026-07-29T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.7,
+          "valid_time_utc": "2026-07-29T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 33.3,
+          "valid_time_utc": "2026-07-29T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.6,
+          "valid_time_utc": "2026-07-29T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.7,
+          "valid_time_utc": "2026-07-29T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.0,
+          "valid_time_utc": "2026-07-29T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-07-29T21:00:00Z"
+        }
+      ],
+      "provider_id": "knmi_harmonie_arome_netherlands_open_meteo",
+      "raw_message_sha256": "f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/harmonie-nl/raw/f45b4398a0ca8be9bfed0e71d0d8dc1404c39f55fe2257222a65c0cc5758c098.json",
+      "receipt_sha256": "3e2e70c855f52a28cbe49b449dd006fc8953edb41af45fb43e9c38ea09295b92",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "EHAM",
+      "target_timezone": "Europe/Amsterdam"
+    }
+  ],
+  "provider_id": "knmi_harmonie_arome_netherlands_open_meteo",
+  "schema": "bayes_basket_target_historical_regional_exact_run_evidence_v1",
+  "source": {
+    "model_parameter": "knmi_harmonie_arome_netherlands",
+    "native_publication_time_available": false,
+    "run_cycle": "12Z",
+    "run_day_offset": 1,
+    "single_run_parameter_explicit": true,
+    "source_class": "aggregator_republisher",
+    "source_url": "https://single-runs-api.open-meteo.com/v1/forecast"
+  },
+  "start_date": "2026-07-29",
+  "station_ids": [
+    "EGLC",
+    "EHAM"
+  ]
+}

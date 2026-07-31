@@ -37,15 +37,15 @@
       },
       "document_id": "bayes_basket_target_architecture_v1",
       "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.json",
-      "json_sha256": "b9124f775fdd0bd0943e8ff09b7c5ee1ca7d208009bfdbc8879cdf363032b5ce",
+      "json_sha256": "872ce12e759a7568b67198d6035d607c0f3a4248a8138028811224911e766351",
       "markdown": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_target_architecture_v1.md",
-      "markdown_sha256": "9410c9a30721f195e02ccf583c2461e8fb0ea81f42dd0aad1dfd501ec74b4f58",
+      "markdown_sha256": "0e73d30e52dd1ea4349dde75d178f8ec26ac32c6f2c0e330b5f81170992c6bba",
       "status": "TARGET_PRODUCTION_NO_LIVE",
-      "version": "1.14.45"
+      "version": "1.14.46"
     }
   ],
-  "manifest_sha256": "540fb9b370f8438d15c602f17927d71001c884e72e18dcb073e57b4e63db1e08",
-  "receipt_sha256": "863c51fd52a0ed06cd4415a8a318a6f305d88f24c7c828a57eeb29592de2ea87",
+  "manifest_sha256": "5f13ac1cf4f16d1f8004dbfb2ad25d7bf455df02990f461230b8a8678257fd0c",
+  "receipt_sha256": "a7e954df555a9785c6258adae356d0748ff79c76654a374db0ab3986de284c84",
   "roadmap": {
     "checks": {
       "architecture_reference_matches": true,
@@ -59,22 +59,58 @@
       "version_matches": true
     },
     "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.json",
-    "json_sha256": "272f7f500927d41b9fdbc0eb8b28ed93f4147766a2114c13ab51152967ed96b6",
-    "markdown_sha256": "cc04cc7ff0d762bc0407fbf194b32b37af0543adcfaf1b8d67d2bc554772dd2f",
+    "json_sha256": "a011263386344ec47179aa484a9b2baecbf7fc954cd1f967a5a71d015aa22e7b",
+    "markdown_sha256": "f57c45ea6ce46a38bb544f8c9d5f573b391a12bf51bcdb2763626d117c8157b6",
     "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
-    "version": "1.6.90"
+    "version": "1.6.92"
   },
   "schema": "bayes_basket_target_document_authority_audit_v1",
   "status": "PASS",
   "subordinate_contracts": [
     {
       "does_not_authorize_live": true,
-      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
-      "json_sha256": "37b53e430a6da0d67a85b69f7641f34294dd0a6da606b8c8dcb97c601e40d4aa",
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_model_calibration_ssot_v1.json",
+      "json_sha256": "37f89f57e8b919266f2cb5d86cf7766f66d97bd37779416a454422a6c3ccb95d",
       "machine_forbids_p0f": true,
-      "markdown_sha256": "aaff1d4ccea0180494165d0a1d6e1ec19dccaaed6ea4b8c8f4eadb8a91946bba",
+      "markdown_sha256": "c11f568c0566a842025834b7ff8a530fb13abb31c993d0cc00edec06b9e26f88",
+      "markdown_stage_contract_present": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_model_calibration_ssot_v1.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    {
+      "does_not_authorize_live": true,
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/global_station_executable_basket_formula_v1.json",
+      "json_sha256": "abd2e5736372fb8114439e03c0308cfbe66cea3ddad7678ec64ee8ae490914da",
+      "machine_forbids_p0f": true,
+      "markdown_sha256": "eae05d2454d825499e457c9acf5e5372195327c62ef99cf63dddf9f1b2e1f82a",
+      "markdown_stage_contract_present": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/global_station_executable_basket_formula_v1.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    {
+      "does_not_authorize_live": true,
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
+      "json_sha256": "31bc776cad3e5153466599447ab9944e9cc2ef4b0207f4ff04ac97ebf2d2788b",
+      "machine_forbids_p0f": true,
+      "markdown_sha256": "c46ff6cc2e2fbafdf365ea336f121cb15c5168bda8486c519743c73508dfed36",
       "markdown_stage_contract_present": true,
       "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
+      "present": true,
+      "status_matches": true,
+      "version_matches": true
+    },
+    {
+      "does_not_authorize_live": true,
+      "json": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.json",
+      "json_sha256": "61fe228224c9fa7062508ea118a962c57ce600c2bf724dca838d43d9d61daa05",
+      "machine_forbids_p0f": true,
+      "markdown_sha256": "0805bef56a0b2b18430de7ea08ea1cf04a9a1b6f54c67535ddf79135d39befe4",
+      "markdown_stage_contract_present": true,
+      "path": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.md",
       "present": true,
       "status_matches": true,
       "version_matches": true

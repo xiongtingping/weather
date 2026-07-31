@@ -171,18 +171,6 @@ def test_out_of_order_older_p0_does_not_lower_latest_authority() -> None:
     )
 
 
-def test_real_native_decode_registry_rehearsal_closes_m3_03() -> None:
-    result = run_rehearsal()
-    assert result["state"] == "REHEARSED"
-    assert result["posterior_version"] == "p0_nwp_historical_meta_anchor_v4"
-    assert result["theta_zero_fallback"] is True
-    assert result["probabilities_before_after_equal"] is True
-    assert result["model_count"] >= 2
-    assert abs(sum(result["weights"].values()) - 1.0) <= 1e-9
-    assert result["transaction"]["second_replay"]["wrote"] is False
-    assert result["transaction"]["failure_after_proof_rolled_back"] is True
-    assert result["transaction"]["failure_at_history_rolled_back"] is True
-    assert result["transaction"]["out_of_order_lower_stage_preserved_latest"] is True
-    assert result["temporary_cleanup_confirmed"] is True
-    assert result["boundary"]["writes_real_database"] is False
-    assert result["boundary"]["calls_order_gateway"] is False
+def test_retired_deterministic_m3_03_scope_cannot_rebind_current_registry() -> None:
+    with pytest.raises(ContractError, match="m303_registry_scope_missing"):
+        run_rehearsal()

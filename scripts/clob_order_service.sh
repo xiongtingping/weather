@@ -9,8 +9,8 @@ weather_prepare_bounded_service_logs \
   "$ROOT/data/logs/clob_order_service.out.log" \
   "$ROOT/data/logs/clob_order_service.err.log"
 
-if [ "${WEATHER_SERVICE_DOMAIN:-}" != "system" ]; then
-  echo "[clob_order_service] system_domain_required" >&2
+if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then
+  echo "[clob_order_service] user_domain_required" >&2
   exit 78
 fi
 
@@ -34,7 +34,7 @@ fi
 
 # Preserve the launchd authority after optional credential loading.  This
 # resident supplies evidence and health only; order submission remains closed.
-export WEATHER_SERVICE_DOMAIN=system
+export WEATHER_SERVICE_DOMAIN=user
 export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
 export PM_TARGET_EXECUTION_MODE=production_no_live
 export PM_CLOB_ORDER_SERVICE_READ_ONLY=1

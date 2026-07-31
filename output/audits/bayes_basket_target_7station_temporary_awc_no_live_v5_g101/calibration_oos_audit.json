@@ -1,0 +1,87 @@
+{
+  "as_of_utc": "2026-07-30T13:46:12Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "chronological_holdout_no_leakage": true,
+    "ensemble_oos_metrics_materialized": true,
+    "ensemble_probability_oos_materialized": true,
+    "ensemble_selection_non_degradation_vs_uniform": true,
+    "metric_rows_consistent": true
+  },
+  "ensemble_report_rows": [
+    {
+      "brier_score": 0.7381737316569588,
+      "crps": 0.5230853262479983,
+      "nll": 1.5235680942994618,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "77aac9407a4cd125e738706f0819457ff4c58fbd8789f2727fbb557c43de7020",
+      "selection_mae_improvement_vs_uniform_c": 0.0010473214285733334,
+      "selection_rmse_improvement_vs_uniform_c": -0.011784783795172005
+    },
+    {
+      "brier_score": 0.8107243495612526,
+      "crps": 0.7286306951076237,
+      "nll": 1.8692285250465885,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "23fdb08d34c93ffdcdb1588875dc3eb74e9e4a5ca7825ad91e7e2e03c196d5d4",
+      "selection_mae_improvement_vs_uniform_c": -0.006503571428570609,
+      "selection_rmse_improvement_vs_uniform_c": 0.2265788725341653
+    },
+    {
+      "brier_score": 0.8320418663924658,
+      "crps": 1.1960064563150854,
+      "nll": 2.4477407926635144,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "8f07bba5eb3ab7584d889747e21c0728a13be45ff8cb0f18741cef228fdad006",
+      "selection_mae_improvement_vs_uniform_c": 0.04643571428571436,
+      "selection_rmse_improvement_vs_uniform_c": 0.03684698701896094
+    },
+    {
+      "brier_score": 0.7611862705256164,
+      "crps": 0.6289324666148909,
+      "nll": 1.6089183033678631,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "0e248c48a6ce37c666388a09a72f53010fc0b7b827b24cd8eef2fe2bfcd7e9f6",
+      "selection_mae_improvement_vs_uniform_c": 0.15029642857142544,
+      "selection_rmse_improvement_vs_uniform_c": 0.20444372254310506
+    },
+    {
+      "brier_score": 0.7748822116314544,
+      "crps": 0.6161208069539714,
+      "nll": 1.7247432485484762,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "2bf70861133c4f50b39260e3488edaa8ed1e22e56f574dfd3e28a30deb42f8e9",
+      "selection_mae_improvement_vs_uniform_c": 0.0,
+      "selection_rmse_improvement_vs_uniform_c": 0.0
+    },
+    {
+      "brier_score": 0.7708534815324459,
+      "crps": 0.5859469491600205,
+      "nll": 1.7025280959802724,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "e57ce2b9d91c11a47d7a5b2d150cd4ff50ff8a83ed7401faf47f69381872b490",
+      "selection_mae_improvement_vs_uniform_c": 0.28996071428571213,
+      "selection_rmse_improvement_vs_uniform_c": 0.3288848913049093
+    },
+    {
+      "brier_score": 0.8527133835693037,
+      "crps": 1.0012611354256062,
+      "nll": 2.0560026999614056,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "2bc94b92697fbcba17f60a8d7ecd3da2834f58ffee888724623b8b8801caae33",
+      "selection_mae_improvement_vs_uniform_c": 0.34066428571428453,
+      "selection_rmse_improvement_vs_uniform_c": 0.29792558032295724
+    }
+  ],
+  "evidence_sha256": "59547f0519a303ffba154625d80c7dee78fb5913040e07209866de5184b098be",
+  "input_artifact": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_explicit_18z_d2_oos_min20_holdout8_v5/manifest.json",
+    "receipt_sha256": "b6edbf0f5b7c103805924d9b96515ef0c1e3bde603a62602c54536c4e8c14990"
+  },
+  "schema": "bayes_basket_target_calibration_oos_audit_v1"
+}

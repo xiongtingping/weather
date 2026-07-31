@@ -44,6 +44,18 @@ from .native_model_decode import (
     materialize_native_daily_curves,
     parse_grib_get_temperature_output,
 )
+from .native_ensemble_contract import (
+    MIN_CROSS_ENSEMBLE_FAMILIES,
+    P0_PROBABILITY_PATHWAY,
+    native_ensemble_family_set_hash,
+    validate_cross_native_ensemble_gate,
+    validate_cross_native_ensemble_weights,
+)
+from .native_ensemble_oos import (
+    build_native_ensemble_oos,
+    persist_native_ensemble_oos,
+)
+from .native_ensemble_p0 import compile_native_ensemble_p0
 from .contracts import (
     CalibrationActivation,
     ContractError,
@@ -218,6 +230,14 @@ __all__ = [
     "NATIVE_MODEL_DECODE_SCHEMA",
     "CashPhase",
     "ContractError",
+    "MIN_CROSS_ENSEMBLE_FAMILIES",
+    "P0_PROBABILITY_PATHWAY",
+    "native_ensemble_family_set_hash",
+    "validate_cross_native_ensemble_gate",
+    "validate_cross_native_ensemble_weights",
+    "build_native_ensemble_oos",
+    "persist_native_ensemble_oos",
+    "compile_native_ensemble_p0",
     "CurrentAsOfModelRun",
     "FORMAL_ENSEMBLE_METHOD_VERSION",
     "MIN_FORMAL_ENSEMBLE_MODELS",

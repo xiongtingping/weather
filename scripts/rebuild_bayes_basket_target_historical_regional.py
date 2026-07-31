@@ -299,9 +299,16 @@ def rebuild(
     session: requests.Session,
     timeout_seconds: float = 45.0,
     request_interval_seconds: float = 0.0,
+    excluded_dates: Sequence[str] = (),
 ) -> dict[str, Any]:
     model = str(model_id or "").strip().upper()
     days = _dates(first_date, last_date)
+    excluded = {str(value).strip() for value in excluded_dates}
+    if any(value not in days for value in excluded):
+        raise ContractError("regional_history_excluded_date_out_of_range")
+    days = [value for value in days if value not in excluded]
+    if not days:
+        raise ContractError("regional_history_date_scope_empty")
     as_of = _parse_utc(as_of_utc, reason="regional_history_asof_invalid")
     profile, stations, timezones = _load_scope(
         pool_path=pool_path,
@@ -424,6 +431,7 @@ def rebuild(
         },
         "start_date": days[0],
         "end_date": days[-1],
+        "excluded_dates": sorted(excluded),
         "as_of_utc": _utc_text(as_of),
         "station_ids": stations,
         "model_rows": model_rows,
@@ -468,6 +476,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=float,
         default=0.0,
     )
+    parser.add_argument(
+        "--exclude-date",
+        action="append",
+        default=[],
+        help=(
+            "Exclude a provider-confirmed unavailable date from this bounded "
+            "window; repeatable. The remaining explicit dates are retained."
+        ),
+    )
     args = parser.parse_args(argv)
     session = requests.Session()
     session.headers.update({"User-Agent": "bayes-basket-regional-history/1"})
@@ -488,6 +505,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         session=session,
         timeout_seconds=args.timeout_seconds,
         request_interval_seconds=args.request_interval_seconds,
+        excluded_dates=args.exclude_date,
     )
     print(json.dumps({
         "schema": result["schema"],

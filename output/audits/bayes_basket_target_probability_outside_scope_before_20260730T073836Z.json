@@ -1,0 +1,114 @@
+{
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "missing_tables": [
+    "basket_probability_evidence_promotion"
+  ],
+  "outside_scope_counts": {
+    "basket_probability_bridge_bucket_probability": 0,
+    "basket_probability_bridge_history": 0,
+    "basket_probability_bridge_latest": 0,
+    "basket_probability_evidence_activation": 0,
+    "basket_probability_evidence_artifact": 0,
+    "basket_probability_evidence_promotion": -1,
+    "basket_probability_update_proof": 0
+  },
+  "schema": "bayes_basket_target_probability_scope_snapshot_v1",
+  "scoped_counts": {
+    "basket_probability_bridge_bucket_probability": 2904,
+    "basket_probability_bridge_history": 264,
+    "basket_probability_bridge_latest": 3,
+    "basket_probability_evidence_activation": 0,
+    "basket_probability_evidence_artifact": 0,
+    "basket_probability_evidence_promotion": -1,
+    "basket_probability_update_proof": 0
+  },
+  "station_scope": {
+    "canonical_default": true,
+    "max_station_count": 45,
+    "mode": "allowlist",
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ]
+  },
+  "tables": {
+    "basket_probability_bridge_bucket_probability": {
+      "outside_scope": 0,
+      "scoped": 2904,
+      "state": "READY"
+    },
+    "basket_probability_bridge_history": {
+      "outside_scope": 0,
+      "scoped": 264,
+      "state": "READY"
+    },
+    "basket_probability_bridge_latest": {
+      "outside_scope": 0,
+      "scoped": 3,
+      "state": "READY"
+    },
+    "basket_probability_evidence_activation": {
+      "outside_scope": 0,
+      "scoped": 0,
+      "state": "READY"
+    },
+    "basket_probability_evidence_artifact": {
+      "outside_scope": 0,
+      "scoped": 0,
+      "state": "READY"
+    },
+    "basket_probability_evidence_promotion": {
+      "outside_scope": -1,
+      "scoped": -1,
+      "state": "STATION_COLUMN_MISSING"
+    },
+    "basket_probability_update_proof": {
+      "outside_scope": 0,
+      "scoped": 0,
+      "state": "READY"
+    }
+  }
+}

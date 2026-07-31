@@ -18,7 +18,7 @@
     <key>EnvironmentVariables</key>
     <dict>
       <key>WEATHER_SERVICE_DOMAIN</key>
-      <string>system</string>
+      <string>user</string>
       <key>PM_TARGET_EXECUTION_MODE</key>
     <string>production_no_live</string>
     <key>PM_CLOB_ORDER_SERVICE_READ_ONLY</key>

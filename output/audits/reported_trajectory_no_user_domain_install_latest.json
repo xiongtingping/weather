@@ -1,0 +1,20 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "b7fad895bd8801e70fc3e0d1d2d94ef7edc505df6e23aa2e64d32adb93c8cbca",
+  "domain": "gui/501",
+  "installed_at_utc": "2026-07-31T05:21:33Z",
+  "live_pause_retained": true,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "passwordless_future_control": true,
+  "production_no_live": true,
+  "schema": "reported_trajectory_no_user_domain_install_v1",
+  "service_labels": [
+    "com.weather.reported_trajectory_no",
+    "com.weather.market_ws",
+    "com.weather.clob_order_service"
+  ],
+  "single_domain_owner": true,
+  "state": "PASS",
+  "system_domain_absent": true
+}

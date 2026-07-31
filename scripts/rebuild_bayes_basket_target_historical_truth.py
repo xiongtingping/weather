@@ -607,9 +607,15 @@ def _awc_fetch(
     batch_deadline = time.monotonic() + batch_budget_sec
     budget_exhausted = False
     global _AWC_CONNECT_TO
-    _AWC_CONNECT_TO = _resolve_awc_connect_to(
-        _active_proxy_url(),
-        timeout_sec=timeout_sec,
+    # A reachable HTTP proxy owns DNS resolution for the CONNECT hostname.
+    # Forcing a separately resolved address through Clash can route to a
+    # different edge and has produced TLS/connection resets.  The bounded DoH
+    # connect-to escape hatch is therefore direct-transport only.
+    active_proxy = _active_proxy_url()
+    _AWC_CONNECT_TO = (
+        ()
+        if active_proxy
+        else _resolve_awc_connect_to("", timeout_sec=timeout_sec)
     )
     station_chunks = [stations[index:index + AWC_QUERY_CHUNK] for index in range(0, len(stations), AWC_QUERY_CHUNK)]
     for event_date in event_dates:

@@ -6,7 +6,7 @@
       "resource_path": "config/trading/basket_plus_hard_no_v1.json"
     }
   ],
-  "manifest_sha256": "3ddf7225bde79253ef583efa23bb335cf85da15b016d7657e5bcf32bc340e95f",
+  "manifest_sha256": "c7d2c2cc5e9d501d2e30a1f2fe31e65c758d751801d708c5acfcb7704e468af4",
   "manifest_version": 1,
   "protected_legacy_config": [
     {
@@ -36,7 +36,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/reported_trajectory_no_daemon.py",
-        "sha256": "6687d4718ba9141df7bc4a6523c8ecac3d7432a37bdeb7e344022fbe270ba6d5"
+        "sha256": "bb366cb33d754ff2d30b87813393d97fcafe6dff310b004f43f140ca582645ba"
       },
       {
         "consumers": [
@@ -44,7 +44,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/reported_trajectory_no_daemon.sh",
-        "sha256": "e45ca17ae198166e820ba7fd91503c8f17e28fe7591483058cb5d184181da5be"
+        "sha256": "d983434d143f6b6909e95bad353e2f1c5ce89d0ec58fe58c444ebae182717e02"
       },
       {
         "consumers": [
@@ -60,7 +60,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/market_ws_listener.sh",
-        "sha256": "20d2e46397fe8ccd2f54a8c399ffc3adc7320ee21bfee290e993b85a8aa07980"
+        "sha256": "8d87fa62042407ed3777059b0e186ff55d66847e086814b82eef162ced008a9e"
       },
       {
         "consumers": [
@@ -76,7 +76,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/clob_order_service.sh",
-        "sha256": "a5dd368fb05275226f66dcb93caa8f1c7d9634d03f01937aec5fb1929b0fe2e4"
+        "sha256": "2562342e2ef1f040f01eb5409cde26ad5c0b1e6209ed22b085566b943722c18a"
       },
       {
         "consumers": [
@@ -84,7 +84,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/production_worker.py",
-        "sha256": "e7ac83ff5189708ac00558c3a27e9cf79d3621fbb44184559c399ef68eaca9d5"
+        "sha256": "59a0cde43d7dcde70ae9e1ae03bc384f9e79254e1533405aceeca4c959900c0a"
       },
       {
         "consumers": [
@@ -116,7 +116,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/delta_v2_settlement_label.py",
-        "sha256": "51f97fa072c5994c4cc996e0ccc6a0b3884577e4cc31957c1ff9fcfa2bb88d30"
+        "sha256": "99d833168bd4a0dff5d697241949aa6df6d1166daa1f4afe38af6d36e738b44c"
       },
       {
         "consumers": [
@@ -156,7 +156,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/production_io.py",
-        "sha256": "cbbbccf116eac97a0abd85ff36bc97ab071d52f932a09fde6a21cfc1a119009e"
+        "sha256": "8938a09f402bcd2fe24d3948037bbd275af1981829769d087abf409787f0fe89"
       },
       {
         "consumers": [

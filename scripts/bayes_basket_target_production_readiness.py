@@ -2107,10 +2107,10 @@ def audit(
     if probe_services:
         services = _service_probe()
         for label in CORE_SERVICES:
-            if not services["system"].get(label):
-                blockers.append(f"core_service_not_loaded_system:{label}")
-            if services["user"].get(label):
-                blockers.append(f"core_service_loaded_user_domain:{label}")
+            if not services["user"].get(label):
+                blockers.append(f"core_service_not_loaded_user:{label}")
+            if services["system"].get(label):
+                blockers.append(f"core_service_loaded_system_domain:{label}")
         for label in FORBIDDEN_SERVICES:
             if services["system"].get(label) or services["user"].get(label):
                 blockers.append(f"retired_service_still_loaded:{label}")

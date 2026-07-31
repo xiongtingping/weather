@@ -48,7 +48,7 @@ def test_stale_rkpk_vertical_slice_packet_is_rejected_zero_write(
         ).fetchone()[0] == 0
 
 
-def test_current_rkpk_vertical_slice_packet_commits_idempotently(
+def test_retired_deterministic_rkpk_packet_fails_new_formal_sample_gate(
     tmp_path: Path,
 ) -> None:
     packet = json.loads(CURRENT_PACKET.read_text(encoding="utf-8"))
@@ -67,14 +67,14 @@ def test_current_rkpk_vertical_slice_packet_commits_idempotently(
     database = tmp_path / "target.sqlite3"
     with sqlite3.connect(database) as conn:
         apply_production_ssot_schema(conn)
-        first = ingest_artifact_bundle(conn, packet, commit=True)
-        second = ingest_artifact_bundle(conn, packet, commit=True)
-
-        assert first["state"] == "COMMITTED"
-        assert first["counts"]["calibration_artifacts"] == 2
-        assert first["counts"]["ensemble_artifacts"] == 1
-        assert second["state"] == "COMMITTED"
-        assert all(
-            int(value) == 0
-            for value in second["counts"].values()
-        )
+        with pytest.raises(
+            ContractError,
+            match="formal_ensemble_holdout_sample_insufficient",
+        ):
+            ingest_artifact_bundle(conn, packet, commit=True)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_model_artifact"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_ensemble_artifact"
+        ).fetchone()[0] == 0

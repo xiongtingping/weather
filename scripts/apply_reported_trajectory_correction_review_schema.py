@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -22,7 +23,7 @@ from reported_trajectory_no_schema import (
 
 
 DEFAULT_DB = ROOT / "data" / "archive.db"
-SERVICE_LABEL = "system/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
 MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
 

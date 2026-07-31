@@ -1,0 +1,72 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "a54b2d0a77b4f1ac4b3f0ac860c60f8267b47894d010a259e7ae708cf860c22a",
+  "end_date": "2026-07-29",
+  "excluded_sample_count": 8,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-22",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-23",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-24",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-25",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-26",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-27",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-28",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-29",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    }
+  ],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 197690,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 67108864
+  },
+  "sample_count": 0,
+  "samples": [],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "Asia/Taipei",
+  "source_class": "official_date_addressed_historical_replay",
+  "start_date": "2026-07-22",
+  "station_id": "RCSS"
+}

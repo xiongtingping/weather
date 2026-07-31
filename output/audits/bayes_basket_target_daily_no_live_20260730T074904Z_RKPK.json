@@ -1,0 +1,321 @@
+{
+  "as_of_utc": "2026-07-30T07:49:37Z",
+  "blockers": [
+    "official_ws_evidence_stale",
+    "probability_P1:probability_evidence_stale"
+  ],
+  "calls_order_gateway": false,
+  "captured_at_utc": "2026-07-30T07:49:37.631Z",
+  "checks": {
+    "activation": {
+      "activation_state": "enabled",
+      "blockers": [],
+      "details": {
+        "calls_order_gateway": false,
+        "execution_mode": "production_no_live",
+        "live_decision_write_authorized": false,
+        "live_submit_authorized": false,
+        "places_orders": false
+      },
+      "generation": 11,
+      "ready": true,
+      "state": "PASS",
+      "updated_at": "2026-07-29T03:10:02.348Z"
+    },
+    "atomic_ledger": {
+      "blockers": [],
+      "latest_cycles_inspected": 177,
+      "ready": true,
+      "state": "PASS",
+      "vector_policies": {
+        "NO_EXECUTION": 177
+      }
+    },
+    "daily_event_date": "2026-07-30",
+    "execution_boundary": {
+      "blockers": [],
+      "calls_order_gateway": false,
+      "counts": {
+        "execution_receipts": 0,
+        "live_submit_authorized_nonzero": 0,
+        "order_events": 0,
+        "submitted_decisions": 0,
+        "unknown_reconciliations": 0,
+        "will_order_nonzero": 0
+      },
+      "live_submit_authorized": false,
+      "orders_submitted": 0,
+      "production_no_live": true,
+      "ready": true,
+      "state": "PASS"
+    },
+    "forward_oos": {
+      "blocks_parameter_or_weight_promotion": true,
+      "blocks_production_no_live": false,
+      "observed_table_counts": {
+        "maker_grid_oos_activation_manifest": 0,
+        "maker_grid_oos_activation_pointer": 0,
+        "maker_grid_oos_artifact_body": 0,
+        "maker_grid_oos_promotion_evidence": 0
+      },
+      "promotion_scope": "FORMAL_PROMOTION_ONLY",
+      "state": "REPORTED_ONLY"
+    },
+    "ledger_counts": {
+      "cycles": 177,
+      "decisions": 177,
+      "will_order_nonzero": 0
+    },
+    "official_ws": {
+      "blockers": [
+        "official_ws_evidence_stale"
+      ],
+      "latest": {
+        "event_date": "2026-07-30",
+        "observed_at": "2026-07-29T15:59:29.558Z",
+        "quote_expires_at": "2026-07-29T16:00:29.558000Z",
+        "quote_observed_at": "2026-07-29T15:59:29.558Z",
+        "quote_source": "OFFICIAL_CLOB_WS",
+        "sequence": 240,
+        "settlement_timezone": "Asia/Seoul",
+        "snapshot_id": "ws_9755ab284f6b3f4b1f07f12928425cea8ac02b89",
+        "state": "COMMITTED"
+      },
+      "ready": false,
+      "state": "BLOCKED"
+    },
+    "probability": {
+      "blockers": [
+        "probability_P1:probability_evidence_stale"
+      ],
+      "current_authority_stage": "P1",
+      "latest_by_stage": {
+        "P0": {
+          "decision_at_utc": "2026-07-29T15:08:46Z",
+          "envelope_id": "p0_efade26210cbbdfd151eb02a1eb617a2",
+          "event_date": "2026-07-30",
+          "fresh_until_utc": "2026-07-29T21:08:46Z",
+          "lineage_keys": [
+            "activation_ids",
+            "available_model_set_hash",
+            "bucket_centers_c_json",
+            "bucket_intervals_c_json",
+            "calibration_artifact_ids",
+            "diagnostic_activation_ids",
+            "diagnostic_bundle_ready_at_utc",
+            "diagnostic_calibration_artifact_ids",
+            "diagnostic_model_run_ids",
+            "diagnostic_model_set_hash",
+            "ensemble_artifact_content_sha256",
+            "ensemble_artifact_id",
+            "lead_bucket",
+            "model_bundle_ready_at_utc",
+            "model_envelope_lower_bucket",
+            "model_envelope_lower_c",
+            "model_envelope_lower_ordinal",
+            "model_envelope_span_c",
+            "model_envelope_upper_bucket",
+            "model_envelope_upper_c",
+            "model_envelope_upper_ordinal",
+            "model_run_ids",
+            "model_run_initialization_utc",
+            "peripheral_model_reliability_by_bucket_json",
+            "probability_bundle_ready_at_utc",
+            "run_cycle",
+            "season_bin",
+            "selection_evidence_sha256",
+            "settlement_definition",
+            "settlement_timezone",
+            "taf_nwp_live_compatibility_fingerprint_sha256",
+            "taf_nwp_live_compatibility_json"
+          ],
+          "posterior_version": "p0_nwp_probability_stack_v3",
+          "row_blockers": [],
+          "settlement_timezone": "Asia/Seoul",
+          "state": "COMMITTED"
+        },
+        "P0-M": {
+          "decision_at_utc": "2026-07-29T17:06:58Z",
+          "envelope_id": "p0m_0ef26591fbf1688be9b8b41b08bdf1a0",
+          "event_date": "2026-07-30",
+          "fresh_until_utc": "2026-07-29T21:08:46Z",
+          "lineage_keys": [
+            "diagnostic_activation_ids",
+            "diagnostic_calibration_artifact_ids",
+            "diagnostic_model_run_ids",
+            "diagnostic_model_set_hash",
+            "forecast_revision_id",
+            "forecast_source_object_sha256",
+            "lead_bucket",
+            "materialization_schema",
+            "model_envelope_lower_bucket",
+            "model_envelope_lower_c",
+            "model_envelope_lower_ordinal",
+            "model_envelope_span_c",
+            "model_envelope_upper_bucket",
+            "model_envelope_upper_c",
+            "model_envelope_upper_ordinal",
+            "p0_root_checkpoint_id",
+            "p0_root_content_sha256",
+            "peripheral_model_reliability_by_bucket_json",
+            "predecessor_checkpoint_id",
+            "predecessor_content_sha256",
+            "revision_mode",
+            "run_cycle",
+            "season_bin",
+            "selection_evidence_sha256",
+            "settlement_definition",
+            "settlement_timezone",
+            "taf_applied_strength",
+            "taf_center_displacement_buckets",
+            "taf_cloud_cover_fraction",
+            "taf_hard_exclusion",
+            "taf_physical_adjustment_c",
+            "taf_physical_confirmation_state",
+            "taf_physical_consistency_factor",
+            "taf_physical_features_sha256",
+            "taf_physically_confirmed_center_c",
+            "taf_precipitation_probability",
+            "taf_probability_mass_transfer",
+            "taf_revision_activation_id",
+            "taf_revision_artifact_id",
+            "taf_revision_artifact_sha256",
+            "taf_revision_mode",
+            "taf_revision_proof_id",
+            "taf_revision_proof_sha256",
+            "taf_tx_c",
+            "taf_tx_calibrated_center_c",
+            "taf_wind_speed_normalized"
+          ],
+          "posterior_version": "p0m_taf_physical_confirmation_v3",
+          "row_blockers": [],
+          "settlement_timezone": "Asia/Seoul",
+          "state": "COMMITTED"
+        },
+        "P1": {
+          "decision_at_utc": "2026-07-29T15:08:48.000001Z",
+          "envelope_id": "p1_b6eaa52d605bb98b8cbb70921cfca4af",
+          "event_date": "2026-07-30",
+          "fresh_until_utc": "2026-07-29T16:08:48.000001Z",
+          "lineage_keys": [
+            "bound_generation",
+            "canonical_observation_committed_at",
+            "canonical_observation_event_id",
+            "canonical_observation_sha256",
+            "diagnostic_activation_ids",
+            "diagnostic_calibration_artifact_ids",
+            "diagnostic_model_run_ids",
+            "diagnostic_model_set_hash",
+            "event_consumed_once",
+            "hard_bound_id",
+            "hard_excluded_buckets",
+            "lead_bucket",
+            "materialization_schema",
+            "model_envelope_lower_bucket",
+            "model_envelope_lower_c",
+            "model_envelope_lower_ordinal",
+            "model_envelope_span_c",
+            "model_envelope_upper_bucket",
+            "model_envelope_upper_c",
+            "model_envelope_upper_ordinal",
+            "observation_likelihood_mode",
+            "p0_root_checkpoint_id",
+            "peripheral_model_reliability_by_bucket_json",
+            "predecessor_checkpoint_id",
+            "predecessor_content_sha256",
+            "report_type",
+            "reported_hard_lower_bound",
+            "reported_high_bucket",
+            "reported_high_c",
+            "reported_high_ordinal",
+            "run_cycle",
+            "season_bin",
+            "selection_evidence_sha256",
+            "settlement_definition",
+            "settlement_timezone",
+            "settlement_unit",
+            "source_lane"
+          ],
+          "posterior_version": "p1_target_v1",
+          "row_blockers": [
+            "probability_evidence_stale"
+          ],
+          "settlement_timezone": "Asia/Seoul",
+          "state": "COMMITTED"
+        }
+      },
+      "latest_event_date": "2026-07-30",
+      "ready": false,
+      "stage_counts": {
+        "P0": 2,
+        "P0-M": 5,
+        "P1": 2
+      },
+      "state": "BLOCKED",
+      "valid_rows": 8
+    },
+    "quick_check": "ok",
+    "tables": {
+      "count": 69
+    },
+    "training": {
+      "blockers": [],
+      "fact_count": 15,
+      "invalid_fact_count": 0,
+      "invalid_label_count": 0,
+      "label_count": 0,
+      "labels_state": "PENDING_SETTLEMENT",
+      "ready": true,
+      "state": "PASS"
+    }
+  },
+  "content_sha256": "e2945489a8075d423ce27a16009ad63711b633044c5a035e559da8ee84883078",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "read_only": true,
+  "ready_for_production_no_live": false,
+  "resources": {
+    "database_bytes": 191328256,
+    "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "free_bytes": 41023938560,
+    "limits": {
+      "max_database_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_research_raw_bytes": 1073741824,
+      "max_research_raw_files": 100000,
+      "max_wal_bytes": 67108864,
+      "min_free_bytes": 536870912
+    },
+    "memory_probe_available": true,
+    "ok": true,
+    "process_rss_bytes": 36257792,
+    "raw_bytes": 929798175,
+    "raw_file_count": 7356,
+    "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
+    "shm_bytes": 32768,
+    "state": "within_budget",
+    "violations": [],
+    "wal_bytes": 8528432
+  },
+  "schema": "bayes_basket_target_daily_acceptance_no_live_v1",
+  "services": {
+    "count": 3,
+    "domain": "user",
+    "exactly_three": true,
+    "expected_services": [
+      "com.weather.reported_trajectory_no",
+      "com.weather.market_ws",
+      "com.weather.clob_order_service"
+    ],
+    "observed": {
+      "com.weather.clob_order_service": 79696,
+      "com.weather.market_ws": 79560,
+      "com.weather.reported_trajectory_no": 50063
+    },
+    "state": "PASS"
+  },
+  "state": "BLOCKED_FAIL_CLOSED",
+  "station_id": "RKPK"
+}

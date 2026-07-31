@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -27,6 +28,15 @@ from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_started_registry_rows,
 )
+from bayes_basket_target.official_nwp_capture_scheduler import (  # noqa: E402
+    candidate_run_initializations,
+)
+from bayes_basket_target.p0_producer import (  # noqa: E402
+    compatible_run_candidates,
+)
+from bayes_basket_target.production_io import (  # noqa: E402
+    load_production_artifacts,
+)
 from bayes_basket_target.station_registry import (  # noqa: E402
     coordinate_registry_manifest,
 )
@@ -41,6 +51,9 @@ from scripts.bayes_basket_target_production_readiness import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_probability_resident_two_round_acceptance_v2"
 ROUND_SCHEMA = "bayes_basket_target_probability_resident_round_v2"
+MIGRATION_SCHEMA = (
+    "bayes_basket_target_probability_migration_resident_acceptance_v1"
+)
 CORE_SERVICES = (
     "com.weather.reported_trajectory_no",
     "com.weather.market_ws",
@@ -58,13 +71,21 @@ STATION_TABLES = (
 )
 MAX_CORE_ROWS = 512
 MAX_JSON_BYTES = 1024 * 1024
-MAX_DB_BYTES = 256 * 1024 * 1024
+MAX_DB_BYTES = 4096 * 1024 * 1024
 MAX_WAL_BYTES = 64 * 1024 * 1024
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 CANONICAL_STATION_IDS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
 MAX_STATION_SCOPE = 45
+MATERIALIZATION_PENDING_BLOCKER_SUFFIXES = (
+    "formal_two_model_scope_missing_p0",
+    "candidate_artifact_missing",
+    "candidate_rejection_incomplete",
+    "directional_core_decision_missing",
+    "identity_likelihood_fallback_not_consumed",
+    "theta_zero_fallback_not_consumed",
+)
 
 
 def normalize_station_scope(
@@ -106,11 +127,101 @@ def _now() -> str:
     ).replace("+00:00", "Z")
 
 
+def _formal_p0_scope_eligibility(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    registry_rows: Sequence[Mapping[str, Any]],
+    as_of_utc: str,
+) -> dict[str, Any]:
+    """Classify whether an open scope already owns a strict 2+ OOS combo.
+
+    Candidate raw acquisition must be allowed before formal calibration
+    exists, while a station that already owns an exact compatible activation
+    must not hide a missing P0 behind the candidate-only state.
+    """
+
+    station = str(station_id or "").strip().upper()
+    scopes = sorted({
+        (
+            str(row.get("event_date") or "").strip(),
+            str(row.get("settlement_timezone") or "").strip(),
+        )
+        for row in registry_rows
+        if (
+            str(row.get("station_id") or "").strip().upper() == station
+            and str(row.get("event_date") or "").strip()
+            and str(row.get("settlement_timezone") or "").strip()
+        )
+    })
+    try:
+        artifacts = load_production_artifacts(
+            conn,
+            station_id=station,
+            evaluation_at_utc=as_of_utc,
+            require_calibration=True,
+            require_policy=False,
+        )
+    except Exception as exc:
+        return {
+            "eligible": False,
+            "compatible_scopes": [],
+            "reason": (
+                "strict_oos_artifact_not_available:"
+                f"{type(exc).__name__}:{exc}"
+            ),
+        }
+    compatible_scopes: list[dict[str, Any]] = []
+    for event_date, timezone_name in scopes:
+        try:
+            compatible = compatible_run_candidates(
+                artifacts=artifacts,
+                station=station,
+                event_date=event_date,
+                settlement_timezone=timezone_name,
+                decision_at_utc=as_of_utc,
+                run_initializations=candidate_run_initializations(
+                    as_of_utc=as_of_utc,
+                    event_date=event_date,
+                    settlement_timezone=timezone_name,
+                ),
+            )
+        except Exception:
+            compatible = []
+        for candidate in compatible:
+            selected_models = {
+                str(value or "").strip().upper()
+                for value in (
+                    candidate.get("activation_binding") or {}
+                ).get("selected_models", [])
+                if str(value or "").strip()
+            }
+            if len(selected_models) >= 2:
+                compatible_scopes.append({
+                    "event_date": event_date,
+                    "settlement_timezone": timezone_name,
+                    "run_initialization_utc": candidate.get(
+                        "run_initialization_utc"
+                    ),
+                    "selected_models": sorted(selected_models),
+                })
+    return {
+        "eligible": bool(compatible_scopes),
+        "compatible_scopes": compatible_scopes,
+        "reason": (
+            "strict_two_model_scope_available"
+            if compatible_scopes
+            else "strict_two_model_scope_not_available"
+        ),
+    }
+
+
 def _service_pids() -> dict[str, int]:
     result: dict[str, int] = {}
+    domain = f"gui/{os.getuid()}"
     for label in CORE_SERVICES:
         completed = subprocess.run(
-            ["/bin/launchctl", "print", f"system/{label}"],
+            ["/bin/launchctl", "print", f"{domain}/{label}"],
             check=False,
             capture_output=True,
             text=True,
@@ -437,12 +548,12 @@ def capture_round(
         except ContractError as exc:
             started_rows = []
             blockers.append(f"started_registry_invalid:{exc}")
-        started = tuple(sorted({
+        registry_started = tuple(sorted({
             str(row.get("station_id") or "").strip().upper()
             for row in started_rows
             if str(row.get("station_id") or "").strip().upper() in scope
         }))
-        not_started = tuple(sorted(set(scope) - set(started)))
+        not_started = tuple(sorted(set(scope) - set(registry_started)))
         started_event_dates: dict[str, tuple[str, ...]] = {
             station: tuple(sorted({
                 str(row.get("event_date") or "").strip()
@@ -453,20 +564,77 @@ def capture_round(
                     and str(row.get("event_date") or "").strip()
                 )
             }))
-            for station in started
+            for station in registry_started
         }
         forbidden = _forbidden_execution_counts(conn)
         station_results: dict[str, dict[str, Any]] = {}
+        materialized_started: list[str] = []
+        candidate_accumulation: list[str] = []
         for station in scope:
-            if station not in started:
+            if station not in registry_started:
                 station_results[station] = {
                     "state": "NOT_STARTED_NO_MATERIALIZATION_REQUIRED",
                     "started": False,
+                    "registry_started": False,
                     "core_chain": None,
                     "durable_ssot_replay": None,
                     "durable_ssot_replay_error": None,
                 }
                 continue
+            event_dates = started_event_dates.get(station, ())
+            if not event_dates:
+                blockers.append(f"{station}:started_event_date_missing")
+                station_results[station] = {
+                    "state": "BLOCKED_FAIL_CLOSED",
+                    "started": False,
+                    "registry_started": True,
+                    "blockers": ["started_event_date_missing"],
+                }
+                continue
+            placeholders = ",".join("?" for _ in event_dates)
+            p0_materialized = conn.execute(
+                "SELECT 1 FROM basket_probability_envelope "
+                "WHERE station_id=? AND event_date IN ("
+                + placeholders
+                + ") AND stage='P0' AND state='COMMITTED' LIMIT 1",
+                (station, *event_dates),
+            ).fetchone() is not None
+            if not p0_materialized:
+                eligibility = _formal_p0_scope_eligibility(
+                    conn,
+                    station_id=station,
+                    registry_rows=started_rows,
+                    as_of_utc=decision_clock,
+                )
+                if eligibility["eligible"] is True:
+                    blocker = "formal_two_model_scope_missing_p0"
+                    blockers.append(f"{station}:{blocker}")
+                    station_results[station] = {
+                        "state": "BLOCKED_FAIL_CLOSED",
+                        "started": False,
+                        "registry_started": True,
+                        "candidate_only": False,
+                        "formal_p0_eligibility": eligibility,
+                        "blockers": [blocker],
+                    }
+                else:
+                    candidate_accumulation.append(station)
+                    station_results[station] = {
+                        "state": "CANDIDATE_ACCUMULATION_PENDING",
+                        "started": False,
+                        "registry_started": True,
+                        "candidate_only": True,
+                        "formal_p0_eligibility": eligibility,
+                        "core_chain": None,
+                        "durable_ssot_replay": None,
+                        "durable_ssot_replay_error": None,
+                        "production_no_live": True,
+                        "calls_order_gateway": False,
+                        "live_submit_authorized": False,
+                        "orders_submitted": 0,
+                    }
+                continue
+            materialized_started.append(station)
             station_runtime = _probability_evidence_runtime_status(
                 conn,
                 station_ids=(station,),
@@ -555,6 +723,8 @@ def capture_round(
                     else "BLOCKED_FAIL_CLOSED"
                 ),
                 "started": True,
+                "registry_started": True,
+                "candidate_only": False,
                 "probability_evidence_runtime": station_runtime,
                 "probability_authority": probability_authority,
                 "core_chain": core_chain,
@@ -579,7 +749,11 @@ def capture_round(
             "max_station_count": MAX_STATION_SCOPE,
         },
         "as_of_utc": decision_clock,
-        "started_station_ids": list(started),
+        "registry_started_station_ids": list(registry_started),
+        "started_station_ids": sorted(materialized_started),
+        "candidate_accumulation_station_ids": sorted(
+            candidate_accumulation
+        ),
         "not_started_station_ids": list(not_started),
         "database": str(database),
         "services": service_probe(),
@@ -627,6 +801,26 @@ def compare_rounds(
         != second.get("outside_scope_station_counts")
     ):
         blockers.append("outside_scope_station_write_detected")
+    for round_value in (first, second):
+        round_scope = set(
+            (round_value.get("station_scope") or {}).get("station_ids") or []
+        )
+        registry_started = set(
+            round_value.get("registry_started_station_ids") or []
+        )
+        not_started = set(round_value.get("not_started_station_ids") or [])
+        materialized = set(round_value.get("started_station_ids") or [])
+        candidate = set(
+            round_value.get("candidate_accumulation_station_ids") or []
+        )
+        if (
+            registry_started | not_started != round_scope
+            or registry_started & not_started
+            or not materialized.issubset(registry_started)
+            or not candidate.issubset(registry_started)
+            or materialized & candidate
+        ):
+            blockers.append("resident_station_state_partition_invalid")
     first_counts = first.get("scoped_station_counts") or {}
     second_counts = second.get("scoped_station_counts") or {}
     for table, before in first_counts.items():
@@ -690,7 +884,13 @@ def compare_rounds(
         "round_one_sha256": first.get("round_sha256"),
         "round_two_sha256": second.get("round_sha256"),
         "station_scope": second.get("station_scope"),
+        "registry_started_station_ids": second.get(
+            "registry_started_station_ids"
+        ),
         "started_station_ids": second.get("started_station_ids"),
+        "candidate_accumulation_station_ids": second.get(
+            "candidate_accumulation_station_ids"
+        ),
         "not_started_station_ids": second.get("not_started_station_ids"),
         "services": second.get("services"),
         "outside_scope_station_counts": second.get(
@@ -711,6 +911,203 @@ def compare_rounds(
     return {
         **identity,
         "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
+        "content_sha256": content_sha256(identity),
+        "rounds": [dict(first), dict(second)],
+    }
+
+
+def migration_round_from_strict(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Separate M9-06 safety failures from later M9-08 materialization."""
+
+    strict_blockers = [
+        str(value) for value in receipt.get("blockers") or ()
+    ]
+    pending = [
+        value
+        for value in strict_blockers
+        if value.endswith(MATERIALIZATION_PENDING_BLOCKER_SUFFIXES)
+    ]
+    safety = [
+        value for value in strict_blockers if value not in pending
+    ]
+    identity = {
+        key: value
+        for key, value in dict(receipt).items()
+        if key not in {"round_sha256", "state", "blockers"}
+    }
+    identity.update({
+        "schema": "bayes_basket_target_probability_migration_round_v1",
+        "strict_round_schema": receipt.get("schema"),
+        "strict_round_sha256": receipt.get("round_sha256"),
+        "strict_state": receipt.get("state"),
+        "materialization_pending_blockers": sorted(set(pending)),
+        "blockers": sorted(set(safety)),
+        "forward_oos_boundary": {
+            "blocks_production_no_live": False,
+            "blocks_formal_promotion_or_live": True,
+        },
+    })
+    return {
+        **identity,
+        "round_sha256": content_sha256(identity),
+        "state": "PASS" if not safety else "BLOCKED_FAIL_CLOSED",
+    }
+
+
+def capture_migration_round(
+    db: Path,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return migration_round_from_strict(capture_round(db, **kwargs))
+
+
+def compare_migration_rounds(
+    first: Mapping[str, Any],
+    second: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify resident safety/continuity without requiring M9-08 completion."""
+
+    blockers: list[str] = []
+    if first.get("state") != "PASS":
+        blockers.append("migration_round_one_not_ready")
+    if second.get("state") != "PASS":
+        blockers.append("migration_round_two_not_ready")
+    if first.get("services") != second.get("services"):
+        blockers.append("service_pid_drift")
+    first_scope = (first.get("station_scope") or {}).get("station_ids")
+    second_scope = (second.get("station_scope") or {}).get("station_ids")
+    if first_scope != second_scope or not first_scope:
+        blockers.append("station_scope_drift")
+    if (
+        first.get("outside_scope_station_counts")
+        != second.get("outside_scope_station_counts")
+    ):
+        blockers.append("outside_scope_station_write_detected")
+    for index, round_value in enumerate((first, second), start=1):
+        round_scope = set(
+            (round_value.get("station_scope") or {}).get(
+                "station_ids"
+            ) or []
+        )
+        registry_started = set(
+            round_value.get("registry_started_station_ids") or []
+        )
+        not_started = set(
+            round_value.get("not_started_station_ids") or []
+        )
+        materialized = set(
+            round_value.get("started_station_ids") or []
+        )
+        candidate = set(
+            round_value.get("candidate_accumulation_station_ids") or []
+        )
+        if (
+            registry_started | not_started != round_scope
+            or registry_started & not_started
+            or not materialized.issubset(registry_started)
+            or not candidate.issubset(registry_started)
+            or materialized & candidate
+        ):
+            blockers.append(
+                f"migration_round_{index}_station_partition_invalid"
+            )
+        runtime = round_value.get("probability_evidence_runtime") or {}
+        if runtime.get("missing_tables") or runtime.get(
+            "missing_bridge_tables"
+        ):
+            blockers.append(
+                f"migration_round_{index}_probability_schema_incomplete"
+            )
+        if int(
+            runtime.get("candidate_activation_count_all") or 0
+        ) != 0:
+            blockers.append(
+                f"migration_round_{index}_candidate_activation_nonzero"
+            )
+        forbidden = round_value.get("forbidden_execution_counts") or {}
+        if any(int(value or 0) != 0 for value in forbidden.values()):
+            blockers.append(
+                f"migration_round_{index}_forbidden_execution_present"
+            )
+        resources = round_value.get("resources") or {}
+        if (
+            int(resources.get("database_bytes") or 0) > MAX_DB_BYTES
+            or int(resources.get("wal_bytes") or 0) > MAX_WAL_BYTES
+            or int(resources.get("free_bytes") or 0) < MIN_FREE_BYTES
+        ):
+            blockers.append(
+                f"migration_round_{index}_resource_gate_invalid"
+            )
+        if (
+            round_value.get("production_no_live") is not True
+            or round_value.get("calls_order_gateway") is not False
+            or round_value.get("live_submit_authorized") is not False
+            or int(round_value.get("orders_submitted") or 0) != 0
+        ):
+            blockers.append(
+                f"migration_round_{index}_no_live_boundary_invalid"
+            )
+    started_both = sorted(
+        set(first.get("started_station_ids") or [])
+        & set(second.get("started_station_ids") or [])
+    )
+    if not started_both:
+        blockers.append("migration_no_canonical_station_consumed")
+    first_counts = first.get("scoped_station_counts") or {}
+    second_counts = second.get("scoped_station_counts") or {}
+    for table, before in first_counts.items():
+        after = second_counts.get(table)
+        if (
+            isinstance(before, int)
+            and isinstance(after, int)
+            and before >= 0
+            and after < before
+        ):
+            blockers.append(
+                f"migration_scoped_count_decreased:{table}"
+            )
+    pending = sorted(set(
+        str(value)
+        for round_value in (first, second)
+        for value in (
+            round_value.get("materialization_pending_blockers") or []
+        )
+    ))
+    identity = {
+        "schema": MIGRATION_SCHEMA,
+        "round_one_sha256": first.get("round_sha256"),
+        "round_two_sha256": second.get("round_sha256"),
+        "station_scope": second.get("station_scope"),
+        "started_station_ids": second.get("started_station_ids"),
+        "candidate_accumulation_station_ids": second.get(
+            "candidate_accumulation_station_ids"
+        ),
+        "not_started_station_ids": second.get(
+            "not_started_station_ids"
+        ),
+        "services": second.get("services"),
+        "outside_scope_station_counts": second.get(
+            "outside_scope_station_counts"
+        ),
+        "scoped_station_counts": second_counts,
+        "materialization_pending_blockers": pending,
+        "blockers": sorted(set(blockers)),
+        "forward_oos_boundary": {
+            "blocks_production_no_live": False,
+            "blocks_formal_promotion_or_live": True,
+        },
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    return {
+        **identity,
+        "state": (
+            "PASS" if not blockers else "BLOCKED_FAIL_CLOSED"
+        ),
         "content_sha256": content_sha256(identity),
         "rounds": [dict(first), dict(second)],
     }

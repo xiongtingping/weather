@@ -156,6 +156,7 @@ def _truth_slice(
     scope: Mapping[str, str],
     days: list[str],
     proxy_url: str,
+    truth_transport: str,
     output_root: Path,
     raw_root: Path,
     resume: bool,
@@ -207,6 +208,7 @@ def _truth_slice(
             "--station-id", station,
             "--skip-amsc-fetch",
             "--proxy-url", proxy_url,
+            "--transport", truth_transport,
             "--output", str(receipt),
             "--observations-output", str(observations),
             "--reference-output", str(references),
@@ -347,6 +349,12 @@ def main() -> int:
     parser.add_argument("--start-date", required=True)
     parser.add_argument("--end-date", required=True)
     parser.add_argument("--proxy-url", default="http://127.0.0.1:7897")
+    parser.add_argument(
+        "--truth-transport",
+        choices=("configured_proxy", "direct"),
+        default="configured_proxy",
+        help="Transport used only for official AWC historical truth repair.",
+    )
     parser.add_argument("--lane-map", type=Path, default=DEFAULT_LANE_MAP)
     parser.add_argument(
         "--market-registry", type=Path, default=DEFAULT_MARKET_REGISTRY
@@ -354,6 +362,15 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument(
+        "--station-id",
+        action="append",
+        default=[],
+        help=(
+            "Restrict a bounded repair run to registered stations; repeatable. "
+            "The canonical 45-station registry is still validated first."
+        ),
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--truth-only", action="store_true")
     parser.add_argument(
@@ -377,7 +394,26 @@ def main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output_root).free < MIN_FREE_BYTES:
         raise ContractError("five_model_45station_minimum_free_disk_guard")
-    scope = _load_scope(args.lane_map, args.market_registry)
+    canonical_scope = _load_scope(args.lane_map, args.market_registry)
+    requested_stations = sorted({
+        str(item).strip().upper()
+        for item in args.station_id
+        if str(item).strip()
+    })
+    unknown_stations = sorted(set(requested_stations) - set(canonical_scope))
+    if unknown_stations:
+        raise ContractError(
+            "five_model_45station_repair_scope_invalid:"
+            + ",".join(unknown_stations)
+        )
+    scope = (
+        {
+            station: canonical_scope[station]
+            for station in requested_stations
+        }
+        if requested_stations
+        else canonical_scope
+    )
     days = _dates(args.start_date, args.end_date)
     lead_days = tuple(sorted(set(args.lead_day or (1, 2))))
     if (
@@ -399,6 +435,7 @@ def main() -> int:
                 scope=item,
                 days=days,
                 proxy_url=args.proxy_url,
+                truth_transport=args.truth_transport,
                 output_root=output_root,
                 raw_root=args.raw_root.expanduser().resolve(),
                 resume=args.resume,
@@ -471,7 +508,8 @@ def main() -> int:
             model_results, key=lambda item: str(item["station_id"])
         ),
         "checks": {
-            "exact_45_station_scope": len(scope) == 45,
+            "exact_45_station_scope": len(canonical_scope) == 45,
+            "selected_station_count": len(scope),
             "truth_ready_station_count": sum(
                 item.get("state") == "TRUTH_READY"
                 for item in truth_results
@@ -525,14 +563,14 @@ def main() -> int:
         "manifest": str(manifest_path.resolve()),
     }, ensure_ascii=False, sort_keys=True))
     return 0 if (
-        manifest["checks"]["truth_ready_station_count"] == 45
+        manifest["checks"]["truth_ready_station_count"] == len(scope)
         and (
             args.truth_only
             or (
-                manifest["checks"]["five_model_oos_ready_station_count"] == 45
+                manifest["checks"]["five_model_oos_ready_station_count"] == len(scope)
                 and manifest["checks"][
                     "formal_oos_selection_valid_station_count"
-                ] == 45
+                ] == len(scope)
                 and (
                     not (
                         args.native_ecmwf_evidence
@@ -540,7 +578,7 @@ def main() -> int:
                     )
                     or manifest["checks"][
                         "native_overlay_station_count"
-                    ] == 45
+                    ] == len(scope)
                 )
             )
         )

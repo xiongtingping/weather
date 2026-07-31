@@ -1,0 +1,1620 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "bbc396bb6b548ab6c562dbfa4f9dc66b968478b991ff4ea6aff6b945226354d8",
+  "end_date": "2026-07-29",
+  "excluded_sample_count": 1,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-25",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    }
+  ],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 120812,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 67108864
+  },
+  "sample_count": 7,
+  "samples": [
+    {
+      "decision_anchor_utc": "2026-07-22T04:00:00Z",
+      "event_date": "2026-07-22",
+      "receipts": {
+        "metar_response_sha256": "1c352d9e3462f8d45057ff2bcd9bf381943ed96cbc24c93bbaa097dec244c9d1",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260723_0300",
+        "taf_response_sha256": "fac4ba75698127f37d8e9f377915ceb16ed697b88dbbb110dda17b78decd0f64",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-22T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-fe6be5cccfc0326987cb2af6b04b924b",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-23T03:00:00Z",
+        "start_utc": "2026-07-22T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-21T23:30:21Z",
+        "cloud_cover_fraction": 1.0,
+        "issue_time_utc": "2026-07-21T23:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF SAEZ 212300Z 2200/2224 14005KT 9999 OVC008 TX14/2218Z TN07/2210Z TEMPO 2200/2208 5000 DZBR OVC005 BECMG 2212/2216 16010KT 9999 BKN010 OVC045 BECMG 2218/2220 16005KT CAVOK",
+        "raw_taf_sha256": "17c1644a154458874f98d78de04c90da61b8bea5b982eb37a43abcc43eeed465",
+        "tx_c": 14.0,
+        "tx_valid_at_utc": "2026-07-22T18:00:00Z",
+        "wind_speed_mps": 4.2870333333333335
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-22T03:00:00Z",
+            "raw_report": "METAR SAEZ 220300Z 18006KT 9999 FEW027 OVC036 10/09 Q1016 NOSIG",
+            "received_at_utc": "2026-07-22T03:04:04.387Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T04:00:00Z",
+            "raw_report": "METAR SAEZ 220400Z 19006KT 9999 BKN014 OVC025 10/08 Q1016 NOSIG",
+            "received_at_utc": "2026-07-22T04:05:07.187Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T05:00:00Z",
+            "raw_report": "METAR SAEZ 220500Z 17007KT 130V190 9999 FEW016 OVC037 10/08 Q1016 NOSIG",
+            "received_at_utc": "2026-07-22T05:04:08.758Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T06:00:00Z",
+            "raw_report": "METAR SAEZ 220600Z 17005KT 130V190 9999 FEW021 OVC042 09/08 Q1017 NOSIG",
+            "received_at_utc": "2026-07-22T06:04:06.022Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T07:00:00Z",
+            "raw_report": "METAR SAEZ 220700Z 18006KT 150V210 9999 OVC040 09/07 Q1017 NOSIG",
+            "received_at_utc": "2026-07-22T07:04:10.232Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T08:00:00Z",
+            "raw_report": "METAR SAEZ 220800Z 18006KT 9999 OVC038 09/07 Q1018 NOSIG",
+            "received_at_utc": "2026-07-22T08:04:07.319Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T09:00:00Z",
+            "raw_report": "METAR SAEZ 220900Z 17006KT 130V210 9999 OVC039 09/07 Q1018 NOSIG",
+            "received_at_utc": "2026-07-22T09:04:04.564Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T10:00:00Z",
+            "raw_report": "METAR SAEZ 221000Z 18006KT 9999 FEW008 BKN043 OVC100 09/07 Q1019 NOSIG",
+            "received_at_utc": "2026-07-22T10:04:07.537Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T11:00:00Z",
+            "raw_report": "METAR SAEZ 221100Z 19005KT 9999 OVC036 09/07 Q1019 NOSIG",
+            "received_at_utc": "2026-07-22T11:04:08.376Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T12:00:00Z",
+            "raw_report": "METAR SAEZ 221200Z 19005KT 9999 FEW033 SCT047 BKN050 09/06 Q1020 NOSIG",
+            "received_at_utc": "2026-07-22T12:04:07.262Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T13:00:00Z",
+            "raw_report": "METAR SAEZ 221300Z 18008KT 9999 SCT049 BKN100 09/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-22T13:04:06.225Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T14:00:00Z",
+            "raw_report": "METAR SAEZ 221400Z 16006KT 9999 FEW030 SCT050 BKN100 10/07 Q1022 NOSIG",
+            "received_at_utc": "2026-07-22T14:04:07.377Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T15:00:00Z",
+            "raw_report": "METAR SAEZ 221500Z 16007KT CAVOK 11/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-22T15:04:05.620Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T16:00:00Z",
+            "raw_report": "METAR SAEZ 221600Z 15010KT CAVOK 13/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-22T16:04:05.687Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T17:00:00Z",
+            "raw_report": "METAR SAEZ 221700Z 14009KT 9999 FEW020 SCT100 13/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-22T17:04:07.918Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T18:00:00Z",
+            "raw_report": "METAR SAEZ 221800Z 13009KT 9999 FEW020 14/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-22T18:04:06.753Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T19:00:00Z",
+            "raw_report": "METAR SAEZ 221900Z 13008KT 9999 SCT027 15/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-22T19:04:07.958Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T20:00:00Z",
+            "raw_report": "METAR SAEZ 222000Z 15007KT 9999 BKN026 13/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-22T20:04:01.123Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T21:00:00Z",
+            "raw_report": "METAR SAEZ 222100Z 15007KT 9999 SCT029 12/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-22T21:04:05.289Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T22:00:00Z",
+            "raw_report": "METAR SAEZ 222200Z 15005KT 9999 FEW020 10/07 Q1022 NOSIG",
+            "received_at_utc": "2026-07-22T22:04:05.267Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T23:00:00Z",
+            "raw_report": "METAR SAEZ 222300Z 13005KT 9999 FEW019 09/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-22T23:04:03.689Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T00:00:00Z",
+            "raw_report": "METAR SAEZ 230000Z 12006KT 9999 FEW028 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T00:04:05.984Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T01:00:00Z",
+            "raw_report": "METAR SAEZ 230100Z 14003KT 9999 SCT027 08/06 Q1024 NOSIG",
+            "received_at_utc": "2026-07-23T01:04:02.973Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T02:00:00Z",
+            "raw_report": "METAR SAEZ 230200Z 14006KT CAVOK 07/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T02:04:06.043Z",
+            "report_type": "METAR",
+            "temperature_c": 7.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 15.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-23T04:00:00Z",
+      "event_date": "2026-07-23",
+      "receipts": {
+        "metar_response_sha256": "bad085ab9bef513f923b7d5bd3611a4fd7e1a8170994fdeb73928b557d48ea30",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260724_0300",
+        "taf_response_sha256": "0f48450becb1fe7bc9be220edf1944a15b2b9096dec4307f155f12a6186fd5db",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-23T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-6320751d8b5df33ffffdd6c766cbe47f",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-24T03:00:00Z",
+        "start_utc": "2026-07-23T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-23T03:11:08Z",
+        "cloud_cover_fraction": 0.6666666666666666,
+        "issue_time_utc": "2026-07-23T03:10:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF AMD SAEZ 230310Z 2303/2324 12005KT 9999 OVC015 TX14/2318Z TN04/2309Z BECMG 2307/2309 5000 BR TEMPO 2309/2312 3000 BR SCT008 OVC015 BECMG 2314/2316 05010KT CAVOK",
+        "raw_taf_sha256": "83b5917b0ab0062545b12cd8c5c691a198610ad6d40f0865de14fdc69f7f9e70",
+        "tx_c": 14.0,
+        "tx_valid_at_utc": "2026-07-23T18:00:00Z",
+        "wind_speed_mps": 2.7865716666666667
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-23T03:00:00Z",
+            "raw_report": "METAR SAEZ 230300Z 11004KT 9999 BKN016 06/05 Q1024 NOSIG",
+            "received_at_utc": "2026-07-23T03:04:15.284Z",
+            "report_type": "METAR",
+            "temperature_c": 6.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T04:00:00Z",
+            "raw_report": "METAR SAEZ 230400Z 14004KT 9999 BKN016 07/05 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T04:04:08.914Z",
+            "report_type": "METAR",
+            "temperature_c": 7.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T05:00:00Z",
+            "raw_report": "METAR SAEZ 230500Z 11003KT 9999 OVC014 07/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T05:04:03.723Z",
+            "report_type": "METAR",
+            "temperature_c": 7.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T06:00:00Z",
+            "raw_report": "METAR SAEZ 230600Z 16003KT 9999 OVC016 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T06:04:09.668Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T07:00:00Z",
+            "raw_report": "METAR SAEZ 230700Z 08003KT 9999 BKN020 OVC100 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T07:04:19.635Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T08:00:00Z",
+            "raw_report": "METAR SAEZ 230800Z 12002KT 9999 BKN019 OVC100 07/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T08:04:04.203Z",
+            "report_type": "METAR",
+            "temperature_c": 7.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T09:00:00Z",
+            "raw_report": "METAR SAEZ 230900Z 14002KT 9999 OVC013 08/07 Q1022 NOSIG",
+            "received_at_utc": "2026-07-23T09:04:15.356Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T10:00:00Z",
+            "raw_report": "METAR SAEZ 231000Z 14002KT 9999 BKN012 OVC100 09/08 Q1022 NOSIG",
+            "received_at_utc": "2026-07-23T10:04:08.166Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T11:00:00Z",
+            "raw_report": "METAR SAEZ 231100Z 12003KT 5000 BR OVC012 09/08 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T11:04:08.686Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T12:00:00Z",
+            "raw_report": "METAR SAEZ 231200Z 11004KT 9000 SCT013 BKN200 09/08 Q1023 TEMPO 3000 BR OVC010",
+            "received_at_utc": "2026-07-23T12:23:37.368Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T13:00:00Z",
+            "raw_report": "METAR SAEZ 231300Z 09006KT CAVOK 11/10 Q1023 NOSIG",
+            "received_at_utc": "2026-07-23T13:04:05.978Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T14:00:00Z",
+            "raw_report": "METAR SAEZ 231400Z 06011KT 9999 FEW017 BKN200 14/10 Q1022 NOSIG",
+            "received_at_utc": "2026-07-23T14:04:05.139Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T15:00:00Z",
+            "raw_report": "METAR SAEZ 231500Z 05013KT CAVOK 14/08 Q1022 NOSIG",
+            "received_at_utc": "2026-07-23T15:04:07.547Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T16:00:00Z",
+            "raw_report": "METAR SAEZ 231600Z 07013KT CAVOK 15/08 Q1021 NOSIG",
+            "received_at_utc": "2026-07-23T16:04:04.717Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T17:00:00Z",
+            "raw_report": "METAR SAEZ 231700Z 06012KT CAVOK 15/09 Q1020 NOSIG",
+            "received_at_utc": "2026-07-23T17:04:04.747Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T18:00:00Z",
+            "raw_report": "METAR SAEZ 231800Z 03011KT 9999 FEW025 SCT038 16/09 Q1020 NOSIG",
+            "received_at_utc": "2026-07-23T18:04:03.039Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T19:00:00Z",
+            "raw_report": "METAR SAEZ 231900Z 04008KT 9999 BKN032 16/10 Q1020 NOSIG",
+            "received_at_utc": "2026-07-23T19:04:05.329Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T20:00:00Z",
+            "raw_report": "METAR SAEZ 232000Z 07008KT 9999 SCT030 BKN042 15/10 Q1020 NOSIG",
+            "received_at_utc": "2026-07-23T20:04:07.710Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T21:00:00Z",
+            "raw_report": "METAR SAEZ 232100Z 08010KT 9999 BKN042 OVC200 14/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-23T21:04:05.804Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T22:00:00Z",
+            "raw_report": "METAR SAEZ 232200Z 06008KT 9999 SCT032 BKN042 13/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-23T22:04:06.616Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T23:00:00Z",
+            "raw_report": "METAR SAEZ 232300Z 05008KT 9999 SCT032 BKN200 13/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-23T23:04:04.723Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T00:00:00Z",
+            "raw_report": "METAR SAEZ 240000Z 06005KT 9999 FEW026 BKN032 BKN200 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T00:04:09.051Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T01:00:00Z",
+            "raw_report": "METAR SAEZ 240100Z 07006KT 9999 FEW024 BKN041 BKN200 14/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T01:04:05.633Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T02:00:00Z",
+            "raw_report": "METAR SAEZ 240200Z 04005KT 9999 SCT035 OVC045 14/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T02:04:08.339Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 16.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-24T04:00:00Z",
+      "event_date": "2026-07-24",
+      "receipts": {
+        "metar_response_sha256": "e1f7b90dd8ec557ac57543d37d1babe1f8a58412ec3aae19b2e68dc2d7d2e5ff",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260725_0300",
+        "taf_response_sha256": "f7995b1304aaddf8573c37591d53b38cde90ede7d1b20cfc3cc2547edbb24522",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-24T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-5227fe0b621c65509a30969d8933d559",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-25T03:00:00Z",
+        "start_utc": "2026-07-24T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-23T23:36:13Z",
+        "cloud_cover_fraction": 0.7916666666666666,
+        "issue_time_utc": "2026-07-23T23:00:00Z",
+        "precipitation_probability": 0.6666666666666666,
+        "raw_taf": "TAF SAEZ 232300Z 2400/2424 05010KT 9999 BKN012 OVC040 TX16/2418Z TN11/2411Z BECMG 2407/2409 5000 RA BKN008 OVC015 BECMG 2415/2417 09010KT 9999 NSW SCT040",
+        "raw_taf_sha256": "238c9941a5e3c504d71b2e03f2484a8e7e270ef21cfb50272e5c944af4fb15e3",
+        "tx_c": 16.0,
+        "tx_valid_at_utc": "2026-07-24T18:00:00Z",
+        "wind_speed_mps": 5.144440000000001
+      },
+      "truth": {
+        "observation_count": 33,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-24T03:00:00Z",
+            "raw_report": "METAR SAEZ 240300Z 05004KT 9999 OVC045 14/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T03:24:09.701Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T04:00:00Z",
+            "raw_report": "METAR SAEZ 240400Z 08005KT 9999 BKN036 OVC045 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T04:04:07.864Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T05:00:00Z",
+            "raw_report": "METAR SAEZ 240500Z 09007KT 9999 SCT040 OVC048 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T05:04:08.991Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T06:00:00Z",
+            "raw_report": "METAR SAEZ 240600Z 05005KT 9999 BKN036 OVC046 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T06:04:08.186Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T07:00:00Z",
+            "raw_report": "METAR SAEZ 240700Z 04003KT 8000 -DZ FEW005 BKN025 OVC050 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T07:05:04.207Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T07:30:00Z",
+            "raw_report": "SPECI SAEZ 240730Z 06006KT 8000 -DZ BKN013 OVC028 13/11 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T07:31:02.938Z",
+            "report_type": "SPECI",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T08:00:00Z",
+            "raw_report": "METAR SAEZ 240800Z 02002KT 9000 -DZ BKN012 OVC024 13/11 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T08:04:08.486Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:00:00Z",
+            "raw_report": "METAR SAEZ 240900Z 04004KT 5000 DZ BKN013 OVC028 13/11 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T09:05:18.955Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:30:00Z",
+            "raw_report": "SPECI SAEZ 240930Z 07006KT 3000 DZ SCT006 BKN016 OVC040 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T09:32:11.773Z",
+            "report_type": "SPECI",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:45:00Z",
+            "raw_report": "SPECI SAEZ 240945Z 06006KT 8000 -DZ SCT016 BKN032 13/12 Q1019 REDZ NOSIG",
+            "received_at_utc": "2026-07-24T09:47:03.164Z",
+            "report_type": "SPECI",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T10:00:00Z",
+            "raw_report": "METAR SAEZ 241000Z 06005KT 9999 BKN029 BKN049 13/12 Q1019 TEMPO 4000 -DZ BKN015",
+            "received_at_utc": "2026-07-24T10:23:35.902Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T11:00:00Z",
+            "raw_report": "METAR SAEZ 241100Z 09005KT 9999 SCT035 BKN050 12/11 Q1019 TEMPO 6000 -DZ BKN015",
+            "received_at_utc": "2026-07-24T11:23:35.642Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T12:00:00Z",
+            "raw_report": "METAR SAEZ 241200Z 08005KT CAVOK 13/12 Q1019 TEMPO 6000 -DZ BKN015",
+            "received_at_utc": "2026-07-24T12:23:38.063Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T13:00:00Z",
+            "raw_report": "METAR SAEZ 241300Z 05007KT CAVOK 14/12 Q1019 TEMPO 6000 -DZ BKN015",
+            "received_at_utc": "2026-07-24T13:23:37.267Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T14:00:00Z",
+            "raw_report": "METAR SAEZ 241400Z 05007KT CAVOK 15/12 Q1020 NOSIG",
+            "received_at_utc": "2026-07-24T14:04:04.274Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T15:00:00Z",
+            "raw_report": "METAR SAEZ 241500Z 33007KT 8000 -DZ BKN015 BKN029 15/12 Q1020 NOSIG",
+            "received_at_utc": "2026-07-24T15:04:05.200Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T15:22:00Z",
+            "raw_report": "SPECI SAEZ 241522Z 33005KT 3000 DZ BKN016 BKN028 15/12 Q1020 NOSIG",
+            "received_at_utc": "2026-07-24T15:23:03.035Z",
+            "report_type": "SPECI",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T15:45:00Z",
+            "raw_report": "SPECI SAEZ 241545Z 33005KT 1500 DZ SCT008 BKN016 BKN028 15/12 Q1020 NOSIG",
+            "received_at_utc": "2026-07-24T15:46:07.509Z",
+            "report_type": "SPECI",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:00:00Z",
+            "raw_report": "METAR SAEZ 241600Z 29005KT 1000 R11/1300D DZ SCT008 BKN015 14/13 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T16:23:35.046Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:10:00Z",
+            "raw_report": "SPECI SAEZ 241610Z VRB03KT 3000 -DZ FEW008 SCT015 BKN021 15/13 Q1019 REDZ NOSIG",
+            "received_at_utc": "2026-07-24T16:14:06.109Z",
+            "report_type": "SPECI",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:21:00Z",
+            "raw_report": "SPECI SAEZ 241621Z VRB02KT 8000 -DZ SCT017 BKN020 15/13 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T16:22:10.938Z",
+            "report_type": "SPECI",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T17:00:00Z",
+            "raw_report": "METAR SAEZ 241700Z 29004KT 9999 SCT017 BKN030 BKN060 16/12 Q1018 BECMG 29004KT 9999 SCT015 BKN060",
+            "received_at_utc": "2026-07-24T17:24:05.578Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T18:00:00Z",
+            "raw_report": "METAR SAEZ 241800Z 29005KT 9999 FEW018 SCT028 BKN060 17/12 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T18:04:04.115Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T19:00:00Z",
+            "raw_report": "METAR SAEZ 241900Z 29005KT 9999 FEW023 SCT028 BKN100 17/12 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T19:04:05.149Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T20:00:00Z",
+            "raw_report": "METAR SAEZ 242000Z 30003KT 9999 FEW024 SCT030 17/12 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T20:04:06.215Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T21:00:00Z",
+            "raw_report": "METAR SAEZ 242100Z 30003KT 9999 FEW025 BKN050 16/11 Q1018 NOSIG",
+            "received_at_utc": "2026-07-24T21:04:04.495Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T22:00:00Z",
+            "raw_report": "METAR SAEZ 242200Z 00000KT CAVOK 12/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T22:04:06.347Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T23:00:00Z",
+            "raw_report": "METAR SAEZ 242300Z 13002KT CAVOK 12/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-24T23:04:04.830Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T00:00:00Z",
+            "raw_report": "METAR SAEZ 250000Z 06003KT 8000 NSC 13/11 Q1019 NOSIG",
+            "received_at_utc": "2026-07-25T00:04:03.861Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T01:00:00Z",
+            "raw_report": "METAR SAEZ 250100Z 00000KT 5000 BR NSC 12/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-25T01:04:04.564Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T01:44:00Z",
+            "raw_report": "SPECI SAEZ 250144Z 00000KT 3000 BR NSC 12/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-25T01:45:14.277Z",
+            "report_type": "SPECI",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T02:00:00Z",
+            "raw_report": "METAR SAEZ 250200Z VRB02KT 1500 BCFG BR NSC 12/11 Q1019 TEMPO 0800 BCFG NSC",
+            "received_at_utc": "2026-07-25T02:23:35.182Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T02:30:00Z",
+            "raw_report": "METAR SAEZ 250230Z VRB02KT 1500 BCFG BR NSC 12/11 Q1019 TEMPO 0800 BCFG NSC",
+            "received_at_utc": "2026-07-25T03:08:14.564Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-26T04:00:00Z",
+      "event_date": "2026-07-26",
+      "receipts": {
+        "metar_response_sha256": "e22d9b39c828e68cbbe6ec508234668e68eb5e78560d58c836f123ff6321ad4b",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260727_0300",
+        "taf_response_sha256": "af8d73686c2074540225abc4b68aa3eb50fe171a345f6ab53728ee5e43cd6cef",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-26T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-bd4d011abd8832c344c358e791c69291",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-27T03:00:00Z",
+        "start_utc": "2026-07-26T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-26T03:35:12Z",
+        "cloud_cover_fraction": 0.3333333333333333,
+        "issue_time_utc": "2026-07-26T03:35:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF AMD SAEZ 260335Z 2603/2624 05005KT 9999 BKN035 TX19/2618Z TN10/2609Z TEMPO 2603/2606 VRB03KT 5000 BR OVC025 BECMG 2608/2610 0800 FG SCT010 OVC020 BECMG 2612/2614 09005KT CAVOK",
+        "raw_taf_sha256": "8df7ce0d5b55941ea82a28a34121160aeeffb4d4987d84b84b3176a80b84f0ad",
+        "tx_c": 19.0,
+        "tx_valid_at_utc": "2026-07-26T18:00:00Z",
+        "wind_speed_mps": 2.5722200000000006
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-26T03:00:00Z",
+            "raw_report": "METAR SAEZ 260300Z VRB02KT 9999 OVC036 14/11 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T03:04:12.781Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T04:00:00Z",
+            "raw_report": "METAR SAEZ 260400Z 35004KT 9999 OVC038 14/11 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T04:04:10.696Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T05:00:00Z",
+            "raw_report": "METAR SAEZ 260500Z 34003KT 9999 SCT038 OVC200 14/11 Q1016 NOSIG",
+            "received_at_utc": "2026-07-26T05:04:06.924Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T06:00:00Z",
+            "raw_report": "METAR SAEZ 260600Z 00000KT CAVOK 13/11 Q1016 NOSIG",
+            "received_at_utc": "2026-07-26T06:04:11.023Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T07:00:00Z",
+            "raw_report": "METAR SAEZ 260700Z 00000KT CAVOK 13/11 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T07:04:10.828Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T08:00:00Z",
+            "raw_report": "METAR SAEZ 260800Z 24002KT 9999 FEW020 BKN200 10/09 Q1016 NOSIG",
+            "received_at_utc": "2026-07-26T08:04:06.605Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T09:00:00Z",
+            "raw_report": "METAR SAEZ 260900Z 00000KT 9000 MIFG NSC 11/10 Q1016 NOSIG",
+            "received_at_utc": "2026-07-26T09:04:12.079Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T10:00:00Z",
+            "raw_report": "METAR SAEZ 261000Z 00000KT 9000 MIFG NSC 10/09 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T10:04:03.926Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T11:00:00Z",
+            "raw_report": "METAR SAEZ 261100Z 00000KT 5000 MIFG BR FEW008 SCT200 09/09 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T11:04:04.464Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T12:00:00Z",
+            "raw_report": "METAR SAEZ 261200Z 00000KT 5000 MIFG BR NSC 10/10 Q1018 NOSIG",
+            "received_at_utc": "2026-07-26T12:04:06.147Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T13:00:00Z",
+            "raw_report": "METAR SAEZ 261300Z 27003KT 8000 NSC 15/13 Q1018 NOSIG",
+            "received_at_utc": "2026-07-26T13:06:04.252Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T14:00:00Z",
+            "raw_report": "METAR SAEZ 261400Z 20003KT CAVOK 18/13 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T14:04:14.159Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T15:00:00Z",
+            "raw_report": "METAR SAEZ 261500Z 15005KT CAVOK 19/12 Q1017 NOSIG",
+            "received_at_utc": "2026-07-26T15:04:16.707Z",
+            "report_type": "METAR",
+            "temperature_c": 19.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T16:00:00Z",
+            "raw_report": "METAR SAEZ 261600Z 14006KT CAVOK 20/12 Q1016 NOSIG",
+            "received_at_utc": "2026-07-26T16:04:10.360Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T17:00:00Z",
+            "raw_report": "METAR SAEZ 261700Z 09007KT 9999 BKN030 20/12 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T17:04:06.935Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T18:00:00Z",
+            "raw_report": "METAR SAEZ 261800Z 10006KT 9999 BKN035 20/12 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T18:04:06.307Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T19:00:00Z",
+            "raw_report": "METAR SAEZ 261900Z 04010KT 9999 FEW039 20/12 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T19:04:07.516Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T20:00:00Z",
+            "raw_report": "METAR SAEZ 262000Z 05010KT CAVOK 18/11 Q1014 NOSIG",
+            "received_at_utc": "2026-07-26T20:04:06.147Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T21:00:00Z",
+            "raw_report": "METAR SAEZ 262100Z 05005KT CAVOK 17/11 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T21:04:05.632Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T22:00:00Z",
+            "raw_report": "METAR SAEZ 262200Z 05007KT CAVOK 16/11 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T22:04:14.637Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T23:00:00Z",
+            "raw_report": "METAR SAEZ 262300Z 05007KT CAVOK 15/12 Q1015 NOSIG",
+            "received_at_utc": "2026-07-26T23:04:06.058Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T00:00:00Z",
+            "raw_report": "METAR SAEZ 270000Z 07007KT CAVOK 14/11 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T00:04:05.448Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T01:00:00Z",
+            "raw_report": "METAR SAEZ 270100Z 06007KT 9000 NSC 14/12 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T01:04:17.899Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T02:00:00Z",
+            "raw_report": "METAR SAEZ 270200Z 07009KT 9000 NSC 14/12 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T02:04:09.918Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 20.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-27T04:00:00Z",
+      "event_date": "2026-07-27",
+      "receipts": {
+        "metar_response_sha256": "6c21ab737e9af109d31cfd961f35440ab277715073ce5aec18ffe41acd4a9d58",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260728_0300",
+        "taf_response_sha256": "d187fee956be4b571f706ae5e975d0b8b9f06b4e2686e7276af8a2027ac8a6df",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-27T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-6114776dce24b2a4355bd4ece8b2955b",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-28T03:00:00Z",
+        "start_utc": "2026-07-27T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-26T23:58:20Z",
+        "cloud_cover_fraction": 0.75,
+        "issue_time_utc": "2026-07-26T23:00:00Z",
+        "precipitation_probability": 0.05454545454545454,
+        "raw_taf": "TAF SAEZ 262300Z 2700/2724 07006KT CAVOK TX20/2718Z TN12/2711Z BECMG 2704/2706 BKN010 BKN200 PROB30 TEMPO 2708/2711 3000 BR BECMG 2712/2714 02010KT FEW010 OVC200 BECMG 2716/2718 35010KT SCT030 OVC200",
+        "raw_taf_sha256": "23b3afe67a391753fe9b0616770ba9b85c98323fe95706ca86fa6a0954a3606f",
+        "tx_c": 20.0,
+        "tx_valid_at_utc": "2026-07-27T18:00:00Z",
+        "wind_speed_mps": 3.6478756363636364
+      },
+      "truth": {
+        "observation_count": 27,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-27T03:00:00Z",
+            "raw_report": "METAR SAEZ 270300Z 07007KT 6000 NSC 14/12 Q1014 NOSIG",
+            "received_at_utc": "2026-07-27T03:04:10.023Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T04:00:00Z",
+            "raw_report": "METAR SAEZ 270400Z 07007KT 6000 NSC 13/12 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T04:04:12.739Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T05:00:00Z",
+            "raw_report": "METAR SAEZ 270500Z 07006KT 6000 MIFG NSC 13/12 Q1013 NOSIG",
+            "received_at_utc": "2026-07-27T05:04:06.534Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T06:00:00Z",
+            "raw_report": "METAR SAEZ 270600Z 09007KT 3000 MIFG BR NSC 12/11 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T06:04:10.555Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T07:00:00Z",
+            "raw_report": "METAR SAEZ 270700Z 00000KT 0800 R11/0700D BCFG NSC 11/10 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T07:23:47.305Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T07:30:00Z",
+            "raw_report": "METAR SAEZ 270730Z 08004KT 1200 R11/P2000 BCFG NSC 11/10 Q1012 NOSIG",
+            "received_at_utc": "2026-07-27T08:08:41.711Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:00:00Z",
+            "raw_report": "METAR SAEZ 270800Z 09003KT 2000 MIFG BR NSC 11/11 Q1011 NOSIG",
+            "received_at_utc": "2026-07-27T08:09:44.686Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:24:00Z",
+            "raw_report": "SPECI SAEZ 270824Z 09005KT 0800 R11/1400D FG NSC 11/11 Q1011 NOSIG",
+            "received_at_utc": "2026-07-27T08:26:08.884Z",
+            "report_type": "SPECI",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:45:00Z",
+            "raw_report": "SPECI SAEZ 270845Z 08007KT 3000 BR NSC 12/12 Q1011 NOSIG",
+            "received_at_utc": "2026-07-27T08:46:05.779Z",
+            "report_type": "SPECI",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T09:00:00Z",
+            "raw_report": "METAR SAEZ 270900Z 05006KT 3000 BR NSC 13/12 Q1011 NOSIG",
+            "received_at_utc": "2026-07-27T09:04:22.167Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T10:00:00Z",
+            "raw_report": "METAR SAEZ 271000Z 05006KT 4000 BR NSC 13/13 Q1010 NOSIG",
+            "received_at_utc": "2026-07-27T10:04:12.608Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T11:00:00Z",
+            "raw_report": "METAR SAEZ 271100Z 09007KT 3000 BR FEW024 BKN200 13/13 Q1010 NOSIG",
+            "received_at_utc": "2026-07-27T11:05:05.586Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T12:00:00Z",
+            "raw_report": "METAR SAEZ 271200Z 05007KT 5000 BR FEW025 BKN200 14/13 Q1010 NOSIG",
+            "received_at_utc": "2026-07-27T12:05:07.883Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T13:00:00Z",
+            "raw_report": "METAR SAEZ 271300Z 03007KT 9000 BKN008 OVC100 15/14 Q1010 NOSIG",
+            "received_at_utc": "2026-07-27T13:04:04.678Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T14:00:00Z",
+            "raw_report": "METAR SAEZ 271400Z 03009KT 9999 BKN008 OVC100 15/14 Q1009 NOSIG",
+            "received_at_utc": "2026-07-27T14:04:11.170Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T15:00:00Z",
+            "raw_report": "METAR SAEZ 271500Z 03008KT 9999 SCT009 BKN013 OVC080 16/14 Q1008 NOSIG",
+            "received_at_utc": "2026-07-27T15:05:06.748Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T16:00:00Z",
+            "raw_report": "METAR SAEZ 271600Z 02008KT 9999 SCT010 BKN013 OVC080 17/15 Q1007 NOSIG",
+            "received_at_utc": "2026-07-27T16:05:02.595Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T17:00:00Z",
+            "raw_report": "METAR SAEZ 271700Z 33007KT 9999 BKN014 OVC017 17/14 Q1007 NOSIG",
+            "received_at_utc": "2026-07-27T17:04:06.202Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T18:00:00Z",
+            "raw_report": "METAR SAEZ 271800Z 31004KT 9999 BKN018 OVC025 18/14 Q1006 NOSIG",
+            "received_at_utc": "2026-07-27T18:05:05.073Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T19:00:00Z",
+            "raw_report": "METAR SAEZ 271900Z 09004KT 9999 FEW025 BKN047 18/14 Q1006 NOSIG",
+            "received_at_utc": "2026-07-27T19:04:08.730Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T20:00:00Z",
+            "raw_report": "METAR SAEZ 272000Z 05004KT 9999 BKN045 BKN100 18/14 Q1006 NOSIG",
+            "received_at_utc": "2026-07-27T20:19:25.208Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T21:00:00Z",
+            "raw_report": "METAR SAEZ 272100Z 03003KT CAVOK 17/14 Q1006 NOSIG",
+            "received_at_utc": "2026-07-27T21:04:06.948Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T22:00:00Z",
+            "raw_report": "METAR SAEZ 272200Z 04002KT CAVOK 17/14 Q1007 NOSIG",
+            "received_at_utc": "2026-07-27T22:04:03.738Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T23:00:00Z",
+            "raw_report": "METAR SAEZ 272300Z 09003KT CAVOK 16/14 Q1007 NOSIG",
+            "received_at_utc": "2026-07-27T23:04:07.360Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T00:00:00Z",
+            "raw_report": "METAR SAEZ 280000Z 08002KT CAVOK 16/14 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T00:04:10.202Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T01:00:00Z",
+            "raw_report": "METAR SAEZ 280100Z 00000KT 9999 BKN025 OVC060 16/14 Q1008 BECMG 00000KT 4000 BR",
+            "received_at_utc": "2026-07-28T01:30:07.850Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T02:00:00Z",
+            "raw_report": "METAR SAEZ 280603Z0Z 22003KT 0200 R11/0250D FG NSC 10/10 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T07:11:33.013Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 18.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-28T04:00:00Z",
+      "event_date": "2026-07-28",
+      "receipts": {
+        "metar_response_sha256": "74978e4c1ef5acbda89e556b418ac494568b7ad180a27ac30fe2318f713a0c54",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260729_0300",
+        "taf_response_sha256": "34e34a79104491500575830d4ce54d801560d9bed6e0387cb78047b1e108c5da",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-28T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-a33b773d660863702034fb07806c9662",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-29T03:00:00Z",
+        "start_utc": "2026-07-28T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-27T23:30:24Z",
+        "cloud_cover_fraction": 0.75,
+        "issue_time_utc": "2026-07-27T23:00:00Z",
+        "precipitation_probability": 0.05454545454545454,
+        "raw_taf": "TAF SAEZ 272300Z 2800/2824 VRB05KT CAVOK TX17/2818Z TN11/2810Z BECMG 2802/2804 4000 BR BKN010 BECMG 2807/2809 0100 FG BKN003 BECMG 2814/2816 14010KT 8000 SCT008 BKN020 PROB30 TEMPO 2816/2820 4000 DZ BKN008",
+        "raw_taf_sha256": "1244c218a297de4c702b92cf7a957b513fb48a6c5a3f5787560231ca23f25c0d",
+        "tx_c": 17.0,
+        "tx_valid_at_utc": "2026-07-28T18:00:00Z",
+        "wind_speed_mps": 3.039896363636364
+      },
+      "truth": {
+        "observation_count": 35,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-28T03:00:00Z",
+            "raw_report": "METAR SAEZ 280300Z 01005KT 9000 SCT023 15/14 Q1008 BECMG 01005KT 4000 BR",
+            "received_at_utc": "2026-07-28T03:24:04.785Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T03:34:00Z",
+            "raw_report": "SPECI SAEZ 280334Z 33002KT 4000 MIFG BR SCT023 14/13 Q1008 BECMG 4000 BR",
+            "received_at_utc": "2026-07-28T03:36:03.827Z",
+            "report_type": "SPECI",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T04:00:00Z",
+            "raw_report": "METAR SAEZ 280400Z 36003KT 1500 MIFG BR SCT003 14/13 Q1008 BECMG 0600 MIFG",
+            "received_at_utc": "2026-07-28T04:23:48.640Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T05:00:00Z",
+            "raw_report": "METAR SAEZ 280500Z 33003KT 0800 R11/0900 FG NSC 14/13 Q1008 BECMG 0600 MIFG",
+            "received_at_utc": "2026-07-28T05:23:47.669Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T05:30:00Z",
+            "raw_report": "METAR SAEZ 280530Z 21002KT 0300 R11/0300 FG NSC 11/11 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T06:08:47.712Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T06:00:00Z",
+            "raw_report": "METAR SAEZ 280600Z 20003KT 0200 R11/250D FG NSC 11/11 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T06:23:47.501Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T06:30:00Z",
+            "raw_report": "METAR SAEZ 280630Z 22003KT 0200 R11/0250D FG NSC 10/10 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T07:16:05.594Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T07:00:00Z",
+            "raw_report": "METAR SAEZ 280700Z 20002KT 0100 R11/150D FG NSC 10/10 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T07:23:48.450Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T07:30:00Z",
+            "raw_report": "METAR SAEZ 280730Z 20003KT 0100 R11/0150D FG NSC 10/10 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T08:08:54.834Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T08:00:00Z",
+            "raw_report": "METAR SAEZ 280800Z 24002KT 0200 R11/250N FG OVC017 10/10 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T08:23:48.120Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T08:25:00Z",
+            "raw_report": "SPECI SAEZ 280825Z 22004KT 0800 R11/1200U FG OVC016 12/12 Q1009 NOSIG",
+            "received_at_utc": "2026-07-28T08:27:01.592Z",
+            "report_type": "SPECI",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T09:00:00Z",
+            "raw_report": "METAR SAEZ 280900Z 24003KT 2000 BR OVC016 13/13 Q1009 NOSIG",
+            "received_at_utc": "2026-07-28T09:04:16.573Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T10:00:00Z",
+            "raw_report": "METAR SAEZ 281000Z 18003KT 3000 BR OVC014 13/13 Q1009 TEMPO 0500 FG OVC015",
+            "received_at_utc": "2026-07-28T10:23:50.294Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T10:45:00Z",
+            "raw_report": "SPECI SAEZ 281045Z 21003KT 2500 BR OVC010 14/14 Q1010 NOSIG",
+            "received_at_utc": "2026-07-28T10:47:04.678Z",
+            "report_type": "SPECI",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T11:00:00Z",
+            "raw_report": "METAR SAEZ 281100Z 19003KT 160V230 3000 BR BKN005 BKN010 BKN100 14/14 Q1010 NOSIG",
+            "received_at_utc": "2026-07-28T11:05:02.722Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T11:30:00Z",
+            "raw_report": "METAR SAEZ 281130Z 18005KT 3000 BR SCT005 BKN018 14/14 Q1010 NOSIG",
+            "received_at_utc": "2026-07-28T12:04:08.438Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T12:00:00Z",
+            "raw_report": "METAR SAEZ 281200Z 19003KT 5000 BR FEW005 BKN017 14/14 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T12:09:53.453Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T12:38:00Z",
+            "raw_report": "SPECI SAEZ 281238Z 17008KT 5000 BR BKN003 BKN017 14/14 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T12:40:24.730Z",
+            "report_type": "SPECI",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:00:00Z",
+            "raw_report": "METAR SAEZ 281300Z 16007KT 2000 R11/1400D BR OVC002 14/14 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T13:23:47.618Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:08:00Z",
+            "raw_report": "METAR SAEZ 281308Z 18008KT 150V210 0800 R11/1400D FG OVC002 14/13 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T13:12:03.726Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:32:00Z",
+            "raw_report": "METAR SAEZ 281332Z COR 15007KT 1500 -DZ BR OVC002 14/13 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T14:08:58.469Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T14:00:00Z",
+            "raw_report": "METAR SAEZ 281400Z 15007KT 110V180 5000 -DZ BR OVC003 14/13 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T14:09:28.099Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T14:30:00Z",
+            "raw_report": "METAR SAEZ 281430Z 14008KT 9999 BKN007 OVC012 15/14 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T15:04:09.360Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T15:00:00Z",
+            "raw_report": "METAR SAEZ 281500Z 13008KT 9999 BKN009 OVC013 15/14 Q1011 NOSIG",
+            "received_at_utc": "2026-07-28T15:09:18.005Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T16:00:00Z",
+            "raw_report": "METAR SAEZ 281600Z 12008KT 9999 SCT015 BKN200 17/14 Q1010 NOSIG",
+            "received_at_utc": "2026-07-28T16:04:03.088Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T17:00:00Z",
+            "raw_report": "METAR SAEZ 281700Z 11010KT 9999 FEW018 OVC200 17/13 Q1009 NOSIG",
+            "received_at_utc": "2026-07-28T17:04:04.609Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T18:00:00Z",
+            "raw_report": "METAR SAEZ 281800Z 07014KT 9999 FEW019 OVC200 17/13 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T18:04:04.259Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T19:00:00Z",
+            "raw_report": "METAR SAEZ 281900Z 09011KT 9999 FEW020 BKN200 17/12 Q1008 NOSIG",
+            "received_at_utc": "2026-07-28T19:04:08.246Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T20:00:00Z",
+            "raw_report": "METAR SAEZ 282000Z 10012KT 9999 SCT018 BKN200 15/12 Q1009 NOSIG",
+            "received_at_utc": "2026-07-28T20:04:09.572Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T21:00:00Z",
+            "raw_report": "METAR SAEZ 282100Z 13007KT 9999 BKN017 BKN200 14/11 Q1012 NOSIG",
+            "received_at_utc": "2026-07-28T21:04:09.704Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T22:00:00Z",
+            "raw_report": "METAR SAEZ 282200Z 14006KT 9999 BKN013 SCT200 12/10 Q1012 NOSIG",
+            "received_at_utc": "2026-07-28T22:04:06.923Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T23:00:00Z",
+            "raw_report": "METAR SAEZ 282300Z 13008KT 9999 OVC010 12/10 Q1013 NOSIG",
+            "received_at_utc": "2026-07-28T23:04:07.498Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T00:00:00Z",
+            "raw_report": "METAR SAEZ 290000Z 13008KT 9999 OVC008 12/10 Q1013 TEMPO 8000 DZ OVC003",
+            "received_at_utc": "2026-07-29T00:24:03.592Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T01:00:00Z",
+            "raw_report": "METAR SAEZ 290100Z 15008KT 9999 OVC009 11/09 Q1013 TEMPO 8000 DZ OVC003",
+            "received_at_utc": "2026-07-29T01:23:51.320Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T02:00:00Z",
+            "raw_report": "METAR SAEZ 290200Z 18006KT 9999 OVC009 11/09 Q1014 TEMPO 8000 DZ OVC003",
+            "received_at_utc": "2026-07-29T02:23:50.300Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-29T04:00:00Z",
+      "event_date": "2026-07-29",
+      "receipts": {
+        "metar_response_sha256": "41a0a95ff6f3804c7916a0a3c52860f5d866154fa6ce25b5305c0744d391faf4",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&taf=false&hours=24&date=20260730_0300",
+        "taf_response_sha256": "10598c0486bd905abcb79ba8e82221ed5c5d536f62301eea1170885d7ba3ecc3",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-29T04%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-9b75cce80c4b5ea801bb736dcb0baa38",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-30T03:00:00Z",
+        "start_utc": "2026-07-29T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_time_utc": "2026-07-28T23:30:17Z",
+        "cloud_cover_fraction": 0.6666666666666666,
+        "issue_time_utc": "2026-07-28T23:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF SAEZ 282300Z 2900/2924 14005KT 9999 OVC010 TX16/2918Z TN07/2910Z TEMPO 2900/2903 8000 DZ OVC003 BECMG 2904/2906 VRB03KT 5000 BR OVC010 TEMPO 2906/2912 1500 MIFG OVC008 BECMG 2914/2916 07010KT CAVOK",
+        "raw_taf_sha256": "08e76ca7607da627f2abc591dfa850e9560ced87170ffd1177c3b9b2c276b20d",
+        "tx_c": 16.0,
+        "tx_valid_at_utc": "2026-07-29T18:00:00Z",
+        "wind_speed_mps": 2.3578683333333332
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-29T03:00:00Z",
+            "raw_report": "METAR SAEZ 290300Z 15007KT 9999 OVC011 11/08 Q1014 NOSIG",
+            "received_at_utc": "2026-07-29T03:04:08.121Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T04:00:00Z",
+            "raw_report": "METAR SAEZ 290400Z 13007KT 9999 OVC013 11/08 Q1015 NOSIG",
+            "received_at_utc": "2026-07-29T04:04:07.703Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T05:00:00Z",
+            "raw_report": "METAR SAEZ 290500Z 16007KT 9999 BKN016 10/08 Q1015 NOSIG",
+            "received_at_utc": "2026-07-29T05:04:03.941Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T06:00:00Z",
+            "raw_report": "METAR SAEZ 290600Z 13006KT 9999 BKN014 09/07 Q1016 NOSIG",
+            "received_at_utc": "2026-07-29T06:04:12.585Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T07:00:00Z",
+            "raw_report": "METAR SAEZ 290700Z 13006KT 9999 SCT012 09/07 Q1015 NOSIG",
+            "received_at_utc": "2026-07-29T07:04:10.822Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T08:00:00Z",
+            "raw_report": "METAR SAEZ 290800Z 16003KT CAVOK 07/06 Q1016 NOSIG",
+            "received_at_utc": "2026-07-29T08:04:12.837Z",
+            "report_type": "METAR",
+            "temperature_c": 7.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T09:00:00Z",
+            "raw_report": "METAR SAEZ 290900Z 15002KT CAVOK 06/05 Q1016 NOSIG",
+            "received_at_utc": "2026-07-29T09:04:09.963Z",
+            "report_type": "METAR",
+            "temperature_c": 6.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T10:00:00Z",
+            "raw_report": "METAR SAEZ 291000Z 00000KT 7000 MIFG NSC 05/05 Q1017 NOSIG",
+            "received_at_utc": "2026-07-29T10:04:09.212Z",
+            "report_type": "METAR",
+            "temperature_c": 5.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T11:00:00Z",
+            "raw_report": "METAR SAEZ 291100Z 12003KT 5000 MIFG NSC 05/05 Q1017 NOSIG",
+            "received_at_utc": "2026-07-29T11:04:11.956Z",
+            "report_type": "METAR",
+            "temperature_c": 5.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T12:00:00Z",
+            "raw_report": "METAR SAEZ 291200Z 11003KT CAVOK 08/08 Q1017 NOSIG",
+            "received_at_utc": "2026-07-29T12:04:09.799Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T13:00:00Z",
+            "raw_report": "METAR SAEZ 291300Z 17004KT CAVOK 12/09 Q1019 NOSIG",
+            "received_at_utc": "2026-07-29T13:04:07.668Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T14:00:00Z",
+            "raw_report": "METAR SAEZ 291400Z 14007KT CAVOK 13/10 Q1019 NOSIG",
+            "received_at_utc": "2026-07-29T14:04:09.004Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T15:00:00Z",
+            "raw_report": "METAR SAEZ 291500Z 10010KT CAVOK 15/09 Q1019 NOSIG",
+            "received_at_utc": "2026-07-29T15:04:10.803Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T16:00:00Z",
+            "raw_report": "METAR SAEZ 291600Z 11007KT CAVOK 16/09 Q1019 NOSIG",
+            "received_at_utc": "2026-07-29T16:04:04.228Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T17:00:00Z",
+            "raw_report": "METAR SAEZ 291700Z 10007KT CAVOK 17/09 Q1018 NOSIG",
+            "received_at_utc": "2026-07-29T17:04:11.473Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T18:00:00Z",
+            "raw_report": "METAR SAEZ 291800Z 12007KT CAVOK 17/08 Q1018 NOSIG",
+            "received_at_utc": "2026-07-29T18:13:38.145Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T19:00:00Z",
+            "raw_report": "METAR SAEZ 291900Z 11008KT CAVOK 16/09 Q1018 NOSIG",
+            "received_at_utc": "2026-07-29T19:08:45.666Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T20:00:00Z",
+            "raw_report": "METAR SAEZ 292000Z 03007KT CAVOK 16/10 Q1018 NOSIG",
+            "received_at_utc": "2026-07-29T20:04:10.520Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T21:00:00Z",
+            "raw_report": "METAR SAEZ 292100Z 04007KT CAVOK 15/09 Q1019 NOSIG",
+            "received_at_utc": "2026-07-29T21:04:09.809Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T22:00:00Z",
+            "raw_report": "METAR SAEZ 292200Z 07007KT CAVOK 13/09 Q1020 NOSIG",
+            "received_at_utc": "2026-07-29T22:06:10.379Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T23:00:00Z",
+            "raw_report": "METAR SAEZ 292300Z 10004KT CAVOK 12/09 Q1020 NOSIG",
+            "received_at_utc": "2026-07-29T23:04:12.484Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T00:00:00Z",
+            "raw_report": "METAR SAEZ 300000Z 12005KT CAVOK 11/07 Q1020 NOSIG",
+            "received_at_utc": "2026-07-30T00:04:10.456Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T01:00:00Z",
+            "raw_report": "METAR SAEZ 300100Z 11004KT CAVOK 10/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-30T01:04:06.749Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T02:00:00Z",
+            "raw_report": "METAR SAEZ 300200Z 10006KT CAVOK 10/08 Q1020 NOSIG",
+            "received_at_utc": "2026-07-30T02:04:07.577Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    }
+  ],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "America/Argentina/Buenos_Aires",
+  "source_class": "official_date_addressed_historical_replay",
+  "start_date": "2026-07-22",
+  "station_id": "SAEZ"
+}

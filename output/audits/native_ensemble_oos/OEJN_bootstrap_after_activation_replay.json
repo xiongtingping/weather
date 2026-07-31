@@ -1,0 +1,1638 @@
+{
+  "as_of_utc": "2026-07-30T21:14:28.688Z",
+  "calls_order_gateway": false,
+  "content_sha256": "ff6066bc0c45ff75bcf01e4d7be95c2da5ea7e2d4c3cd7867d86d439afa1d0a4",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "live_submit_authorized": false,
+  "min_holdout_days": 1,
+  "min_train_days": 2,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "reports": [
+    {
+      "as_of_utc": "2026-07-30T21:14:28.688Z",
+      "calls_order_gateway": false,
+      "content_sha256": "2f47763db808be1f86d8c66d4c4aeab7b1b871694eeb56c53a9b42db3345e901",
+      "cross_candidates": [
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+          "available_family_set_hash": "93dd3af326c25e398999edf59f51d550bbe6387ec69d25ca0787370e2586729b",
+          "available_system_set_hash": "92c711a8996ae01d2e3614d48c86550414ad4a234d681dafc5ca43883c56b4b5",
+          "climatology_baseline_metrics": {
+            "brier": 0.6666666666666667,
+            "crps": 1.222222222222222,
+            "nll": 1.0986122886681098
+          },
+          "cross_system_residual_correlation": {
+            "DWD_ICON_EPS_SEAMLESS": {
+              "DWD_ICON_EPS_SEAMLESS": 1.0,
+              "DWD_ICON_GLOBAL_EPS": 1.0,
+              "ECCC_GEM_GLOBAL_ENS": 0.9946908854723576,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.995360695060848,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9702611367342959,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9468394059779611,
+              "NOAA_AIGEFS_025": 0.9978186463588281,
+              "NOAA_GEFS_025": 0.9741946996424347,
+              "NOAA_GEFS_05": 0.9987785617666799,
+              "NOAA_GEFS_SEAMLESS": 0.9741946996424347,
+              "UKMO_GLOBAL_ENS": 0.9997533668266199
+            },
+            "DWD_ICON_GLOBAL_EPS": {
+              "DWD_ICON_EPS_SEAMLESS": 1.0,
+              "DWD_ICON_GLOBAL_EPS": 1.0,
+              "ECCC_GEM_GLOBAL_ENS": 0.9946908854723576,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.995360695060848,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9702611367342959,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9468394059779611,
+              "NOAA_AIGEFS_025": 0.9978186463588281,
+              "NOAA_GEFS_025": 0.9741946996424347,
+              "NOAA_GEFS_05": 0.9987785617666799,
+              "NOAA_GEFS_SEAMLESS": 0.9741946996424347,
+              "UKMO_GLOBAL_ENS": 0.9997533668266199
+            },
+            "ECCC_GEM_GLOBAL_ENS": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9946908854723576,
+              "DWD_ICON_GLOBAL_EPS": 0.9946908854723576,
+              "ECCC_GEM_GLOBAL_ENS": 1.0,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9999773696809627,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9900198632721348,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9749186883251163,
+              "NOAA_AIGEFS_025": 0.9993145556287466,
+              "NOAA_GEFS_025": 0.9922498653757674,
+              "NOAA_GEFS_05": 0.9883912131376631,
+              "NOAA_GEFS_SEAMLESS": 0.9922498653757674,
+              "UKMO_GLOBAL_ENS": 0.9967309648041225
+            },
+            "ECMWF_AIFS_ENS_GLOBAL": {
+              "DWD_ICON_EPS_SEAMLESS": 0.995360695060848,
+              "DWD_ICON_GLOBAL_EPS": 0.995360695060848,
+              "ECCC_GEM_GLOBAL_ENS": 0.9999773696809627,
+              "ECMWF_AIFS_ENS_GLOBAL": 1.0,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9890493573141582,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9733993297871415,
+              "NOAA_AIGEFS_025": 0.9995409896769718,
+              "NOAA_GEFS_025": 0.991391452546537,
+              "NOAA_GEFS_05": 0.9893909663039991,
+              "NOAA_GEFS_SEAMLESS": 0.991391452546537,
+              "UKMO_GLOBAL_ENS": 0.9972519433877416
+            },
+            "ECMWF_IFS_ENS_GLOBAL": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9702611367342959,
+              "DWD_ICON_GLOBAL_EPS": 0.9702611367342959,
+              "ECCC_GEM_GLOBAL_ENS": 0.9900198632721348,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9890493573141582,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9999999999999998,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9965539670204294,
+              "NOAA_AIGEFS_025": 0.9841242262666707,
+              "NOAA_GEFS_025": 0.9998585812566337,
+              "NOAA_GEFS_05": 0.9571157199107844,
+              "NOAA_GEFS_SEAMLESS": 0.9998585812566337,
+              "UKMO_GLOBAL_ENS": 0.9753975754975964
+            },
+            "GOOGLE_WEATHERNEXT2_ENS": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9468394059779611,
+              "DWD_ICON_GLOBAL_EPS": 0.9468394059779611,
+              "ECCC_GEM_GLOBAL_ENS": 0.9749186883251163,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9733993297871415,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9965539670204294,
+              "GOOGLE_WEATHERNEXT2_ENS": 1.0,
+              "NOAA_AIGEFS_025": 0.9660113997432209,
+              "NOAA_GEFS_025": 0.9950181025371033,
+              "NOAA_GEFS_05": 0.9297872581263502,
+              "NOAA_GEFS_SEAMLESS": 0.9950181025371033,
+              "UKMO_GLOBAL_ENS": 0.9537504185159145
+            },
+            "NOAA_AIGEFS_025": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9978186463588281,
+              "DWD_ICON_GLOBAL_EPS": 0.9978186463588281,
+              "ECCC_GEM_GLOBAL_ENS": 0.9993145556287466,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9995409896769718,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9841242262666707,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9660113997432209,
+              "NOAA_AIGEFS_025": 1.0,
+              "NOAA_GEFS_025": 0.9869697823757213,
+              "NOAA_GEFS_05": 0.9933380587045455,
+              "NOAA_GEFS_SEAMLESS": 0.9869697823757213,
+              "UKMO_GLOBAL_ENS": 0.9990386222853563
+            },
+            "NOAA_GEFS_025": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9741946996424347,
+              "DWD_ICON_GLOBAL_EPS": 0.9741946996424347,
+              "ECCC_GEM_GLOBAL_ENS": 0.9922498653757674,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.991391452546537,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9998585812566337,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9950181025371033,
+              "NOAA_AIGEFS_025": 0.9869697823757213,
+              "NOAA_GEFS_025": 1.0,
+              "NOAA_GEFS_05": 0.9618524013118785,
+              "NOAA_GEFS_SEAMLESS": 1.0,
+              "UKMO_GLOBAL_ENS": 0.9789670351132731
+            },
+            "NOAA_GEFS_05": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9987785617666799,
+              "DWD_ICON_GLOBAL_EPS": 0.9987785617666799,
+              "ECCC_GEM_GLOBAL_ENS": 0.9883912131376631,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9893909663039991,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9571157199107844,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9297872581263502,
+              "NOAA_AIGEFS_025": 0.9933380587045455,
+              "NOAA_GEFS_025": 0.9618524013118785,
+              "NOAA_GEFS_05": 1.0,
+              "NOAA_GEFS_SEAMLESS": 0.9618524013118785,
+              "UKMO_GLOBAL_ENS": 0.9974349129599683
+            },
+            "NOAA_GEFS_SEAMLESS": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9741946996424347,
+              "DWD_ICON_GLOBAL_EPS": 0.9741946996424347,
+              "ECCC_GEM_GLOBAL_ENS": 0.9922498653757674,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.991391452546537,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9998585812566337,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9950181025371033,
+              "NOAA_AIGEFS_025": 0.9869697823757213,
+              "NOAA_GEFS_025": 1.0,
+              "NOAA_GEFS_05": 0.9618524013118785,
+              "NOAA_GEFS_SEAMLESS": 1.0,
+              "UKMO_GLOBAL_ENS": 0.9789670351132731
+            },
+            "UKMO_GLOBAL_ENS": {
+              "DWD_ICON_EPS_SEAMLESS": 0.9997533668266199,
+              "DWD_ICON_GLOBAL_EPS": 0.9997533668266199,
+              "ECCC_GEM_GLOBAL_ENS": 0.9967309648041225,
+              "ECMWF_AIFS_ENS_GLOBAL": 0.9972519433877416,
+              "ECMWF_IFS_ENS_GLOBAL": 0.9753975754975964,
+              "GOOGLE_WEATHERNEXT2_ENS": 0.9537504185159145,
+              "NOAA_AIGEFS_025": 0.9990386222853563,
+              "NOAA_GEFS_025": 0.9789670351132731,
+              "NOAA_GEFS_05": 0.9974349129599683,
+              "NOAA_GEFS_SEAMLESS": 0.9789670351132731,
+              "UKMO_GLOBAL_ENS": 1.0
+            }
+          },
+          "effective_sample_n": 1.0,
+          "family_weight_caps": {
+            "DWD_ICON_EPS": 0.75,
+            "ECCC_GEM": 0.75,
+            "ECMWF": 0.45,
+            "GOOGLE_WEATHERNEXT": 0.75,
+            "NOAA_AIGEFS": 0.75,
+            "NOAA_GEFS": 0.75,
+            "UKMO": 0.75
+          },
+          "family_weights": {
+            "DWD_ICON_EPS": 0.13256729270423415,
+            "ECCC_GEM": 0.035862637634704375,
+            "ECMWF": 0.21376951289457286,
+            "GOOGLE_WEATHERNEXT": 0.12321321417557088,
+            "NOAA_AIGEFS": 0.09186823136731581,
+            "NOAA_GEFS": 0.25776509647993046,
+            "UKMO": 0.14495401474367156
+          },
+          "formal_p0_eligible": false,
+          "formal_promotion_min_holdout_days": 8,
+          "formal_promotion_min_train_days": 20,
+          "holdout_end_date": "2026-07-30",
+          "holdout_start_date": "2026-07-30",
+          "independence_family_ids": [
+            "DWD_ICON_EPS",
+            "ECCC_GEM",
+            "ECMWF",
+            "GOOGLE_WEATHERNEXT",
+            "NOAA_AIGEFS",
+            "NOAA_GEFS",
+            "UKMO"
+          ],
+          "independent_family_count": 7,
+          "lead_bucket": "d0",
+          "min_holdout_days": 1,
+          "min_train_days": 2,
+          "oos_metrics": {
+            "brier": 0.6533159556572306,
+            "crps": 1.0452973318084775,
+            "nll": 1.198593675146113
+          },
+          "predictions": [
+            {
+              "actual_tmax_c": 42.0,
+              "decision_at_utc": "2026-07-30T19:43:29.459Z",
+              "event_date": "2026-07-30",
+              "metrics": {
+                "brier": 0.6533159556572306,
+                "crps": 1.0452973318084775,
+                "nll": 1.198593675146113
+              },
+              "probability": {
+                "36": 0.0011281610321360394,
+                "37": 0.260866202451833,
+                "38": 0.014722730466709737,
+                "39": 0.024117067086680478,
+                "40": 0.3046212340742926,
+                "41": 0.059045628859589847,
+                "42": 0.301618086801297,
+                "43": 0.017632098756424356,
+                "44": 0.011253756078077947,
+                "45": 0.0026577836402618183,
+                "46": 0.0012090897205613421,
+                "47": 0.0011281610321360394
+              },
+              "system_member_set_shas": {
+                "DWD_ICON_EPS_SEAMLESS": "c5446d8b2782a94d724a70ad80ed5fd7e4be922a7f986e99e36139dc6ea3651a",
+                "DWD_ICON_GLOBAL_EPS": "509f87b7cc33fc695351c4136181497900da77f54b1442dc46b3e3013bc19509",
+                "ECCC_GEM_GLOBAL_ENS": "240f77551d50e1f1accac1f3f9eab1ff81b6667f39c52e625ba2ded1f02a1934",
+                "ECMWF_AIFS_ENS_GLOBAL": "7a3f214cf35de866b5bef1e13769eb047942c41c113bbc729cd122997c44c3fa",
+                "ECMWF_IFS_ENS_GLOBAL": "d6e5e846b4132df3dc9bdb3a3da5928ce12817471dce977f7db23b24566925a6",
+                "GOOGLE_WEATHERNEXT2_ENS": "c66c26be089e6acc32b0d4b9150bff2e72284d552cc23a877b5238bcab655998",
+                "NOAA_AIGEFS_025": "78e0bb068afc7c301f9d607218292eecd939130993bda0eb6bb45487bee84494",
+                "NOAA_GEFS_025": "98608b7f855ecd465f6439a73b37004053e69edfb15bf0a7dbc6f7e0f8d72eca",
+                "NOAA_GEFS_05": "48360a7d8d085a2bb050f9a6853b3c3770d2394e7bfd8783bb19e94dc1cfc9db",
+                "NOAA_GEFS_SEAMLESS": "5a7d605ec42d43a3203ee76b7c3d1f2b3468a3c3b921780e34f83cefed40d129",
+                "UKMO_GLOBAL_ENS": "12f46093be8d5bc3ea2c0745301bc208c5cc0a95a53577e6da23e61a194c81bc"
+              },
+              "trained_through_event_date": "2026-07-29"
+            }
+          ],
+          "rolling_origin_fold_count": 1,
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "selected_system_count": 11,
+          "selected_system_ids": [
+            "DWD_ICON_EPS_SEAMLESS",
+            "DWD_ICON_GLOBAL_EPS",
+            "ECCC_GEM_GLOBAL_ENS",
+            "ECMWF_AIFS_ENS_GLOBAL",
+            "ECMWF_IFS_ENS_GLOBAL",
+            "GOOGLE_WEATHERNEXT2_ENS",
+            "NOAA_AIGEFS_025",
+            "NOAA_GEFS_025",
+            "NOAA_GEFS_05",
+            "NOAA_GEFS_SEAMLESS",
+            "UKMO_GLOBAL_ENS"
+          ],
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Riyadh",
+          "state": "PRODUCTION_NO_LIVE_OOS_PASS",
+          "station_id": "OEJN",
+          "system_evaluations": {
+            "DWD_ICON_EPS_SEAMLESS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6161489151873767,
+                "crps": 0.9132158119658118,
+                "nll": 1.1580357091389104
+              },
+              "parameters": {
+                "bias_c": 3.5675000000000003,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.6303141924206414,
+                "train_rmse_c": 4.2393349026311515
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "008bd243f2260dc117b732736bfc9ae1f248ff4ee8ee9f235167a87cc6d26228",
+                    "05f7cdb1ec08b2ce8df8c4d41cd68bfa83e97cc1f56b7a0901726f174c000218",
+                    "07e7fc675b34d257a1fd6cc92cd99fd728bbd48bc41ba903cdca04c1f9c0d0ad",
+                    "0df83908d13650a6354f735bd6932434d2b59d35a3b96ac9dd8275d51782e746",
+                    "1579bb706ac9d4ee0d1aeb8069c5006048a2259595a70a1a54dc3d0550ef03a1",
+                    "23abc0687414270511cc56e8c830a4d320c658d721dde3ca186a13e122dbfb68",
+                    "264d5f0dc6d6e219e7ad4f9b664e325bfb305e87bda54e54f1638804adf8a41a",
+                    "2ae27ebbc27162dd731ddfa00161312831fa3499a9762d108b3642a398a5a2a7",
+                    "31a027bd9c5210712ad220134ec2b2340c7fc005f28e728d428f3717967e7517",
+                    "394bcad9a1549a876e807d2cc166bfdc0d594cfb48990be4b35a889a6f3f623f",
+                    "4119fd2306847c481a0cc9a286719661beecb830549e33735227b7ae6c0f4e51",
+                    "431fa6d7c95c6088fbca5c40da379fed971f9d207d42f7e87027f9cdcb6f1f53",
+                    "487046a48709c7d9e359fdab6a4cf291ff57cca2a405058a0ade8889bc9401e1",
+                    "4c8da8c6f0b48d3682ef8e29e34ae94169a53b1b1c0aa00f2b43e51bb7ac2785",
+                    "4ff7d14b1c95fa058eb5c688348d93d85c7a6724e2f548ced3c82963c1ff0616",
+                    "552e7fc214fa800239e18368ff477ba572c2b35f51b38b320cc44c33f6864a14",
+                    "6084fd911f212563fd0c4ffc26d393bbaa6d738b52ae5cf996c7765ecd39d992",
+                    "6d80184be77bc292634221c4aef1ed1cd4a752bd92a2f300b25afc5905bd168c",
+                    "76781bf81b4273a1114168f967ed618a3b7af66c152c25b5a0f37fffac1ede4f",
+                    "7c594b4108a13a43b2e25b69bcc762d5cdadb3c55b3950df280c92580f6313bb",
+                    "815c78c5d914f71d3993764e49e2a16def110a9fe7fd0f4934ba85447c4b4296",
+                    "82044316b3f49aed3493456ec7a2d3e24363c065d35061f73ec597428455d577",
+                    "85ad61b254611009c2426aef7564144e5392b28173036a0ae6c81218de576431",
+                    "8b7989950b52dfef8724913779fcca81acbe0d5bd6f2a28309a88d8da77e3565",
+                    "a8b027d43c959e0275763c0751986f7583813e91aaa241bf70d82e8681b3d1d7",
+                    "ac7c3f732d41b483933ff80687a13062266186ffaae2c895b30ff5243c793460",
+                    "b627ad8b71cf9c1914883921616420a3b34219a924ad60b92200b3e2ba41bc12",
+                    "b85e907b2190c08a4ed1fb1a85349c3727fccd34c7a3382905d5aecf8af25a8f",
+                    "b99c90975e3be3cf81780ba4a4525a76e54ca5e4d8ad1217f850ae31f2b8c296",
+                    "bbb7e9c492000358886a388dca8b045a2a0fbb42c1e340c55039da5c8a9c532d",
+                    "bd1d0dcf0602939b0a04178eaaf57bc2dfbc7b911d30f09d15c263079eb40d26",
+                    "c65a1c0f1ed1d9e442c00fbcc73ec0fda9c9018e332b074f4087e880ff4ed5e4",
+                    "ca744a28c3b2952f4deb78a7d1b7e3e52da1e348dfd8ed246e70e3653496a8b7",
+                    "ce8f0d25411c656df50e6d738461b001d912cb7a59d2c6e282a0da8b99b5daa1",
+                    "d06bdb91a1e81ff1a6a31ff87ebae37b0cfc02e85f7c7d53bcafa157a26c1916",
+                    "d95312bb7efb64a644cbe13122fc6c77c0fec03d11bab6f119660609d6132835",
+                    "de5f26202da4820acb0d519367846ba5124a59535240f273b8c390dcc9d4c178",
+                    "e12510087534b738f6039308f9ca81087a3238d30942c02c4ee2457d57c947df",
+                    "e4ed6d32ee287e765ed4d5bc6a256ea0bd23460ed4acf5bf007db25f32645993",
+                    "fa0faa1428ced4936f3cd9874c0fc9268adaa3c4d9ed2516e0aee28d95f73b73"
+                  ],
+                  "member_set_sha256": "c5446d8b2782a94d724a70ad80ed5fd7e4be922a7f986e99e36139dc6ea3651a",
+                  "metrics": {
+                    "brier": 0.6161489151873767,
+                    "crps": 0.9132158119658118,
+                    "nll": 1.1580357091389104
+                  },
+                  "probability": {
+                    "37": 0.2564102564102564,
+                    "38": 0.011538461538461539,
+                    "39": 0.01730769230769231,
+                    "40": 0.2737179487179487,
+                    "41": 0.051923076923076926,
+                    "42": 0.3141025641025641,
+                    "43": 0.023076923076923078,
+                    "44": 0.03461538461538462,
+                    "45": 0.011538461538461539,
+                    "46": 0.0057692307692307696
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "DWD_ICON_EPS_SEAMLESS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "DWD_ICON_GLOBAL_EPS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6161489151873767,
+                "crps": 0.9132158119658118,
+                "nll": 1.1580357091389104
+              },
+              "parameters": {
+                "bias_c": 3.5675000000000003,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.6303141924206414,
+                "train_rmse_c": 4.2393349026311515
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "016a32d71ab3a9da44e8c1d2a907852199263167c7cd78d3209ded651662c80f",
+                    "02cf8336435a103686a96a2a3b15e387814294d7593dfd588c129d709756fdcf",
+                    "045919af5bcc48fe9303931b0976e1d3b28b61657a2dd40f02cdd996d99fbf2e",
+                    "069e4b72f3651a138a765241372786ac41df6b3a2c321e442fe51b94cc3c1764",
+                    "07e2a0430e7dae8a7a79abd5fc417af283e2de375b820b97c653a3aa500e5d10",
+                    "1b7caf0abafb1b0f6cd0281a5ebf13d583739e0c1ca7297f48cec5cb8ae5569a",
+                    "1ef66f2f7a091a54c27e55d25c28d8dcd79a181c05a023d5aafed9a2f0354d60",
+                    "1faa17921ab8052903157cc19efa1d9a461a2655c3f95762be89d9861870ded5",
+                    "33e77fa73243d182682f588c22906ac903345543355b5054d1bf7af9e599263a",
+                    "351f2196191174dc347ff85bd505138b2cd384472851938e3d94242bc4e9d754",
+                    "414638e8f4e2cd4f75c01e01f393535acc3ee083c204e273fb90d9a88eeee43e",
+                    "47bd17530fb78c3763ff9c7d7287f0029f74e6ca4148507ae58ba049f4679c28",
+                    "4fac8f3909042c03703bc18f2110ba53b480817005376a4eb66a622e2f882648",
+                    "59aabc614b57839528e92fd914ed61d1968f397433c2bb1b36b2a0a377f8ba49",
+                    "62c7e02c72dde5489512a1465350eab8da520a54d118a3f071c2c180a6bed486",
+                    "7086032a98c3566711c85280d608f9f4c66b2cefe1aef73dff52a4ad79847740",
+                    "754695ccc774bbc8cdefeca40c341e20cce5405873b422c1788c682affe2f327",
+                    "7aa5051e9dd70121605aed2842f4ee3fe6cb49081c6e0990cd33583ea238ec5e",
+                    "7ae811dc1c37d5438d6c4584385a1e9f51788f34fa7605608d9018438fea30ee",
+                    "7cc764703261e2c6ba0a90bb43e58ba3ca48afb78bbd265ad2007daae346449c",
+                    "7f20b2cac9140acb3f9433c592e4bdd2afd4886c66ffcd164a8d5c701bfda737",
+                    "855df9e2f9e7a2f8ef7ad8023f03df8680964c5bb692fe2fff5653d469f131f2",
+                    "85e3152d8b37ec8d477bb8b3780fa825800cb124e90fae992e9a2fa7a8d82722",
+                    "862650b8d1206d8640c352a0a2b33cc03ccf34022328afc46c4dab7c4067d552",
+                    "8a994a71efac5c3c430d0124608a7453ebf8109df6eafc45ca3e1b968bf9b21f",
+                    "93d0ddca1c5e7c2639b08653f01e177d7a728aa7f6d0b941ae68b794e0657702",
+                    "aca8642f75e0412592214dbe079742a6accac2799c2de4c91f1595c103b7367a",
+                    "b08a0818ef03012bd0d5bedfdb65904298a94c3d1f0ae3a47ce285c895fdb014",
+                    "b0ce6af2af8f7f9d1d346e3dcac9bd6e2d178211cbdbf3059db871de3aad642d",
+                    "c8f2985412270a9717cbf30618940ecbca0b9049f9d24ae3c954c707b6fc751e",
+                    "cef32d7668628ec50cc190a68a8f599b1228d64427be9d824efd6cc65028948b",
+                    "d5f71b97880dab37bceb866b673be8cbdefbb6f235d6f70f90d15b40b12e205c",
+                    "e8ea7b59b3ffe0d297d4eacd0e2a92978124ee275e2204b61a65fbd8c2155ac5",
+                    "ed9c189a8a8bb0e6910c0966996fe1e3b2a7c48cd266b5cf94dcbaeaf2315c5b",
+                    "edc0c9c07d2bdfe4d9ec3e1eda69ddeaeac3a7701eed40fad7b586f65c6166b9",
+                    "eef456521df963b1c9ad758432bb969a1d3af6340a454553cecae2b8110a4e1d",
+                    "f71d1676a295dbec349d3875d669b6e059f3b024f106e530f1353b98834ae472",
+                    "fb7812a285300de3544ebdf94e859cf4a383ba5f9928d8274e69d273d82a8163",
+                    "fc262c398e5ce1911227f3aa9562d6d860824c62eb3936aff05224cc0438f8c1",
+                    "fd626111ab1a935dd75e1aa862eae0016b4d081f1c00c9208217eb9e52d39290"
+                  ],
+                  "member_set_sha256": "509f87b7cc33fc695351c4136181497900da77f54b1442dc46b3e3013bc19509",
+                  "metrics": {
+                    "brier": 0.6161489151873767,
+                    "crps": 0.9132158119658118,
+                    "nll": 1.1580357091389104
+                  },
+                  "probability": {
+                    "37": 0.2564102564102564,
+                    "38": 0.011538461538461539,
+                    "39": 0.01730769230769231,
+                    "40": 0.2737179487179487,
+                    "41": 0.051923076923076926,
+                    "42": 0.3141025641025641,
+                    "43": 0.023076923076923078,
+                    "44": 0.03461538461538462,
+                    "45": 0.011538461538461539,
+                    "46": 0.0057692307692307696
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "DWD_ICON_GLOBAL_EPS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "ECCC_GEM_GLOBAL_ENS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.7275288813750354,
+                "crps": 1.2502784151135797,
+                "nll": 1.3190123540365686
+              },
+              "parameters": {
+                "bias_c": 7.530158730158732,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.2854452423659957,
+                "train_rmse_c": 7.835412953069209
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "1f6ad3609fa9ba31aa39f38801ec0826c1233a937174b16dd6a9fdad08bb3e33",
+                    "24ea5648b656d23cb8059b3a0ec5e51da7d425aca3f4697ef50cbdc790a4da4c",
+                    "2eb08a5d21acfaf984403d4fc0d4df3d5b15fbda2df0e5d0c28400513f27bfef",
+                    "3a1d51efe2418d22c1a81dcbc5c5df12ded7e0f180fe8ff7dcb40c5cd1b66bb9",
+                    "40dcdba17c74f59c39e38a7344f36333e545afa7e311c0fe6446801ffe0577da",
+                    "55ffb0770b903a7d77224f71196710f1793ff980bdd4340c8853b92d6ebf7c02",
+                    "6ab95769ef5c2d749cf9b3e85fece819f9bc354787c1ca952357a23318fd0c41",
+                    "6d6538d056c7ed410916eb13fdff104df3bed0426ad463afe48f33f4a9cc7f4c",
+                    "76874c2937e0e16c9083bbac1432fd64fe2d336d16311c39e2a050fd9e4f331f",
+                    "83e0643c0187822c646d72f070539565d068f2456ec8236737a2b52af422a175",
+                    "a2cdc377badcb6d50a2f225cc0e0d75ad2cd1ccbbb35dd44e09eb8e4f0de3a4b",
+                    "aa0a419778db6a40ee81d8bb3182baff064d935ca38cf6b09d5734c8c4c47c41",
+                    "aaac75ba241f0cf1fa10f5f8eab1fa3cde649614e150d33e6db0eb16a6bea4d7",
+                    "ac92f46b0c190ea32405be1d62d4e2875465ce57ad362d973a28fa7cb4f257d3",
+                    "b8fe97a78a80cce6f7e3fc89eac68ba3ee243a1de33fd4472179a5592466c739",
+                    "c639779ed7c32c58aa082122bb386a1bddef430f819fcc7ac428368e6e7a0945",
+                    "c7155c0cdb384f350db36f7f7ac0a143e58427c8af73256b1df94c1650736ba5",
+                    "d34809e2c1d8fd07c7a6208dce3d07f1b50d7084d10e7080e51e501afe1e3c91",
+                    "e6f6e48962ed3e5d4af2a8e2cc858674dc986938f8da832c34ba1c0c70862e1b",
+                    "ec60080c87447b01e6540f77d2a76f6b723cdec24af4893920cbe05c72042468",
+                    "fd6007f1474079c54ba1804c5a84492d0b79d65c435c84265b0ba15239df2916"
+                  ],
+                  "member_set_sha256": "240f77551d50e1f1accac1f3f9eab1ff81b6667f39c52e625ba2ded1f02a1934",
+                  "metrics": {
+                    "brier": 0.7275288813750354,
+                    "crps": 1.2502784151135797,
+                    "nll": 1.3190123540365686
+                  },
+                  "probability": {
+                    "37": 0.2564102564102564,
+                    "38": 0.02197802197802198,
+                    "39": 0.054945054945054944,
+                    "40": 0.3443223443223443,
+                    "41": 0.054945054945054944,
+                    "42": 0.2673992673992674
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "ECCC_GEM_GLOBAL_ENS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "ECMWF_AIFS_ENS_GLOBAL": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.7038758420179767,
+                "crps": 1.180904476885313,
+                "nll": 1.2764191651075376
+              },
+              "parameters": {
+                "bias_c": 0.2405228758169926,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.39512443886742776,
+                "train_rmse_c": 2.197974788138813
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "05b468ed5ab6c194ea7226ee899b11a20cbb888d2648a1849c6b54e40586d322",
+                    "1403060dbb6fedaddf42f1dc83a744aa58b6224309f5c064166a06b688c236fc",
+                    "28a2b2df53f5df1fece069b1fe7737249c1ab4b063403830e1409d09e434aefd",
+                    "2da22179bc8afc7a370004a39a493389cdfa893918c44749989cb4aa756d1151",
+                    "31fbe021be92fef09736494ff76bf12ff2db4e33fbc92c69a1fd808fd7180c07",
+                    "334441b125249b9071a1cf1d61ed612be84132676e495ca3c1e76a49bbd21ef9",
+                    "367c5b2f28185f419cbec70b1c91269e90eadcac43173c1910af56c4f787b779",
+                    "38471f4d9487235c11d9f383668b86e50e10e7fc093d6f466563cc85c2fc6b7d",
+                    "3b9f8a0b069704394bfa46b9c5812d79107966955e01eb52e1dbb39443e491bc",
+                    "3ca9a16aac10ed27cb9a06cf525e85a404d4a6c4740777e21f9e9c7a376896d7",
+                    "4848cfb858573dd03eea464be7ff0780fc4e891e4ed16f6933f27f0899f17a8c",
+                    "4a17816099f8a2a83fc68aa8b6d26ad13b79bd6023e6f8eae2dc39db58ed2ed6",
+                    "5c7e32f8450902ae2054a5895fb51fbc23329daaeda3222397371e01f240adbc",
+                    "5c85926b6446a2b4fea23cd7d97e109f649c6b8bececa9bd4941bd8ec072e4d6",
+                    "5dfeba4e539f2d06c349e069681b8483f145d0c8abc78e9792f4abae60cc8dd0",
+                    "5fa3a89b1d250bf50855c176f3a69f5cc77048e8d8656ac822a9b23129095595",
+                    "6066cb9c910582e039b8588908aa964bae6a68b51f866813e6924b7a5f1bc6de",
+                    "629f3e1f3e8e868b98c55bebf1b7919401b95dec5899b3cf7388005b61c92c62",
+                    "6367e46e37531c6288700b7b10f75ecb873427e6ba6b047412343ddcbf742ebc",
+                    "6933c46fb5c241b7e3d40dfb9d7390dd4a8eac4c7dd7bd62b2ae7388e80f4920",
+                    "697d0b17dc7dc1c74b88c36f9343e9edace2bf651fca3a18ef23af6ff32b92a5",
+                    "6d896cd79103aadb4c5eb9da5328acf706402952d82e62e02b7c657e8a3e0c19",
+                    "75565a15ab8359f43521b6627a3857d0fdf5ca11ca2ff876092fdd112184b1e7",
+                    "77b8860fe97fdb89b3be9e3b04866405b39c283ded4f0108a67e11768f4fdeb1",
+                    "79518572d2d74d46716ce473e2a35332b4c21a340dc6c43f4023160df1e70f7b",
+                    "7b2204973d25bbd93a75d35f661682a94b32b1d1d1b5ff8fade0b9ea3ff1c1ee",
+                    "82d04b9e95e7edbf15045b616eac1f6fee3f08927bf9b20b5b8ef0237e5db0ed",
+                    "833b1737fd66751add9d162dd51b27f5be2db231e4137dfa56c56c7b924ad4b4",
+                    "84d77e4ed9e253d722f1e2ae1b8cf9adc43bf9e8d2cdc70eb999bcb9b762b1a1",
+                    "88f5b1aabffa66a887f738666ab5b88417a35a762aa32e5b77107225fb0d6c22",
+                    "8acef225c8ba2d82a78f938d4f20f6ca04715806feb0068ffc0106043b295523",
+                    "8c37bcbbc1e30ebc5a3a1127cc5e3673e013a7fb1c3daa80c3af5874fafdb397",
+                    "8ccf07f5cfcd747f56b0be827158a31f5d73c950696308943bb4d24bb411dbe9",
+                    "8db5150aba7c2bd876aedaf659886e206e2d58004f57e692ee4f2e57c1e11a78",
+                    "8f6d71588e5d7868d72162619b996c20f4abb3d2fa429b437980ba065d84777c",
+                    "9235154dd140660d782eae87a800e1dd5d3fbca92a804a6d5bb84b6732e80895",
+                    "93447c105251d40e4c79fc3cca9256a0b758259595094e3c409d86a8e0dff23e",
+                    "999e42e32d175ead5c710e9bdf3fff15bca2a214fbe5535eeb821df955088964",
+                    "a29ddcaebf83d86430db575a720d53057cea3504f2d48225e193971f825f768a",
+                    "a5477abebefd24ff1ae29bb10f27d9120b7ce33b4715c0b9e1fbd7c441e1baa2",
+                    "b4501fc1d91f2931f0e96f934c81c6451b0508d81e65c7e4a12f67760e1a8df6",
+                    "b88d6571c046ce1ef73490dcdd1f138b3b164e44d319f01d087b9df496a15002",
+                    "c5abd44b883f4b6713b26465adc7c55c19afe22bf6faa772b223dfe08c3f5713",
+                    "d1470cc53f12bb9bbd5fc6fd0921a3af60b6ecac36995d474141bb6d15df6191",
+                    "d4ed368fec8787ece06073808916062c953113f4c4725656b5fba876d701eeb7",
+                    "d63d2e4acac1af22cdb74f47634f88a9f36788eada4106cd8fd14bf571ebc53f",
+                    "db96dd6caac0da75e8f6cf137202ff01fbb2cf9f8a14f159a37eaee767d05572",
+                    "e4b68fff22dcd2e262350dc5f73cf8d66529369e2fd76dde6298d66dbdbc13ba",
+                    "e7b0289a697999bf6cadc14c8ed66b5ab9739f2999b9c937041469c4930b6647",
+                    "eb4239ab41f8d2ae79be12cdbf7e975cdfc40a4af5ecb07309bb602a484f46c6",
+                    "f7e779e5b9f60835e295b14d673a2a244e16a16ba1a2ffdc686a98bf04057a5e"
+                  ],
+                  "member_set_sha256": "7a3f214cf35de866b5bef1e13769eb047942c41c113bbc729cd122997c44c3fa",
+                  "metrics": {
+                    "brier": 0.7038758420179767,
+                    "crps": 1.180904476885313,
+                    "nll": 1.2764191651075376
+                  },
+                  "probability": {
+                    "37": 0.25641025641025644,
+                    "38": 0.018099547511312222,
+                    "39": 0.040723981900452504,
+                    "40": 0.33333333333333337,
+                    "41": 0.07239819004524889,
+                    "42": 0.2790346907993967
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "ECMWF_IFS_ENS_GLOBAL": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6476798864342117,
+                "crps": 1.0160907616324173,
+                "nll": 1.1688988213962814
+              },
+              "parameters": {
+                "bias_c": -2.2444444444444422,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.5007065656308892,
+                "train_rmse_c": 3.270269651103186
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "05864f2d3ab2c50000b64bd20ce7730c101f83614c62fa90150d7fec9e97e25e",
+                    "0e8024e29ceffa5251def2384e9bdff74e036bed403b4610dcd7829b0cbe448e",
+                    "170633445bb95b63ece3b91cf999b1755007a584bc679ff9772a9bd7721f873e",
+                    "195717cbad4a0e4bcfb46026603dc4868b65b648bf5a4f18a6d01e7c8bbdd9ce",
+                    "1f908f842dd73e6255dc536832bed6367831c42fe81f4f41a14acaf92c77602d",
+                    "217bbcac1fc220e18c3cffc8b73660e0d8ece6cab9855ba7bcc5c7b32a776ec7",
+                    "25c29083567c59eef17f449d17217ca2f2174b0ea472c46e55db27a396f2efb8",
+                    "2d17b11841ce88bc4ed01b256ec90b521216c0415ab12d4a6fe9773a2531b663",
+                    "31eba2111becc8c55663f0de74f86e19dfc3ab9874fdc8d12ce5ada851c246ca",
+                    "32034d72b0e5ee1e62e48f75faed28e4e24c5c16a9a1ce42aafdb5303a1d8dee",
+                    "4e68835a8af4ce032fa1b5961c083193112acdfdfde6c60603fddfeea64bf83a",
+                    "4ed72fbf0c1221f7403e88212b7810c3cfac90db29e52f6fbc3f167c9e00fa17",
+                    "501a8f9c7e5bda8b026ce2ed80d8258ed54a4e6fd44d5028063313c4d384b0c8",
+                    "53af104351779de9eb67bcb2b10e97450ad86a912b779c45519467aa63a3d92e",
+                    "5910ab25ca494a8c694cd495c95a8a6f90973270bc9c186abf2d6c0936b9a629",
+                    "6069a946da328bf2985b57efd3aa64b880ee561019f85293e0f2cd30ba8ff823",
+                    "75bdf82c40014c45f07f96d84587d821c008a0f28567f283a243bd4c593626c0",
+                    "7fa5011f4e43f4652a5dd21b2ee7e943e94c71e383685c832f76c7eb1ab3c77d",
+                    "821bc3ff7ba56bb9730b6c39fb86bf9980c4a6f97c9c9eabcd6a9e7a8a7309df",
+                    "88576206d30e5b115ec3cace187ad5326ce46090ceb7ff3bbc384878d95c86a4",
+                    "8b90e93ccad6114739acdd095810073eb749a52c139fa847d05f2432b087b886",
+                    "917a7d8b13f2df55f9fdc58bed95e4c9dc5ec575daecb59bcc6be52e55a06e17",
+                    "9433fd3a946552dbd57588359fc12766d04611da689193d7853db54d6f837d5a",
+                    "957f73de569c29b2d4bdb6b17fc1d7ed79614c9ff060df1ef91cbcbd228ef8a9",
+                    "984365a3bbc28c1b7b1cebed1364eeed28578ba8b665e9c1544c27387a8ae503",
+                    "98754e84dccf20d8c41f665d061bedd9d1d50960f800b484ef2c51e38e0efaf3",
+                    "9a18145d5df581fc8278824bdf496669420a8e3f49424476d4b807e1d3d84b2e",
+                    "9aef84ab58222466b95645dee034984c8e471aeaef7373f20f9bbfa2b3ae9b29",
+                    "9b4e9d755f9c055bcbfa87c22d08b12a76d01ed01283250e0952a9797ef19c69",
+                    "a2bf5aa922b8150b0b6bc1ada3a32906d9ad360e761c00075aed6a59a717a924",
+                    "a722d529aa6baf214a9387c0b35ae5622765874f82e44c02be056989f21fa4c7",
+                    "b0641f6973945c3c1a579fad887591d103e4cd5725eb80a326c38be93139345a",
+                    "b4aa927bd9c0dec85a69cf9dd9f8e29bb98979cc1a0388cf26f5301b2ec07552",
+                    "bb3c1835b476c8771659fb7b2e59cd3344af6372cacd4d4de94fc832f7b55d08",
+                    "bbbd67325f83d1303e96391a6073739175aecf4ed0ba79f27eee4a9397d3e1a4",
+                    "be0eab151f9fa4e88e513871c782b66da16ca973b6128782b3ba02ae74f93837",
+                    "beac761ca8113d84d1f8fa05a18c21d583ecb7dea57bc9a660c12f0857c90d01",
+                    "bf84bff0a88d3dee43622be4daff847e772f8fb8d12bf216ff6e17ad421eb95a",
+                    "c24ceb9abd66ddd93b4a69cb111305d18fbb02829b51bd867b2403d15d9cc78b",
+                    "c5f8b6aa0cfaa80a6ec0eb014877e692e5dc7c7e3c5c3c817d9f5bda45911bdf",
+                    "c993404163ad35ea1fdf9629c646ef9be73e558b67654a54579e8ceb4438ce72",
+                    "ca4fe8828ee913371ce881b75c157f4650eab34cd50099835fce2b0fbd2f6931",
+                    "ccd3ba395238f69055e43a371408577320a6bd1ed605c0b334607215380bcae0",
+                    "d9c55b10d695abfeef37e450cae3d197d1db8fc5d26369f084a8a88750cc683d",
+                    "df6e12ae68246dc0b8b6c426b5ab76b3110b9dadeeabfda9101da1719c6980fe",
+                    "ea7bdef8d5e9802e267f724f702e571b7cf4d1040f337ecb6ba34510c73bf3c4",
+                    "eb8d96bb972e97012ac1f8c6ebce9ea9da61315c87608b7a161c4bc65e98b0c2",
+                    "f6e3c202b90f03b16290491a46d748ae04a55b420ef854ac5b52bd0576fad3ff",
+                    "faabeaf62808b691604a541f04de863e0c0a0fb76e78302d0565c253bdd3a875",
+                    "faac2dfcffda639f7489582b5b72d9285925d587ede942ce6f0bf1601705858c",
+                    "fc829ccf6054fce5206f54d2c8f8e460975e6e50a3a098580397cc16cb368cdb"
+                  ],
+                  "member_set_sha256": "d6e5e846b4132df3dc9bdb3a3da5928ce12817471dce977f7db23b24566925a6",
+                  "metrics": {
+                    "brier": 0.6476798864342117,
+                    "crps": 1.0160907616324173,
+                    "nll": 1.1688988213962814
+                  },
+                  "probability": {
+                    "37": 0.2654600301659125,
+                    "38": 0.004524886877828055,
+                    "39": 0.013574660633484163,
+                    "40": 0.31070889894419307,
+                    "41": 0.06787330316742082,
+                    "42": 0.31070889894419307,
+                    "43": 0.027149321266968326
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "ECMWF_IFS_ENS_GLOBAL",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "GOOGLE_WEATHERNEXT2_ENS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.5974723018367849,
+                "crps": 1.0052341759635934,
+                "nll": 1.102224574354023
+              },
+              "parameters": {
+                "bias_c": -0.21822916666666714,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 1.8702143953324601,
+                "train_mean_spread_c": 1.2194259586194687,
+                "train_rmse_c": 2.2805879818522152
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "0461a46928a6ffb394d51e1a9bc2a162d52a145f3c271f28c50847b399406431",
+                    "1661fa60e92e684a1cca30de3351b509a42393bd340ce0e1efa05f317f372cb2",
+                    "16db445e32ea3a40f6ba16afbaf88fb3324c855c6f1a9d15bb183029652f0b30",
+                    "189d92a4000de892c0a28bb4c5e3c2bc4f09f901832bef5f38af717d86e3504a",
+                    "212948c8180695077914ba595d8ed3091f9c191a9c0191b1eb109f776c3b3cc0",
+                    "31772708c7926d45e629ce4042496b87330e1062947d85ce1da5a346cc4d5b05",
+                    "376942c0ff15988cd9585715e225135a2f288b2530119ca205041f6b0dca4fd5",
+                    "3901cdf5286ca1dfb577b11fa01ab81ca2b5430101001a14579febce0703db74",
+                    "3cc2172094d09791b71297d55bf59909d131a26e780b334e65f5a66b7f08952d",
+                    "3e3b7cc0ad38c790bf9a7ea7b40b5f8a1c863f899f85a931ba34063b16b959c0",
+                    "3e50729cb2e1935149f9bbd984e0b5a57571079b7de058c13929dde12302b4be",
+                    "40e5e6d7b27afe707f6968262618dd6562d8a400c984fe34d411dd1fc002105f",
+                    "42f58133b35e74ee6375cf41c1453688e8bd76521a3c8b5401e7fbfdb874c044",
+                    "490199bee4ea1a7081856f8603eb13a181eb63679bc7b973b8bf8a9518bfe23e",
+                    "4bcbaf5a4da231a3e863e229677cf2ddd31665004b806a3334b056d7c9881afd",
+                    "4c54c97d7d3ec65840199fa0137c66c04689ca35b70baee99b75f4d2a099e643",
+                    "4e90d3732a5a193664d00cf9a031cd1df3fefaf322c81f1c88d6f6c8948e9281",
+                    "528b7ccdbae82bb15ffd2a8c71f85133848e5f70a0c1a583f1e00d660c846fd7",
+                    "580c6f47b3b6b75cb4eb1759b2504e89f2965464d268144f588e27c829a0e421",
+                    "5aa28e434e80f25e255115ed9ec591741b239df0c28e7110f493c7d5ab1e45a2",
+                    "5d0b43cb45cc8e89aadd31e2f9621dbceb17f58771e44efe47eeb52bf8fa6efb",
+                    "5f65f2dea5a7c17887760fe10f93b2f1fcb7975c95962ac499f305217e1d8cec",
+                    "61d886de526be8f82628846b5c410ec191b5fd65d3910dde2f3385eaf04f0ef3",
+                    "6294401c9d868e14aaba83ac7ea7802d693e188d76768836a75cc9c01fe686af",
+                    "62f80ee98393420c96cc3326b561230139d3c64a34285379b0e2b2367b895c00",
+                    "659685c40d87a3d0a489aeed4d56d45e98ff6003a72e6c3fb6dc11933fbcd1e8",
+                    "66cc4591762235a3f18fd82a23530a01bea8a18a2966eb703c098e629c5449c1",
+                    "67f75bcdc068305bf9d26fe5e5cd3a0cfc760f0a149c3ae0a20c3fce58d51fee",
+                    "6a9576c74b8cf398b5f4b92b7c0152b68cf218c1ccaa8c2d98567a1ace94e702",
+                    "6b89f1db49b5fe6a7ba359d55628e5ded9520b04242a5196ba3c87d81d865cd8",
+                    "70a7dad73d873babc5182904e99305a8c78b4aee6771a96c93acad8014604999",
+                    "721fec63f607dbfacc86fddb75863492053befbe6c7568d487aa45170c9015ed",
+                    "7243ba21792e82c5c2a979251f66e1af79798ddf1312c911c782c214333e8d9c",
+                    "73d185692902091f3d3b57989458d4b718ffba6db4162533e26d1a3fc8cd19c6",
+                    "73fdaefeaa04526a9f2a6a7d948810abd99181f47a3d1ee869267b82cf47bb4c",
+                    "790e700fae554e2cb3e14653179ad977a238b14cced40c8bb87a55db78c0371a",
+                    "7a299649316c50551f7d24cdb8f32b20cda8c74ae297e60c166c99adf2ef2202",
+                    "811749f76e535eeca0ca0ec004c44567d16937da5f575c3021cf942aa060f800",
+                    "821747d69b8fec64652811ab2d0046d0fe12e814e42a4303038800132f4a4f23",
+                    "8385e128a33bc597d52e2b77674053ab538fdd64d65849fe692ae049871c5af3",
+                    "866d938257c89142ee35ee4645120b435d736e868e115811fa105656a5d0eb3a",
+                    "86d28517e18ad910aadd272b14606c0323afb273aea48742b18fe1aa3e9d0edc",
+                    "876b08562bdcd48d13daecf2a9a4464fb0b6256147d8a81194cb54ddb425b47a",
+                    "944e641997c4b6a2e02f790bed1207f0745e0d8e043321115a57120838824609",
+                    "945615e284dd91afc6240f9ee7452bd2f47158f0ebd5330f2a0a706fec14ff33",
+                    "a887d0c0bbff7c5ad2cbaaf9adfb6bb330a6d8aba10b440dc4683371212bc094",
+                    "a9ead3119e1ebb4678cdbb5349e681029e98720996d1bfd08d53b1791275d96b",
+                    "aa62024526854cda1d530970acf2dda3cc322f9e9e9c4b326eacaffbf8d1184f",
+                    "bd7115177e5f0a3a40f36bcc8d204c764d26d2887b0369726a7cf70da5d63e3b",
+                    "c0a5a62288b474e5ae7d6a011845c44bf26546afd25d96c1b806a2874b57de2c",
+                    "c651c15218679b7005b12fba6fb62d3e77b5b93c3b0a0141c1cbfb25c8746435",
+                    "c694b28aaf29f7afefe40f8b1918a398091d321e1baf9a7bd08f4f1a30ebdded",
+                    "cc1aef247790d22059a220ff979a6f52a563aa1e7c3047c47dda3f16acbf163a",
+                    "d2b130a39b663e2cff193b9386841d09139d3eab652b100ba0d585eb0dd3e388",
+                    "d31ba8711b2ee27de51b641ee6ae3f040a5e7bcda3d049687ed0776d7696079d",
+                    "d545bb4c86d2560fd6187566d5222587ae75f5645eddeac0019e350a98ee8e17",
+                    "d74b96e5a667e0e8c265334b76c61e478eacef774b44e5383ca7b41e087dc1d8",
+                    "e719c8fecdbf574c32f6cd6fa19677b4b4e7d19e2f2087da91031765874786ef",
+                    "e986479448454402a77742634c7a242c330cf233713cc9c4965935aac939f710",
+                    "ebb8e8a0dd9c39b07b287130ca6910c7af55386dfa020d161f51a89c18eeecf1",
+                    "eebf10ba37c07621d2a511b84fbeeb33c5c120b3d91efa58ee5645842869781d",
+                    "f38d3aa812aba93ebd99f0003ffa57c99164a5b9532704fa305563ff2e1af8bf",
+                    "f859cdd98efdcdbe0fbf5ec7281fed3ca3ff4d91a7cbefdbf06d29f545d1b06f",
+                    "f874190b916340353c10b1718da4a9f4ceff08a66f65225fa90fc84ec5d58cea"
+                  ],
+                  "member_set_sha256": "c66c26be089e6acc32b0d4b9150bff2e72284d552cc23a877b5238bcab655998",
+                  "metrics": {
+                    "brier": 0.5974723018367849,
+                    "crps": 1.0052341759635934,
+                    "nll": 1.102224574354023
+                  },
+                  "probability": {
+                    "36": 0.0036057692307692314,
+                    "37": 0.26722756410256415,
+                    "38": 0.021634615384615388,
+                    "39": 0.021634615384615388,
+                    "40": 0.2780448717948718,
+                    "41": 0.03605769230769232,
+                    "42": 0.3321314102564103,
+                    "43": 0.014423076923076926,
+                    "44": 0.014423076923076926,
+                    "45": 0.0036057692307692314,
+                    "46": 0.0036057692307692314,
+                    "47": 0.0036057692307692314
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "GOOGLE_WEATHERNEXT2_ENS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "NOAA_AIGEFS_025": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.667146935617279,
+                "crps": 1.0732690648643581,
+                "nll": 1.2511100755570685
+              },
+              "parameters": {
+                "bias_c": 2.5118279569892508,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 2.7111463663560507,
+                "train_mean_spread_c": 1.1281992282554472,
+                "train_rmse_c": 3.0587132382104563
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "0062a478ab6cd95ad162a592c485e273f2ca52c2c3fd42f294490de1c0d6c588",
+                    "09d1fb15cb4615bd98d143bb88553c00e3745f78a662ca6e665a4a293d97db51",
+                    "103874820a986f220c612f100b78cf531b223bced7143006ee83badc70f3935c",
+                    "1b6e4d123b355697f955638d23d911d5a92a5fe229d400a01bbb46aba8a69109",
+                    "29eaf60f2333f9e50bebe1b78b449334b8ccf7222cf2c793e8d75f750555ab09",
+                    "2e276319f4e76ce6b041bbc93b06890bcf5b475194b2f6d6eb1a02962cd2d193",
+                    "314c16c46f5de2f3e882eb91e531b0aa24111fedaab6e56d7a19cce2bc1b92d1",
+                    "36d1e83a4d02d4ca00bab41e2c701c98e031c9ee9669dc6fb490869109de45d6",
+                    "39336c122c285e93f3037a47d66df0f56f1b3ed5024b321f2a8625e470e9a39e",
+                    "5542026f0c8ade2a009db12f87613ca72598a07df7bdcc5db21e0d07ddfd21be",
+                    "607e4850d47da000cda3c2106a5cebe936b1996d2c66df7745a9db768fd97af5",
+                    "6c1b7828a89cef3917be4b4d81db3275f4dbe1434784d2231e8a5c49adad79b8",
+                    "6cfcd4fbc0201c7577a509c7b2202520f9509a597985dc18ffce91cd5a5c6066",
+                    "74ec19dac321fc38c465071bc57a92346cfaa05a7031a1158804bb3a98ee4455",
+                    "89a7fc2954275148c394dce9b13d8bec331a0a851af5b55bbed1e4bd28c842c0",
+                    "8bb81a3c024e559563f25205add31513ca8506b9cbbdd3c5a32caee222f5bb6c",
+                    "8d4cc8e5c24ed0f520ee6459a625cd273046f887309120dcdfe0a3d2437e665b",
+                    "9268879b7c4af0081b8c60fe052c3b8e79d428258efe2bb60f7a713c9b2c6af2",
+                    "94b27d980c966f2b5e89f26f9f0d719d4a1735d4195e26048d1e87f768d94164",
+                    "b09d2aea022d4318f67472c90f5a31b1e5ed2e86d746e67cf8beddb62c25b8c5",
+                    "b5b67af519b2f754db7e42da2b55acbff3db0398838374995eca508419c78167",
+                    "b93f9872a7af9cded8024c2fe13e5e01971c6f5b68ffb7f1f8a3d4d8e4502059",
+                    "bd711e66e474ffa1ccfbd1f079ab82d70ceb7b6f6b351f142c6c85d53275471f",
+                    "bf633082de3c18fa530f00abbf9e7ac54ab5877b2f4e1c35dbb7e1f2cee7cbed",
+                    "c2044eb57e58bd38d3fa446882abcf0b556bb4e35880dfd94ee283961b40af23",
+                    "cfb2a7ce18b7d558afefbba11fe11a5751135642ff5d99c6e15b84f33c8f704f",
+                    "d783bff63a373bad45155177d9db24580c89edaae8c4dfac14adf377d3ba2f11",
+                    "e5ee8a5211188517173fd7a64ede1c9ed86c0178411e83472733ae698793d2c6",
+                    "e9abba975e82584b2e7ee22d04211887da604ef8420926611079b931e1401c27",
+                    "ef157106ee2939cb604b0228918158f8352d77fb25ef1b6039e90fd3d4c4d224",
+                    "f0b54fc9d302e4ae33d380c1fd6531742887e61662945536627dcd7258b64f24"
+                  ],
+                  "member_set_sha256": "78e0bb068afc7c301f9d607218292eecd939130993bda0eb6bb45487bee84494",
+                  "metrics": {
+                    "brier": 0.667146935617279,
+                    "crps": 1.0732690648643581,
+                    "nll": 1.2511100755570685
+                  },
+                  "probability": {
+                    "36": 0.007444168734491315,
+                    "37": 0.2638544251447477,
+                    "38": 0.022332506203473945,
+                    "39": 0.022332506203473945,
+                    "40": 0.28618693134822165,
+                    "41": 0.06699751861042184,
+                    "42": 0.28618693134822165,
+                    "43": 0.01488833746898263,
+                    "44": 0.01488833746898263,
+                    "45": 0.007444168734491315,
+                    "47": 0.007444168734491315
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "NOAA_AIGEFS_025",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "NOAA_GEFS_025": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6662602852469177,
+                "crps": 1.1105145377137693,
+                "nll": 1.2254310611393768
+              },
+              "parameters": {
+                "bias_c": 0.2698924731182781,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.7654287935367708,
+                "train_rmse_c": 2.5177779267677503
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "03b17631f435ce86341129276aa9f4bfcb5712e43a99d42f07fe57012c2348b2",
+                    "07083e20be6c56fb102889eeadd1e965a169d4f3887e9ccd19b2f6ba8153695a",
+                    "13dc67e16a598def3a65db4e58ed3263a2b1ca3dab4b6c2f72162e3a533b63f8",
+                    "1649293c02a9147f83ec95aa6cfb124bf179b05872ed0268e1fb86aa770099f7",
+                    "1efa276ed0fd53f4155a0ccf25690dcceb90237c046635cc6ba80e92df841125",
+                    "3088d022b11a4b3119a2cda443609b59e8bebac2b83f02a99f6b56a07f65dd1a",
+                    "3466d0288037d02214ce46ea7720e6e307305b8923a77d9ab347d5ddb9108aba",
+                    "3b4f9a25827d90c3ca881a955c2448c21dd717bedf7ab195ff2d11b80bcc6fe0",
+                    "454113e6f5232a303333cbc537334685fd17556c325c7fc8fe5f8b50941e5486",
+                    "4561be1278fa30f5791bc054cf7d0e6a86cf08fe84338be1ecc92d1063947de5",
+                    "4e43c9d30d08bc653d0f57bdaebcd539264f70270cb9b7491a299600b427317d",
+                    "558ed5ed61fb14490142630a496d2ae499e366959450882b09ae94e591550973",
+                    "65451d3a6614c66a31570586c5f02f80307b10dd86fa8a7462677438888b5337",
+                    "7ba0732be3183d1d64e5bfbd0fec705eda2739cee3bb1be7840ba6a5180e98fc",
+                    "84c78bbd816e1cbee8a756964d490b9ee10b3bc8393d1c77c33058bf8cea0280",
+                    "89c8de77cec93a90a235a21c9bbb4c2b3775f2b2d7e112d78407437b1d5d7bc3",
+                    "994af4eba0f0805257a76320fbda7c25ad86459b857db88c711c1c574fbde6bb",
+                    "9afcd60c6f3b84f4d4ac40fb8b7635e81e923e10315fd77164a437206710209e",
+                    "9b065f2cd57fb3fd96ad830bcaed18893895800e2f43c26c3bb6cd92121419f5",
+                    "a1b8a03c8b0eee28ae5949524c3c85a68629a4037ef7e7b5b810d3fa9b0d9d5f",
+                    "a7e79644ed4cf6cc3c59f17237d5d67954dba674046386d009928686d373bfa4",
+                    "a83be4f1c3d11bd2751c0ecaf8d7af1a0c530ded315023931de66c1afb599a79",
+                    "c1d6f81e3ecac550f48733f691afb5e0cfee3327128c09febbb39aef94f6b4b0",
+                    "c6bca7db20202292b55a2bc8b2bfced4c16620b0185f2b0f9ff2159a2a8d7d99",
+                    "d05f56f81583c0b0b944239259813eed0269a3003d2e2db1ce2e18bda875c3bb",
+                    "d41e3220c3a787ef2c57b187b6f158d1bc5b528bd4dbf653eaf54c09b766297e",
+                    "dbd680761213cab7de9dcee9d14b9d84f9665b7eec3cd21801d250435630a32f",
+                    "de61113a18d2e5dabc429509836d86a704924eb3098932696e85e951f5f3f02f",
+                    "e360c2c1dddba82c60dd3160eabea2d0a1ec576b83b54dfc7f69e457f0b42ab6",
+                    "f017889e29dedbc128e9fbbb4f51ed69045c45392ac7f3a2dc00c8ed78fa40d6",
+                    "fe5af9027443c2721daf01a861541db249bfad9af44ca7892e33fdf54e29d567"
+                  ],
+                  "member_set_sha256": "98608b7f855ecd465f6439a73b37004053e69edfb15bf0a7dbc6f7e0f8d72eca",
+                  "metrics": {
+                    "brier": 0.6662602852469177,
+                    "crps": 1.1105145377137693,
+                    "nll": 1.2254310611393768
+                  },
+                  "probability": {
+                    "37": 0.2638544251447477,
+                    "38": 0.022332506203473945,
+                    "39": 0.02977667493796526,
+                    "40": 0.30107526881720426,
+                    "41": 0.07444168734491316,
+                    "42": 0.293631100082713,
+                    "43": 0.007444168734491315,
+                    "44": 0.007444168734491315
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "NOAA_GEFS_025",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "NOAA_GEFS_05": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6784886716048166,
+                "crps": 1.0692360371380625,
+                "nll": 1.175970430970977
+              },
+              "parameters": {
+                "bias_c": 7.910752688172043,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.19426776008307342,
+                "train_rmse_c": 8.132267874578755
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "006ed2c234a0a6bc61af7c4b3987aa376f2dd512c5d14bb956858fcbc301a423",
+                    "2a39529034e5e9aed280a2f47fa42103804464f3b6c7ef1be0dfd58ea752d8d6",
+                    "330173ce26b1ed30b8da52caf746de90acd4beb2911d1366b5a100ba37d3a8d0",
+                    "380bf9c5639105ed87975a7c72e403be9cdd160fdf3f045ccb90fe074595fa66",
+                    "3a549d1b7b4fe4a9393980041f5744bd37d5247019a9397bf1bc74753e958b56",
+                    "3a5cfa9e1af441d1fc0dfdf4134ce29336d145965439d9b25d58720cbda2ac85",
+                    "42f324c3f3fe103d4b7cff601a7940c6f96324478dc428bf524046d402600302",
+                    "43675793baab391a99f8a6be819da372f4d5e69dbc772ed3b9a758ecb0c10c7b",
+                    "4d7f6dc427fea896c0854377ed33f675cd8f052e342f74240bab5d798fbbdeef",
+                    "4f84c1efa7271e9256dfe00238a987b911f259daa544ef951910c2ac50856cfa",
+                    "55659009363180c26340965707fc05eb40470b444ca0d2bb944c46c1ce3be499",
+                    "611832f830920d6f1e58b45274ca25dd7262253c4eaf0f90174b116a5a00f786",
+                    "6bb9f6c8ed1492df26ea343467a8dd256abbab3de7b347e8147350b672ea3025",
+                    "7b10d10da5508052f7b81079cbf4b18e00ffa3702f8c9226219ccf32affa8fc0",
+                    "91dfe9a673ec42e14596d6110a91c1559bf0949c991f604a14fff266c4b266e4",
+                    "9e30a2838eb070ae59be59aeb799e7fc11ab0619ad298af83e98c79cd1099464",
+                    "a1848c93321b6effce6a4b49e05f857e6a34e2cf30a064e5da6f6f947b6c27ec",
+                    "a507d7794e50f125bdcb132a214fe09488e985bae27f7a78ee4dad1a145d1031",
+                    "aeef3f798a2a84d1a2faafb9d30c68c0f330ba79e3eefaa034afba85fffe5065",
+                    "af7a62e66b3d86a7270a5f263a47d4a5976795b490014aa33d11b464b65ee732",
+                    "b0e9f42307c579449ab4beb4c149db5c3ee472cf6ba8fdc8cdb7d79abee0c753",
+                    "b24d1e5a04ce6886d0f84f196ed3355e4e0f3a10435d511e3b7dfc1d41cf409d",
+                    "bc612953d9aa4ceaf78cbc03ae3fa1c4d3093e4342b7f3d883f0a69551e53c0b",
+                    "c3dc3fdc5d5867260a91e9ddec21d845e9a6a68ec44806e9982dd56927d5f8f9",
+                    "c91cba2729ce807336352f3ce7e29e10e75fee400d4bca7f6e70bafe28f129c3",
+                    "d94aec20ae7a9feb1bc3b77b18508d6a0e113140e3b5f1822598344c8f85bd22",
+                    "df466ffb7016511552907c26408ab24f184369b995c578f5b8cc55e5419f282b",
+                    "e48f0ada8a76f530e273eccec9458ec63f58c7fd61d06a3e680a9115480745b9",
+                    "e5e41844e40d3f323048d85d3e8e4dc6f525687140d23c88eeed797af690ac7e",
+                    "f319e7294315d0917055fc6a5ff3e884c0fdde74abf53abeca25a218b118f775",
+                    "fe896e55268fd5bd1e9dd9963e9e7de675e118ca543d6d58925a7efd2b849b66"
+                  ],
+                  "member_set_sha256": "48360a7d8d085a2bb050f9a6853b3c3770d2394e7bfd8783bb19e94dc1cfc9db",
+                  "metrics": {
+                    "brier": 0.6784886716048166,
+                    "crps": 1.0692360371380625,
+                    "nll": 1.175970430970977
+                  },
+                  "probability": {
+                    "37": 0.25641025641025644,
+                    "39": 0.007444168734491316,
+                    "40": 0.36062861869313484,
+                    "41": 0.06699751861042186,
+                    "42": 0.30851943755169564
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "NOAA_GEFS_05",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "NOAA_GEFS_SEAMLESS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6662602852469177,
+                "crps": 1.1105145377137693,
+                "nll": 1.2254310611393768
+              },
+              "parameters": {
+                "bias_c": 0.2698924731182781,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.7654287935367708,
+                "train_rmse_c": 2.5177779267677503
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "0a8789d1ff6b1f8ea2e1d66d219ef58c667e4805119e23baccde970f0db8c9eb",
+                    "29bbc4767fe563aebdbfcab0c60b28c9e3b9bfee2b4f1329394009dc884182ba",
+                    "2acea11bf83363fadf2ea551a4885d595c8a2b79385f8db0928cd64352d24f3d",
+                    "2bb156a3cebca1fcbf75600ee3b6cb54dda96ce23a18316fc97e24cc8823fcf0",
+                    "2ea2e0989c152762dc34c0cf15922b3aa2c2308755906cc9bdea2f0602cf4832",
+                    "3c8ab53fc864d32d3089a1bd6cc9d5370fa5916080f823c7a95951006a515522",
+                    "3d1c672160b77e28fbd882fa57dbd1c772d13195eba797b5f0e114f2541d6940",
+                    "45ad21aebc8a9f0973ad1af534ba95dcb7dc9bc946aaa19aeb28e7268638b1d1",
+                    "60480184d42b2bfe6b113cb5d55ab033bfcae274d7f60e2514784b48c77ac5f1",
+                    "80384d762c6364d8fa2e7d18d248ba05cfae436c88ce8f97c9b9e4f9e8edd64c",
+                    "8a263380d0177b22ad82bbb5a7cae5d91567b83b2141abba40e831bec27acab3",
+                    "8d2697edb2c90e188178d06ac8fc2f31fa4b082a130187b818acf5d75b861f7b",
+                    "92e0a29c5d34f60013673fb38e70cd5dba646cf27e3a737981c9b77fa6d35ce5",
+                    "9afe0f97125099a34039214207e11700b5bebf5971deceb06f3273a9b2ae8a2d",
+                    "ad409fbbda0b450f5819bfca878037c3934a2365cb6078aa44a8f2fc94e59a10",
+                    "adeb445ffaf943c6c69bdfd4bb6c70e9f687839adb479a93dca6a994fe5afd33",
+                    "aee9b041f647121ecb65a27837c870354c81c7c3469eb5b49bb74d20cafa159f",
+                    "b70baa126e505d3ba87528f3108c17cae0ce450b563d8abfd68beb4323f282f5",
+                    "b7d2a50dc2bbe76872843f8d33a768a2cada1d9dd6b2b623fb28f88344cc1453",
+                    "c35bdb60b36824b085ba3e3d80c396e244e843a18b08ee9cd5c0653ca15ad0ff",
+                    "c376744312fb372aeed2ab3b96579a5d6b3929f9d4c9e432589275810b09ed90",
+                    "cec016ba6c48b729d6e71757899a72a52d0129df9846d2d22e9dcccc926f08f0",
+                    "db6932392040c5c9e8bd1df53db0e10dd3b1014bdb12c79befb5a277453071a7",
+                    "df866b7e3cf3bc15c02161fccfd1e73af3234ebae1dc32fef9b2a4c40704bae6",
+                    "e2859bc592cd12dae51e1a0f9f24d1645f090d09c5f856b9308f8f4d476b2de6",
+                    "e8c7d610ff3f9c355d52fadbdb60fb26b8391e99ecbdf1b904862a9e18c78330",
+                    "ef8b41ce78d1e69a42b88568de5be456dc6234a604740c01cd9d40a833bec53f",
+                    "f13c4947b996a87d75a106403f3bc631b91119b9db61ff67568b3aaf9b4f1cfa",
+                    "f17d935c98b6d5b390761600726f2f05f199fcb216c7df3ada216244f6237b5d",
+                    "f4885d0775435dc5cf72e6efd3c7a34749af554779d4cf62fefcd51eee30a030",
+                    "fcec283329d41911f548b15132cb5bbadcffad2efbdd09e1e0c551374816036d"
+                  ],
+                  "member_set_sha256": "5a7d605ec42d43a3203ee76b7c3d1f2b3468a3c3b921780e34f83cefed40d129",
+                  "metrics": {
+                    "brier": 0.6662602852469177,
+                    "crps": 1.1105145377137693,
+                    "nll": 1.2254310611393768
+                  },
+                  "probability": {
+                    "37": 0.2638544251447477,
+                    "38": 0.022332506203473945,
+                    "39": 0.02977667493796526,
+                    "40": 0.30107526881720426,
+                    "41": 0.07444168734491316,
+                    "42": 0.293631100082713,
+                    "43": 0.007444168734491315,
+                    "44": 0.007444168734491315
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "NOAA_GEFS_SEAMLESS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            },
+            "UKMO_GLOBAL_ENS": {
+              "case_count": 4,
+              "holdout_end_date": "2026-07-30",
+              "holdout_n": 1,
+              "holdout_source_class": "FORWARD_LOCAL_RECEIPT",
+              "holdout_start_date": "2026-07-30",
+              "oos_metrics": {
+                "brier": 0.6522024983563445,
+                "crps": 0.9506903353057201,
+                "nll": 1.1786549963416462
+              },
+              "parameters": {
+                "bias_c": -0.40000000000000097,
+                "climate_samples_c": [
+                  42.0,
+                  37.0,
+                  40.0
+                ],
+                "reliability_weight": 0.23076923076923078,
+                "spread_factor": 3.0,
+                "train_mean_spread_c": 0.575060508144137,
+                "train_rmse_c": 1.9385359967510514
+              },
+              "predictions": [
+                {
+                  "actual_tmax_c": 42.0,
+                  "decision_at_utc": "2026-07-30T19:43:29.459Z",
+                  "event_date": "2026-07-30",
+                  "member_run_content_shas": [
+                    "2b564c8970cdca69dd1a0cd8080ed152727c1ae3b905f76c3aed339615fdf59d",
+                    "2d1cbf6faa020416b0bdea7eb8aa0ef992b6064b1af09c1a90fb90a819a7e3e2",
+                    "2fc0f41d7d09a56ef424fe86cf48be7f5b34328d6a31540a393727749c9f1315",
+                    "3043f98bb87ab2b03b1ae790fc854faeee45eb66d79420343f6b0cb413a78361",
+                    "319798d3bc026d75a77661f501cc33dd6df5af03716efaf235f3f454b0f35ead",
+                    "439fedc22986cf567723a392bb14671077d648f4082489d6e3b6d27b6adfd01f",
+                    "43a8df21726eb7a6f5b42f6177912a63c60eebe08ad8174852866eafa886c51c",
+                    "4f2c74c0521d63729d9addf009d21e85d0653206c7210637a9ceee888bea341a",
+                    "5043db6cdec5d9817c65e1e32b51a77aae83d38687d729646effe587bf32bade",
+                    "5f3b07811641609d54a788489d6f4fe727574f5be1819dc6a9dfd90fbfe670da",
+                    "6ae9009d97d8c43bccda670ac0d10b2c86653d54606002abf140dfa2f7f37bc7",
+                    "899838f8a190bb12731c941652e371f6854270a3ca04a0c0382b3fb527bc8a9b",
+                    "ad0bbdd0f27818eb65e0873965fc37770f7f017cf1f458795e3b47ed84e349a7",
+                    "d117c27256954bde24f88b87d7ece57fb40aedf8f2055cf2ce00a0606280a44e",
+                    "d5206a5b229161621692da368b0833ca39ecba89dc1aa0d3dc0e6f97b17e5613",
+                    "df198ab86b5f0abede32cd17ddb633071a31f34e97fd5c8f2f7af594b2a35930",
+                    "e2869660d155dd10ad2bbe74f4a99ed04787d58e429c2d679651daa4dbacc154",
+                    "fd913cba2272db189a502c85cec3f0d7a36bb59596eca4b6eaa4aebb43b5f2c4"
+                  ],
+                  "member_set_sha256": "12f46093be8d5bc3ea2c0745301bc208c5cc0a95a53577e6da23e61a194c81bc",
+                  "metrics": {
+                    "brier": 0.6522024983563445,
+                    "crps": 0.9506903353057201,
+                    "nll": 1.1786549963416462
+                  },
+                  "probability": {
+                    "37": 0.25641025641025644,
+                    "39": 0.012820512820512822,
+                    "40": 0.32051282051282054,
+                    "41": 0.03846153846153847,
+                    "42": 0.3076923076923077,
+                    "43": 0.05128205128205129,
+                    "44": 0.012820512820512822
+                  }
+                }
+              ],
+              "state": "OOS_READY",
+              "system_id": "UKMO_GLOBAL_ENS",
+              "train_end_date": "2026-07-29",
+              "train_n": 3,
+              "train_source_counts": {
+                "FORWARD_LOCAL_RECEIPT": 0,
+                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY": 3
+              },
+              "train_start_date": "2026-07-27"
+            }
+          },
+          "system_family_ids": {
+            "DWD_ICON_EPS_SEAMLESS": "DWD_ICON_EPS",
+            "DWD_ICON_GLOBAL_EPS": "DWD_ICON_EPS",
+            "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+            "ECMWF_AIFS_ENS_GLOBAL": "ECMWF",
+            "ECMWF_IFS_ENS_GLOBAL": "ECMWF",
+            "GOOGLE_WEATHERNEXT2_ENS": "GOOGLE_WEATHERNEXT",
+            "NOAA_AIGEFS_025": "NOAA_AIGEFS",
+            "NOAA_GEFS_025": "NOAA_GEFS",
+            "NOAA_GEFS_05": "NOAA_GEFS",
+            "NOAA_GEFS_SEAMLESS": "NOAA_GEFS",
+            "UKMO_GLOBAL_ENS": "UKMO"
+          },
+          "system_weights": {
+            "DWD_ICON_EPS_SEAMLESS": 0.06628364635211707,
+            "DWD_ICON_GLOBAL_EPS": 0.06628364635211707,
+            "ECCC_GEM_GLOBAL_ENS": 0.035862637634704375,
+            "ECMWF_AIFS_ENS_GLOBAL": 0.12784431239638197,
+            "ECMWF_IFS_ENS_GLOBAL": 0.08592520049819087,
+            "GOOGLE_WEATHERNEXT2_ENS": 0.12321321417557088,
+            "NOAA_AIGEFS_025": 0.09186823136731581,
+            "NOAA_GEFS_025": 0.11160578241105153,
+            "NOAA_GEFS_05": 0.03455353165782742,
+            "NOAA_GEFS_SEAMLESS": 0.11160578241105153,
+            "UKMO_GLOBAL_ENS": 0.14495401474367156
+          },
+          "threshold_profile": "PRODUCTION_NO_LIVE_BOOTSTRAP_2_TRAIN_1_FORWARD_HOLDOUT",
+          "train_end_date": "2026-07-29",
+          "train_start_date": "2026-07-27"
+        }
+      ],
+      "formal_p0_eligible": false,
+      "formal_promotion_min_holdout_days": 8,
+      "formal_promotion_min_train_days": 20,
+      "formal_promotion_threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+      "live_submit_authorized": false,
+      "min_holdout_days": 1,
+      "min_train_days": 2,
+      "orders_submitted": 0,
+      "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+      "readiness": [
+        {
+          "case_count": 0,
+          "ensemble_system_id": "DWD_ICON_D2_EPS",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "DWD_ICON_EPS_SEAMLESS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6161489151873767,
+            "crps": 0.9132158119658118,
+            "nll": 1.1580357091389104
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "DWD_ICON_EU_EPS",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6161489151873767,
+            "crps": 0.9132158119658118,
+            "nll": 1.1580357091389104
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.7275288813750354,
+            "crps": 1.2502784151135797,
+            "nll": 1.3190123540365686
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "ECMWF_AIFS_ENS_EUROPE",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.7038758420179767,
+            "crps": 1.180904476885313,
+            "nll": 1.2764191651075376
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "ECMWF_IFS_ENS_EUROPE",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6476798864342117,
+            "crps": 1.0160907616324173,
+            "nll": 1.1688988213962814
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.5974723018367849,
+            "crps": 1.0052341759635934,
+            "nll": 1.102224574354023
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "METEOSWISS_ICON_CH1_ENS",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "METEOSWISS_ICON_CH2_ENS",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "NOAA_AIGEFS_025",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.667146935617279,
+            "crps": 1.0732690648643581,
+            "nll": 1.2511100755570685
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "NOAA_GEFS_025",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6662602852469177,
+            "crps": 1.1105145377137693,
+            "nll": 1.2254310611393768
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6784886716048166,
+            "crps": 1.0692360371380625,
+            "nll": 1.175970430970977
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "NOAA_GEFS_SEAMLESS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6662602852469177,
+            "crps": 1.1105145377137693,
+            "nll": 1.2254310611393768
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 4,
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "holdout_n": 1,
+          "lead_bucket": "d0",
+          "oos_metrics": {
+            "brier": 0.6522024983563445,
+            "crps": 0.9506903353057201,
+            "nll": 1.1786549963416462
+          },
+          "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+          "season_bin": "JJA",
+          "state": "OOS_READY",
+          "train_n": 3
+        },
+        {
+          "case_count": 0,
+          "ensemble_system_id": "UKMO_UK_ENS",
+          "forward_holdout_case_count": 0,
+          "lead_bucket": "*",
+          "missing_forward_holdout_case_count": 1,
+          "missing_train_case_count": 2,
+          "required_forward_holdout_case_count": 1,
+          "required_train_case_count": 2,
+          "run_cycle": "*",
+          "season_bin": "*",
+          "state": "ACCUMULATING_FORWARD_OOS",
+          "training_case_count": 0
+        }
+      ],
+      "registered_system_count": 18,
+      "schema": "native_ensemble_strict_forward_oos_v1",
+      "station_id": "OEJN",
+      "threshold_profile": "PRODUCTION_NO_LIVE_BOOTSTRAP_2_TRAIN_1_FORWARD_HOLDOUT"
+    }
+  ],
+  "schema": "native_ensemble_forward_oos_manifest_v1",
+  "station_count": 1
+}

@@ -31,6 +31,8 @@ from .model_sources import (
 
 SCHEMA = "bayes_basket_target_no_live_calibration_authority_v1"
 AUTHORITY = "PRODUCTION_NO_LIVE_ONLY"
+FORMAL_TRUTH = "FORMAL_STATION_LANE_TRUTH"
+TEMPORARY_AWC_TRUTH = "TEMPORARY_AWC_CALIBRATION_LABEL"
 
 
 def _ensemble_identity(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -165,6 +167,100 @@ def _validate_activation_identity(row: Mapping[str, Any]) -> None:
         raise ContractError("no_live_calibration_activation_content_sha256_mismatch")
 
 
+def _validate_truth_authority_bindings(
+    evidence: Mapping[str, Any],
+    *,
+    artifact_stations: set[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    checks = evidence.get("checks")
+    boundary = evidence.get("boundary")
+    if not isinstance(checks, Mapping) or not isinstance(boundary, Mapping):
+        raise ContractError("no_live_calibration_truth_authority_missing")
+    canonical_only = checks.get("truth_source_canonical_ingress") is True
+    temporary_explicit = (
+        checks.get("temporary_awc_calibration_label_explicit") is True
+    )
+    if not canonical_only and (
+        checks.get("truth_source_no_live_calibration_authority_valid")
+        is not True
+        or not temporary_explicit
+    ):
+        raise ContractError("no_live_calibration_truth_authority_invalid")
+    if temporary_explicit and any(
+        boundary.get(key) is not False
+        for key in (
+            "enters_realtime_truth",
+            "enters_p1",
+            "enters_hard_no",
+        )
+    ):
+        raise ContractError(
+            "no_live_calibration_temporary_awc_boundary_invalid"
+        )
+    raw_bindings = evidence.get("truth_authority_bindings")
+    if raw_bindings in (None, []) and canonical_only:
+        return [], []
+    if not isinstance(raw_bindings, list) or any(
+        not isinstance(row, Mapping) for row in raw_bindings
+    ):
+        raise ContractError(
+            "no_live_calibration_truth_authority_bindings_invalid"
+        )
+    bindings: list[dict[str, Any]] = []
+    by_station: dict[str, dict[str, Any]] = {}
+    temporary_stations: list[str] = []
+    for raw in raw_bindings:
+        row = dict(raw)
+        supplied = str(row.get("content_sha256") or "").lower()
+        identity = {
+            str(key): value
+            for key, value in row.items()
+            if key != "content_sha256"
+        }
+        if supplied != content_sha256(identity):
+            raise ContractError(
+                "no_live_calibration_truth_authority_binding_hash_mismatch"
+            )
+        station = str(row.get("station_id") or "").strip().upper()
+        authority = str(row.get("truth_label_authority") or "")
+        if (
+            not station
+            or station in by_station
+            or authority not in {FORMAL_TRUTH, TEMPORARY_AWC_TRUTH}
+        ):
+            raise ContractError(
+                "no_live_calibration_truth_authority_binding_scope_invalid"
+            )
+        if authority == TEMPORARY_AWC_TRUTH:
+            if (
+                not temporary_explicit
+                or str(row.get("source_lane") or "").upper() != "AWC"
+                or row.get(
+                    "replacement_required_when_canonical_history_available"
+                )
+                is not True
+                or any(
+                    row.get(key) is not False
+                    for key in (
+                        "enters_realtime_truth",
+                        "enters_p1",
+                        "enters_hard_no",
+                    )
+                )
+            ):
+                raise ContractError(
+                    "no_live_calibration_temporary_awc_binding_invalid"
+                )
+            temporary_stations.append(station)
+        by_station[station] = row
+        bindings.append(row)
+    if artifact_stations - set(by_station):
+        raise ContractError(
+            "no_live_calibration_truth_authority_binding_incomplete"
+        )
+    return bindings, sorted(temporary_stations)
+
+
 def _validate_candidate_score_partition(selection: ModelEnsembleSelectionEvidence) -> None:
     """Ensure the selector ranked only formal 2+/3-model candidates for promotion."""
 
@@ -223,7 +319,6 @@ def build_no_live_calibration_artifact_packet(
         "calibration_window_sufficient",
         "candidate_artifact_count_positive",
         "all_candidates_unpromoted",
-        "truth_source_canonical_ingress",
     )
     missing = [key for key in required_true if checks.get(key) is not True]
     if missing:
@@ -270,6 +365,16 @@ def build_no_live_calibration_artifact_packet(
     raw_oos = evidence.get("oos_reports")
     if not isinstance(raw_artifacts, list) or not isinstance(raw_ensembles, list) or not isinstance(raw_selection, list) or not isinstance(raw_oos, list):
         raise ContractError("no_live_calibration_candidate_lists_missing")
+    truth_authority_bindings, temporary_awc_stations = (
+        _validate_truth_authority_bindings(
+            evidence,
+            artifact_stations={
+                str(row.get("station_id") or "").strip().upper()
+                for row in raw_artifacts
+                if isinstance(row, Mapping)
+            },
+        )
+    )
     artifacts = [ModelCalibrationArtifact.from_mapping(row) for row in raw_artifacts]
     selection_evidence = [
         ModelEnsembleSelectionEvidence.from_mapping(row) for row in raw_selection
@@ -467,6 +572,7 @@ def build_no_live_calibration_artifact_packet(
         ],
         "calibration_activations": activations,
         "calibration_promotions": [],
+        "truth_authority_bindings": truth_authority_bindings,
         "global_priors": [],
         "policy_artifacts": [],
         "policy_activations": [],
@@ -481,6 +587,14 @@ def build_no_live_calibration_artifact_packet(
             "ensemble_count": len(ensembles),
             "rejected_ensemble_scope_count": len(raw_ensembles) - len(ensembles),
             "activation_count": len(activations),
+            "temporary_awc_calibration_station_count": len(
+                temporary_awc_stations
+            ),
+            "temporary_awc_calibration_station_ids":
+                temporary_awc_stations,
+            "temporary_awc_realtime_truth_authorized": False,
+            "temporary_awc_p1_authorized": False,
+            "temporary_awc_hard_no_authorized": False,
             "formal_promotion_created": False,
             "live_order_authorized": False,
         },

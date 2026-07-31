@@ -1,0 +1,754 @@
+{
+  "as_of_utc": "2026-07-30T11:00:00Z",
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "writes_production_database": false
+  },
+  "checks": {
+    "all_expected_station_dates_complete": true,
+    "future_data_used": false,
+    "historical_closed_targets_only": true,
+    "native_arrival_not_claimed": true,
+    "native_publication_not_claimed": true,
+    "online_weight_update": false
+  },
+  "content_sha256": "ba9a41da5bf72c424ff4408bf4f286590811ee568551cac76df4a64d5c6a18e0",
+  "end_date": "2026-07-22",
+  "inputs": [
+    {
+      "event_date": "2026-07-22",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=48.348%2C51.505%2C52.315%2C40.466%2C48.967%2C45.631&longitude=11.813%2C0.055%2C4.79%2C-3.555%2C2.428%2C8.728&hourly=temperature_2m&models=meteofrance_arome_france0025&timezone=UTC&run=2026-07-21T12%3A00&forecast_days=4",
+      "run_initialization_utc": "2026-07-21T12:00:00Z"
+    }
+  ],
+  "model_id": "AROME-FR",
+  "model_rows": [
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 24.2,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 12.9,
+          "valid_time_utc": "2026-07-21T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 11.7,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 9.9,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 9.5,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 8.7,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 7.5,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 6.8,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 8.2,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 12.6,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.1,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.2,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.1,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.8,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.4,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.2,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.5,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.8,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.9,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "270b6c4097c08bc2b36d79f2c189affce1fb042e9e4460b425be5087513d13bf",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "EDDM",
+      "target_timezone": "Europe/Berlin"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 25.6,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 19.3,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.6,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.2,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.2,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.3,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.5,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.9,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.0,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.2,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.3,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.8,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.1,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.5,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-07-22T22:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "b2023dc72d854ed3817ecfc7a549dc0611f5571869bad166b40a9b63ae5ba4df",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "EGLC",
+      "target_timezone": "Europe/London"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 20.1,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 17.1,
+          "valid_time_utc": "2026-07-21T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.8,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.7,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.4,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.9,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.0,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.2,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.5,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.0,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.8,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.5,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.7,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.7,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.1,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.2,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.1,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.0,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.4,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.6,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.8,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "d529a1e9e1b9f3c1fbfd46a167481bf17835869226d8824799da90c861ff7109",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "EHAM",
+      "target_timezone": "Europe/Amsterdam"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 40.7,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 27.7,
+          "valid_time_utc": "2026-07-21T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.0,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.9,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.7,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.3,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.4,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.4,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.6,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.2,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 32.4,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 34.5,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 37.2,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 38.9,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 39.7,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 40.4,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 40.7,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 40.3,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 39.5,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 38.0,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 35.3,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 31.9,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "3fc6f4303d4e1d20ddf505e1c1ba937dab6dd775851ba023332d0693b012bb0d",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "LEMD",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 27.3,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 20.6,
+          "valid_time_utc": "2026-07-21T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.3,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.2,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.3,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 16.3,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.4,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.9,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 14.8,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 15.9,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.6,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.4,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.0,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.5,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.1,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.1,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.9,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.3,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.5,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.5,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.0,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 22.9,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.9,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "02abce560ec56a67b4cbebc70b89276c16af4db3ddfcc20af9d8417ea0c80df2",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "LFPB",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "daily_curve_complete": true,
+      "event_date": "2026-07-22",
+      "forecast_daily_max_c": 30.0,
+      "future_data_used": false,
+      "model_id": "AROME-FR",
+      "model_pool_class": "regional",
+      "model_run_initialization_utc": "2026-07-21T12:00:00Z",
+      "native_arrival_claimed": false,
+      "native_publication_claimed": false,
+      "points": [
+        {
+          "temperature_2m_c": 22.6,
+          "valid_time_utc": "2026-07-21T22:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.8,
+          "valid_time_utc": "2026-07-21T23:00:00Z"
+        },
+        {
+          "temperature_2m_c": 20.9,
+          "valid_time_utc": "2026-07-22T00:00:00Z"
+        },
+        {
+          "temperature_2m_c": 19.8,
+          "valid_time_utc": "2026-07-22T01:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.8,
+          "valid_time_utc": "2026-07-22T02:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.9,
+          "valid_time_utc": "2026-07-22T03:00:00Z"
+        },
+        {
+          "temperature_2m_c": 17.5,
+          "valid_time_utc": "2026-07-22T04:00:00Z"
+        },
+        {
+          "temperature_2m_c": 18.1,
+          "valid_time_utc": "2026-07-22T05:00:00Z"
+        },
+        {
+          "temperature_2m_c": 21.0,
+          "valid_time_utc": "2026-07-22T06:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.6,
+          "valid_time_utc": "2026-07-22T07:00:00Z"
+        },
+        {
+          "temperature_2m_c": 25.6,
+          "valid_time_utc": "2026-07-22T08:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.1,
+          "valid_time_utc": "2026-07-22T09:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.0,
+          "valid_time_utc": "2026-07-22T10:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-07-22T11:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.7,
+          "valid_time_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.8,
+          "valid_time_utc": "2026-07-22T13:00:00Z"
+        },
+        {
+          "temperature_2m_c": 30.0,
+          "valid_time_utc": "2026-07-22T14:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.9,
+          "valid_time_utc": "2026-07-22T15:00:00Z"
+        },
+        {
+          "temperature_2m_c": 29.5,
+          "valid_time_utc": "2026-07-22T16:00:00Z"
+        },
+        {
+          "temperature_2m_c": 28.8,
+          "valid_time_utc": "2026-07-22T17:00:00Z"
+        },
+        {
+          "temperature_2m_c": 27.8,
+          "valid_time_utc": "2026-07-22T18:00:00Z"
+        },
+        {
+          "temperature_2m_c": 26.4,
+          "valid_time_utc": "2026-07-22T19:00:00Z"
+        },
+        {
+          "temperature_2m_c": 24.6,
+          "valid_time_utc": "2026-07-22T20:00:00Z"
+        },
+        {
+          "temperature_2m_c": 23.0,
+          "valid_time_utc": "2026-07-22T21:00:00Z"
+        }
+      ],
+      "provider_id": "meteofrance_arome_france0025_open_meteo",
+      "raw_message_sha256": "aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc",
+      "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/regional_exact_run_history/arome-fr/raw/aaf97a30dd53ddf437ee888201e4b878ff10a9d16a7772be7abcff5adf3692cc.json",
+      "receipt_sha256": "2fd06d1ecbd4a1a08484963c975f8eb81d4752966e1b32140f5b2c490ccf4791",
+      "sample_count": 24,
+      "source_class": "aggregator_republisher",
+      "station_id": "LIMC",
+      "target_timezone": "Europe/Rome"
+    }
+  ],
+  "provider_id": "meteofrance_arome_france0025_open_meteo",
+  "schema": "bayes_basket_target_historical_regional_exact_run_evidence_v1",
+  "source": {
+    "model_parameter": "meteofrance_arome_france0025",
+    "native_publication_time_available": false,
+    "run_cycle": "12Z",
+    "run_day_offset": 1,
+    "single_run_parameter_explicit": true,
+    "source_class": "aggregator_republisher",
+    "source_url": "https://single-runs-api.open-meteo.com/v1/forecast"
+  },
+  "start_date": "2026-07-22",
+  "station_ids": [
+    "EDDM",
+    "EGLC",
+    "EHAM",
+    "LEMD",
+    "LFPB",
+    "LIMC"
+  ]
+}

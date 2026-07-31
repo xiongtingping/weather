@@ -54,7 +54,7 @@ from scripts.ingest_bayes_basket_probability_evidence import (  # noqa: E402
 
 
 SCHEMA = "bayes_basket_target_transaction_fenced_cutover_v1"
-DEFAULT_PACKET = (
+DEFAULT_SCHEMA_BOOTSTRAP_PACKET = (
     ROOT
     / "output/audits/"
     "bayes_basket_target_no_live_vertical_slice_RKPK_v3.json"
@@ -69,6 +69,9 @@ SERVICE_LABELS = (
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
+SYSTEM_SERVICE_DOMAIN = "system"
+SERVICE_DOMAIN = f"gui/{os.getuid()}"
+REQUIRED_SERVICE_DOMAIN = "user"
 
 
 def _utc_now() -> str:
@@ -79,16 +82,33 @@ def _utc_now() -> str:
     )
 
 
+def _launchctl_print(domain: str, label: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["/bin/launchctl", "print", f"{domain}/{label}"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            f"required_{REQUIRED_SERVICE_DOMAIN}_service_probe_failed:{label}"
+        ) from exc
+
+
+def _reject_system_service_residue(label: str) -> None:
+    completed = _launchctl_print(SYSTEM_SERVICE_DOMAIN, label)
+    if completed.returncode == 0:
+        raise RuntimeError(f"forbidden_system_service_residue:{label}")
+
+
 def _service_pid(label: str) -> int:
-    completed = subprocess.run(
-        ["/bin/launchctl", "print", f"system/{label}"],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    _reject_system_service_residue(label)
+    completed = _launchctl_print(SERVICE_DOMAIN, label)
     if completed.returncode != 0:
-        raise RuntimeError(f"required_system_service_missing:{label}")
+        raise RuntimeError(f"required_user_service_missing:{label}")
     for raw_line in completed.stdout.splitlines():
         line = raw_line.strip()
         if line.startswith("pid = "):
@@ -96,21 +116,16 @@ def _service_pid(label: str) -> int:
             if pid <= 0:
                 break
             return pid
-    raise RuntimeError(f"required_system_service_pid_missing:{label}")
+    raise RuntimeError(f"required_user_service_pid_missing:{label}")
+
+
+def _service_loaded(label: str) -> bool:
+    _reject_system_service_residue(label)
+    return _launchctl_print(SERVICE_DOMAIN, label).returncode == 0
 
 
 def _service_pids() -> dict[str, int]:
     return {label: _service_pid(label) for label in SERVICE_LABELS}
-
-
-def _service_loaded(label: str) -> bool:
-    completed = subprocess.run(
-        ["/bin/launchctl", "print", f"system/{label}"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return completed.returncode == 0
 
 
 def _quick_check(conn: sqlite3.Connection) -> None:
@@ -143,10 +158,12 @@ def _assert_no_live_activation(path: Path) -> dict[str, Any]:
     return activation
 
 
-def _validate_exact_packet(packet: dict[str, Any]) -> str:
+def _validate_schema_bootstrap_packet(packet: dict[str, Any]) -> str:
     packet_sha = validate_packet_sha256(packet, required=True)
     if packet.get("station_ids") != ["RKPK"]:
-        raise ContractError("transaction_fenced_packet_station_scope_invalid")
+        raise ContractError(
+            "transaction_fenced_schema_bootstrap_station_binding_invalid"
+        )
     vertical = packet.get("vertical_slice")
     if (
         not isinstance(vertical, dict)
@@ -154,9 +171,11 @@ def _validate_exact_packet(packet: dict[str, Any]) -> str:
         or vertical.get("station_id") != "RKPK"
         or vertical.get("batch_expansion_authorized") is not False
     ):
-        raise ContractError("transaction_fenced_packet_vertical_scope_invalid")
+        raise ContractError(
+            "transaction_fenced_schema_bootstrap_vertical_scope_invalid"
+        )
     if packet.get("execution_mode") != "production_no_live":
-        raise ContractError("transaction_fenced_packet_mode_invalid")
+        raise ContractError("transaction_fenced_schema_bootstrap_mode_invalid")
     for key in (
         "live_order_authorized",
         "live_submit_authorized",
@@ -165,11 +184,11 @@ def _validate_exact_packet(packet: dict[str, Any]) -> str:
     ):
         if packet.get(key) is not False:
             raise ContractError(
-                f"transaction_fenced_packet_{key}_must_be_false"
+                f"transaction_fenced_schema_bootstrap_{key}_must_be_false"
             )
     if int(packet.get("orders_submitted") or 0) != 0:
         raise ContractError(
-            "transaction_fenced_packet_orders_submitted_nonzero"
+            "transaction_fenced_schema_bootstrap_orders_submitted_nonzero"
         )
     return packet_sha
 
@@ -218,7 +237,7 @@ def run_cutover(
     if not isinstance(raw_packet, dict):
         raise RuntimeError("transaction_fenced_packet_mapping_required")
     packet = dict(raw_packet)
-    packet_sha = _validate_exact_packet(packet)
+    packet_sha = _validate_schema_bootstrap_packet(packet)
     probability_evidence_packet: dict[str, Any] | None = None
     if probability_evidence_packet_file is not None:
         raw_probability_evidence_packet = load_bounded_json(
@@ -258,7 +277,7 @@ def run_cutover(
             )
     pause.parent.mkdir(parents=True, exist_ok=True)
     pause.write_text(
-        PAUSE_MARKER_TOKEN + "\ntransaction-fenced-rkpk-v2\n",
+        PAUSE_MARKER_TOKEN + "\ntransaction-fenced-schema-bootstrap-v3\n",
         encoding="utf-8",
     )
 
@@ -442,9 +461,17 @@ def run_cutover(
         "schema": SCHEMA,
         "state": "MATERIALIZED",
         "completed_at_utc": _utc_now(),
+        "required_domain": REQUIRED_SERVICE_DOMAIN,
+        "service_domain": SERVICE_DOMAIN,
         "database": str(db),
-        "packet": str(packet_file),
         "packet_sha256": packet_sha,
+        "schema_bootstrap_artifact": {
+            "path": str(packet_file),
+            "sha256": packet_sha,
+            "artifact_type": "schema_bootstrap",
+            "not_production_station_scope": True,
+            "caller_scope_contract": "canonical45",
+        },
         "activation": str(activation_file),
         "activation_sha256": str(
             activation.get("activation_sha256") or ""
@@ -498,7 +525,12 @@ def run_cutover(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
-    parser.add_argument("--packet", type=Path, default=DEFAULT_PACKET)
+    parser.add_argument(
+        "--packet",
+        type=Path,
+        default=DEFAULT_SCHEMA_BOOTSTRAP_PACKET,
+        help="schema bootstrap artifact only; not a production station scope",
+    )
     parser.add_argument(
         "--activation",
         type=Path,
@@ -556,6 +588,8 @@ def main() -> int:
                     "schema": SCHEMA,
                     "state": "BLOCKED_FAIL_CLOSED",
                     "reason": "explicit_cutover_confirmation_required",
+                    "required_domain": REQUIRED_SERVICE_DOMAIN,
+                    "service_domain": SERVICE_DOMAIN,
                     "stops_services": False,
                     "calls_order_gateway": False,
                     "orders_submitted": 0,
@@ -592,6 +626,8 @@ def main() -> int:
                     "schema": SCHEMA,
                     "state": "BLOCKED_FAIL_CLOSED",
                     "reason": f"{type(exc).__name__}:{exc}",
+                    "required_domain": REQUIRED_SERVICE_DOMAIN,
+                    "service_domain": SERVICE_DOMAIN,
                     "stops_services": False,
                     "restarts_services": False,
                     "calls_order_gateway": False,
@@ -607,7 +643,12 @@ def main() -> int:
             {
                 "schema": result["schema"],
                 "state": result["state"],
+                "required_domain": result["required_domain"],
+                "service_domain": result["service_domain"],
                 "packet_sha256": result["packet_sha256"],
+                "schema_bootstrap_artifact": result[
+                    "schema_bootstrap_artifact"
+                ],
                 "service_pid_stability": result[
                     "service_pid_stability"
                 ],

@@ -95,13 +95,13 @@ def _ensemble(
         "recent_start_date": "2026-06-14",
         "recent_end_date": "2026-06-20",
         "holdout_start_date": "2026-06-21",
-        "holdout_end_date": "2026-06-25",
+        "holdout_end_date": "2026-06-28",
         "oos_metrics": {
             "brier_score": 0.2,
             "nll": 0.4,
             "crps": 0.15,
         },
-        "valid_from_utc": "2026-06-26T00:00:00Z",
+        "valid_from_utc": "2026-06-29T00:00:00Z",
         "valid_until_utc": "2026-08-01T00:00:00Z",
         "promoted": False,
     }

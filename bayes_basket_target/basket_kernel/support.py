@@ -446,9 +446,14 @@ def _choose_support(
                 else 0.0
             )
             edge_score = (
-                item.probability
-                * (1.0 - item.ask_price)
-                / item.ask_price
+                max(
+                    0.0,
+                    item.probability
+                    - (
+                        item.ask_price * (1.0 + policy.fee_rate)
+                        + policy.taker_slippage_buffer_per_share
+                    ),
+                )
                 * abs(item.ordinal - center.ordinal)
                 / max_distance
                 if item.bucket in edge
@@ -509,6 +514,20 @@ def _choose_support(
         mass += item.probability
         if mass + EPS >= coverage_target:
             break
+    core_lower = min(
+        item.ordinal for item in buckets if item.bucket in base
+    )
+    core_upper = max(
+        item.ordinal for item in buckets if item.bucket in base
+    )
+    persisted_probability_core = [
+        item.bucket
+        for item in sorted(
+            buckets,
+            key=lambda row: (row.ordinal, row.bucket),
+        )
+        if core_lower <= item.ordinal <= core_upper
+    ]
     # Diagnostic extrema bound the outer search range, but never define the
     # probability core and never add a bucket to final support.  A remote
     # outlier is still capped by the disagreement-derived layer budget.
@@ -615,10 +634,15 @@ def _choose_support(
         if not peripheral_eligible(item):
             continue
         distance = abs(item.ordinal - center.ordinal) / max_distance
+        # Price may qualify a peripheral bucket through positive probability
+        # coverage value, but a reciprocal-price multiplier would turn a
+        # cheap quote into synthetic probability and overweight long odds.
+        first_share_all_in = (
+            item.ask_price * (1.0 + policy.fee_rate)
+            + policy.taker_slippage_buffer_per_share
+        )
         edge_scores[item.bucket] = (
-            item.probability
-            * (1.0 - item.ask_price)
-            / item.ask_price
+            max(0.0, item.probability - first_share_all_in)
             * distance
         )
     edge = set(edge_scores)
@@ -684,12 +708,7 @@ def _choose_support(
                 snapshot.current_core_buckets
             ),
             "next_core_buckets": [
-                item.bucket
-                for item in sorted(
-                    buckets,
-                    key=lambda row: (row.ordinal, row.bucket),
-                )
-                if item.bucket in base
+                *persisted_probability_core
             ],
         },
     )

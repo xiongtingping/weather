@@ -6,30 +6,33 @@ MANIFEST="$ROOT/config/trading/delta_basket_score_v2_rkpk_no_live_bootstrap_v2.j
 LABEL="com.weather.reported_trajectory_no"
 MARKET_LABEL="com.weather.market_ws"
 ORDER_LABEL="com.weather.clob_order_service"
-INSTALLED_PLIST="/Library/LaunchDaemons/com.weather.reported_trajectory_no.plist"
+UID_VALUE="$(id -u)"
+DOMAIN="gui/${UID_VALUE}"
+INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.reported_trajectory_no.plist"
 PAUSE="$ROOT/data/live_paused.flag"
 CONFIRM="${1:-}"
-CUTOVER_USER="${SUDO_USER:-xiong}"
 
 if [ "$CONFIRM" != "--confirm-delta-basket-score-v2-production-no-live" ]; then
-  echo "用法：sudo $0 --confirm-delta-basket-score-v2-production-no-live" >&2
+  echo "用法：$0 --confirm-delta-basket-score-v2-production-no-live" >&2
   exit 2
 fi
-if [ "$(id -u)" -ne 0 ]; then
-  echo "必须以 root 运行：sudo $0 --confirm-delta-basket-score-v2-production-no-live" >&2
-  exit 1
-fi
-if ! /usr/bin/id "$CUTOVER_USER" >/dev/null 2>&1; then
-  echo "delta_v2_cutover_invoking_user_missing" >&2
+if [ "$(id -u)" -eq 0 ]; then
+  echo "必须以登录用户运行，禁止 root/sudo" >&2
   exit 1
 fi
 if [ ! -f "$INSTALLED_PLIST" ]; then
   echo "delta_v2_cutover_installed_plist_missing" >&2
   exit 1
 fi
+for service_label in "$LABEL" "$MARKET_LABEL" "$ORDER_LABEL"; do
+  if launchctl print "system/${service_label}" >/dev/null 2>&1; then
+    echo "delta_v2_cutover_system_domain_residue:${service_label}" >&2
+    exit 1
+  fi
+done
 
 service_pid() {
-  launchctl print "system/$1" 2>/dev/null \
+  launchctl print "${DOMAIN}/$1" 2>/dev/null \
     | /usr/bin/awk '/^[[:space:]]*pid = [0-9]+/{print $3; exit}'
 }
 
@@ -38,7 +41,7 @@ order_pid_before="$(service_pid "$ORDER_LABEL")"
 target_pid_before="$(service_pid "$LABEL")"
 if [ -z "$market_pid_before" ] || [ -z "$order_pid_before" ] \
   || [ -z "$target_pid_before" ]; then
-  echo "delta_v2_cutover_requires_three_running_system_services" >&2
+  echo "delta_v2_cutover_requires_three_running_user_services" >&2
   exit 1
 fi
 
@@ -53,6 +56,8 @@ if env.get("PM_TARGET_PRODUCTION_WRITER") != "1":
     raise SystemExit("delta_v2_cutover_target_writer_not_enabled")
 if env.get("PM_TARGET_EXECUTION_MODE") != "production_no_live":
     raise SystemExit("delta_v2_cutover_execution_mode_invalid")
+if env.get("WEATHER_SERVICE_DOMAIN") != "user":
+    raise SystemExit("delta_v2_cutover_service_domain_invalid")
 PY
 
 /usr/bin/python3 - \
@@ -110,22 +115,22 @@ restore_target_service() {
     echo "delta_v2_cutover_error_path_order_pid_changed" >&2
   fi
   if [ "$target_stopped" = "1" ] \
-    && ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
-    launchctl bootstrap system "$INSTALLED_PLIST" >/dev/null 2>&1 || true
+    && ! launchctl print "${DOMAIN}/$LABEL" >/dev/null 2>&1; then
+    launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST" >/dev/null 2>&1 || true
   fi
 }
 trap restore_target_service ERR
 
-launchctl bootout "system/$LABEL"
+launchctl bootout "${DOMAIN}/$LABEL"
 target_stopped=1
 deadline=$((SECONDS + 30))
 while [ "$SECONDS" -lt "$deadline" ]; do
-  if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
+  if ! launchctl print "${DOMAIN}/$LABEL" >/dev/null 2>&1; then
     break
   fi
   sleep 0.25
 done
-if launchctl print "system/$LABEL" >/dev/null 2>&1; then
+if launchctl print "${DOMAIN}/$LABEL" >/dev/null 2>&1; then
   echo "delta_v2_cutover_target_did_not_stop" >&2
   exit 1
 fi
@@ -142,7 +147,7 @@ fi
   --apply \
   --confirm-reported-trajectory-no-stopped
 
-/usr/bin/sudo -u "$CUTOVER_USER" /usr/bin/python3 \
+/usr/bin/python3 \
   "$ROOT/scripts/repair_bayes_basket_target_false_quarantine.py" \
   --db "$ROOT/data/bayes_basket_target_ssot.db" \
   --store "$ROOT/data/runtime/bayes_basket_target_cash_phase/forward_observations.sqlite3" \
@@ -152,7 +157,7 @@ fi
 # A second execution is a mandatory idempotency foldback: it must discover no
 # unresolved allowlisted identity and perform zero writes.
 repair_replay="$(
-  /usr/bin/sudo -u "$CUTOVER_USER" /usr/bin/python3 \
+  /usr/bin/python3 \
     "$ROOT/scripts/repair_bayes_basket_target_false_quarantine.py" \
     --db "$ROOT/data/bayes_basket_target_ssot.db" \
     --store "$ROOT/data/runtime/bayes_basket_target_cash_phase/forward_observations.sqlite3" \
@@ -172,7 +177,7 @@ if value.get("calls_order_gateway") is not False:
     raise SystemExit("delta_v2_cutover_forward_repair_gateway_boundary_open")
 PY
 
-/usr/bin/sudo -u "$CUTOVER_USER" /usr/bin/python3 - "$ROOT" <<'PY'
+/usr/bin/python3 - "$ROOT" <<'PY'
 import sqlite3
 import sys
 
@@ -216,7 +221,7 @@ if any(
 print("forward_false_quarantine_repair_verified=2")
 PY
 
-launchctl bootstrap system "$INSTALLED_PLIST"
+launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST"
 target_stopped=0
 deadline=$((SECONDS + 30))
 target_pid_after=""

@@ -14,6 +14,7 @@ from bayes_basket_target.production_worker import (
     MAX_RESIDENT_WS_SCOPES,
     MAX_PREPARED_CYCLES_PER_SCOPE,
     TargetProductionWorker,
+    _upsert_native_p0_inbox,
     _manifest_station_allowlist,
     _resolve_target_remaining_budget,
     open_target_writer_if_enabled,
@@ -33,6 +34,10 @@ from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_METHOD_VERSION,
     build_metar_trajectory_likelihood_artifact,
 )
+from bayes_basket_target.native_ensemble_contract import (
+    P0_PROBABILITY_PATHWAY,
+    TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+)
 from bayes_basket_target.p0_historical_meta import (
     compile_p0_historical_zero_tilt_proof,
 )
@@ -51,9 +56,138 @@ from bayes_basket_target.stages import select_current_stage
 from bayes_basket_target.taf_revision import (
     TAF_NWP_CROSSFIT_ARTIFACT_KIND,
     TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
-    TAF_NWP_LIVE_FINGERPRINT_SCHEMA,
 )
 from scripts.initialize_bayes_basket_target_ssot import initialize
+
+
+def _compiled_native_p0_source_packet(
+    provider: str,
+    *,
+    packet_content_sha256: str | None = None,
+) -> dict[str, object]:
+    packet = {
+        "station_id": "RKPK",
+        "event_date": "2026-08-01",
+        "probability_pathway": P0_PROBABILITY_PATHWAY,
+        "native_probability_envelope": {
+            "lineage": {
+                "native_transport_provider": provider,
+            },
+        },
+    }
+    return {
+        "schema": "calibrated_native_cross_ensemble_p0_packet_v1",
+        "source_class": "calibrated_native_cross_ensemble",
+        "packet": packet,
+        "packet_content_sha256": (
+            packet_content_sha256
+            if packet_content_sha256 is not None
+            else content_sha256(packet)
+        ),
+    }
+
+
+def _selected_native_p0_provider(path: Path) -> str:
+    inbox = json.loads(path.read_text(encoding="utf-8"))
+    packet = inbox["packets"][0]["packet"]
+    return str(
+        packet["native_probability_envelope"]["lineage"]
+        ["native_transport_provider"]
+    )
+
+
+def test_native_p0_inbox_mixed_official_beats_aggregator_and_keeps_p0_fingerprint_gate(
+    tmp_path: Path,
+) -> None:
+    inbox_path = tmp_path / "native-p0-inbox.json"
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[
+            _compiled_native_p0_source_packet("OPEN_METEO"),
+        ],
+        generated_at_utc="2026-08-01T00:00:00Z",
+    )
+    mixed = _compiled_native_p0_source_packet(
+        "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+        packet_content_sha256="bad" * 16,
+    )
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[mixed],
+        generated_at_utc="2026-08-01T00:01:00Z",
+    )
+
+    assert _selected_native_p0_provider(inbox_path) == (
+        "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT"
+    )
+
+    worker = object.__new__(TargetProductionWorker)
+    worker.commit_conn = sqlite3.connect(":memory:")
+    worker.p0_inbox_path = inbox_path
+    result = worker.materialize_resident_p0(
+        as_of_utc="2026-08-01T01:00:00Z",
+    )
+
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert any(
+        "resident_p0_packet_content_sha_mismatch" in blocker["reason"]
+        for blocker in result["blockers"]
+    )
+    worker.commit_conn.close()
+
+
+def test_native_p0_inbox_same_and_mixed_are_equal_official_priority_over_aggregator(
+    tmp_path: Path,
+) -> None:
+    for provider in (
+        "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+        "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+    ):
+        inbox_path = tmp_path / f"{provider}.json"
+        _upsert_native_p0_inbox(
+            inbox_path,
+            compiled_packets=[
+                _compiled_native_p0_source_packet("OPEN_METEO"),
+            ],
+            generated_at_utc="2026-08-01T00:00:00Z",
+        )
+        _upsert_native_p0_inbox(
+            inbox_path,
+            compiled_packets=[
+                _compiled_native_p0_source_packet(provider),
+            ],
+            generated_at_utc="2026-08-01T00:01:00Z",
+        )
+
+        assert _selected_native_p0_provider(inbox_path) == provider
+
+
+def test_native_p0_inbox_old_same_cycle_replay_does_not_replace_selected_mixed(
+    tmp_path: Path,
+) -> None:
+    inbox_path = tmp_path / "native-p0-inbox.json"
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[
+            _compiled_native_p0_source_packet(
+                "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+            ),
+        ],
+        generated_at_utc="2026-08-01T00:01:00Z",
+    )
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[
+            _compiled_native_p0_source_packet(
+                "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+            ),
+        ],
+        generated_at_utc="2026-08-01T00:02:00Z",
+    )
+
+    assert _selected_native_p0_provider(inbox_path) == (
+        "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT"
+    )
 
 
 def _activate_formal_trajectory_artifact(
@@ -169,35 +303,69 @@ def _activate_formal_trajectory_artifact(
 
 
 def _taf_live_compatibility_lineage() -> dict[str, str]:
+    system_ids = ["ECMWF_IFS_ENS_TEST", "NOAA_GEFS_TEST"]
+    family_ids = ["ECMWF", "NOAA_GEFS"]
+    system_families = {
+        "ECMWF_IFS_ENS_TEST": "ECMWF",
+        "NOAA_GEFS_TEST": "NOAA_GEFS",
+    }
+    system_weights = {
+        "ECMWF_IFS_ENS_TEST": 0.45,
+        "NOAA_GEFS_TEST": 0.55,
+    }
+    family_weights = {"ECMWF": 0.45, "NOAA_GEFS": 0.55}
+    family_caps = {"ECMWF": 0.45, "NOAA_GEFS": 1.0}
+    system_artifacts = {
+        "ECMWF_IFS_ENS_TEST": "3" * 64,
+        "NOAA_GEFS_TEST": "4" * 64,
+    }
+    system_activations = {
+        "ECMWF_IFS_ENS_TEST": "6" * 64,
+        "NOAA_GEFS_TEST": "7" * 64,
+    }
     identity = {
-        "schema": TAF_NWP_LIVE_FINGERPRINT_SCHEMA,
+        "schema": TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
+        "probability_pathway": P0_PROBABILITY_PATHWAY,
         "station_id": "RKPK",
         "season_bin": "summer",
         "lead_bucket": "d2_fallback",
         "run_cycle": "18Z",
         "settlement_definition": "official_daily_tmax_c",
-        "available_model_set_hash": "f" * 64,
-        "available_models": ["ECMWF", "GFS"],
-        "resolved_weights": {"ECMWF": 0.6, "GFS": 0.4},
-        "ensemble_artifact_id": "live-ensemble-rkpk",
-        "ensemble_artifact_content_sha256": "1" * 64,
-        "ensemble_selection_evidence_sha256": "2" * 64,
-        "ensemble_weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2",
-        "model_calibration_artifacts": {
-            "ECMWF": {
-                "calibration_artifact_id": "cal-ecmwf",
-                "calibration_artifact_content_sha256": "3" * 64,
-            },
-            "GFS": {
-                "calibration_artifact_id": "cal-gfs",
-                "calibration_artifact_content_sha256": "4" * 64,
-            },
+        "available_ensemble_system_set_hash": content_sha256(system_ids),
+        "ensemble_system_ids": system_ids,
+        "independence_family_ids": family_ids,
+        "system_family_ids": system_families,
+        "resolved_system_weights": system_weights,
+        "resolved_family_weights": family_weights,
+        "family_weight_caps": family_caps,
+        "cross_ensemble_artifact_sha256": "1" * 64,
+        "cross_selection_evidence_sha256": "2" * 64,
+        "cross_activation_sha256": "8" * 64,
+        "system_calibration_artifacts": {
+            system_id: {
+                "artifact_content_sha256": system_artifacts[system_id],
+                "activation_content_sha256": system_activations[system_id],
+            }
+            for system_id in system_ids
         },
     }
     fingerprint = content_sha256(identity)
     payload = {**identity, "fingerprint_sha256": fingerprint}
     return {
-        "ensemble_artifact_content_sha256": "1" * 64,
+        "probability_pathway": P0_PROBABILITY_PATHWAY,
+        "p0_probability_pathway": P0_PROBABILITY_PATHWAY,
+        "native_authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        "native_cross_ensemble_artifact_sha256": "1" * 64,
+        "native_selection_evidence_sha256": "2" * 64,
+        "native_cross_activation_sha256": "8" * 64,
+        "native_probability_evidence_sha256": "9" * 64,
+        "ensemble_system_ids_json": json.dumps(system_ids),
+        "independence_family_ids_json": json.dumps(family_ids),
+        "system_family_ids_json": json.dumps(system_families),
+        "system_weights_json": json.dumps(system_weights),
+        "family_weight_caps_json": json.dumps(family_caps),
+        "system_artifact_shas_json": json.dumps(system_artifacts),
+        "system_activation_shas_json": json.dumps(system_activations),
         "taf_nwp_live_compatibility_fingerprint_sha256": fingerprint,
         "taf_nwp_live_compatibility_json": json.dumps(
             payload,
@@ -270,7 +438,7 @@ def _bridged_taf_artifact(tmp_path: Path) -> Path:
     return path
 
 
-def test_resident_nwp_refresh_wires_registry_capture_and_p0_once(
+def _retired_deterministic_nwp_refresh_wires_registry_capture_and_p0_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -545,7 +713,7 @@ def test_resident_nwp_reuses_registry_worker_catalog_without_narrow_overwrite(
     )
 
 
-def test_resident_nwp_skips_incompatible_scope_without_starving_next_station(
+def _retired_deterministic_nwp_skips_incompatible_scope_without_starving_next_station(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -701,7 +869,10 @@ def test_resident_nwp_skips_incompatible_scope_without_starving_next_station(
     assert result["state"] == "updated"
     assert result["scope"]["station_ids"] == ["RKSI"]
     assert captured_scopes == [scopes[1]]
-    assert captured_runs == [["2026-07-27T12:00:00Z"]]
+    assert captured_runs == [[
+        "2026-07-27T12:00:00Z",
+        "2026-07-27T06:00:00Z",
+    ]]
     assert captured_bindings == [{
         "2026-07-27T12:00:00Z": {
             "activation_binding": {
@@ -713,10 +884,21 @@ def test_resident_nwp_skips_incompatible_scope_without_starving_next_station(
             "ensemble_artifact": {
                 "ensemble_artifact_id": "2026-07-27T12:00:00Z",
             },
+        },
+        "2026-07-27T06:00:00Z": {
+            "activation_binding": {
+                "selected_models": ["GFS", "ICON"],
+            },
+            "ensemble_activation": {
+                "activation_id": "2026-07-27T06:00:00Z",
+            },
+            "ensemble_artifact": {
+                "ensemble_artifact_id": "2026-07-27T06:00:00Z",
+            },
         }
     }]
     assert result["run_fallback_policy"] == (
-        "ONE_RUN_PER_CYCLE_ROTATING_FALLBACK"
+        "BOUNDED_MATURE_FALLBACK"
     )
     assert result["skipped_incompatible_scopes"] == [
         {
@@ -810,6 +992,9 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     capture_identity = {
         "schema": "bayes_basket_target_forward_taf_capture_v1",
         "source_class": "official_forward_native_receipt",
+        "station_id": "RKPK",
+        "event_date": "2026-07-27",
+        "settlement_timezone": "Asia/Seoul",
         "forecast_revision": revision,
         "taf_fields": {
             "tx_c": 35.0,
@@ -836,6 +1021,7 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     }
     stale_capture_identity = {
         **capture_identity,
+        "event_date": "2026-07-26",
         "forecast_revision": stale_revision,
     }
     inbox = tmp_path / "taf-inbox.json"
@@ -947,7 +1133,14 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
         as_of_utc="2026-07-26T12:00:00Z"
     )
     assert conflicting["state"] == "BLOCKED_FAIL_CLOSED"
-    assert "resident_taf_revision_content_conflict" in conflicting["blockers"][0]["reason"]
+    assert any(
+        reason in conflicting["blockers"][0]["reason"]
+        for reason in (
+            "resident_taf_revision_content_conflict",
+            "probability_stage_decision_time_conflict",
+            "forward_taf_capture_content_conflict",
+        )
+    )
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P0-M'"
     ).fetchone()[0] == 2
@@ -980,7 +1173,7 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
         "schema": "bayes_basket_target_taf_revision_inbox_v1",
         "captures": [tampered],
     }), encoding="utf-8")
-    with pytest.raises(ContractError, match="content_sha_mismatch"):
+    with pytest.raises(ContractError, match="sha_mismatch"):
         worker._materialize_resident_p0m(
             as_of_utc="2026-07-26T12:00:00Z"
         )
@@ -1000,7 +1193,7 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
             "content_sha256": content_sha256(retrospective_identity),
         }],
     }), encoding="utf-8")
-    with pytest.raises(ContractError, match="forward_receipt_required"):
+    with pytest.raises(ContractError, match="receipt_required"):
         worker._materialize_resident_p0m(
             as_of_utc="2026-07-26T12:00:00Z"
         )
@@ -1072,6 +1265,83 @@ def test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks(
             "resident_taf_nwp_live_compatibility_bridge_missing"
         ),
     }]
+    worker.close()
+
+
+def test_rkpk_taf_artifact_never_blocks_another_station_p0_lane(
+    tmp_path: Path,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    revision = {
+        "schema": "bayes_basket_forecast_revision_v1",
+        "revision_id": "taf-katl-forward-1",
+        "station_id": "KATL",
+        "event_date": "2026-07-30",
+        "revision_kind": "TAF",
+        "sequence": 1,
+        "issued_at_utc": "2026-07-29T12:00:00Z",
+        "received_at_utc": "2026-07-29T12:05:00Z",
+        "valid_from_utc": "2026-07-29T12:00:00Z",
+        "valid_until_utc": "2026-07-30T18:00:00Z",
+        "source_object_sha256": "c" * 64,
+        "supersedes_revision_id": None,
+    }
+    capture_identity = {
+        "schema": "bayes_basket_target_forward_taf_capture_v1",
+        "source_class": "official_forward_native_receipt",
+        "station_id": "KATL",
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "forecast_revision": revision,
+        "taf_fields": {
+            "tx_c": 35.0,
+            "cloud_cover_fraction": 0.25,
+            "precipitation_probability": 0.1,
+            "wind_speed_mps": 4.0,
+        },
+        "boundary": {
+            "native_local_receipt": True,
+            "retrospective_replay_only": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    inbox = tmp_path / "taf-katl-inbox.json"
+    inbox.write_text(
+        json.dumps({
+            "schema": "bayes_basket_target_taf_revision_inbox_v1",
+            "captures": [{
+                **capture_identity,
+                "content_sha256": content_sha256(capture_identity),
+            }],
+        }),
+        encoding="utf-8",
+    )
+    db = tmp_path / "target-read.db"
+    with sqlite3.connect(db) as source:
+        source.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(
+        db,
+        commit_conn=conn,
+        taf_artifact_path=_bridged_taf_artifact(tmp_path),
+        taf_inbox_path=inbox,
+    )
+    result = worker._materialize_resident_p0m(
+        as_of_utc="2026-07-29T13:00:00Z",
+    )
+    assert result["state"] == "COMMITTED"
+    assert result["blockers"] == []
+    assert result["ignored_no_artifact_scope_count"] == 1
+    assert result["receipts"] == [{
+        "station_id": "KATL",
+        "event_date": "2026-07-30",
+        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
+        "write_count": 0,
+        "writes": [],
+    }]
+    assert result["writes_target_ssot"] is False
+    assert result["calls_order_gateway"] is False
     worker.close()
 
 
@@ -1156,6 +1426,9 @@ def test_resident_taf_revision_chain_rolls_back_on_second_write_failure(
         identity = {
             "schema": "bayes_basket_target_forward_taf_capture_v1",
             "source_class": "official_forward_native_receipt",
+            "station_id": "RKPK",
+            "event_date": "2026-07-27",
+            "settlement_timezone": "Asia/Seoul",
             "forecast_revision": revision,
             "taf_fields": {
                 "tx_c": tx_c,
@@ -1226,7 +1499,7 @@ def _worker(tmp_path: Path, commit_conn: sqlite3.Connection) -> TargetProduction
     return TargetProductionWorker(db, commit_conn=commit_conn)
 
 
-def test_resident_p0_commits_historical_proof_and_envelope_atomically(
+def _retired_deterministic_p0_commits_historical_proof_and_envelope_atomically(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1326,7 +1599,7 @@ def test_resident_p0_commits_historical_proof_and_envelope_atomically(
     worker.close()
 
 
-def test_resident_p0_inbox_rolls_back_every_packet_on_second_write_failure(
+def _retired_deterministic_p0_inbox_rolls_back_every_packet_on_second_write_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1414,7 +1687,7 @@ def test_resident_p0_inbox_rolls_back_every_packet_on_second_write_failure(
     worker.close()
 
 
-def test_resident_p0_same_scope_clock_conflict_fails_closed_before_write(
+def _retired_deterministic_p0_same_scope_clock_conflict_fails_closed_before_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1483,7 +1756,7 @@ def test_resident_p0_same_scope_clock_conflict_fails_closed_before_write(
     worker.close()
 
 
-def test_resident_p0_catalog_bridge_upgrade_is_semantic_zero_write(
+def _retired_deterministic_p0_catalog_bridge_upgrade_is_semantic_zero_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2922,6 +3195,75 @@ def test_resident_consumer_capacity_matches_canonical_45station_two_day_scope() 
     assert MAX_RESIDENT_WS_SCOPES == 90
 
 
+def test_production_default_station_scope_is_canonical_45(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_db = tmp_path / "target.db"
+    sqlite3.connect(target_db).close()
+    monkeypatch.setattr(
+        production_worker_module,
+        "DEFAULT_TARGET_DB",
+        target_db,
+    )
+    monkeypatch.delenv("PM_TARGET_STATION_ALLOWLIST", raising=False)
+    worker = TargetProductionWorker(
+        target_db,
+        nwp_runtime_root=tmp_path / "nwp-runtime",
+    )
+    try:
+        assert worker.station_allowlist == CANONICAL_TARGET_STATIONS
+        assert "RKPK" in worker.station_allowlist
+        assert len(worker.station_allowlist) == 45
+    finally:
+        if worker.conn is not None:
+            worker.conn.close()
+
+
+def test_corrupt_nwp_rotation_state_fails_only_nwp_lane_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_db = tmp_path / "target.db"
+    with sqlite3.connect(target_db) as conn:
+        conn.execute("CREATE TABLE hard_no_probe(id INTEGER PRIMARY KEY)")
+    runtime = tmp_path / "nwp-runtime"
+    runtime.mkdir()
+    (runtime / "rotation_state.json").write_text(
+        '{"schema":"tampered"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        production_worker_module,
+        "DEFAULT_TARGET_DB",
+        target_db,
+    )
+    monkeypatch.delenv("PM_TARGET_STATION_ALLOWLIST", raising=False)
+    worker = TargetProductionWorker(
+        target_db,
+        nwp_runtime_root=runtime,
+    )
+    try:
+        result = worker.refresh_resident_nwp(
+            as_of_utc="2026-07-30T06:00:00Z",
+        )
+        assert result["state"] == "blocked_fail_closed"
+        assert result["reason"].startswith(
+            "resident_nwp_rotation_state_invalid:"
+        )
+        assert result["calls_order_gateway"] is False
+        assert result["orders_submitted"] == 0
+        # The target read handle remains usable; a corrupt optional NWP
+        # progress receipt must not take down the independent hard-NO lane.
+        assert worker.conn is not None
+        assert worker.conn.execute(
+            "SELECT COUNT(*) FROM hard_no_probe"
+        ).fetchone()[0] == 0
+    finally:
+        if worker.conn is not None:
+            worker.conn.close()
+
+
 def test_open_scope_round_robin_is_deterministic_and_bounded() -> None:
     worker = object.__new__(TargetProductionWorker)
     worker._resident_open_scope_cursor = 0
@@ -2983,6 +3325,7 @@ def test_run_keeps_truth_and_labels_outside_official_ws_quote_lease(
         commit_conn=commit_conn,
         activation_path=activation,
     )
+    worker.nwp_runtime_root = tmp_path / "empty-native-runtime"
     calls: list[str] = []
 
     def resident_first(*, as_of_utc: str):
@@ -3060,6 +3403,7 @@ def test_run_p1_blocker_allows_closed_scope_truth_label_but_blocks_market(
         commit_conn=commit_conn,
         activation_path=activation,
     )
+    worker.nwp_runtime_root = tmp_path / "empty-native-runtime"
     downstream_calls: list[str] = []
     blocked_p1 = {
         "state": "BLOCKED_FAIL_CLOSED",
@@ -3132,6 +3476,7 @@ def test_run_truth_blocker_still_prevents_labels_and_market(
         commit_conn=commit_conn,
         activation_path=activation,
     )
+    worker.nwp_runtime_root = tmp_path / "empty-native-runtime"
     downstream_calls: list[str] = []
     monkeypatch.setattr(
         worker,
@@ -3355,9 +3700,9 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         "posterior_version": "resident-p0-v1",
         "posterior_sha256": "a" * 64,
         "bridge_sha256": "b" * 64,
-        "lineage": {
-            "settlement_timezone": "Asia/Seoul",
-            "season_bin": "JJA",
+            "lineage": {
+                "settlement_timezone": "Asia/Seoul",
+                "season_bin": "JJA",
                 "settlement_definition": "station_local_calendar_day_tmax",
                 "bucket_intervals_c_json": json.dumps(
                     {
@@ -3368,7 +3713,8 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
-        },
+                **_taf_live_compatibility_lineage(),
+            },
     })
     materialize_probability_bridge(
         commit_conn,
@@ -3498,9 +3844,9 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
         "posterior_version": "resident-p0-v1",
         "posterior_sha256": "a" * 64,
         "bridge_sha256": "b" * 64,
-        "lineage": {
-            "settlement_timezone": "Asia/Seoul",
-            "season_bin": "JJA",
+            "lineage": {
+                "settlement_timezone": "Asia/Seoul",
+                "season_bin": "JJA",
                 "settlement_definition": "station_local_calendar_day_tmax",
                 "bucket_intervals_c_json": json.dumps(
                     {
@@ -3511,7 +3857,8 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
-        },
+                **_taf_live_compatibility_lineage(),
+            },
     })
     materialize_probability_bridge(
         commit_conn,

@@ -57,3 +57,38 @@ def test_probability_oos_activation_is_not_vetoed_by_point_diagnostic() -> None:
     assert point_passed is False
     assert point["point_non_degradation_vs_uniform"] is False
     assert state == "ACTIVATION_PACKET_READY"
+
+
+def test_temporary_awc_truth_requires_explicit_no_live_authority() -> None:
+    payload = {
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
+        "exact_join_rows": [{
+            "event_date": "2026-07-28",
+            "models": {
+                "GFS": {"forecast_tmax_c": 10.0},
+                "ICON": {"forecast_tmax_c": 10.0},
+            },
+        }],
+        "oos": {
+            "holdout_dates": ["2026-07-28"],
+            "calibration_artifacts": [
+                {"model_id": "GFS", "bias_c": 0.0},
+                {"model_id": "ICON", "bias_c": 0.0},
+            ],
+            "research_winner": {
+                "selected_models": ["GFS", "ICON"],
+                "selected_weights": {"GFS": 0.5, "ICON": 0.5},
+                "probability_non_degradation_vs_uniform": True,
+            },
+        },
+    }
+
+    assert _station_quality(
+        payload,
+        truth_by_date={"2026-07-28": 10.0},
+    )[3] == "BLOCKED_TEMPORARY_AWC_TRUTH"
+    assert _station_quality(
+        payload,
+        truth_by_date={"2026-07-28": 10.0},
+        allow_temporary_awc_no_live=True,
+    )[3] == "ACTIVATION_PACKET_READY_TEMPORARY_AWC_NO_LIVE"

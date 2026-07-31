@@ -14,6 +14,7 @@ manifest expires through the existing five-second policy.
 from __future__ import annotations
 
 import asyncio
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -212,7 +213,12 @@ def _scope(
     """
 
     as_of = _parse_utc(as_of_utc)
-    with _open_target_read_only(db_path) as conn:
+    # sqlite3.Connection.__exit__ only commits/rolls back; it does not close
+    # the connection.  This resident coroutine rebuilds the catalog across
+    # reconnects, so an ordinary ``with conn`` leaks read snapshots and can
+    # indefinitely pin the target WAL.  ``closing`` makes the ownership
+    # boundary explicit.
+    with closing(_open_target_read_only(db_path)) as conn:
         probability_rows = conn.execute(
             "SELECT envelope_id,stage,station_id,event_date,"
             "settlement_timezone,decision_at_utc,fresh_until_utc "

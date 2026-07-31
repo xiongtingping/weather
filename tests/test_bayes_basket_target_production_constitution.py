@@ -91,7 +91,7 @@ def test_vertical_slice_and_delivery_state_authorities_are_unique() -> None:
         ]
         is False
     )
-    assert status["current"]["batch_45_station"] == "TESTED"
+    assert status["current"]["batch_45_station"] == "RUNNING"
     assert status["tested_or_rehearsed_is_not_done"] is True
     assert set(status["current"].values()).issubset(set(status["states"]))
 

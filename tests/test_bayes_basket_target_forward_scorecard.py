@@ -538,6 +538,47 @@ def test_event_date_scope_excludes_other_days_before_bounded_projection() -> Non
     assert "fact_content_sha256_mismatch" not in receipt["blockers"]
 
 
+def test_retired_non_v2_facts_remain_auditable_without_poisoning_v2_scorecard() -> None:
+    conn = _db()
+    current_fact_id = _fact(conn, "current-v2")
+    _label(
+        conn,
+        current_fact_id,
+        "hypothetical_requested_intents_not_fills",
+    )
+    columns = [
+        str(row[1])
+        for row in conn.execute(
+            "PRAGMA table_info(basket_policy_training_fact)"
+        ).fetchall()
+    ]
+    current = conn.execute(
+        "SELECT " + ",".join(columns)
+        + " FROM basket_policy_training_fact WHERE fact_id=?",
+        (current_fact_id,),
+    ).fetchone()
+    retired = dict(zip(columns, current))
+    retired["fact_id"] = "sdfact_" + "a" * 40
+    retired["decision_scope_key"] = "retired-sdfact-scope"
+    retired["content_sha256"] = "a" * 64
+    conn.execute(
+        "INSERT INTO basket_policy_training_fact("
+        + ",".join(columns)
+        + ") VALUES("
+        + ",".join("?" for _ in columns)
+        + ")",
+        tuple(retired[column] for column in columns),
+    )
+
+    receipt = build_forward_scorecard(conn, AS_OF)
+
+    assert receipt["counts"]["fact_rows_read"] == 2
+    assert receipt["counts"]["fact_rows_evaluated"] == 1
+    assert receipt["counts"]["retired_non_v2_fact_rows_excluded"] == 1
+    assert receipt["fact_sha_coverage"]["coverage_ratio"] == 1.0
+    assert "fact_content_sha256_mismatch" not in receipt["blockers"]
+
+
 def test_fact_and_label_reads_are_keyset_paginated_without_truncation() -> None:
     conn = _db()
     fact_ids = [_fact(conn, f"fact-cap-{index}") for index in range(3)]

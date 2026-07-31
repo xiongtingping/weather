@@ -1,0 +1,46 @@
+{
+  "all_core_services_absent": null,
+  "approved_read_only_process_hits": [],
+  "boundary": {
+    "approved_read_only_handles_may_remain": true,
+    "calls_order_gateway": false,
+    "database_scope": "isolated_target_no_live",
+    "places_orders": false,
+    "read_only_probe": true,
+    "reported_service_loaded": false,
+    "reported_service_targets_database": false,
+    "reported_target_writer_absent": true,
+    "stops_services": false,
+    "system_service_residue_absent": true,
+    "target_database_handles_absent": true,
+    "unapproved_target_database_handles_absent": true,
+    "unrelated_core_services_may_run": true,
+    "writes_production_db": false
+  },
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_identity": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785397567968575352,
+    "size_bytes": 191328256
+  },
+  "observed_at_utc": "2026-07-30T07:49:11Z",
+  "probe_errors": [],
+  "probe_mode": "isolated_target_database_scope",
+  "quiescent": true,
+  "receipt_sha256": "6b92da41aebbe66b8fdac12b8a4497c0b459ac09de29fd25a195fc50c1b06923",
+  "schema": "bayes_basket_target_writer_quiescence_receipt_v4",
+  "service_states": {
+    "system": {
+      "com.weather.clob_order_service": false,
+      "com.weather.market_ws": false,
+      "com.weather.reported_trajectory_no": false
+    },
+    "user": {
+      "com.weather.clob_order_service": true,
+      "com.weather.market_ws": true,
+      "com.weather.reported_trajectory_no": false
+    }
+  },
+  "writer_process_hits": []
+}

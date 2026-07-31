@@ -7,9 +7,9 @@
   },
   "declared_status_counts": {
     "BLOCKED": 0,
-    "DONE": 53,
-    "PARTIAL": 65,
-    "TODO": 1
+    "DONE": 55,
+    "PARTIAL": 64,
+    "TODO": 0
   },
   "incomplete_item_ids": [
     "M0-02",
@@ -71,8 +71,6 @@
     "M8-13",
     "M9-01",
     "M9-04",
-    "M9-05",
-    "M9-06",
     "M9-08",
     "M10-01",
     "M10-02",
@@ -93,7 +91,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1035,
+      "roadmap_line": 1037,
       "title": "生产事实"
     },
     {
@@ -117,7 +115,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1036,
+      "roadmap_line": 1038,
       "title": "cycle对账"
     },
     {
@@ -141,7 +139,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1037,
+      "roadmap_line": 1039,
       "title": "幂等对账"
     },
     {
@@ -165,7 +163,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1038,
+      "roadmap_line": 1040,
       "title": "资本账本"
     },
     {
@@ -190,7 +188,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1039,
+      "roadmap_line": 1041,
       "title": "激活一致性"
     },
     {
@@ -214,7 +212,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1040,
+      "roadmap_line": 1042,
       "title": "验收"
     },
     {
@@ -231,11 +229,11 @@
         },
         "path": "output/audits/bayes_basket_target_document_authority.json",
         "present": true,
-        "status": "PASS",
-        "verified": true
+        "status": "BLOCKED",
+        "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1044,
+      "roadmap_line": 1046,
       "title": "权威合同"
     },
     {
@@ -255,7 +253,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1045,
+      "roadmap_line": 1047,
       "title": "ProbabilityEnvelope"
     },
     {
@@ -275,7 +273,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1046,
+      "roadmap_line": 1048,
       "title": "ForecastRevision"
     },
     {
@@ -295,7 +293,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1047,
+      "roadmap_line": 1049,
       "title": "CanonicalObservation"
     },
     {
@@ -315,7 +313,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1048,
+      "roadmap_line": 1050,
       "title": "StageProbabilityBiasContract"
     },
     {
@@ -330,7 +328,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1049,
+      "roadmap_line": 1051,
       "title": "AdaptiveBasketPlan"
     },
     {
@@ -345,7 +343,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1050,
+      "roadmap_line": 1052,
       "title": "删除硬编码"
     },
     {
@@ -360,7 +358,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1051,
+      "roadmap_line": 1053,
       "title": "方向语义"
     },
     {
@@ -375,7 +373,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1052,
+      "roadmap_line": 1054,
       "title": "硬NO顺序"
     },
     {
@@ -390,11 +388,11 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1053,
+      "roadmap_line": 1055,
       "title": "证据等级"
     },
     {
-      "acceptance_and_dependencies": "目标运行闭包已冻结“目标库存→post-only Maker→确认撤销→有上限单桶FOK→成交后重算”的唯一合同；撤单未确认、部分/未知/迟到成交和cancel-fill race均进入`reconcile_required`。目标runtime已删除对受保护L0配置的cross-read，L0只保留为独立owner/consumer的内容寻址资源；两个退役forecast daemon声明与加载均为0。execution constitution为`ok=true`，带真实service probe的production closure为PASS，system域恰为三服务且user域为空；全程`production_no_live`、不赋予live权限。证据：`config/bayes_basket_target/runtime_config_isolation_v1.json`、`basket_kernel/state_machine.py`、`production_worker.py`及constitution/closure audit；依赖：M1-06。",
+      "acceptance_and_dependencies": "目标运行闭包已冻结“目标库存→post-only Maker→确认撤销→有上限单桶FOK→成交后重算”的唯一合同；撤单未确认、部分/未知/迟到成交和cancel-fill race均进入`reconcile_required`。目标runtime已删除对受保护L0配置的cross-read，L0只保留为独立owner/consumer的内容寻址资源；两个退役forecast daemon声明与加载均为0。execution constitution为`ok=true`，最新service closure为PASS，用户域恰为三服务且system同名服务为0；全程`production_no_live`、不赋予live权限。证据：`config/bayes_basket_target/runtime_config_isolation_v1.json`、`basket_kernel/state_machine.py`、`production_worker.py`及constitution/closure audit；依赖：M1-06。",
       "declared_status": "DONE",
       "id": "M1-11",
       "isolated_evidence": {
@@ -405,7 +403,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1054,
+      "roadmap_line": 1056,
       "title": "执行宪章收口"
     },
     {
@@ -420,7 +418,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1055,
+      "roadmap_line": 1057,
       "title": "BasketCashPhasePolicy合同"
     },
     {
@@ -442,7 +440,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1059,
+      "roadmap_line": 1061,
       "title": "源路由"
     },
     {
@@ -465,7 +463,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1060,
+      "roadmap_line": 1062,
       "title": "AMSC"
     },
     {
@@ -488,7 +486,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1061,
+      "roadmap_line": 1063,
       "title": "AWC"
     },
     {
@@ -503,7 +501,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1062,
+      "roadmap_line": 1064,
       "title": "去硬编码"
     },
     {
@@ -526,7 +524,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1063,
+      "roadmap_line": 1065,
       "title": "exactly-once"
     },
     {
@@ -549,7 +547,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1064,
+      "roadmap_line": 1066,
       "title": "乱序迟到"
     },
     {
@@ -572,7 +570,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1065,
+      "roadmap_line": 1067,
       "title": "修订停牌"
     },
     {
@@ -594,7 +592,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1066,
+      "roadmap_line": 1068,
       "title": "TAF到达"
     },
     {
@@ -618,7 +616,7 @@
         "verified": true
       },
       "priority": "P1",
-      "roadmap_line": 1067,
+      "roadmap_line": 1069,
       "title": "时间语义"
     },
     {
@@ -633,11 +631,11 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1071,
+      "roadmap_line": 1073,
       "title": "统一校准SSOT合同"
     },
     {
-      "acceptance_and_dependencies": "严格as-of残差可用时刻已改为结算关闭、truth接收/提交、模型发布/接收四者最晚值；holdout起点purge、训练/holdout不重叠、future输入拒绝及旧权重防复用均已测试。真实旧残差与artifact尚未按新版`paired_asof`合同重建，故保持PARTIAL；依赖：M2。",
+      "acceptance_and_dependencies": "严格as-of残差可用时刻已改为结算关闭、truth接收/提交、模型发布/接收四者最晚值；holdout起点purge、训练/holdout不重叠、future输入拒绝及旧权重防复用均已测试。canonical candidate receipt现已有正式adapter：逐receipt、provider及evidence binding复核内容哈希、station/date/timezone/run和raw/provider lineage，只从原始provider payload投影完整native arrival；缺字段不得按文件名或发布时间表推算，聚合源明确隔离且不能进入native arrival index，所有输入受文件数、单文件字节、symlink和流式哈希门约束。adapter输出仍为`promotion_allowed=false`，尚未自动接入resident backlog和truth exact join；真实旧残差与artifact也尚未按新版`paired_asof`合同重建，故保持PARTIAL；依赖：M2。",
       "declared_status": "PARTIAL",
       "id": "M3-01",
       "isolated_evidence": {
@@ -648,7 +646,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1072,
+      "roadmap_line": 1074,
       "title": "站点偏差"
     },
     {
@@ -663,7 +661,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1073,
+      "roadmap_line": 1075,
       "title": "模型集合与组合"
     },
     {
@@ -678,7 +676,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1074,
+      "roadmap_line": 1076,
       "title": "模型基础P0"
     },
     {
@@ -693,11 +691,11 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1075,
+      "roadmap_line": 1077,
       "title": "历史同日弱倾斜"
     },
     {
-      "acceptance_and_dependencies": "首份TAF仅能经激活OOS `TafRevisionArtifact`和有界`TafRevisionProof`形成确认/有限修正checkpoint；不消费METAR、不重写P0、不允许硬排除或正概率归零。v2已强制每个样本绑定station×season×lead×run-cycle×settlement scope及同决策NWP组合artifact，以holdout TAF/NWP组合残差相关折扣重复信息，并要求TX+云量+降水+风联合模型通过OOS门；resident已完成ForecastRevision整链预编译、同一writer事务原子物化及失败整批回滚。直接面向实际live组合的nested OOS链已落地，RKPK当前23/24个outer样本且NLL/CRPS均劣于baseline，因此正确状态为`NA/candidate_only`，不得用旧crossfit transport或降低阈值建立bridge。`date=`只提供官方归档定位，不能生成或替代本机native arrival；只有真实`received_at`证据可进入native arrival index。证据：`taf_live_combination_oos.py`、`taf_revision.py`、`materialization.py`及live compatibility/OOS测试；依赖：M2-08,M3-03。",
+      "acceptance_and_dependencies": "首份TAF仅能经激活OOS `TafRevisionArtifact`和有界`TafRevisionProof`形成确认/有限修正checkpoint；不消费METAR、不重写P0、不允许硬排除或正概率归零。v2已强制每个样本绑定station×season×lead×run-cycle×settlement scope及同决策NWP组合artifact，以holdout TAF/NWP组合残差相关折扣重复信息，并要求TX+云量+降水+风联合模型通过OOS门；resident已完成ForecastRevision整链预编译、同一writer事务原子物化及失败整批回滚。artifact读取已支持最多256项的内容寻址registry，按station×settlement timezone×season×lead×run-cycle精确选择；旧RKPK单artifact只对RKPK有效，其他站缺exact artifact时保留P0并记录`IGNORED_NO_EXACT_TAF_ARTIFACT`，不得再因station mismatch阻断全站概率lane，也不得回退使用RKPK权重。直接面向实际live组合的nested OOS链已落地，RKPK当前23/24个outer样本且NLL/CRPS均劣于baseline，因此正确状态为`NA/candidate_only`，不得用旧crossfit transport或降低阈值建立bridge。`date=`只提供官方归档定位，不能生成或替代本机native arrival；只有真实`received_at`证据可进入native arrival index。真实多站TAF artifact registry尚未物化，故继续PARTIAL；证据：`taf_live_combination_oos.py`、`taf_revision.py`、`materialization.py`及live compatibility/OOS测试；依赖：M2-08,M3-03。",
       "declared_status": "PARTIAL",
       "id": "M3-04",
       "isolated_evidence": {
@@ -716,7 +714,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1076,
+      "roadmap_line": 1078,
       "title": "P0-M"
     },
     {
@@ -739,7 +737,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1077,
+      "roadmap_line": 1079,
       "title": "P0-M修订"
     },
     {
@@ -762,7 +760,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1078,
+      "roadmap_line": 1080,
       "title": "P1硬下界基线"
     },
     {
@@ -777,7 +775,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1079,
+      "roadmap_line": 1081,
       "title": "METAR轨迹软似然"
     },
     {
@@ -792,7 +790,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1080,
+      "roadmap_line": 1082,
       "title": "多站P1"
     },
     {
@@ -807,7 +805,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1081,
+      "roadmap_line": 1083,
       "title": "X-S-B"
     },
     {
@@ -822,7 +820,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1082,
+      "roadmap_line": 1084,
       "title": "P1/P0优先级"
     },
     {
@@ -837,7 +835,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1083,
+      "roadmap_line": 1085,
       "title": "物化事务"
     },
     {
@@ -852,7 +850,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1084,
+      "roadmap_line": 1086,
       "title": "确定性"
     },
     {
@@ -867,7 +865,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1085,
+      "roadmap_line": 1087,
       "title": "版本晋级"
     },
     {
@@ -882,7 +880,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1089,
+      "roadmap_line": 1091,
       "title": "概率中心与稳定门"
     },
     {
@@ -897,7 +895,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1090,
+      "roadmap_line": 1092,
       "title": "方向候选"
     },
     {
@@ -912,7 +910,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1091,
+      "roadmap_line": 1093,
       "title": "当前阶段概率偏置置信门"
     },
     {
@@ -927,7 +925,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1092,
+      "roadmap_line": 1094,
       "title": "连续核心与候选边界"
     },
     {
@@ -942,7 +940,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1093,
+      "roadmap_line": 1095,
       "title": "连续核心状态语义"
     },
     {
@@ -957,7 +955,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1094,
+      "roadmap_line": 1096,
       "title": "状态门槛"
     },
     {
@@ -972,7 +970,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1095,
+      "roadmap_line": 1097,
       "title": "全局allocator先验候选"
     },
     {
@@ -987,7 +985,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1096,
+      "roadmap_line": 1098,
       "title": "全局角色预算先验"
     },
     {
@@ -1002,7 +1000,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1097,
+      "roadmap_line": 1099,
       "title": "全情景PnL"
     },
     {
@@ -1017,7 +1015,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1098,
+      "roadmap_line": 1100,
       "title": "只增缺口"
     },
     {
@@ -1032,7 +1030,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1099,
+      "roadmap_line": 1101,
       "title": "触发向量"
     },
     {
@@ -1047,7 +1045,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1100,
+      "roadmap_line": 1102,
       "title": "多版本CAS"
     },
     {
@@ -1062,7 +1060,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1101,
+      "roadmap_line": 1103,
       "title": "主桶归因"
     },
     {
@@ -1077,7 +1075,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1102,
+      "roadmap_line": 1104,
       "title": "目标价"
     },
     {
@@ -1092,7 +1090,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1103,
+      "roadmap_line": 1105,
       "title": "可识别性"
     },
     {
@@ -1107,7 +1105,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1104,
+      "roadmap_line": 1106,
       "title": "B13执行硬门"
     },
     {
@@ -1122,7 +1120,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1105,
+      "roadmap_line": 1107,
       "title": "B15全局节奏先验"
     },
     {
@@ -1137,7 +1135,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1106,
+      "roadmap_line": 1108,
       "title": "GlobalBasketPriorArtifact"
     },
     {
@@ -1152,7 +1150,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1107,
+      "roadmap_line": 1109,
       "title": "StationTargetPolicyArtifact"
     },
     {
@@ -1167,7 +1165,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1108,
+      "roadmap_line": 1110,
       "title": "StationReservePriceArtifact"
     },
     {
@@ -1182,7 +1180,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1109,
+      "roadmap_line": 1111,
       "title": "StationCadenceArtifact"
     },
     {
@@ -1197,7 +1195,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1110,
+      "roadmap_line": 1112,
       "title": "站点策略解析与回退"
     },
     {
@@ -1212,7 +1210,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1111,
+      "roadmap_line": 1113,
       "title": "源账户现金阶段证据"
     },
     {
@@ -1227,7 +1225,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1112,
+      "roadmap_line": 1114,
       "title": "自有BasketCashPhasePolicyArtifact"
     },
     {
@@ -1242,7 +1240,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1113,
+      "roadmap_line": 1115,
       "title": "全情景赔率曲线基础优化（已退役完成）"
     },
     {
@@ -1257,7 +1255,7 @@
         "verified": false
       },
       "priority": "P0-B/CRITICAL",
-      "roadmap_line": 1114,
+      "roadmap_line": 1116,
       "title": "唯一严格DeltaBasketScore顶层目标函数"
     },
     {
@@ -1279,7 +1277,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1118,
+      "roadmap_line": 1120,
       "title": "原子事实"
     },
     {
@@ -1301,7 +1299,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1119,
+      "roadmap_line": 1121,
       "title": "阻断事实"
     },
     {
@@ -1323,7 +1321,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1120,
+      "roadmap_line": 1122,
       "title": "cycle状态机"
     },
     {
@@ -1345,7 +1343,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1121,
+      "roadmap_line": 1123,
       "title": "资本预留"
     },
     {
@@ -1367,7 +1365,7 @@
         "verified": true
       },
       "priority": "P1",
-      "roadmap_line": 1122,
+      "roadmap_line": 1124,
       "title": "优先级"
     },
     {
@@ -1389,7 +1387,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1123,
+      "roadmap_line": 1125,
       "title": "plan幂等"
     },
     {
@@ -1411,7 +1409,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1124,
+      "roadmap_line": 1126,
       "title": "账本释放"
     },
     {
@@ -1426,7 +1424,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1128,
+      "roadmap_line": 1130,
       "title": "盘口来源"
     },
     {
@@ -1441,7 +1439,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1129,
+      "roadmap_line": 1131,
       "title": "版本快照"
     },
     {
@@ -1456,7 +1454,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1130,
+      "roadmap_line": 1132,
       "title": "离散clip"
     },
     {
@@ -1471,7 +1469,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1131,
+      "roadmap_line": 1133,
       "title": "Maker候选"
     },
     {
@@ -1486,7 +1484,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1132,
+      "roadmap_line": 1134,
       "title": "撤单竞态"
     },
     {
@@ -1501,7 +1499,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1133,
+      "roadmap_line": 1135,
       "title": "紧迫Taker"
     },
     {
@@ -1516,7 +1514,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1134,
+      "roadmap_line": 1136,
       "title": "对账"
     },
     {
@@ -1536,7 +1534,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1135,
+      "roadmap_line": 1137,
       "title": "持有语义"
     },
     {
@@ -1551,7 +1549,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1136,
+      "roadmap_line": 1138,
       "title": "L0授权门"
     },
     {
@@ -1566,7 +1564,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1137,
+      "roadmap_line": 1139,
       "title": "Maker价格与等待优化器"
     },
     {
@@ -1581,7 +1579,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1138,
+      "roadmap_line": 1140,
       "title": "Maker→Taker收口与晋级门"
     },
     {
@@ -1596,7 +1594,7 @@
         "verified": false
       },
       "priority": "P0-B/CRITICAL",
-      "roadmap_line": 1139,
+      "roadmap_line": 1141,
       "title": "Maker/FOK模式化成本曲线与保留价"
     },
     {
@@ -1611,7 +1609,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1143,
+      "roadmap_line": 1145,
       "title": "依赖隔离"
     },
     {
@@ -1626,7 +1624,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1144,
+      "roadmap_line": 1146,
       "title": "硬下界"
     },
     {
@@ -1641,7 +1639,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1145,
+      "roadmap_line": 1147,
       "title": "选桶"
     },
     {
@@ -1656,7 +1654,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1146,
+      "roadmap_line": 1148,
       "title": "YES处置"
     },
     {
@@ -1671,7 +1669,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1147,
+      "roadmap_line": 1149,
       "title": "NO入场"
     },
     {
@@ -1686,7 +1684,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1148,
+      "roadmap_line": 1150,
       "title": "NO退出"
     },
     {
@@ -1701,7 +1699,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1149,
+      "roadmap_line": 1151,
       "title": "修订停牌"
     },
     {
@@ -1721,7 +1719,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1153,
+      "roadmap_line": 1155,
       "title": "当前失败"
     },
     {
@@ -1736,7 +1734,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1154,
+      "roadmap_line": 1156,
       "title": "属性测试"
     },
     {
@@ -1751,7 +1749,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1155,
+      "roadmap_line": 1157,
       "title": "时间回绕"
     },
     {
@@ -1766,7 +1764,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1156,
+      "roadmap_line": 1158,
       "title": "故障注入"
     },
     {
@@ -1790,7 +1788,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1157,
+      "roadmap_line": 1159,
       "title": "窗口回放"
     },
     {
@@ -1814,7 +1812,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1158,
+      "roadmap_line": 1160,
       "title": "跨季节"
     },
     {
@@ -1829,7 +1827,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1159,
+      "roadmap_line": 1161,
       "title": "production_no_live前向链"
     },
     {
@@ -1844,7 +1842,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1160,
+      "roadmap_line": 1162,
       "title": "归因"
     },
     {
@@ -1869,7 +1867,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1161,
+      "roadmap_line": 1163,
       "title": "性能"
     },
     {
@@ -1889,7 +1887,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1162,
+      "roadmap_line": 1164,
       "title": "晋级边界"
     },
     {
@@ -1904,7 +1902,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1163,
+      "roadmap_line": 1165,
       "title": "源账户矩检验"
     },
     {
@@ -1919,7 +1917,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1164,
+      "roadmap_line": 1166,
       "title": "站点层级迁移验证"
     },
     {
@@ -1934,11 +1932,11 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1165,
+      "roadmap_line": 1167,
       "title": "现金阶段与DeltaBasketScore v2晋级验证"
     },
     {
-      "acceptance_and_dependencies": "three-leg与Target Realization已从声明、加载和target运行闭包移除；copy-follow并行gateway入口已从源码删除，唯一gateway新增`weather_copy_follow_v1 → retired_strategy_forbidden`的零持久化、零submit硬拒绝，closure新增专门反回归门并PASS。当前system gateway进程尚未在维护窗重载该源码，且离线旧文件尚无完整依赖/审计删除证明，故保持PARTIAL；证据：production closure receipt `148cccd9...`；依赖：M8。",
+      "acceptance_and_dependencies": "three-leg与Target Realization已从声明、加载和target运行闭包移除；copy-follow并行gateway入口已从源码删除，用户域唯一gateway对`weather_copy_follow_v1`执行零持久化、零submit硬拒绝，真实closure反回归门PASS。离线旧文件尚无完整依赖/审计删除证明，安全删除候选仍为0，故保持PARTIAL；证据：最新用户域production closure；依赖：M8。",
       "declared_status": "PARTIAL",
       "id": "M9-01",
       "isolated_evidence": {
@@ -1949,7 +1947,7 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1169,
+      "roadmap_line": 1171,
       "title": "旧代码"
     },
     {
@@ -1964,11 +1962,11 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1170,
+      "roadmap_line": 1172,
       "title": "旧基础设施"
     },
     {
-      "acceptance_and_dependencies": "当前声明与加载均严格只有`reported_trajectory_no`、`market_ws`、`clob_order_service`三个system服务，user域为空且无双活；证据：production closure receipt `148cccd9...`；依赖：M9-01,M9-02。",
+      "acceptance_and_dependencies": "声明、wrapper、installer、readiness与closure均已冻结为`gui/$(id -u)`三个用户域服务；2026-07-30真实closure为PASS，system同名服务为0、用户域三服务均running、无双活，live pause、CLOB read-only及`production_no_live`保持不变。日常`targetctl`拒绝root与system残留，无需sudo；证据：`output/audits/bayes_basket_target_production_closure_user_domain_latest.json`；依赖：M9-01,M9-02。",
       "declared_status": "DONE",
       "id": "M9-03",
       "isolated_evidence": {
@@ -1979,11 +1977,11 @@
         "verified": true
       },
       "priority": "P0",
-      "roadmap_line": 1171,
+      "roadmap_line": 1173,
       "title": "三服务"
     },
     {
-      "acceptance_and_dependencies": "生成内容寻址schema+artifact+activation release；验收：离线验证hash闭包；证据：controlled migration/backup/legacy-rename/activation receipts and blocked release manifest exist；real target artifacts are still missing；依赖：M8。",
+      "acceptance_and_dependencies": "内容寻址schema、45站cash authority、概率evidence candidate、activation与release闭包均已进入同一受控包；2026-07-30以真实SSOT只读在线备份生成可丢弃克隆，完整执行v4 DDL、7张概率表与12个不可变触发器、45站cash packet、6行概率candidate ingress、bridge backfill及二次幂等迁移，源DB身份不变、trial/backup/temp全部自动删除、WAL归零且零gateway/订单。证据：`output/audits/bayes_basket_target_probability_evidence_migration_rehearsal_latest.json`为PASS；正式概率evidence activation仍为0，真实release继续`BLOCKED_NOT_RELEASE`，故保持PARTIAL；依赖：M8。",
       "declared_status": "PARTIAL",
       "id": "M9-04",
       "isolated_evidence": {
@@ -1994,12 +1992,12 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1172,
+      "roadmap_line": 1174,
       "title": "切换包"
     },
     {
-      "acceptance_and_dependencies": "在生产同构环境跑完整链但禁止下单；验收：orders/outbox零增量；证据：in-memory rehearsal + real DB two-round worker replay both fail closed with zero gateway/order; empty P1/policy/WS inputs remain；依赖：M9-04。",
-      "declared_status": "PARTIAL",
+      "acceptance_and_dependencies": "迁移后的用户域resident已完成连续两轮真实SSOT消费并通过独立验签；两轮均为PASS，零gateway、零订单、零execution receipt，forward OOS未通过不阻断该`production_no_live`验收。证据：`output/audits/bayes_basket_target_probability_resident_two_rounds_20260730T075033Z.json`与对应`verified`回执；依赖：M9-04。",
+      "declared_status": "DONE",
       "id": "M9-05",
       "isolated_evidence": {
         "boundary": null,
@@ -2009,12 +2007,12 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1173,
+      "roadmap_line": 1175,
       "title": "零订单演练"
     },
     {
-      "acceptance_and_dependencies": "writer quiescence后一次替换activation；代码已实现9阶段内容寻址回执、canonical45范围、target-only重启、受保护PID稳定、WAL checkpoint、两轮至少一个canonical站真实消费、NOOP完整验签及“先持久化可回滚回执、后清理备份”的故障安全顺序；验收仍要求真实sudo切换产生`COMPLETED` atomic receipt、无双活、无旧fallback、零gateway/订单，未执行前保持TODO；依赖：M9-03:M9-05。",
-      "declared_status": "TODO",
+      "acceptance_and_dependencies": "2026-07-30已一次性退役root-owned system jobs，在登录用户域完成writer quiescence、WAL checkpoint、七表schema/activation替换与target-only重启；9个原子阶段全部完成，受保护`market_ws/clob_order_service` PID稳定，恢复备份在可回滚完成回执落盘后清理，零gateway/订单。正式回执为`COMPLETED`，重复执行为`NOOP_IDEMPOTENT`；证据：`output/audits/bayes_basket_target_m9_06_atomic_cutover_20260730T075033Z.json`及`20260730T075516Z.json`；依赖：M9-03:M9-05。",
+      "declared_status": "DONE",
       "id": "M9-06",
       "isolated_evidence": {
         "boundary": null,
@@ -2024,7 +2022,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1174,
+      "roadmap_line": 1176,
       "title": "原子切换"
     },
     {
@@ -2039,11 +2037,11 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1175,
+      "roadmap_line": 1177,
       "title": "永久live deny"
     },
     {
-      "acceptance_and_dependencies": "全链只读验收与故障边界抽查；验收：连续两轮通过；证据：两轮验收已绑定真实SSOT replay根、WS经济semantic根并验证round1是round2的内容前缀，同计数内容替换会fail closed；最新真实回执`9cc63bf...`中两轮RKPK 2026-07-30的15条durable replay均PASS，forward OOS明确不阻断production_no_live，但总验收仍因WAL超限、概率evidence尚未物化及`explicit_core_seen=false`而BLOCKED_FAIL_CLOSED，尚未达到连续两轮PASS；依赖：M9-06,M9-07。",
+      "acceptance_and_dependencies": "用户域切后连续两轮、回执验签与真实service closure均已PASS；runtime isolation按冻结source closure重封印为`c7d2c2cc...`，专项61项通过，system残留、双活、WAL超限、概率schema缺失和runtime hash漂移均已消除。该项仍保持PARTIAL，因为验收范围尚未覆盖canonical 45站完整纵向物化；多数站仍在candidate accumulation或缺正式2+模型P0，不能用RKPK/部分scope成功替代全站完成。forward OOS继续不阻断`production_no_live`，只阻断formal promotion/live；证据：用户域two-round/verified回执及`bayes_basket_target_production_closure_user_domain_latest.json`；依赖：M9-06,M9-07。",
       "declared_status": "PARTIAL",
       "id": "M9-08",
       "isolated_evidence": {
@@ -2054,7 +2052,7 @@
         "verified": false
       },
       "priority": "P0",
-      "roadmap_line": 1176,
+      "roadmap_line": 1178,
       "title": "切后验收"
     },
     {
@@ -2069,7 +2067,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1180,
+      "roadmap_line": 1182,
       "title": "结算回填"
     },
     {
@@ -2084,7 +2082,7 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1181,
+      "roadmap_line": 1183,
       "title": "版本评分"
     },
     {
@@ -2099,11 +2097,11 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1182,
+      "roadmap_line": 1184,
       "title": "新版本"
     },
     {
-      "acceptance_and_dependencies": "已实现有界只读daily acceptance，检查仅三个system服务/PID、target资源、官方WS、当前P0/P0-M/P1 authority、原子账本、执行零边界、training/label和lineage；合法no-live `EXECUTION`与`NO_EXECUTION`版本向量均可验收，历史阶段过期不覆盖当前authority。真实只读试算仅因WAL超限及当前P1/WS停滞而fail closed，forward OOS不在no-live blocker；尚待受控迁移后形成持续receipt，故PARTIAL；证据：`accept_bayes_basket_target_daily_no_live.py`及tests；依赖：M9。",
+      "acceptance_and_dependencies": "已实现有界只读daily acceptance，检查仅三个用户域服务/PID且system残留为0、target资源、官方WS、当前P0/P0-M/P1 authority、原子账本、执行零边界、training/label和lineage；合法no-live `EXECUTION`与`NO_EXECUTION`版本向量均可验收，历史阶段过期不覆盖当前authority。服务域、WAL和schema门已通过；当前daily acceptance仍可能因站点级P1/WS stale或45站物化缺口fail closed，forward OOS不在no-live blocker，故保持PARTIAL；证据：`accept_bayes_basket_target_daily_no_live.py`及tests；依赖：M9。",
       "declared_status": "PARTIAL",
       "id": "M10-04",
       "isolated_evidence": {
@@ -2114,12 +2112,12 @@
         "verified": false
       },
       "priority": "P1",
-      "roadmap_line": 1183,
+      "roadmap_line": 1185,
       "title": "日常验收"
     }
   ],
-  "receipt_sha256": "89b90d9154178b2968b62ba55054e7c6e4c552215ca90b6077d06d0d46fcd51b",
+  "receipt_sha256": "e05fe2327318d7fa251ac85642055bc767a7286111c85c46fcb160d495da14c6",
   "roadmap": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
-  "roadmap_sha256": "cc04cc7ff0d762bc0407fbf194b32b37af0543adcfaf1b8d67d2bc554772dd2f",
+  "roadmap_sha256": "f57c45ea6ce46a38bb544f8c9d5f573b391a12bf51bcdb2763626d117c8157b6",
   "schema": "bayes_basket_target_roadmap_compliance_v1"
 }

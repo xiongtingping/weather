@@ -10,7 +10,25 @@ from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping
 
 
-MODEL_IDS = ("ECMWF", "GFS", "ICON", "GEM", "CMA")
+GLOBAL_FORMAL_MODEL_IDS = ("ECMWF", "GFS", "ICON", "GEM", "CMA")
+# Backward-compatible production hot-path name. Do not widen this alias:
+# P0, formal activation, native arrival and production probability readers
+# intentionally remain bound to the global five-model authority.
+MODEL_IDS = GLOBAL_FORMAL_MODEL_IDS
+REGIONAL_CALIBRATION_MODEL_IDS = (
+    "HRRR",
+    "NBM",
+    "NAM",
+    "ICON-D2",
+    "AROME-FR",
+    "UKMO-2KM",
+    "HARMONIE-NL",
+    "HARMONIE-EU",
+    "JMA-MSM",
+)
+CALIBRATION_CANDIDATE_MODEL_IDS = (
+    GLOBAL_FORMAL_MODEL_IDS + REGIONAL_CALIBRATION_MODEL_IDS
+)
 MIN_FORMAL_ENSEMBLE_MODELS = 2
 FORMAL_ENSEMBLE_METHOD_VERSION = (
     "rolling_origin_probability_stack_v4_five_model_pool_min2"
@@ -35,6 +53,17 @@ def model_set_hash(models: Iterable[str]) -> str:
     members = tuple(sorted({str(model).strip().upper() for model in models}))
     if not members or any(model not in MODEL_IDS for model in members):
         raise ContractError("model_set_invalid")
+    return hashlib.sha256("|".join(members).encode("utf-8")).hexdigest()
+
+
+def calibration_candidate_model_set_hash(models: Iterable[str]) -> str:
+    """Hash an offline candidate set without widening formal authority."""
+
+    members = tuple(sorted({str(model).strip().upper() for model in models}))
+    if not members or any(
+        model not in CALIBRATION_CANDIDATE_MODEL_IDS for model in members
+    ):
+        raise ContractError("calibration_candidate_model_set_invalid")
     return hashlib.sha256("|".join(members).encode("utf-8")).hexdigest()
 
 
@@ -792,20 +821,24 @@ class ProbabilityEnvelope:
 
 
 __all__ = [
+    "CALIBRATION_CANDIDATE_MODEL_IDS",
     "CalibrationActivation",
     "ContractError",
     "CurrentAsOfModelRun",
     "EPS",
     "FORMAL_ENSEMBLE_METHOD_VERSION",
+    "GLOBAL_FORMAL_MODEL_IDS",
     "MIN_FORMAL_ENSEMBLE_MODELS",
     "MODEL_IDS",
     "ModelCalibrationArtifact",
     "ModelEnsembleArtifact",
     "ModelEnsembleSelectionEvidence",
     "ProbabilityEnvelope",
+    "REGIONAL_CALIBRATION_MODEL_IDS",
     "ResidualObservation",
     "STAGES",
     "canonical_json",
+    "calibration_candidate_model_set_hash",
     "content_sha256",
     "model_set_hash",
     "strict_asof",

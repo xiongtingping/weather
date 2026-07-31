@@ -445,6 +445,8 @@ def build_idempotent_replay_receipt(
     *,
     station_ids: Sequence[str],
     release_sha256: str,
+    target_database_fingerprint_after: Mapping[str, Any] | None = None,
+    target_service_pid_after: int | None = None,
 ) -> dict[str, Any]:
     """Prove a repeated cutover is a deterministic no-op for the same release."""
 
@@ -473,6 +475,27 @@ def build_idempotent_replay_receipt(
         "idempotent_replay": True,
         "writes": 0,
     })
+    if target_database_fingerprint_after is not None:
+        fingerprint = dict(target_database_fingerprint_after)
+        if any(
+            key not in fingerprint
+            for key in ("device", "inode", "size", "mtime_ns")
+        ):
+            raise AtomicCutoverReceiptError(
+                "atomic_replay_database_fingerprint_invalid"
+            )
+        identity["target_database_fingerprint_after"] = fingerprint
+    if target_service_pid_after is not None:
+        current_pid = int(target_service_pid_after)
+        if current_pid <= 0:
+            raise AtomicCutoverReceiptError(
+                "atomic_replay_target_pid_invalid"
+            )
+        identity["target_service_pid_after"] = current_pid
+        if int(identity.get("target_service_pid_before") or 0) == current_pid:
+            identity["target_service_pid_before"] = int(
+                previous.get("target_service_pid_after") or 0
+            )
     identity["content_sha256"] = content_sha256(identity)
     validate_cutover_receipt(identity)
     return identity

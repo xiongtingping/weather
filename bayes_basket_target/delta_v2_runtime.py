@@ -787,12 +787,8 @@ def compile_delta_v2_runtime_plan(
         row.bucket for row in snapshot.buckets if row.selected_before
     )
     ordered_core = tuple(
-        row.bucket
-        for row in sorted(
-            snapshot.buckets,
-            key=lambda item: (item.ordinal, item.bucket),
-        )
-        if row.bucket in base
+        str(bucket)
+        for bucket in core_transition["next_core_buckets"]
     )
     basket_state = resolve_basket_state(
         bucket_ordinals={

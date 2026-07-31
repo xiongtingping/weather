@@ -12,8 +12,14 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
-SCHEMA = "bayes_basket_target_writer_quiescence_receipt_v3"
+SCHEMA = "bayes_basket_target_writer_quiescence_receipt_v4"
 MAX_RECEIPT_AGE_SECONDS = 120
+MAX_PROBE_OUTPUT_CHARS = 16_384
+DEFAULT_TARGET_DATABASE = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "bayes_basket_target_ssot.db"
+).resolve()
 CORE_SERVICES = (
     "com.weather.reported_trajectory_no",
     "com.weather.market_ws",
@@ -23,6 +29,10 @@ WRITER_PROCESS_PATTERNS = (
     "reported_trajectory_no_daemon.py",
     "market_ws_listener.py",
     "clob_order_service.mjs",
+)
+APPROVED_TARGET_DB_READERS = (
+    "com.weather.market_ws",
+    "com.weather.clob_order_service",
 )
 
 
@@ -69,7 +79,63 @@ def _probe(command: Sequence[str]) -> tuple[bool, str]:
         completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     except OSError as exc:
         return False, f"probe_error:{type(exc).__name__}:{exc}"
-    return completed.returncode == 0, (completed.stdout or completed.stderr or "").strip()[:500]
+    return completed.returncode == 0, (
+        completed.stdout or completed.stderr or ""
+    ).strip()[:MAX_PROBE_OUTPUT_CHARS]
+
+
+def _launchd_pid(output: str) -> int | None:
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("pid = "):
+            try:
+                pid = int(line.split("=", 1)[1].strip())
+            except ValueError:
+                return None
+            return pid if pid > 0 else None
+    return None
+
+
+def _lsof_process_accesses(output: str) -> list[dict[str, Any]]:
+    """Parse bounded ``lsof -Fpcfna`` output at process/file granularity."""
+
+    processes: list[dict[str, Any]] = []
+    process: dict[str, Any] | None = None
+    file_row: dict[str, str] | None = None
+
+    def flush_file() -> None:
+        nonlocal file_row
+        if process is not None and file_row is not None:
+            process["files"].append(file_row)
+        file_row = None
+
+    def flush_process() -> None:
+        nonlocal process
+        flush_file()
+        if process is not None:
+            processes.append(process)
+        process = None
+
+    for line in output.splitlines():
+        if not line:
+            continue
+        field, value = line[0], line[1:].strip()
+        if field == "p":
+            flush_process()
+            process = {"pid": value, "command": "unknown", "files": []}
+        elif process is None:
+            continue
+        elif field == "c":
+            process["command"] = value or "unknown"
+        elif field == "f":
+            flush_file()
+            file_row = {"fd": value, "access": "", "name": ""}
+        elif field == "a" and file_row is not None:
+            file_row["access"] = value
+        elif field == "n" and file_row is not None:
+            file_row["name"] = value
+    flush_process()
+    return processes
 
 
 def build_writer_quiescence_receipt(
@@ -209,78 +275,102 @@ def isolated_target_writer_quiescence_receipt(db_path: Path) -> dict[str, Any]:
 
     db = db_path.expanduser().resolve()
     probe_errors: list[str] = []
-    system_loaded, system_output = _probe([
-        "launchctl",
-        "print",
-        "system/com.weather.reported_trajectory_no",
-    ])
-    user_loaded, user_output = _probe([
-        "launchctl",
-        "print",
-        f"gui/{os.getuid()}/com.weather.reported_trajectory_no",
-    ])
-    for label, loaded, output in (
-        ("system", system_loaded, system_output),
-        ("user", user_loaded, user_output),
-    ):
-        if not loaded and output.startswith("probe_error:"):
-            probe_errors.append(f"{label}/reported_trajectory_no:{output}")
+    service_states: dict[str, dict[str, bool]] = {"system": {}, "user": {}}
+    approved_reader_pids: dict[str, str] = {}
+    for domain, prefix in (("system", "system"), ("user", f"gui/{os.getuid()}")):
+        for label in CORE_SERVICES:
+            loaded, output = _probe([
+                "launchctl",
+                "print",
+                f"{prefix}/{label}",
+            ])
+            service_states[domain][label] = loaded
+            if not loaded and output.startswith("probe_error:"):
+                probe_errors.append(f"{domain}/{label}:{output}")
+            if (
+                domain == "user"
+                and loaded
+                and label in APPROVED_TARGET_DB_READERS
+            ):
+                pid = _launchd_pid(output)
+                if pid is None:
+                    probe_errors.append(f"user/{label}:pid_unavailable")
+                else:
+                    approved_reader_pids[str(pid)] = label
 
     held, lsof_output = _probe([
         "/usr/sbin/lsof",
         "-nP",
-        "-Fpcfn",
+        "-Fpcfna",
         "--",
         str(db),
     ])
     writer_process_hits: list[str] = []
+    read_only_process_hits: list[str] = []
     if held:
-        pid = ""
-        command = ""
-        for line in lsof_output.splitlines():
-            if line.startswith("p"):
-                if pid:
-                    writer_process_hits.append(
-                        f"{command or 'unknown'}:{pid}"
-                    )
-                pid = line[1:].strip()
-                command = ""
-            elif line.startswith("c"):
-                command = line[1:].strip()
-        if pid:
-            writer_process_hits.append(f"{command or 'unknown'}:{pid}")
+        for process in _lsof_process_accesses(lsof_output):
+            pid = str(process["pid"])
+            command = str(process["command"])
+            accesses = {
+                str(row.get("access") or "")
+                for row in process["files"]
+            }
+            approved_label = approved_reader_pids.get(pid)
+            if approved_label is not None and accesses == {"r"}:
+                read_only_process_hits.append(
+                    f"{approved_label}:{command}:{pid}"
+                )
+            else:
+                access_text = ",".join(sorted(accesses)) or "unknown"
+                writer_process_hits.append(
+                    f"{command}:{pid}:access={access_text}"
+                )
     elif lsof_output.startswith("probe_error:"):
         probe_errors.append(f"target_database_lsof:{lsof_output}")
+    elif lsof_output:
+        probe_errors.append(f"target_database_lsof_failed:{lsof_output}")
 
-    quiescent = bool(not writer_process_hits and not probe_errors)
+    system_residue = any(service_states["system"].values())
+    target_user_loaded = service_states["user"][
+        "com.weather.reported_trajectory_no"
+    ]
+    target_service_blocks = bool(
+        target_user_loaded and db == DEFAULT_TARGET_DATABASE
+    )
+    quiescent = bool(
+        not system_residue
+        and not target_service_blocks
+        and not writer_process_hits
+        and not probe_errors
+    )
     identity = {
         "schema": SCHEMA,
         "database": str(db),
         "database_identity": _database_identity(db),
         "observed_at_utc": _utc_now(),
         "probe_mode": "isolated_target_database_scope",
-        "service_states": {
-            "system": {
-                "com.weather.reported_trajectory_no": system_loaded,
-                "com.weather.market_ws": "not_probed_unrelated",
-                "com.weather.clob_order_service": "not_probed_unrelated",
-            },
-            "user": {
-                "com.weather.reported_trajectory_no": user_loaded,
-                "com.weather.market_ws": "not_probed_unrelated",
-                "com.weather.clob_order_service": "not_probed_unrelated",
-            },
-        },
+        "service_states": service_states,
         "all_core_services_absent": None,
         "writer_process_hits": writer_process_hits,
+        "approved_read_only_process_hits": read_only_process_hits,
         "probe_errors": probe_errors,
         "quiescent": quiescent,
         "boundary": {
             "read_only_probe": True,
             "database_scope": "isolated_target_no_live",
-            "reported_target_writer_absent": not writer_process_hits,
-            "reported_service_loaded": bool(system_loaded or user_loaded),
-            "target_database_handles_absent": not writer_process_hits,
+            "reported_target_writer_absent": bool(
+                not target_service_blocks and not writer_process_hits
+            ),
+            "reported_service_loaded": bool(target_user_loaded),
+            "reported_service_targets_database": bool(
+                target_user_loaded and db == DEFAULT_TARGET_DATABASE
+            ),
+            "system_service_residue_absent": not system_residue,
+            "target_database_handles_absent": bool(
+                not writer_process_hits and not read_only_process_hits
+            ),
+            "unapproved_target_database_handles_absent": not writer_process_hits,
+            "approved_read_only_handles_may_remain": True,
             "unrelated_core_services_may_run": True,
             "writes_production_db": False,
             "stops_services": False,

@@ -173,13 +173,24 @@ class TargetProductionWorker:
         ),
     )
     _write_text(tmp_path, closure_audit.PROTECTED_LEGACY_CONFIG, '{"basket":{"convergence_widths":[4,3,2],"all_legs_required":true}}\n')
-    _write_plist(tmp_path, TARGET_SERVICE_LABELS[0], "reported_trajectory_no_daemon.sh")
-    _write_plist(tmp_path, TARGET_SERVICE_LABELS[1], "market_ws_listener.sh")
+    user_env = {"WEATHER_SERVICE_DOMAIN": "user"}
+    _write_plist(
+        tmp_path,
+        TARGET_SERVICE_LABELS[0],
+        "reported_trajectory_no_daemon.sh",
+        environment=user_env,
+    )
+    _write_plist(
+        tmp_path,
+        TARGET_SERVICE_LABELS[1],
+        "market_ws_listener.sh",
+        environment=user_env,
+    )
     _write_plist(
         tmp_path,
         TARGET_SERVICE_LABELS[2],
         "clob_order_service.sh",
-        environment={"WEATHER_SERVICE_DOMAIN": "system"},
+        environment=user_env,
     )
     _write_isolation_manifest(tmp_path)
     return tmp_path
@@ -190,7 +201,7 @@ def _run(root: Path, **kwargs):
         "project_root": root,
         "source_files": SOURCE_FILES,
         "required_source_names": SOURCE_FILES,
-        "service_snapshot": {"system": list(TARGET_SERVICE_LABELS), "user": []},
+        "service_snapshot": {"system": [], "user": list(TARGET_SERVICE_LABELS)},
     }
     params.update(kwargs)
     return audit(
@@ -332,12 +343,15 @@ def test_target_writer_archive_database_crossing_fails_closed(tmp_path: Path) ->
     assert "basket_writer_archive_database_reference" in codes
 
 
-def test_user_domain_target_is_distinguished_as_loaded_dual_active(tmp_path: Path) -> None:
+def test_system_domain_target_is_distinguished_as_residue(tmp_path: Path) -> None:
     root = _fixture(tmp_path)
     result = _run(root, service_snapshot={"system": list(TARGET_SERVICE_LABELS), "user": [TARGET_SERVICE_LABELS[0]]})
 
     assert result["ok"] is False
-    assert any(item["code"] == "target_service_user_system_dual_active" for item in result["violations"])
+    assert any(
+        item["code"] == "target_service_system_domain_residue"
+        for item in result["violations"]
+    )
     assert result["service_closure"]["evidence"]["loaded_user"] == [TARGET_SERVICE_LABELS[0]]
 
 
@@ -349,7 +363,10 @@ def test_empty_loaded_snapshot_is_not_inferred_from_plist_declarations(tmp_path:
     assert result["service_closure"]["evidence"]["loaded_system"] == []
     assert result["service_closure"]["evidence"]["declared_service_count"] == 3
     assert not any(item["code"] == "forbidden_loaded_service" for item in result["violations"])
-    assert any(item["code"] == "target_service_not_loaded_in_system_domain" for item in result["violations"])
+    assert any(
+        item["code"] == "target_service_not_loaded_in_user_domain"
+        for item in result["violations"]
+    )
 
 
 def test_probe_includes_non_target_declared_services_and_blocks_fourth_system_registration(
@@ -380,7 +397,7 @@ def test_probe_includes_non_target_declared_services_and_blocks_fourth_system_re
 
     assert f"system/{fourth}" in queried
     assert result["ok"] is False
-    assert result["service_closure"]["checks"]["target_services_system_only"] is False
+    assert result["service_closure"]["checks"]["target_services_user_only"] is False
     assert fourth in result["service_closure"]["evidence"]["loaded_system"]
 
 
@@ -575,7 +592,7 @@ def test_current_worktree_has_no_retired_declaration_but_empty_probe_fails_close
     assert result["ok"] is False
     codes = {item["code"] for item in result["violations"]}
     assert "forbidden_service_declaration_residue" not in codes
-    assert "target_service_not_loaded_in_system_domain" in codes
+    assert "target_service_not_loaded_in_user_domain" in codes
     assert result["service_closure"]["checks"]["forbidden_service_declarations_absent"] is True
     assert result["service_closure"]["evidence"]["loaded_system"] == []
     assert result["service_closure"]["evidence"]["forbidden_loaded_service_count"] == 0

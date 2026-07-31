@@ -40,6 +40,15 @@ def test_explicit_aggregator_rows_require_exact_d2_18z(tmp_path) -> None:
             "single_run_parameter_explicit": True,
         },
         "model_rows": [{
+            "station_id": "CYYZ",
+            "event_date": event_date.isoformat(),
+            "target_timezone": "America/Toronto",
+            "model_run_initialization_utc": "2026-07-27T18:00:00Z",
+            "daily_curve_complete": True,
+            "sample_count": 24,
+            "forecast_daily_max_c": 30.0,
+            "receipt_sha256": "b" * 64,
+        }, {
             "station_id": "MPMG",
             "event_date": event_date.isoformat(),
             "target_timezone": "America/Panama",
@@ -63,7 +72,7 @@ def test_explicit_aggregator_rows_require_exact_d2_18z(tmp_path) -> None:
         "2026-07-27T18:00:00Z"
     )
 
-    payload["model_rows"][0]["model_run_initialization_utc"] = (
+    payload["model_rows"][1]["model_run_initialization_utc"] = (
         "2026-07-27T12:00:00Z"
     )
     path.write_text(json.dumps(payload), encoding="utf-8")

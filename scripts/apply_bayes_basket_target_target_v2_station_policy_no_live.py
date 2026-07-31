@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -33,6 +34,9 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
     load_bounded_json,
     write_bounded_json,
 )
+from bayes_basket_target.station_registry import (  # noqa: E402
+    coordinate_registry_manifest,
+)
 
 
 MANIFEST_SCHEMA = (
@@ -41,13 +45,16 @@ MANIFEST_SCHEMA = (
 RECEIPT_SCHEMA = (
     "bayes_basket_target_target_v2_station_policy_no_live_receipt_v1"
 )
-SERVICE_LABEL = "system/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 DEFAULT_MANIFEST = (
     ROOT
     / "config"
     / "trading"
     / "bayes_basket_target_target_v2_station_policy_no_live_v3.json"
+)
+CANONICAL_STATION_IDS = tuple(
+    coordinate_registry_manifest()["station_ids"]
 )
 
 
@@ -73,13 +80,29 @@ def load_manifest(path: Path) -> dict[str, Any]:
         or generation < 1
     ):
         raise ValueError("target_v2_station_policy_generation_invalid")
-    expected_stages = ["P0", "P1"]
+    station_ids = value.get("station_ids")
+    global_scope = station_ids is not None
+    if global_scope:
+        if (
+            not isinstance(station_ids, list)
+            or station_ids != list(CANONICAL_STATION_IDS)
+            or value.get("station_id") is not None
+        ):
+            raise ValueError("target_v2_station_policy_station_scope_invalid")
+        # P0-M deliberately resolves through its P0 policy family.  Creating
+        # a parallel explicit P0-M activation makes the resolver ambiguous.
+        expected_stages = ["P0", "P1"]
+        expected_maturities = ["d0", "d1", "d2", "d2_fallback"]
+    else:
+        station_ids = [value.get("station_id")]
+        expected_stages = ["P0", "P1"]
+        expected_maturities = ["d1", "d2", "d2_fallback"]
     expected_budget = 20.0 if generation >= 3 else 12.0
     if (
-        value.get("station_id") != "RKPK"
+        (not global_scope and value.get("station_id") != "RKPK")
         or value.get("strategy_version") != "target-v2"
         or value.get("stages") != expected_stages
-        or value.get("maturity_bins") != ["d1", "d2", "d2_fallback"]
+        or value.get("maturity_bins") != expected_maturities
         or value.get("policy_authority_scope")
         != "PRODUCTION_NO_LIVE_CANDIDATE"
         or value.get("execution_mode") != "production_no_live"
@@ -124,14 +147,17 @@ def build_packet(manifest: Mapping[str, Any]) -> dict[str, Any]:
         valid_until_utc=manifest["valid_until_utc"],
         promoted=False,
     )
+    station_ids = list(
+        manifest.get("station_ids") or [manifest["station_id"]]
+    )
     activations = [
         StationBasketPolicyActivation.create(
             activation_id=(
-                "target-v2-rkpk-no-live-"
+                f"target-v2-{station_id.lower()}-no-live-"
                 f"{stage.lower()}-{maturity}-"
                 f"g{int(manifest['generation'])}"
             ),
-            station_id=manifest["station_id"],
+            station_id=station_id,
             stage=stage,
             season_bin=manifest["season_bin"],
             maturity_bin=maturity,
@@ -148,6 +174,7 @@ def build_packet(manifest: Mapping[str, Any]) -> dict[str, Any]:
             activated_at_utc=manifest["activated_at_utc"],
             promoted=False,
         )
+        for station_id in station_ids
         for stage in manifest["stages"]
         for maturity in manifest["maturity_bins"]
     ]
@@ -191,30 +218,35 @@ def _resolve_all_scopes(
         max(valid_from, activated_at) + timedelta(seconds=1)
     ).isoformat().replace("+00:00", "Z")
     resolved: list[dict[str, str]] = []
-    for stage in manifest["stages"]:
-        for maturity in manifest["maturity_bins"]:
-            policy = resolve_station_policy(
-                activations=activations,
-                global_priors=global_priors,
-                artifacts=artifacts,
-                station_id="RKPK",
-                stage=stage,
-                season_bin="summer",
-                maturity_bin=maturity,
-                liquidity_bin="liquid",
-                strategy_version="target-v2",
-                decision_at_utc=decision_at,
-                required_authority_scope=(
-                    "PRODUCTION_NO_LIVE_CANDIDATE"
-                ),
-            )
-            resolved.append({
-                "stage": stage,
-                "maturity_bin": maturity,
-                "activation_id": policy.activation_id,
-                "global_prior_id": policy.global_prior_id,
-                "policy_sha256": policy.policy_sha256,
-            })
+    station_ids = list(
+        manifest.get("station_ids") or [manifest["station_id"]]
+    )
+    for station_id in station_ids:
+        for stage in manifest["stages"]:
+            for maturity in manifest["maturity_bins"]:
+                policy = resolve_station_policy(
+                    activations=activations,
+                    global_priors=global_priors,
+                    artifacts=artifacts,
+                    station_id=station_id,
+                    stage=stage,
+                    season_bin=str(manifest["season_bin"]),
+                    maturity_bin=maturity,
+                    liquidity_bin=str(manifest["liquidity_bin"]),
+                    strategy_version=str(manifest["strategy_version"]),
+                    decision_at_utc=decision_at,
+                    required_authority_scope=(
+                        "PRODUCTION_NO_LIVE_CANDIDATE"
+                    ),
+                )
+                resolved.append({
+                    "station_id": station_id,
+                    "stage": stage,
+                    "maturity_bin": maturity,
+                    "activation_id": policy.activation_id,
+                    "global_prior_id": policy.global_prior_id,
+                    "policy_sha256": policy.policy_sha256,
+                })
     return resolved
 
 
@@ -267,18 +299,35 @@ def apply(
             packet,
             commit=commit,
         )
-        bundle = load_production_artifacts(
-            conn,
-            station_id="RKPK",
-            evaluation_at_utc="2026-07-28T23:32:23Z",
-            require_calibration=False,
-            require_policy=False,
+        station_ids = list(
+            manifest.get("station_ids") or [manifest["station_id"]]
         )
+        bundles = [
+            load_production_artifacts(
+                conn,
+                station_id=station_id,
+                evaluation_at_utc=str(manifest["valid_from_utc"]),
+                require_calibration=False,
+                require_policy=False,
+            )
+            for station_id in station_ids
+        ]
+        bundle = bundles[0]
+        all_activations = [
+            activation
+            for item in bundles
+            for activation in item.policy_activations
+        ]
+        all_artifacts = {
+            key: value
+            for item in bundles
+            for key, value in item.policy_artifacts.items()
+        }
         resolved = _resolve_all_scopes(
             manifest=manifest,
-            activations=bundle.policy_activations,
+            activations=all_activations,
             global_priors=bundle.global_priors,
-            artifacts=bundle.policy_artifacts,
+            artifacts=all_artifacts,
         )
     write_counts = counts.get("counts") if isinstance(counts, Mapping) else None
     rows_written = (

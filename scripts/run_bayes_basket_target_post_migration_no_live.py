@@ -81,7 +81,7 @@ WORKER_ENTRYPOINT = ROOT / "scripts/reported_trajectory_no_daemon.py"
 
 MAX_INPUT_BYTES = 16 * 1024 * 1024
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
-MAX_TARGET_DB_BYTES = 256 * 1024 * 1024
+MAX_TARGET_DB_BYTES = 4096 * 1024 * 1024
 MAX_TARGET_WAL_BYTES = 64 * 1024 * 1024
 MAX_CHILD_FILE_BYTES = MAX_TARGET_DB_BYTES + MAX_TARGET_WAL_BYTES
 MAX_RSS_BYTES = 768 * 1024 * 1024
@@ -383,6 +383,41 @@ def probability_scope_snapshot(
                     "outside_scope": outside_scope,
                 }
                 continue
+            if table == "basket_probability_evidence_promotion":
+                if (
+                    "artifact_id" not in columns
+                    or "basket_probability_evidence_artifact"
+                    not in present
+                ):
+                    tables[table] = {
+                        "state": "STATION_JOIN_MISSING",
+                        "scoped": -1,
+                        "outside_scope": -1,
+                    }
+                    continue
+                target = int(conn.execute(
+                    "SELECT COUNT(*) FROM "
+                    "basket_probability_evidence_promotion p "
+                    "JOIN basket_probability_evidence_artifact a "
+                    "ON a.artifact_id=p.artifact_id "
+                    f"WHERE UPPER(COALESCE(a.station_id,'')) IN ({placeholders})",
+                    scope,
+                ).fetchone()[0])
+                outside_scope = int(conn.execute(
+                    "SELECT COUNT(*) FROM "
+                    "basket_probability_evidence_promotion p "
+                    "JOIN basket_probability_evidence_artifact a "
+                    "ON a.artifact_id=p.artifact_id "
+                    "WHERE UPPER(COALESCE(a.station_id,'')) NOT IN "
+                    f"({placeholders})",
+                    scope,
+                ).fetchone()[0])
+                tables[table] = {
+                    "state": "READY",
+                    "scoped": target,
+                    "outside_scope": outside_scope,
+                }
+                continue
             if "station_id" not in columns:
                 tables[table] = {
                     "state": "STATION_COLUMN_MISSING",
@@ -607,6 +642,126 @@ def verify_two_round_resident_receipts(
         ),
         "outside_scope_counts_after": (
             dict((after_snapshot or {}).get("outside_scope_counts") or {})
+        ),
+        "blockers": sorted(set(blockers)),
+        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "production_no_live": True,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    return {
+        **identity,
+        "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
+        "content_sha256": content_sha256(identity),
+    }
+
+
+def verify_migration_two_round_resident_receipts(
+    first: Mapping[str, Any],
+    second: Mapping[str, Any],
+    *,
+    before_snapshot: Mapping[str, Any] | None = None,
+    after_snapshot: Mapping[str, Any] | None = None,
+    station_ids: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Bind M9-06 resident continuity without claiming M9-08 is done."""
+
+    from scripts.accept_bayes_basket_target_probability_resident_two_rounds import (
+        compare_migration_rounds,
+    )
+
+    scope = normalize_station_scope(station_ids)
+    compared = compare_migration_rounds(first, second)
+    blockers = list(compared.get("blockers") or [])
+    for index, receipt in enumerate((first, second), start=1):
+        resources = receipt.get("resources") or {}
+        resident_rss = resources.get("resident_service_rss_bytes")
+        if not isinstance(resident_rss, Mapping) or not resident_rss:
+            blockers.append(
+                f"migration_round_{index}_rss_snapshot_missing"
+            )
+        elif any(
+            int(value or 0) > MAX_RSS_BYTES
+            for value in resident_rss.values()
+        ):
+            blockers.append(
+                f"migration_round_{index}_rss_gate_invalid"
+            )
+        if int(
+            resources.get("acceptance_process_rss_bytes") or 0
+        ) > MAX_RSS_BYTES:
+            blockers.append(
+                f"migration_round_{index}_acceptance_rss_gate_invalid"
+            )
+    services = second.get("services") or {}
+    if set(services) != set(RESIDENT_CORE_SERVICE_LABELS):
+        blockers.append("migration_three_service_set_invalid")
+    if any(
+        not isinstance(value, int) or value <= 0
+        for value in services.values()
+    ):
+        blockers.append("migration_three_service_pid_invalid")
+    if before_snapshot is None or after_snapshot is None:
+        blockers.append(
+            "migration_probability_scope_snapshots_missing"
+        )
+    else:
+        before_scope = tuple(
+            (before_snapshot.get("station_scope") or {}).get(
+                "station_ids"
+            ) or ()
+        )
+        after_scope = tuple(
+            (after_snapshot.get("station_scope") or {}).get(
+                "station_ids"
+            ) or ()
+        )
+        if before_scope != scope or after_scope != scope:
+            blockers.append(
+                "migration_probability_scope_snapshot_mismatch"
+            )
+        if (
+            before_snapshot.get("missing_tables")
+            or after_snapshot.get("missing_tables")
+        ):
+            blockers.append(
+                "migration_probability_scope_table_missing"
+            )
+        if (
+            before_snapshot.get("outside_scope_counts")
+            != after_snapshot.get("outside_scope_counts")
+        ):
+            blockers.append(
+                "migration_outside_scope_probability_write_detected"
+            )
+    identity = {
+        "schema": (
+            "bayes_basket_target_probability_migration_resident_verified_v1"
+        ),
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(scope),
+            "max_station_count": MAX_STATION_SCOPE,
+        },
+        "started_station_ids": second.get("started_station_ids") or [],
+        "candidate_accumulation_station_ids": second.get(
+            "candidate_accumulation_station_ids"
+        ) or [],
+        "not_started_station_ids": second.get(
+            "not_started_station_ids"
+        ) or [],
+        "round_one_sha256": first.get("round_sha256"),
+        "round_two_sha256": second.get("round_sha256"),
+        "services": services,
+        "materialization_pending_blockers": compared.get(
+            "materialization_pending_blockers"
+        ) or [],
+        "outside_scope_counts_before": dict(
+            (before_snapshot or {}).get("outside_scope_counts") or {}
+        ),
+        "outside_scope_counts_after": dict(
+            (after_snapshot or {}).get("outside_scope_counts") or {}
         ),
         "blockers": sorted(set(blockers)),
         "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),

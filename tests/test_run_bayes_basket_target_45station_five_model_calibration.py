@@ -49,3 +49,17 @@ def test_forward_oos_is_not_a_production_no_live_blocker():
 
     assert '"forward_oos_required_before_activation": False' in text
     assert '"forward_oos_observational_not_blocking": True' in text
+
+
+def test_targeted_repair_scope_is_still_registry_bound():
+    canonical = target._load_scope(
+        target.DEFAULT_LANE_MAP,
+        target.DEFAULT_MARKET_REGISTRY,
+    )
+    selected = {
+        station: canonical[station]
+        for station in ("EHAM", "RCSS", "ZSQD")
+    }
+
+    assert set(selected) == {"EHAM", "RCSS", "ZSQD"}
+    assert all(station in canonical for station in selected)

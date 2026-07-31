@@ -1,0 +1,19 @@
+{
+  "backup_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T073836Z.backup.db",
+  "backup_retained": true,
+  "calls_order_gateway": false,
+  "content_sha256": "37373de22dd47c96fcfc94f7c8e61b623c9250f2184a3af21fc739ba11a5d6f1",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "exit_code": 1,
+  "failed_at_utc": "2026-07-30T07:39:20Z",
+  "legacy_fallback_used": false,
+  "live_pause_retained": true,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "protected_service_drift": false,
+  "reason": "unhandled_cutover_failure",
+  "schema": "bayes_basket_target_probability_evidence_failure_v1",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "target_writer_pid": 40224,
+  "target_writer_running": true
+}

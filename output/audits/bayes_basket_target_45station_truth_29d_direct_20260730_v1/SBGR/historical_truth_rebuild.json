@@ -1,0 +1,687 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27",
+    "2026-07-28",
+    "2026-07-29"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T03:00:00Z",
+      "target_day_start_utc": "2026-07-01T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T03:00:00Z",
+      "target_day_start_utc": "2026-07-02T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-04T03:00:00Z",
+      "target_day_start_utc": "2026-07-03T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T03:00:00Z",
+      "target_day_start_utc": "2026-07-04T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T03:00:00Z",
+      "target_day_start_utc": "2026-07-05T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T03:00:00Z",
+      "target_day_start_utc": "2026-07-06T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T03:00:00Z",
+      "target_day_start_utc": "2026-07-07T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T03:00:00Z",
+      "target_day_start_utc": "2026-07-08T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T03:00:00Z",
+      "target_day_start_utc": "2026-07-09T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T03:00:00Z",
+      "target_day_start_utc": "2026-07-10T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T03:00:00Z",
+      "target_day_start_utc": "2026-07-11T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T03:00:00Z",
+      "target_day_start_utc": "2026-07-12T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-14T03:00:00Z",
+      "target_day_start_utc": "2026-07-13T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-15T03:00:00Z",
+      "target_day_start_utc": "2026-07-14T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-16T03:00:00Z",
+      "target_day_start_utc": "2026-07-15T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-17T03:00:00Z",
+      "target_day_start_utc": "2026-07-16T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-18T03:00:00Z",
+      "target_day_start_utc": "2026-07-17T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-19T03:00:00Z",
+      "target_day_start_utc": "2026-07-18T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-20T03:00:00Z",
+      "target_day_start_utc": "2026-07-19T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-21T03:00:00Z",
+      "target_day_start_utc": "2026-07-20T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-22T03:00:00Z",
+      "target_day_start_utc": "2026-07-21T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-23T03:00:00Z",
+      "target_day_start_utc": "2026-07-22T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-24T03:00:00Z",
+      "target_day_start_utc": "2026-07-23T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-25T03:00:00Z",
+      "target_day_start_utc": "2026-07-24T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-26T03:00:00Z",
+      "target_day_start_utc": "2026-07-25T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-27T03:00:00Z",
+      "target_day_start_utc": "2026-07-26T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-28T03:00:00Z",
+      "target_day_start_utc": "2026-07-27T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-29T03:00:00Z",
+      "target_day_start_utc": "2026-07-28T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:26Z",
+      "event_date": "2026-07-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-30T03:00:00Z",
+      "target_day_start_utc": "2026-07-29T03:00:00Z",
+      "target_timezone": "America/Sao_Paulo"
+    }
+  ],
+  "evidence_sha256": "39e48496040ab56931a7febb3362713cb210c2e139518557aa73befe918cdad2",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-07-01",
+          "response_sha256": "564ca92ed3fa6e490b6ca8b7b4f7ac733279641b0eabe1807e340ac2591e3dd7",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260702_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "0942ee53d0c8e81a8165e571a3f5fe0ed02883d9385023d572913e007ccff921",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260703_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "544a5634f614d5dee6415700b7cf2e558e180da9288961c29fe96b156836f548",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260704_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-04",
+          "response_sha256": "e56f7664cceec7deb7788d10930a6af6b5bb6e6d807614c4ac26e390997e2945",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260705_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-05",
+          "response_sha256": "6eaf0d0b8a20300434c9b633cd74cbc23add209de9959a79e1f7abf0adb6c9fc",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260706_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-06",
+          "response_sha256": "3970446cac2873165122ffddfe399481cc453546fe4ee6364d394e4fcb8b29f7",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260707_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-07",
+          "response_sha256": "e1a856e06b48a7d0789ec64c5b1b41eee81baff2e8a16326cb3f6eac2b61d84d",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260708_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "ca95bfbd35a260f7a1936436bdff52f99cf2b7ca0a4148e830e39cb6127a1afb",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260709_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-09",
+          "response_sha256": "f655731a8229a6fa8291b221b1045bf48eee1039906ea14bb5bfcd8465cb3bba",
+          "returned_rows": 28,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260710_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "565373cef96a7810eca6fea49ab3f0d8046afb273f46a1067f2aadbfe72eb5b6",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260711_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-11",
+          "response_sha256": "9c89b0e6a26e09c00a835cc439b35291488e855cecf7a5891dcefc5e55b06141",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260712_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-12",
+          "response_sha256": "ea03d1a11c7e21299a404bea9d613798c1b46cac9b07534dff8065ce2ca9a1f1",
+          "returned_rows": 30,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260713_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-13",
+          "response_sha256": "05b9dc0a46903eff480b1e5fcc0e2132e755805890e6d2bd4bd16751f8212629",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260714_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-14",
+          "response_sha256": "acdac9b9c74e7a9930194283e3f326e01054319f05de955c8b36d2e7f37557b6",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260715_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-15",
+          "response_sha256": "7ccd6b86d36c510f462ee0a10d66bbb78f0b89c6638a4f8fe611c71c3e33e489",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260716_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-16",
+          "response_sha256": "be58f8af91e4d614f96227933c4c7a8fea6909e4a3980bb34174d2e6c09e8ce7",
+          "returned_rows": 28,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260717_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-17",
+          "response_sha256": "2e907bb0d9590dd915bbcf2d8d52872fa51edb4ded7a940d6bbb82827c89d728",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260718_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-18",
+          "response_sha256": "b7637e9855e5f44bbf5cbf955be6ca78971e67f82386a6648d0d1db8e57b816b",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260719_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-19",
+          "response_sha256": "538c1e666ceabbfea495318b2546dc8e65aef2277fe43506b04be419db81d7ab",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260720_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-20",
+          "response_sha256": "b3d04c9c7f680600983e41381a01aacc6b6049393811afcefcf83ed326c5f36f",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260721_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-21",
+          "response_sha256": "31649df2692e8e2ef80e8427d7d76c4c7dd87792e5b4ed716482054c3dd2f9e0",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260722_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-22",
+          "response_sha256": "9d477bd3f1db6e667561544d3c3063bec2ae3cd44dff96282160631348d8ac97",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260723_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "711398d87f83a51e3e298ab79eb62fa03ff903debad9ce5b06d789b7762ef8cc",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260724_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-24",
+          "response_sha256": "7e83fff47a3b12d1a4a89d96fea399dcdaffba9e7520c6c145d51806d2433376",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260725_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-25",
+          "response_sha256": "f2d4f42a0274cbbbac1797246517c7299131c58367212bf33f0691ba2911351d",
+          "returned_rows": 27,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260726_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-26",
+          "response_sha256": "3d6e1a65506576c7c5828e6e166dda714f373bae6601df6bbb2c95ba8fb05249",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260727_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-27",
+          "response_sha256": "7977ea7e0fc37c6ca64bd7ed35a96740942b1d823de83c5ceaabfbf5d7a4db0a",
+          "returned_rows": 28,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260728_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-28",
+          "response_sha256": "23785df22e7c76e0ebc3884601ed1aaa8d8e8920b1dafe5ffd96b37dbc1bf688",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260729_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        },
+        {
+          "event_date": "2026-07-29",
+          "response_sha256": "54f48884f93990baebbbc9381709e2741cf7d0fbb7385e6b0ac2757f4adc0b1f",
+          "returned_rows": 27,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&date=20260730_0300&hours=24",
+          "stations": [
+            "SBGR"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 29,
+      "reference_only": false,
+      "returned": 721,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "proxy_or_direct_dns",
+        "batch_budget_sec": 900.0,
+        "budget_exhausted": false,
+        "connect_to": [],
+        "max_attempts": 2,
+        "timeout_sec": 30
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-30T11:35:26Z",
+  "observation_count": 721,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SBGR/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/truth_gap_refill",
+  "receipt_sha256": "a20241f5dd46a634516c1ea32d057c7e56312e970475c47ee3d375fdfdbd3c00",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SBGR/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 721
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 29,
+  "station_day_keys": [
+    "SBGR|2026-07-01",
+    "SBGR|2026-07-02",
+    "SBGR|2026-07-03",
+    "SBGR|2026-07-04",
+    "SBGR|2026-07-05",
+    "SBGR|2026-07-06",
+    "SBGR|2026-07-07",
+    "SBGR|2026-07-08",
+    "SBGR|2026-07-09",
+    "SBGR|2026-07-10",
+    "SBGR|2026-07-11",
+    "SBGR|2026-07-12",
+    "SBGR|2026-07-13",
+    "SBGR|2026-07-14",
+    "SBGR|2026-07-15",
+    "SBGR|2026-07-16",
+    "SBGR|2026-07-17",
+    "SBGR|2026-07-18",
+    "SBGR|2026-07-19",
+    "SBGR|2026-07-20",
+    "SBGR|2026-07-21",
+    "SBGR|2026-07-22",
+    "SBGR|2026-07-23",
+    "SBGR|2026-07-24",
+    "SBGR|2026-07-25",
+    "SBGR|2026-07-26",
+    "SBGR|2026-07-27",
+    "SBGR|2026-07-28",
+    "SBGR|2026-07-29"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/Sao_Paulo"
+}

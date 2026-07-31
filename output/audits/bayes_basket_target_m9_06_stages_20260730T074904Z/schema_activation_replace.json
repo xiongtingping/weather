@@ -1,0 +1,20 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "02c367ee0f45bffe21914e6c3f7acdb7885d7c7486a9b5f83dccb730fc27a17e",
+  "facts": {},
+  "forward_oos_boundary": {
+    "blocks_formal_promotion_or_live": true,
+    "blocks_production_no_live": false
+  },
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "payload_content_sha256": "738133b7538c7d7b9136c3e559ef29849297327e37bb54ac4b80b3cc0bc87ff2",
+  "payload_schema": "bayes_basket_target_m9_06_schema_activation_v1",
+  "payload_state": "PASS",
+  "production_no_live": true,
+  "schema": "bayes_basket_target_m9_06_stage_receipt_v1",
+  "source_path": "/Users/xiong/weather/output/audits/bayes_basket_target_probability_evidence_cutover_20260730T074904Z.json",
+  "source_sha256": "e204e81e5e2424c8c504d319fd0c1b07b8015a60b2e20b05aabdb65c56228f3d",
+  "stage": "schema_activation_replace",
+  "state": "PASS"
+}

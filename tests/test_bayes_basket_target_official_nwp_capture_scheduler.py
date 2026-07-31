@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,177 @@ def test_scheduler_exposes_all_five_model_provider_roles() -> None:
     assert scheduler.MODEL_PROVIDER_IDS["HRRR"] == (
         "ncep_hrrr_conus_open_meteo"
     )
+
+
+def test_global_fanout_completion_uses_exact_station_arrivals() -> None:
+    paths = [Path("/tmp/arrival-00.json"), Path("/tmp/arrival-01.json")]
+    assert scheduler._provider_complete(
+        {
+            # The source adapter may have skipped unrelated upstream objects.
+            # Exact station fanout is the authoritative target-scope result.
+            "blocked_count": 7,
+            "fanout": {
+                "captured_count": 2,
+                "expected_arrival_count": 2,
+                "blocked_count": 0,
+                "blockers": [],
+                "outputs": [
+                    {"status": "CAPTURED", "path": str(paths[0])},
+                    {"status": "REUSED", "path": str(paths[1])},
+                ],
+            },
+        },
+        paths,
+    ) is True
+    assert scheduler._provider_complete(
+        {
+            "blocked_count": 0,
+            "fanout": {
+                "captured_count": 1,
+                "expected_arrival_count": 2,
+                "blocked_count": 0,
+                "blockers": [],
+                "outputs": [
+                    {"status": "CAPTURED", "path": str(paths[0])},
+                ],
+            },
+        },
+        paths[:1],
+    ) is False
+
+
+def test_candidate_model_batches_rotate_station_scoped_regional_pool(
+    tmp_path: Path,
+) -> None:
+    pool_path = tmp_path / "regional.json"
+    pool_path.write_text(json.dumps({
+        "schema": scheduler.REGIONAL_MODEL_POOL_SCHEMA,
+        "station_regional_pool": {
+            "RKPK": ["JMA-MSM"],
+            "KATL": ["HRRR", "NBM", "NAM"],
+        },
+    }))
+    rkpk_batches = [
+        scheduler.candidate_model_batch_for_station(
+            station_id="RKPK",
+            run_initialization_utc=f"2026-07-{day:02d}T12:00:00Z",
+            regional_pool_path=pool_path,
+        )
+        for day in range(1, 7)
+    ]
+    assert all(
+        2 <= len(batch) <= scheduler.MAX_CANDIDATE_MODELS
+        for batch in rkpk_batches
+    )
+    assert set().union(*map(set, rkpk_batches)) == {
+        "ECMWF",
+        "GFS",
+        "ICON",
+        "GEM",
+        "CMA",
+        "JMA-MSM",
+    }
+    assert "HRRR" not in set().union(*map(set, rkpk_batches))
+    assert scheduler.candidate_model_batch_for_station(
+        station_id="RKPK",
+        run_initialization_utc="2026-07-29T06:00:00Z",
+        regional_pool_path=pool_path,
+    ) == ["GFS", "ICON"]
+
+
+def test_candidate_model_batch_rejects_unregistered_regional_model(
+    tmp_path: Path,
+) -> None:
+    pool_path = tmp_path / "regional.json"
+    pool_path.write_text(json.dumps({
+        "schema": scheduler.REGIONAL_MODEL_POOL_SCHEMA,
+        "station_regional_pool": {"RKPK": ["UNREGISTERED"]},
+    }))
+    with pytest.raises(
+        scheduler.ContractError,
+        match="station_regional_model_invalid",
+    ):
+        scheduler.candidate_model_batch_for_station(
+            station_id="RKPK",
+            run_initialization_utc="2026-07-29T12:00:00Z",
+            regional_pool_path=pool_path,
+        )
+
+
+def test_real_station_candidate_pool_eventually_covers_every_configured_model() -> None:
+    pool = json.loads(scheduler.REGIONAL_MODEL_POOL_PATH.read_text())
+    for station_id, regional_models in pool["station_regional_pool"].items():
+        batches = [
+            scheduler.candidate_model_batch_for_station(
+                station_id=station_id,
+                run_initialization_utc=f"2026-07-{day:02d}T12:00:00Z",
+            )
+            for day in range(1, 15)
+        ]
+        assert all(
+            2 <= len(batch) <= scheduler.MAX_CANDIDATE_MODELS
+            for batch in batches
+        )
+        assert set().union(*map(set, batches)) == {
+            "ECMWF",
+            "GFS",
+            "ICON",
+            "GEM",
+            "CMA",
+            *regional_models,
+        }
+
+
+def test_default_icon_runner_isolates_raw_retention_to_current_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.run_bayes_basket_target_icon_forward_capture as icon_capture
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        icon_capture,
+        "build_plan",
+        lambda **kwargs: {"plan": kwargs},
+    )
+    monkeypatch.setattr(
+        icon_capture,
+        "execute_plan",
+        lambda plan, **kwargs: calls.append(
+            {"plan": plan, **kwargs}
+        ) or {"blocked_count": 0, "records": []},
+    )
+    output_dir = tmp_path / "bounded-station-run"
+
+    scheduler._default_provider_runner(
+        provider_id="icon_global_official",
+        event_date="2026-07-30",
+        run_initialization_utc="2026-07-29T18:00:00Z",
+        as_of_utc="2026-07-30T08:00:00Z",
+        settlement_timezone="America/Mexico_City",
+        station_ids=["MMMX"],
+        registry_snapshot_sha256="a" * 64,
+        contract_path=tmp_path / "model-run-contract.json",
+        output_dir=output_dir,
+    )
+
+    assert calls == [{
+        "plan": {
+            "plan": {
+                "event_date": "2026-07-30",
+                "run_initialization_utc": "2026-07-29T18:00:00Z",
+                "as_of_utc": "2026-07-30T08:00:00Z",
+                "station_ids": ["MMMX"],
+                "target_timezone": "America/Mexico_City",
+                "market_registry_snapshot_sha256": "a" * 64,
+                "registry_bound": True,
+                "source_station_id": "MMMX",
+                "due_only": False,
+            },
+        },
+        "source_root": output_dir,
+        "output_root": output_dir,
+    }]
 
 
 def test_candidate_prefetch_is_single_scope_raw_only_and_isolates_provider_failure(

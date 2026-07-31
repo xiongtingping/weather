@@ -1,0 +1,1450 @@
+{
+  "authority_receipt": {
+    "activation_count": 15,
+    "artifact_count": 10,
+    "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+    "ensemble_count": 5,
+    "evidence_sha256": "8ff654dd82e3404dec2ec07e960d445e11021e13925cfde1f497775846352b0b",
+    "formal_promotion_created": false,
+    "live_order_authorized": false,
+    "oos_evidence_sha256": "c7c00326e82e44841769cfbe4d27efecd536588115dc100cb7734bb095b5ce63",
+    "rejected_ensemble_scope_count": 0,
+    "schema": "bayes_basket_target_no_live_calibration_authority_v1",
+    "temporary_awc_calibration_station_count": 5,
+    "temporary_awc_calibration_station_ids": [
+      "ZGSZ",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "temporary_awc_hard_no_authorized": false,
+    "temporary_awc_p1_authorized": false,
+    "temporary_awc_realtime_truth_authorized": false
+  },
+  "authorizes_order": false,
+  "calibration_activations": [
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-bb3187b18b73b48bf29540bdd314465e",
+      "artifact_id": "cal-research-ZGSZ-GFS-d2-b3594498f50d",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "2d91a298a0ace84dcf7f01ba8c1f30d92cee20b406fb7ebfc68856a54bddce2b",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-a94f50333a36f26f19a20760d6d428d4",
+      "artifact_id": "cal-research-ZGSZ-ICON-d2-b3594498f50d",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "9a826eed5096e4e48d8bf1544839551c181c07e0c71de2a3dbe0bd563fe75163",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-52eae40190f12e8861dd5f1c3947acb4",
+      "artifact_id": "cal-research-ZSPD-GFS-d2-9be9d134b53f",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "c5d2c04fad0786432d3f9f05cc29de2b52aa0cd605271d9a929438d4eb69850f",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-7a35e1675cdb65d090ccc40fa56ba13c",
+      "artifact_id": "cal-research-ZSPD-ICON-d2-9be9d134b53f",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "ab0f6a5d79d6f6b9055a37800fca1f4da142190451390b94d6e5c010fe7e0ed7",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-5049b502f9ac9287a86b2c1074eba1d3",
+      "artifact_id": "cal-research-ZSQD-GFS-d2-4de9e31fa72d",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "7a2c1e51ae30b7ed8ba13dbf0b1090f5ad1ef2853a8e1646445a1531cbf640a5",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-37a65a8e96d62f6cbea174c9d2d560ab",
+      "artifact_id": "cal-research-ZSQD-ICON-d2-4de9e31fa72d",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "019b0df864462c694f6d424fff4f001d42ca6b8bb561de466b243e300b3a8dc3",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-cce9f4feaf05a9a370ea25d3518cf6e0",
+      "artifact_id": "cal-research-ZUCK-GFS-d2-b6ddca381820",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "4b5e04b81c533baf26fc5dd840d57a0bc0d3279ed0748addbfb6181abf849c8b",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-a48433d16581208971549bf336b81dca",
+      "artifact_id": "cal-research-ZUCK-ICON-d2-b6ddca381820",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "5c0cede39c364653888b70148d965a8588ab5e3351995b782d837be90660416f",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-f2732d114062ff17d8db12269d25f9b0",
+      "artifact_id": "cal-research-ZUUU-GFS-d2-66b065545722",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "0a4d72563c5a961c8995303f2b883af5d1e6c2720bc8c1097c8aab0bb6f41aaf",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "GFS",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-cal-95a5efcb5536e74a227b3325c515b4fa",
+      "artifact_id": "cal-research-ZUUU-ICON-d2-66b065545722",
+      "artifact_kind": "MODEL_CALIBRATION",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "*",
+      "content_sha256": "0b5ccf3306a4f85348a304b5a17c17f14eb133d9db44db00f146dd7a198996a0",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "ICON",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-0d3d5eb3e6215aee28505833936cc9c7",
+      "artifact_id": "ens-18z-d2-ZGSZ-be4139a059b50dd4",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "2e5a137670e0094d69d1dec8fc3296f8dda8dca8abeae77c3f84209babce1774",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-d24d1cb651555feae543549f3281a74a",
+      "artifact_id": "ens-18z-d2-ZSPD-1a36dcbefa2bc4b5",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "8e73dc03c534e38346e83e955c53f101765713f2646ff7eba6f0105f826ae107",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-b88b22f2da5bcd469bcec52519b43dc8",
+      "artifact_id": "ens-18z-d2-ZSQD-a93158060e59b14b",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "db82fb687d21817216243ea2626525454b49fb5850f1cd776d5a18254d5468be",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-8141181cc11ad6ef7e2d8b3cbe19fa27",
+      "artifact_id": "ens-18z-d2-ZUCK-97a9bb5045edfe00",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "2c27f81a024c2704ebae2b52f86f7bf2e99e1b74d9c3a1983fa90a2772125911",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-29T00:00:00Z",
+      "activation_id": "no-live-ens-eaecda34f4934d67741d1f378d387f17",
+      "artifact_id": "ens-18z-d2-ZUUU-7a3563320bdc8a77",
+      "artifact_kind": "MODEL_ENSEMBLE",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash_or_star": "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94",
+      "content_sha256": "661f37d7156f8cec8b4731ee0b98e77ed52fc381235c19042519bd42a3ab081c",
+      "generation": 20,
+      "lead_bucket": "d2",
+      "model_id_or_star": "*",
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    }
+  ],
+  "calibration_artifacts": [
+    {
+      "bias_c": -1.0543448275862068,
+      "calibration_artifact_id": "cal-research-ZGSZ-GFS-d2-b3594498f50d",
+      "content_sha256": "e841899cca094c7cf3e59cd23fb852a80c7e093c4c27d4fc57fffb750c20f3ed",
+      "effective_sample_n": 21.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.4447820561092157,
+      "run_cycle": "18Z",
+      "sample_n": 21,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.586206896551724,
+      "calibration_artifact_id": "cal-research-ZGSZ-ICON-d2-b3594498f50d",
+      "content_sha256": "32f08e74a145d63e0ad03a2cf451b4ef40addbffbac682556adc2e108271799c",
+      "effective_sample_n": 21.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.4297817532997705,
+      "run_cycle": "18Z",
+      "sample_n": 21,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-21T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -3.4245416666666664,
+      "calibration_artifact_id": "cal-research-ZSPD-GFS-d2-9be9d134b53f",
+      "content_sha256": "0f117dd10b76278e7d438258799ade6fd96ce80e4bf16ad8607e9727607213fd",
+      "effective_sample_n": 16.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.8947924241339882,
+      "run_cycle": "18Z",
+      "sample_n": 16,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-23T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.8916666666666668,
+      "calibration_artifact_id": "cal-research-ZSPD-ICON-d2-9be9d134b53f",
+      "content_sha256": "6a488bb302681186943e5ef189d08e7ba2eb7424d93f7e147952084b8adee730",
+      "effective_sample_n": 16.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.4244297104455523,
+      "run_cycle": "18Z",
+      "sample_n": 16,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-23T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.7987,
+      "calibration_artifact_id": "cal-research-ZSQD-GFS-d2-4de9e31fa72d",
+      "content_sha256": "8cdaa4d242be840cc356060937583f11f75cb712176f074fc059b331844bd653",
+      "effective_sample_n": 12.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.271866838370061,
+      "run_cycle": "18Z",
+      "sample_n": 12,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-23T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.8949999999999997,
+      "calibration_artifact_id": "cal-research-ZSQD-ICON-d2-4de9e31fa72d",
+      "content_sha256": "77e6a5ecacb8aba72d427b74c9b8b8892cc4a86de45495b92f1326916960e21a",
+      "effective_sample_n": 12.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.4219544807955513,
+      "run_cycle": "18Z",
+      "sample_n": 12,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-23T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -2.6041538461538467,
+      "calibration_artifact_id": "cal-research-ZUCK-GFS-d2-b6ddca381820",
+      "content_sha256": "f71073425f7b012f965c1b69d17f0ed40902f84e0bd3cc1daa1b0d8f60421211",
+      "effective_sample_n": 18.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 1.8068685518877414,
+      "run_cycle": "18Z",
+      "sample_n": 18,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.5807692307692305,
+      "calibration_artifact_id": "cal-research-ZUCK-ICON-d2-b6ddca381820",
+      "content_sha256": "55004dec45aac727e59967f3998b0e377a7a946f27e86cbde275fcc3b177684b",
+      "effective_sample_n": 18.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 1.6891522412493332,
+      "run_cycle": "18Z",
+      "sample_n": 18,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -2.852035714285714,
+      "calibration_artifact_id": "cal-research-ZUUU-GFS-d2-66b065545722",
+      "content_sha256": "8db3d1a2ed7c2c62d138c135ecdc43b21d54d6283feb572f369d7ef26a362833",
+      "effective_sample_n": 20.0,
+      "lead_bucket": "d2",
+      "model_id": "GFS",
+      "promoted": false,
+      "residual_scale_c": 2.06551845473288,
+      "run_cycle": "18Z",
+      "sample_n": 20,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    },
+    {
+      "bias_c": -0.12499999999999975,
+      "calibration_artifact_id": "cal-research-ZUUU-ICON-d2-66b065545722",
+      "content_sha256": "65a11e221d581ef4e61bf90e42bcdeb4ecf4b6ec278d840a9fc6a01468639f73",
+      "effective_sample_n": 20.0,
+      "lead_bucket": "d2",
+      "model_id": "ICON",
+      "promoted": false,
+      "residual_scale_c": 2.553616777556206,
+      "run_cycle": "18Z",
+      "sample_n": 20,
+      "season_bin": "summer",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "tail_parameters": {
+        "lower_q": 0.05,
+        "upper_q": 0.95
+      },
+      "trained_through_utc": "2026-07-22T16:00:00Z",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z"
+    }
+  ],
+  "calibration_promotions": [],
+  "calls_order_gateway": false,
+  "cash_phase_policies": [],
+  "ensemble_artifacts": [
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "8e0d68485524ebe9686e3166ea1b3922e86ff70c57a4ddf577bb1026bb266464",
+      "correlation_penalty": 0.08008846094624637,
+      "effective_sample_n": 21.0,
+      "ensemble_artifact_id": "ens-18z-d2-ZGSZ-be4139a059b50dd4",
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.903575213542184,
+        "crps": 1.311176779396831,
+        "nll": 2.379860716189041
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-21",
+      "recent_start_date": "2026-07-14",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 2.0254505000000003,
+          "ICON": 1.2534349999999996
+        },
+        "ICON": {
+          "GFS": 1.2534349999999996,
+          "ICON": 1.9659047619047623
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "f4b3b3d733fe1b2db294b74f926e6f6544fd9ea2eddb2343111b7adb60427115",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.15,
+          "ICON": 0.85
+        }
+      },
+      "train_end_date": "2026-07-21",
+      "train_start_date": "2026-06-29",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    },
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "45dd5fadc43fa5b9ae39a61c65248b97b8d7fe8f56f304e9b12f61d591c3ec6c",
+      "correlation_penalty": 0.03188447801710311,
+      "effective_sample_n": 16.0,
+      "ensemble_artifact_id": "ens-18z-d2-ZSPD-1a36dcbefa2bc4b5",
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-24",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.9871978149757952,
+        "crps": 1.745791180397978,
+        "nll": 2.5623634847235977
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-23",
+      "recent_start_date": "2026-07-18",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 4.2603574958333335,
+          "ICON": 0.4340741666666672
+        },
+        "ICON": {
+          "GFS": 0.4340741666666672,
+          "ICON": 1.9185000000000008
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "81eed8e7c6e35cbf35876ad06ac07c9eb38bd14ca842b0418065243eaa438e48",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.3,
+          "ICON": 0.7
+        }
+      },
+      "train_end_date": "2026-07-23",
+      "train_start_date": "2026-06-29",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    },
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "bd51f01867e1268db3686397c19863920271924261ba9f5d5bcf8e983705ab77",
+      "correlation_penalty": 0.06111852043858111,
+      "effective_sample_n": 12.0,
+      "ensemble_artifact_id": "ens-18z-d2-ZSQD-a93158060e59b14b",
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-24",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.6683779825789606,
+        "crps": 0.4119384805531192,
+        "nll": 1.3766195008485012
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-23",
+      "recent_start_date": "2026-07-19",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 1.1960754242424254,
+          "ICON": 0.4352560606060607
+        },
+        "ICON": {
+          "GFS": 0.4352560606060607,
+          "ICON": 1.8699242424242433
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "e6d968113585f5171d24cbd3ddd9a1b972dd71fdf493ff6d722799d8a85cedd7",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.3,
+          "ICON": 0.7
+        }
+      },
+      "train_end_date": "2026-07-23",
+      "train_start_date": "2026-07-01",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    },
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "8e6818194e34591e08c2a9fca5d0433aee4ece583439e7c9e56dbf9af3176c59",
+      "correlation_penalty": 0.02427234638102527,
+      "effective_sample_n": 18.0,
+      "ensemble_artifact_id": "ens-18z-d2-ZUCK-97a9bb5045edfe00",
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.8322825813108293,
+        "crps": 1.172851762868883,
+        "nll": 2.0133039431504036
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-16",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 3.715784614379084,
+          "ICON": 0.39363006535947637
+        },
+        "ICON": {
+          "GFS": 0.39363006535947637,
+          "ICON": 3.1213398692810435
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "17d55898dd95d5f1368e0002464fa86ab90dac2e77f902e9a3dca50ce395d2e7",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.3,
+          "ICON": 0.7
+        }
+      },
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-06-29",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    },
+    {
+      "candidate_models": [
+        "GFS",
+        "ICON"
+      ],
+      "content_sha256": "589e4f885fe077b87cba7860010e1825458dd959560f77dd18a7cf87cc3befc0",
+      "correlation_penalty": 0.0,
+      "effective_sample_n": 20.0,
+      "ensemble_artifact_id": "ens-18z-d2-ZUUU-7a3563320bdc8a77",
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "oos_metrics": {
+        "brier_score": 0.8418020014825048,
+        "crps": 0.9173161869084993,
+        "nll": 2.0543103241211673
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "promoted": false,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-16",
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 5.072913081578947,
+          "ICON": -0.10078815789473815
+        },
+        "ICON": {
+          "GFS": -0.10078815789473815,
+          "ICON": 8.229342105263159
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selection_evidence_sha256": "16410295208af0795a8d6862b58f02def826fa10126d26e62bcf17711ef36774",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "supported_masks": {
+        "6b567a6723e6a537f367cc0e1f562f147f9c54adacc18b456f068de8a1d6ac94": {
+          "GFS": 0.05,
+          "ICON": 0.95
+        }
+      },
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-06-29",
+      "valid_from_utc": "2026-07-29T00:00:00Z",
+      "valid_until_utc": "2027-07-29T00:00:00Z",
+      "weight_method": "rolling_origin_probability_stack_v4_five_model_pool_min2"
+    }
+  ],
+  "ensemble_selection_evidence": [
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 0.8917077125119426,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.2355764807227405,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 19,
+          "nll": 2.3557994396468787,
+          "objective": 1.2977551719605875,
+          "recent_brier_score": 0.8341128720520359,
+          "recent_crps": 0.8737643609014604,
+          "recent_n": 8,
+          "recent_nll": 1.8468247289094093,
+          "shrinkage_strength": 0.320596458527493,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8496408328954663,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 0.9728702679042845,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 19,
+          "nll": 1.969482890673485,
+          "objective": 1.1500392898267315,
+          "recent_brier_score": 0.8075231315798866,
+          "recent_crps": 0.7862101261212031,
+          "recent_n": 8,
+          "recent_nll": 1.769915343958738,
+          "shrinkage_strength": 0.320596458527493,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8483451989715,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.08008846094624637,
+          "crps": 0.971540235102714,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 19,
+          "nll": 1.9780697660020687,
+          "objective": 1.1625219799165711,
+          "recent_brier_score": 0.8074467803591259,
+          "recent_crps": 0.7766504008530792,
+          "recent_n": 8,
+          "recent_nll": 1.773751178821858,
+          "shrinkage_strength": 0.320596458527493,
+          "weights": {
+            "GFS": 0.15,
+            "ICON": 0.85
+          }
+        }
+      ],
+      "content_sha256": "f4b3b3d733fe1b2db294b74f926e6f6544fd9ea2eddb2343111b7adb60427115",
+      "effective_sample_n": 21.0,
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.903575213542184,
+        "crps": 1.311176779396831,
+        "nll": 2.379860716189041
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-21",
+      "recent_start_date": "2026-07-14",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": 0.6281447917352656
+        },
+        "ICON": {
+          "GFS": 0.6281447917352656,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 2.0254505000000003,
+          "ICON": 1.2534349999999996
+        },
+        "ICON": {
+          "GFS": 1.2534349999999996,
+          "ICON": 1.9659047619047623
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.15,
+        "ICON": 0.85
+      },
+      "selection_evidence_id": "sel-18z-d2-ZGSZ-be4139a059b50dd4",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZGSZ",
+      "train_end_date": "2026-07-21",
+      "train_start_date": "2026-06-29"
+    },
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 1.1316282574690022,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 4.523729186448407,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 14,
+          "nll": 6.997416276240798,
+          "objective": 3.462265281209453,
+          "recent_brier_score": 1.1249687555329164,
+          "recent_crps": 4.721631330225193,
+          "recent_n": 6,
+          "recent_nll": 6.203801263774067,
+          "shrinkage_strength": 0.3902439024390244,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8366044727923887,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.0903240303161443,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 14,
+          "nll": 2.274696098021549,
+          "objective": 1.202273557203744,
+          "recent_brier_score": 0.784439744295037,
+          "recent_crps": 0.6672984114468653,
+          "recent_n": 6,
+          "recent_nll": 1.6434776676254128,
+          "shrinkage_strength": 0.3902439024390244,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.881781603433688,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.03188447801710311,
+          "crps": 1.6130494348351048,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 14,
+          "nll": 2.5935463625018187,
+          "objective": 1.4424664034039365,
+          "recent_brier_score": 0.834233125244349,
+          "recent_crps": 1.262327515475779,
+          "recent_n": 6,
+          "recent_nll": 1.9820059587841765,
+          "shrinkage_strength": 0.3902439024390244,
+          "weights": {
+            "GFS": 0.3,
+            "ICON": 0.7
+          }
+        }
+      ],
+      "content_sha256": "81eed8e7c6e35cbf35876ad06ac07c9eb38bd14ca842b0418065243eaa438e48",
+      "effective_sample_n": 16.0,
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-24",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.9871978149757952,
+        "crps": 1.745791180397978,
+        "nll": 2.5623634847235977
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-23",
+      "recent_start_date": "2026-07-18",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": 0.15183084770049102
+        },
+        "ICON": {
+          "GFS": 0.15183084770049102,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 4.2603574958333335,
+          "ICON": 0.4340741666666672
+        },
+        "ICON": {
+          "GFS": 0.4340741666666672,
+          "ICON": 1.9185000000000008
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "selection_evidence_id": "sel-18z-d2-ZSPD-1a36dcbefa2bc4b5",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSPD",
+      "train_end_date": "2026-07-23",
+      "train_start_date": "2026-06-29"
+    },
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 0.9203837402758397,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.1339727711042573,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 10,
+          "nll": 2.134810977227811,
+          "objective": 1.2494543419111839,
+          "recent_brier_score": 0.8419537933806482,
+          "recent_crps": 0.8737204469704919,
+          "recent_n": 5,
+          "recent_nll": 1.845864255647402,
+          "shrinkage_strength": 0.47058823529411764,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8731760764248012,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.0192130425886916,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 10,
+          "nll": 2.1047520184241466,
+          "objective": 1.1524536298220573,
+          "recent_brier_score": 0.7528345409167677,
+          "recent_crps": 0.5839542802253658,
+          "recent_n": 5,
+          "recent_nll": 1.5505052112776845,
+          "shrinkage_strength": 0.47058823529411764,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8759125688299687,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.06111852043858111,
+          "crps": 1.0070927594473948,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 10,
+          "nll": 1.9856459619625717,
+          "objective": 1.1448111549234559,
+          "recent_brier_score": 0.7689277088428337,
+          "recent_crps": 0.6261679205636261,
+          "recent_n": 5,
+          "recent_nll": 1.6123502300048582,
+          "shrinkage_strength": 0.47058823529411764,
+          "weights": {
+            "GFS": 0.3,
+            "ICON": 0.7
+          }
+        }
+      ],
+      "content_sha256": "e6d968113585f5171d24cbd3ddd9a1b972dd71fdf493ff6d722799d8a85cedd7",
+      "effective_sample_n": 12.0,
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-24",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.6683779825789606,
+        "crps": 0.4119384805531192,
+        "nll": 1.3766195008485012
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-23",
+      "recent_start_date": "2026-07-19",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": 0.2910405735170529
+        },
+        "ICON": {
+          "GFS": 0.2910405735170529,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 1.1960754242424254,
+          "ICON": 0.4352560606060607
+        },
+        "ICON": {
+          "GFS": 0.4352560606060607,
+          "ICON": 1.8699242424242433
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "selection_evidence_id": "sel-18z-d2-ZSQD-a93158060e59b14b",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZSQD",
+      "train_end_date": "2026-07-23",
+      "train_start_date": "2026-07-01"
+    },
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 1.0980271934430075,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 3.276697820988147,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 16,
+          "nll": 4.943428724395316,
+          "objective": 2.6369185977919654,
+          "recent_brier_score": 1.0604315445589705,
+          "recent_crps": 3.3370978816126384,
+          "recent_n": 7,
+          "recent_nll": 4.840954523397791,
+          "shrinkage_strength": 0.35878787878787877,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.7990194138714602,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 0.8382560972547308,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 16,
+          "nll": 1.8499742049721455,
+          "objective": 1.063617629615293,
+          "recent_brier_score": 0.7649506015858389,
+          "recent_crps": 0.6268727573052558,
+          "recent_n": 7,
+          "recent_nll": 1.6862604285583078,
+          "shrinkage_strength": 0.35878787878787877,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8495551685807226,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.02427234638102527,
+          "crps": 1.1642615941588583,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 16,
+          "nll": 2.1374505654025513,
+          "objective": 1.2453814326113566,
+          "recent_brier_score": 0.8094788226853298,
+          "recent_crps": 0.97889517991016,
+          "recent_n": 7,
+          "recent_nll": 1.959798522111319,
+          "shrinkage_strength": 0.35878787878787877,
+          "weights": {
+            "GFS": 0.3,
+            "ICON": 0.7
+          }
+        }
+      ],
+      "content_sha256": "17d55898dd95d5f1368e0002464fa86ab90dac2e77f902e9a3dca50ce395d2e7",
+      "effective_sample_n": 18.0,
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.8322825813108293,
+        "crps": 1.172851762868883,
+        "nll": 2.0133039431504036
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-16",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": 0.11558260181440605
+        },
+        "ICON": {
+          "GFS": 0.11558260181440605,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 3.715784614379084,
+          "ICON": 0.39363006535947637
+        },
+        "ICON": {
+          "GFS": 0.39363006535947637,
+          "ICON": 3.1213398692810435
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.3,
+        "ICON": 0.7
+      },
+      "selection_evidence_id": "sel-18z-d2-ZUCK-97a9bb5045edfe00",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUCK",
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-06-29"
+    },
+    {
+      "actual_max_weight_delta": 0.0,
+      "candidate_scores": [
+        {
+          "brier_score": 1.083960369916402,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 3.401702822125192,
+          "formal_selection_eligible": false,
+          "models": [
+            "GFS"
+          ],
+          "n": 18,
+          "nll": 5.472175140110668,
+          "objective": 2.958877642312377,
+          "recent_brier_score": 1.1057331606036873,
+          "recent_crps": 4.479279219448348,
+          "recent_n": 7,
+          "recent_nll": 6.306601946020595,
+          "shrinkage_strength": 0.3329775880469584,
+          "weights": {
+            "GFS": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8701154184718328,
+          "candidate_role": "single_model_ablation",
+          "correlation_concentration": 0,
+          "crps": 1.2591984627311907,
+          "formal_selection_eligible": false,
+          "models": [
+            "ICON"
+          ],
+          "n": 18,
+          "nll": 2.2937504612145547,
+          "objective": 1.2958223780624671,
+          "recent_brier_score": 0.8390994975994456,
+          "recent_crps": 0.8632326937240579,
+          "recent_n": 7,
+          "recent_nll": 2.040596577006864,
+          "shrinkage_strength": 0.3329775880469584,
+          "weights": {
+            "ICON": 1.0
+          }
+        },
+        {
+          "brier_score": 0.8716827233776154,
+          "candidate_role": "formal_ensemble",
+          "correlation_concentration": 0.0,
+          "crps": 1.2327904983855307,
+          "formal_selection_eligible": true,
+          "models": [
+            "GFS",
+            "ICON"
+          ],
+          "n": 18,
+          "nll": 2.2377351172602715,
+          "objective": 1.2982527877750383,
+          "recent_brier_score": 0.843133293596969,
+          "recent_crps": 0.8619734741058008,
+          "recent_n": 7,
+          "recent_nll": 2.0812618595947563,
+          "shrinkage_strength": 0.3329775880469584,
+          "weights": {
+            "GFS": 0.05,
+            "ICON": 0.95
+          }
+        }
+      ],
+      "content_sha256": "16410295208af0795a8d6862b58f02def826fa10126d26e62bcf17711ef36774",
+      "effective_sample_n": 20.0,
+      "holdout_end_date": "2026-07-27",
+      "holdout_start_date": "2026-07-23",
+      "lead_bucket": "d2",
+      "max_weight_delta": 1.0,
+      "method_version": "rolling_origin_probability_stack_v4_five_model_pool_min2",
+      "oos_metrics": {
+        "brier_score": 0.8418020014825048,
+        "crps": 0.9173161869084993,
+        "nll": 2.0543103241211673
+      },
+      "previous_ensemble_artifact_sha256": null,
+      "recent_end_date": "2026-07-22",
+      "recent_start_date": "2026-07-16",
+      "residual_correlation": {
+        "GFS": {
+          "GFS": 1.0,
+          "ICON": -0.015599053177100633
+        },
+        "ICON": {
+          "GFS": -0.015599053177100633,
+          "ICON": 1.0
+        }
+      },
+      "residual_covariance": {
+        "GFS": {
+          "GFS": 5.072913081578947,
+          "ICON": -0.10078815789473815
+        },
+        "ICON": {
+          "GFS": -0.10078815789473815,
+          "ICON": 8.229342105263159
+        }
+      },
+      "run_cycle": "18Z",
+      "season_bin": "summer",
+      "selected_models": [
+        "GFS",
+        "ICON"
+      ],
+      "selected_weights": {
+        "GFS": 0.05,
+        "ICON": 0.95
+      },
+      "selection_evidence_id": "sel-18z-d2-ZUUU-7a3563320bdc8a77",
+      "settlement_definition": "official_daily_tmax_c",
+      "station_id": "ZUUU",
+      "train_end_date": "2026-07-22",
+      "train_start_date": "2026-06-29"
+    }
+  ],
+  "execution_mode": "production_no_live",
+  "global_priors": [],
+  "live_submit_authorized": false,
+  "packet_sha256": "2a0198268f062e41a3803ac3a49e2c89698cd53b63dd5fc45a7a2063d6a65199",
+  "places_orders": false,
+  "policy_activations": [],
+  "policy_artifacts": [],
+  "policy_promotions": [],
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "station_ids": [
+    "ZGSZ",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "truth_authority_bindings": [
+    {
+      "content_sha256": "5d457de93aa9fb95503506b12162923af9401a9fe054cf28449d79984465e420",
+      "dataset_content_sha256": "9a8c8467db17a2e5e17a618e18871437fb4cc3552c3b28a990c6569f3e3b86d1",
+      "dataset_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZGSZ/calibration_truth_dataset.json",
+      "enters_hard_no": false,
+      "enters_p1": false,
+      "enters_realtime_truth": false,
+      "replacement_required_when_canonical_history_available": true,
+      "source_lane": "AWC",
+      "station_id": "ZGSZ",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "content_sha256": "c4dd385bafd23d62438b2feb6325644147580f608cf4fd0b0dbd883f42e0ad9b",
+      "dataset_content_sha256": "eba59bbde4879e326fc8553d4f51091be2e5e1c0b7cd59fee6a2613f72f78008",
+      "dataset_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZSPD/calibration_truth_dataset.json",
+      "enters_hard_no": false,
+      "enters_p1": false,
+      "enters_realtime_truth": false,
+      "replacement_required_when_canonical_history_available": true,
+      "source_lane": "AWC",
+      "station_id": "ZSPD",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "content_sha256": "600c4bf51cf395c88bc06bd5fe1e781be2d33b4ff4c9215569f66ec79e8f8f3b",
+      "dataset_content_sha256": "a62dbb33c098632c056db8fae06c0c2adf8c7a495836fb3b2c931de1704ea129",
+      "dataset_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZSQD/calibration_truth_dataset.json",
+      "enters_hard_no": false,
+      "enters_p1": false,
+      "enters_realtime_truth": false,
+      "replacement_required_when_canonical_history_available": true,
+      "source_lane": "AWC",
+      "station_id": "ZSQD",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "content_sha256": "6e9e68d5524a184ed8e819e79c23f06508538775d417670a56a9ced93ad85758",
+      "dataset_content_sha256": "5599906e7c67abb267876191ca2b39100d5c34810b50730f13821cf954214261",
+      "dataset_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZUCK/calibration_truth_dataset.json",
+      "enters_hard_no": false,
+      "enters_p1": false,
+      "enters_realtime_truth": false,
+      "replacement_required_when_canonical_history_available": true,
+      "source_lane": "AWC",
+      "station_id": "ZUCK",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    },
+    {
+      "content_sha256": "c097df70264fda9f7b07491b69de37c11b96abba6d8f00764fe56a9e5e36ae29",
+      "dataset_content_sha256": "f5041852d38822ee07c3385b9ebe1d1883f75ecfb68c39bd9a8c70571f43f3ac",
+      "dataset_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_five_model_calibration/ZUUU/calibration_truth_dataset.json",
+      "enters_hard_no": false,
+      "enters_p1": false,
+      "enters_realtime_truth": false,
+      "replacement_required_when_canonical_history_available": true,
+      "source_lane": "AWC",
+      "station_id": "ZUUU",
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+    }
+  ]
+}

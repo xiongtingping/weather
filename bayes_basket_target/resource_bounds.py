@@ -33,7 +33,12 @@ MAX_JSON_DEPTH = 32
 # separate structural ceiling that is still comfortably bounded by the
 # process-RSS and input/output byte limits.
 MAX_JSON_NODES = 500_000
-MAX_TARGET_DB_BYTES = 256 * MIB
+# 45 stations × all available native ensemble products × 28 settled
+# station-days requires roughly 1.5-2 GiB in the append-only per-member
+# schema.  Keep a hard local bound with ample headroom; WAL and RSS remain
+# independently capped so a single transaction or process cannot approach
+# this store-level ceiling.
+MAX_TARGET_DB_BYTES = 4096 * MIB
 MAX_TARGET_WAL_BYTES = 64 * MIB
 MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * MIB
 MAX_TARGET_RESEARCH_RAW_FILES = 100_000

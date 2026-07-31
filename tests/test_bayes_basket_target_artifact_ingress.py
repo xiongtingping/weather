@@ -320,6 +320,12 @@ def test_governed_ensemble_selection_evidence_round_trip_and_tamper_gate() -> No
     ensemble = replace(
         base, selection_evidence_sha256=selection["content_sha256"]
     )
+    ensemble_identity = asdict(ensemble)
+    ensemble_identity.pop("content_sha256")
+    ensemble = replace(
+        ensemble,
+        content_sha256=content_sha256(ensemble_identity),
+    )
     packet = {
         "schema": "bayes_basket_target_artifact_ingress_v1",
         "calibration_artifacts": [],
@@ -346,11 +352,98 @@ def test_governed_ensemble_selection_evidence_round_trip_and_tamper_gate() -> No
         assert ensemble.ensemble_artifact_id in bundle.ensemble_artifacts
         assert selection["content_sha256"] in bundle.ensemble_selection_evidence
 
+        # A legacy row that predates the global 20+8 OOS floor can remain in
+        # append-only history, but it has no activation and must not poison
+        # loading a later compatible generation.  New ingress still rejects
+        # the same row in the dedicated test below.
+        columns = (
+            "ensemble_artifact_id", "station_id", "season_bin",
+            "lead_bucket", "run_cycle", "settlement_definition",
+            "candidate_models_json", "supported_masks_json",
+            "residual_covariance_json", "correlation_penalty",
+            "valid_from_utc", "valid_until_utc", "content_sha256",
+            "selection_evidence_sha256",
+            "previous_ensemble_artifact_sha256", "weight_method",
+            "effective_sample_n", "max_weight_delta", "train_start_date",
+            "train_end_date", "recent_start_date", "recent_end_date",
+            "holdout_start_date", "holdout_end_date", "oos_metrics_json",
+        )
+        source = conn.execute(
+            "SELECT " + ",".join(columns)
+            + " FROM calibration_ensemble_artifact "
+            "WHERE ensemble_artifact_id=?",
+            (ensemble.ensemble_artifact_id,),
+        ).fetchone()
+        legacy = list(source)
+        legacy[0] = "legacy-short-window-unactivated"
+        legacy[12] = "a" * 64
+        legacy[16] = 19.0
+        conn.execute(
+            "INSERT INTO calibration_ensemble_artifact("
+            + ",".join(columns)
+            + ") VALUES(" + ",".join("?" for _ in columns) + ")",
+            legacy,
+        )
+        replay_bundle = load_production_artifacts(
+            conn,
+            station_id="ZUUU",
+            evaluation_at_utc="2026-07-23T00:30:00Z",
+            require_policy=False,
+        )
+        assert "legacy-short-window-unactivated" in (
+            replay_bundle.ensemble_artifacts
+        )
+
         tampered = dict(selection)
         tampered["actual_max_weight_delta"] = 0.1
         bad_packet = {**packet, "ensemble_selection_evidence": [tampered]}
         with pytest.raises(ContractError, match="content_sha256_mismatch"):
             ingest_artifact_bundle(conn, bad_packet, commit=True)
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    (
+        (
+            {"effective_sample_n": 19.0},
+            "formal_ensemble_training_sample_insufficient",
+        ),
+        (
+            {
+                "holdout_start_date": "2026-06-24",
+                "holdout_end_date": "2026-06-30",
+            },
+            "formal_ensemble_holdout_sample_insufficient",
+        ),
+    ),
+)
+def test_artifact_ingress_rejects_ensemble_below_global_oos_minimums(
+    changes: dict[str, object],
+    reason: str,
+) -> None:
+    invalid = replace(_ensemble(), **changes)
+    packet = {
+        "schema": "bayes_basket_target_artifact_ingress_v1",
+        "calibration_artifacts": [],
+        "ensemble_selection_evidence": [],
+        "ensemble_artifacts": [asdict(invalid)],
+        "calibration_activations": [],
+        "calibration_promotions": [],
+        "global_priors": [],
+        "policy_artifacts": [],
+        "policy_activations": [],
+        "cash_phase_policies": [],
+        "cash_phase_authority_manifests": [],
+        "policy_promotions": [],
+    }
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        with pytest.raises(ContractError, match=reason):
+            ingest_artifact_bundle(conn, packet, commit=True)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_ensemble_artifact"
+        ).fetchone()[0] == 0
 
 
 def _candidate_cash_packet() -> tuple[dict[str, object], BasketCashPhasePolicyArtifact]:

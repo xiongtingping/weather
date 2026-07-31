@@ -11,9 +11,9 @@ def test_roadmap_compliance_matrix_has_119_items() -> None:
     matrix = build_matrix()
     assert matrix["item_count"] == 119
     assert matrix["declared_status_counts"] == {
-        "DONE": 53,
-        "PARTIAL": 65,
-        "TODO": 1,
+        "DONE": 55,
+        "PARTIAL": 64,
+        "TODO": 0,
         "BLOCKED": 0,
     }
     assert matrix["boundary"]["writes_production_db"] is False

@@ -1,0 +1,687 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27",
+    "2026-07-28",
+    "2026-07-29"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-01T22:00:00Z",
+      "target_day_start_utc": "2026-06-30T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T22:00:00Z",
+      "target_day_start_utc": "2026-07-01T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T22:00:00Z",
+      "target_day_start_utc": "2026-07-02T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-04T22:00:00Z",
+      "target_day_start_utc": "2026-07-03T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T22:00:00Z",
+      "target_day_start_utc": "2026-07-04T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T22:00:00Z",
+      "target_day_start_utc": "2026-07-05T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T22:00:00Z",
+      "target_day_start_utc": "2026-07-06T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T22:00:00Z",
+      "target_day_start_utc": "2026-07-07T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T22:00:00Z",
+      "target_day_start_utc": "2026-07-08T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T22:00:00Z",
+      "target_day_start_utc": "2026-07-09T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T22:00:00Z",
+      "target_day_start_utc": "2026-07-10T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T22:00:00Z",
+      "target_day_start_utc": "2026-07-11T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T22:00:00Z",
+      "target_day_start_utc": "2026-07-12T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-14T22:00:00Z",
+      "target_day_start_utc": "2026-07-13T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-15T22:00:00Z",
+      "target_day_start_utc": "2026-07-14T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-16T22:00:00Z",
+      "target_day_start_utc": "2026-07-15T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-17T22:00:00Z",
+      "target_day_start_utc": "2026-07-16T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-18T22:00:00Z",
+      "target_day_start_utc": "2026-07-17T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-19T22:00:00Z",
+      "target_day_start_utc": "2026-07-18T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-20T22:00:00Z",
+      "target_day_start_utc": "2026-07-19T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-21T22:00:00Z",
+      "target_day_start_utc": "2026-07-20T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-22T22:00:00Z",
+      "target_day_start_utc": "2026-07-21T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-23T22:00:00Z",
+      "target_day_start_utc": "2026-07-22T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-24T22:00:00Z",
+      "target_day_start_utc": "2026-07-23T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-25T22:00:00Z",
+      "target_day_start_utc": "2026-07-24T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-26T22:00:00Z",
+      "target_day_start_utc": "2026-07-25T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-27T22:00:00Z",
+      "target_day_start_utc": "2026-07-26T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-28T22:00:00Z",
+      "target_day_start_utc": "2026-07-27T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:31:05Z",
+      "event_date": "2026-07-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-29T22:00:00Z",
+      "target_day_start_utc": "2026-07-28T22:00:00Z",
+      "target_timezone": "Europe/Paris"
+    }
+  ],
+  "evidence_sha256": "3fe2e51c6579764bdf7e167e300cf76e63afc84bc3a4ad095a2a8030cd5ae4a8",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-07-01",
+          "response_sha256": "bd7b16f71579deb8805fc5304fc373450020608819727776fd0603e4b22577c9",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260701_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "d84a1f0237b15c58c31e50a5bfff94a576e3a0f1556876d3e8c3e2d817ab1666",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260702_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "074694db2cc05b7489c7880ab1638d1096c57031fcf7ffdebd3e9cd283393b57",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260703_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-04",
+          "response_sha256": "835e780f4c5df1195a4f22bc45b0b7311dbd6eb918eff51ff234da78094008a7",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260704_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-05",
+          "response_sha256": "452c563735a01c949e184b6ce6b33387ba4a0a7cefef563d586c7259f957abc9",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260705_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-06",
+          "response_sha256": "f1284f3579ea877d47047cf2e4115753432998649fcfbcdbe4428d2fa48cafbc",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260706_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-07",
+          "response_sha256": "a2654f73c22e816c49b59f69731f8a018a6ff0220f369698bdb67d94dc2c9f19",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260707_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "45512ffa6a34c0816890d2a662ba7b240fe6035c0b81199aeb8f26640c9f4cbd",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260708_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-09",
+          "response_sha256": "211b195c9beb4e87f9978ba79aa98f02ab33bb09108289c0991a4fe5ff1523fe",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260709_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "a4d948b5097b9c71788f133dc821778db6f8579e6870a23087ce56694115af08",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260710_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-11",
+          "response_sha256": "437ece9384e565dcbcf7d422dbd686c77348eaa8edf98af9494a9614cef4360e",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260711_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-12",
+          "response_sha256": "988ad1a7116d72cfb1c178b7367cc1e207bed3f26cce0f542a7ffc8fab1b27bc",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260712_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-13",
+          "response_sha256": "4596961166e3c9643c8192fd473a99ad7967f1fd80b77cd448035667a53d6ccd",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260713_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-14",
+          "response_sha256": "61e2593adcc8f28f046610b949835c4dfc22e75472e57cf048b648634ce38e2f",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260714_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-15",
+          "response_sha256": "15e4997bb615d234ea0628990653e2cfa736a87b93c783e63459d2cd6ce92e26",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260715_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-16",
+          "response_sha256": "89908257126a445bb690995c00d032be6ff2e2713ba0eaf631dbc28c16ad4baf",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260716_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-17",
+          "response_sha256": "142646ad5cb7091e3f01040d9687f23036b3f41b68e99554429bdef3a7328cc9",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260717_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-18",
+          "response_sha256": "714187be256fd16c938e20bd4775ac86a1d62700e1149eb3edc9a5cda4cc7a33",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260718_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-19",
+          "response_sha256": "62d2dfba00c7c1085fcb3749c435c074c04ec13d146cad982cbd2cc906d56383",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260719_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-20",
+          "response_sha256": "0a094c55181c19d1371dee181e402117a86ce3bc7b44f44fe777979f83fe849e",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260720_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-21",
+          "response_sha256": "863997ec7a58a5c0d16d7cacfd2a7c99395aaf718d5db754a4c4f82cc320a0ab",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260721_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-22",
+          "response_sha256": "70a554ac15c652da2a8b1bdf2ae52a7f6b77f20ccdef0255abfa3f3e73ac230f",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260722_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "add067033e10997c25f4e328459d5bb1f743229d3da2b743323d680346e1100d",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260723_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-24",
+          "response_sha256": "431f7702f6dea34fc49e96b6048be358d5d6392689e20adb8b6bad29429cbe31",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260724_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-25",
+          "response_sha256": "a2cd89dc9fda6844f2ed1119a892197be5225f3aa0895dca8fe37ac9e8265eb0",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260725_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-26",
+          "response_sha256": "82901b7bb0307449def785ac6a612ce5eed199a2a5fa0f88ca1d6e9a93241df5",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260726_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-27",
+          "response_sha256": "b5f4bd8229f8ba5db9129da28a3c67bf6157f5eb816db5c625aeb9e6e9185017",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260727_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-28",
+          "response_sha256": "7b191a9e43fb2081428888701c43ff97b83613d003418a3656295f4f8fcf73ca",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260728_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        },
+        {
+          "event_date": "2026-07-29",
+          "response_sha256": "10a2a747297170d8f009c647166f5be9945dd16bbdcd617c689b1efaa40e4a1b",
+          "returned_rows": 48,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=LFPB&format=json&date=20260729_2200&hours=24",
+          "stations": [
+            "LFPB"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 29,
+      "reference_only": false,
+      "returned": 1391,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "proxy_or_direct_dns",
+        "batch_budget_sec": 900.0,
+        "budget_exhausted": false,
+        "connect_to": [],
+        "max_attempts": 2,
+        "timeout_sec": 30
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-30T11:31:05Z",
+  "observation_count": 1391,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LFPB/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/truth_gap_refill",
+  "receipt_sha256": "34bb386734b5538f811f87854581d3c923fe80f5ee88596e8481ef4d59a0d9a5",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LFPB/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 1391
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 29,
+  "station_day_keys": [
+    "LFPB|2026-07-01",
+    "LFPB|2026-07-02",
+    "LFPB|2026-07-03",
+    "LFPB|2026-07-04",
+    "LFPB|2026-07-05",
+    "LFPB|2026-07-06",
+    "LFPB|2026-07-07",
+    "LFPB|2026-07-08",
+    "LFPB|2026-07-09",
+    "LFPB|2026-07-10",
+    "LFPB|2026-07-11",
+    "LFPB|2026-07-12",
+    "LFPB|2026-07-13",
+    "LFPB|2026-07-14",
+    "LFPB|2026-07-15",
+    "LFPB|2026-07-16",
+    "LFPB|2026-07-17",
+    "LFPB|2026-07-18",
+    "LFPB|2026-07-19",
+    "LFPB|2026-07-20",
+    "LFPB|2026-07-21",
+    "LFPB|2026-07-22",
+    "LFPB|2026-07-23",
+    "LFPB|2026-07-24",
+    "LFPB|2026-07-25",
+    "LFPB|2026-07-26",
+    "LFPB|2026-07-27",
+    "LFPB|2026-07-28",
+    "LFPB|2026-07-29"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "Europe/Paris"
+}

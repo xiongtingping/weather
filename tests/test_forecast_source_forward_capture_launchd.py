@@ -1,20 +1,34 @@
-import plistlib
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_hourly_forward_capture_launchd_is_research_only_and_uses_chengdu_date():
-    with (ROOT / "launchd" / "com.weather.forecast_source_forward_capture.plist").open("rb") as handle:
-        payload = plistlib.load(handle)
+def test_forecast_capture_launchdaemon_is_retired() -> None:
+    plist = ROOT / "launchd/com.weather.forecast_source_forward_capture.plist"
+    script = (
+        ROOT
+        / "scripts/install_forecast_source_forward_capture_launchdaemon.sh"
+    )
+    text = script.read_text(encoding="utf-8")
+    assert not plist.exists()
+    assert "exit 78" in text
+    assert "no fourth service" in text
+    for forbidden in (
+        "sudo",
+        "launchctl",
+        "/Library/LaunchDaemons",
+        "bootstrap",
+        "kickstart",
+    ):
+        assert forbidden not in text
 
-    command = " ".join(payload["ProgramArguments"])
-    assert payload["Label"] == "com.weather.forecast_source_forward_capture"
-    assert payload["StartCalendarInterval"] == {"Minute": 0}
-    assert payload["ProgramArguments"][:2] == ["/bin/zsh", "-c"]
-    assert "TZ=Asia/Shanghai" in command
-    assert "capture_current_forecast_source_forward.py" in command
-    assert "--allow-research-write" in command
-    assert "--live" not in command
-    assert "forecast_source_skill/forward" in command
+    completed = subprocess.run(
+        ["/bin/bash", str(script)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 78

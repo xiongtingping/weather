@@ -64,7 +64,7 @@ RUNTIME_CLOSURE_FILES = (
     Path("scripts/reported_trajectory_no_daemon.py"),
     Path("scripts/market_ws_listener.py"),
     Path("scripts/clob_order_service.mjs"),
-    Path("scripts/cutover_basket_plus_hard_no_production.py"),
+    Path("scripts/targetctl.sh"),
     TARGET_ACTIVATION,
 )
 PROCESS_MARKERS = {
@@ -183,8 +183,13 @@ def _boundary_snapshot(root: Path) -> dict[str, Any]:
         "writes_production_db_false": target.get("writes_production_db") is False,
     }
     protected_checks = {
-        "guard_name_preserved": "basket_activation_not_live_enabled"
-        in (root / "scripts/cutover_basket_plus_hard_no_production.py").read_text(encoding="utf-8"),
+        "protected_live_config_not_a_runtime_entry": (
+            "production_no_live=true"
+            in (root / "scripts/targetctl.sh").read_text(encoding="utf-8")
+            and "rm -f \"$PAUSE\"" not in (
+                root / "scripts/targetctl.sh"
+            ).read_text(encoding="utf-8")
+        ),
         "resident_enabled": resident.get("state") == "enabled",
         "resident_live_submit_true": resident.get("live_submit_authorized") is True,
         "resident_production_live": resident.get("execution_mode") == "production_live",

@@ -1,7 +1,47 @@
 import sqlite3
 from pathlib import Path
 
+from bayes_basket_target.nwp_rotation_state import build_rotation_state
+from bayes_basket_target.station_registry import coordinate_registry_manifest
 from scripts import reported_trajectory_no_daemon as daemon
+
+
+def _create_active_registry_fixture(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE reported_trajectory_market_registry("
+        "slug TEXT,event_date TEXT,station_id TEXT,"
+        "settlement_timezone TEXT,settlement_unit TEXT,outcome TEXT,"
+        "yes_token TEXT,registry_json TEXT,source_lane TEXT,"
+        "source_eligible INTEGER,market_active INTEGER,"
+        "market_accepting_orders INTEGER)"
+    )
+
+
+def _insert_registry_scope(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO reported_trajectory_market_registry VALUES("
+        "?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"{station_id.lower()}-{event_date}",
+            event_date,
+            station_id,
+            settlement_timezone,
+            "celsius",
+            "30",
+            f"yes-{station_id}-{event_date}",
+            "{}",
+            "awc",
+            1,
+            1,
+            1,
+        ),
+    )
 
 
 def test_resident_forecast_prefetch_has_no_second_target_writer() -> None:
@@ -29,6 +69,7 @@ def test_forecast_cycle_keeps_optional_taf_capture_inside_existing_service(
         "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
         "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
     )
+    _create_active_registry_fixture(conn)
 
     class Worker:
         commit_conn = conn
@@ -48,7 +89,13 @@ def test_forecast_cycle_keeps_optional_taf_capture_inside_existing_service(
     worker = Worker()
     first = daemon.run_target_forecast_refresh_cycle(worker)
     second = daemon.run_target_forecast_refresh_cycle(worker)
-    assert first["forward_taf_capture"]["state"] == "no_active_p0m_scope"
+    assert (
+        first["forward_taf_capture"]["state"]
+        == "no_active_registry_scope"
+    )
+    assert first["forward_taf_capture"]["scope_source"] == (
+        "target_local_active_market_registry"
+    )
     assert second["forward_taf_capture"]["state"] == "not_due"
     assert first["calls_order_gateway"] is False
 
@@ -62,6 +109,7 @@ def test_forecast_cycle_uses_read_only_target_connection_for_taf_scope(
         "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
         "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
     )
+    _create_active_registry_fixture(conn)
 
     class Worker:
         commit_conn = None
@@ -84,7 +132,10 @@ def test_forecast_cycle_uses_read_only_target_connection_for_taf_scope(
 
     result = daemon.run_target_forecast_refresh_cycle(Worker())
 
-    assert result["forward_taf_capture"]["state"] == "no_active_p0m_scope"
+    assert (
+        result["forward_taf_capture"]["state"]
+        == "no_active_registry_scope"
+    )
     assert result["calls_order_gateway"] is False
     assert result["places_orders"] is False
 
@@ -99,21 +150,28 @@ def test_forecast_taf_scope_failure_does_not_block_later_date(
         "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
         "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
     )
-    conn.executemany(
-        "INSERT INTO basket_probability_envelope VALUES("
-        "'RKPK',?,'Asia/Seoul','COMMITTED','P0',"
-        "'2026-07-29T00:00:00Z','2099-01-01T00:00:00Z')",
-        [("2026-07-29",), ("2026-07-30",)],
+    _create_active_registry_fixture(conn)
+    _insert_registry_scope(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-31",
+        settlement_timezone="Asia/Seoul",
+    )
+    _insert_registry_scope(
+        conn,
+        station_id="RKSI",
+        event_date="2026-08-01",
+        settlement_timezone="Asia/Seoul",
     )
     attempted: list[str] = []
 
     def capture(**kwargs):
         event_date = str(kwargs["event_date"])
         attempted.append(event_date)
-        if event_date == "2026-07-29":
+        if event_date == "2026-08-01":
             raise RuntimeError("tx_missing")
         return {
-            "station_id": "RKPK",
+            "station_id": str(kwargs["station_id"]),
             "event_date": event_date,
             "forecast_revision": {
                 "source_object_sha256": "a" * 64,
@@ -125,6 +183,11 @@ def test_forecast_taf_scope_failure_does_not_block_later_date(
         daemon,
         "refresh_forward_taf_inbox",
         lambda **_kwargs: {"content_sha256": "b" * 64},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "utc_now",
+        lambda: "2026-07-31T00:30:00Z",
     )
 
     class Worker:
@@ -142,11 +205,13 @@ def test_forecast_taf_scope_failure_does_not_block_later_date(
     result = daemon.run_target_forecast_refresh_cycle(Worker(conn))
     taf = result["forward_taf_capture"]
 
-    assert attempted == ["2026-07-29", "2026-07-30"]
+    assert attempted == ["2026-08-01", "2026-07-31"]
     assert taf["state"] == "captured_with_scope_failures"
+    assert taf["catalog_scope_count"] == 2
+    assert taf["selected_scope_count"] == 2
     assert taf["capture_count"] == 1
     assert taf["failure_count"] == 1
-    assert taf["failures"][0]["event_date"] == "2026-07-29"
+    assert taf["failures"][0]["event_date"] == "2026-08-01"
 
 
 def test_only_explicit_sqlite_disk_io_is_recoverable() -> None:
@@ -161,6 +226,18 @@ def test_serialized_target_io_recovery_ignores_historical_decisions() -> None:
     })
     assert daemon.target_result_has_recoverable_sqlite_io_error({
         "market_ingress": {"reason": "OperationalError:disk I/O error"},
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": (
+            "target_writer_open_failed:ResourceBoundError:"
+            "target_database_wal_checkpoint_failed"
+        ),
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": (
+            "target_writer_reopen_failed:ResourceBoundError:"
+            "target_database_wal_checkpoint_busy"
+        ),
     })
     assert daemon.target_result_has_recoverable_sqlite_io_error({
         "resident_nwp_capture": {
@@ -269,6 +346,60 @@ def test_forecast_cycle_can_reuse_just_materialized_exact_scope_probability() ->
         "live_submit_authorized": False,
         "orders_submitted": 0,
     }
+
+
+def test_resident_nwp_in_flight_receipt_reuses_validated_canonical_rotation() -> None:
+    stations = tuple(
+        coordinate_registry_manifest()["station_ids"]
+    )
+    scopes = [
+        {
+            "station_ids": [station],
+            "event_date": "2026-07-30",
+            "settlement_timezone": "UTC",
+        }
+        for station in stations
+    ]
+    rotation = build_rotation_state(
+        station_ids=stations,
+        scopes=scopes,
+        selected_scopes=scopes[:4],
+        cursor_by_priority={0: 4},
+        outcomes=[
+            {
+                "scope_key": (
+                    f"{row['station_ids'][0]}|2026-07-30|UTC"
+                ),
+                "state": (
+                    "CAPTURED_CANDIDATE"
+                    if index == 0
+                    else "BLOCKED_FAIL_CLOSED"
+                ),
+                "candidate_only": index == 0,
+            }
+            for index, row in enumerate(scopes[:4])
+        ],
+        previous=None,
+        updated_at_utc="2026-07-30T07:00:00Z",
+    )
+    worker = type("Worker", (), {
+        "station_allowlist": stations,
+        "_nwp_rotation_state": rotation,
+    })()
+
+    receipt = daemon.resident_nwp_in_flight_receipt(
+        worker,
+        scheduled_at_utc="2026-07-30T07:01:00Z",
+    )
+
+    assert receipt["state"] == "in_flight_previous_rotation"
+    assert receipt["completion_claimed"] is False
+    assert receipt["configured_station_ids"] == list(stations)
+    assert receipt["discovered_station_ids"] == list(stations)
+    assert receipt["scope_count"] == 45
+    assert receipt["selected_scope_count"] == 4
+    assert receipt["candidate_prefetch_attempt_count"] == 1
+    assert receipt["calls_order_gateway"] is False
 
 
 def test_target_production_cycle_only_consumes_durable_evidence() -> None:

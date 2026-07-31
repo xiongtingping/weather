@@ -1,0 +1,242 @@
+{
+  "calibration_activations": [],
+  "calibration_artifacts": [],
+  "calibration_promotions": [],
+  "calls_order_gateway": false,
+  "candidate_bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+  "cash_phase_authority_manifests": [
+    {
+      "artifact_sha256": "d94e902ecd265aa91838f97f5a06c4de8e35707c2b3ebf589743edb4e0263dc9",
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "manifest_sha256": "c60ac29a7b2d1a41dc74c9083a7a8552621b9c43e695e30f0f5957e5b432a6ed",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-OEJN",
+      "schema": "basket_cash_phase_authority_manifest_v1",
+      "station_id": "OEJN",
+      "station_timezone": "Asia/Riyadh",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "cash_phase_boundary": {
+    "changes_probability": false,
+    "changes_support_set": false,
+    "changes_target_shares": false,
+    "controls_clip_ceiling_only": true,
+    "source_wallet_parameters_used": false
+  },
+  "cash_phase_policies": [
+    {
+      "cash_by_phase": {
+        "STANDARD": 10.77,
+        "TAIL": 0.25
+      },
+      "content_sha256": "d94e902ecd265aa91838f97f5a06c4de8e35707c2b3ebf589743edb4e0263dc9",
+      "evidence_status": "DESIGN_CANDIDATE",
+      "heavy_to_standard_local_time": "19:54",
+      "policy_version": "source-clip-clock-v20260716-17-partial-candidate-OEJN",
+      "promoted": false,
+      "schema": "basket_cash_phase_policy_artifact_v1",
+      "standard_to_tail_local_time": "09:58",
+      "station_id": "OEJN",
+      "station_timezone": "Asia/Riyadh",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "ensemble_artifacts": [],
+  "ensemble_selection_evidence": [],
+  "execution_mode": "production_no_live",
+  "global_priors": [
+    {
+      "content_sha256": "555bd13cd4365d060d1d7a1aeed1c3bf27e05e15d69e79e12829e70c23ec4f96",
+      "default_policy": {
+        "basket_concentration_lambda_usdc": 0.25,
+        "basket_directional_coverage_lambda_usdc": 0.05,
+        "basket_downside_lambda_per_usdc": 0.02,
+        "basket_optimizer_max_iterations": 4000,
+        "basket_optimizer_tolerance": 1e-08,
+        "clip_max_notional_usdc": 3.0,
+        "clip_min_notional_usdc": 1.0,
+        "disagreement_concentration_gain_per_layer": 0.5,
+        "maximum_bucket_budget_fraction": 0.75,
+        "total_budget_usdc": 12.0
+      },
+      "family_parameters": {
+        "cadence": {},
+        "reserve": {},
+        "target": {}
+      },
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "promoted": false,
+      "schema": "global_basket_prior_artifact_v1",
+      "strategy_version": "target-v1",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "live_order_authorized": false,
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "packet_sha256": "69fd13f78e241e6eb67469326f1d4a602da6749da1f676a3130b9b438c75fd44",
+  "places_orders": false,
+  "policy_activations": [
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "station-formula-v1-OEJN-activation-no-live-v3",
+      "cadence_artifact_id": "station-formula-v1-OEJN-cadence",
+      "content_sha256": "203d1e3887e4c5c834b3f33fe7b0941fe499bc9a49c97110896d396e9e0ef4a1",
+      "fallback_families": [],
+      "generation": 4,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "reserve_artifact_id": "station-formula-v1-OEJN-reserve",
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "target_artifact_id": "station-formula-v1-OEJN-target",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-OEJN-P0-d0",
+      "cadence_artifact_id": null,
+      "content_sha256": "c2fb47fd973d04d168148cdf4ef30018437bb7912aeb0503d6fb8994daf68c35",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d0",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P0",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "activated_at_utc": "2026-07-23T00:00:00Z",
+      "activation_id": "target-no-live-global-fallback-v4-OEJN-P1-d0",
+      "cadence_artifact_id": null,
+      "content_sha256": "f2c47768e82a64425e7694dfe4323650f56c81edf67155ddf53716ac43a4d073",
+      "fallback_families": [
+        "target",
+        "reserve",
+        "cadence"
+      ],
+      "generation": 2,
+      "global_prior_id": "target-no-live-global-prior-design-v3",
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d0",
+      "promoted": false,
+      "reserve_artifact_id": null,
+      "schema": "station_basket_policy_activation_v1",
+      "season_bin": "summer",
+      "stage": "P1",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "target_artifact_id": null,
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_artifacts": [
+    {
+      "artifact_id": "station-formula-v1-OEJN-target",
+      "content_sha256": "69d43c2d8cfb28f3f7bf7b58a3d75b4fed0696bcd727f76e269ca01414394e06",
+      "effective_sample_n": 3.0,
+      "family": "target",
+      "kappa": 8.0,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "abs_bucket_offset_from_proxy_c": 0.6375890252975704,
+        "bucket_offset_from_proxy_c": -0.1465688700428061,
+        "edge": 0.34106689083947417,
+        "kelly_fraction": -0.06789270683169718,
+        "model_spread_c": -0.5198550079795589,
+        "proxy_probability": -0.3846399097219686,
+        "reference_price": -0.6722486739553177,
+        "roi_edge": 0.25792944065878004
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-OEJN-reserve",
+      "content_sha256": "b1ee169f8a5a30000315cf36dac7e04787d7a1c454fe7b4940ff62521000c065",
+      "effective_sample_n": 75.0,
+      "family": "reserve",
+      "kappa": 100.0,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "price_margin": 0.012175906469192546
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    },
+    {
+      "artifact_id": "station-formula-v1-OEJN-cadence",
+      "content_sha256": "01dfe5941ba03fa82479b9dd5e7e9a85a501fc8139d1c639bfe81b442f842cc7",
+      "effective_sample_n": 106.0,
+      "family": "cadence",
+      "kappa": 100.00000000000001,
+      "liquidity_bin": "liquid",
+      "maturity_bin": "d1",
+      "promoted": false,
+      "schema": "station_policy_artifact_v1",
+      "season_bin": "summer",
+      "stage": "P0-M",
+      "station_id": "OEJN",
+      "strategy_version": "target-v1",
+      "theta_local": {
+        "gate_seconds_intercept": 5.748146499351588
+      },
+      "trained_through_utc": "2026-07-17T23:59:59Z",
+      "valid_from_utc": "2026-07-23T00:00:00Z",
+      "valid_until_utc": "2026-08-23T00:00:00Z"
+    }
+  ],
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "policy_promotions": [],
+  "producer_schema": "bayes_basket_target_no_live_candidate_artifacts_v1",
+  "promoted": false,
+  "research_parameter_boundary": {
+    "research_coefficients_promoted": false,
+    "self_owned_baseline_prior": "target-no-live-global-prior-design-v3",
+    "source_candidate_bundle_retained_as_lineage": true,
+    "unsupported_cadence_coefficients_not_executed": true,
+    "unsupported_target_coefficients_not_executed": true
+  },
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "station_ids": [
+    "OEJN"
+  ]
+}

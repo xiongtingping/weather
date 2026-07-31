@@ -580,12 +580,17 @@ def _build_oos(
     season_bin: str = "summer",
     model_ids: Sequence[str] = MODEL_IDS,
     run_cycle: str | None = None,
+    allow_extended_models: bool = False,
 ) -> dict[str, Any]:
     models = tuple(str(model).strip().upper() for model in model_ids)
     if (
         len(models) < MIN_FORMAL_ENSEMBLE_MODELS
         or len(set(models)) != len(models)
-        or set(models) - set(MODEL_IDS)
+        or any(not model or len(model) > 32 for model in models)
+        or (
+            not allow_extended_models
+            and bool(set(models) - set(MODEL_IDS))
+        )
     ):
         raise ContractError("oos_model_scope_invalid")
     run_cycle_value = str(
@@ -656,52 +661,95 @@ def _build_oos(
     artifacts = []
     model_oos = []
     for model in models:
-        observations = [
-            ResidualObservation(
-                residual_id=(
-                    "prev-runs-"
-                    + content_sha256({
-                        "model": model,
-                        "lead_days": lead_days,
-                        "event_date": target,
-                    })[:32]
-                ),
-                station_id=station_id,
-                model_id=model,
-                season_bin=season_bin,
-                lead_bucket=f"d{lead_days}",
-                run_cycle=run_cycle_value,
-                residual_c=residuals[(model, target)],
-                target_local_date=target,
-                paired_asof_utc=_utc_text(
-                    _event_window(target, settlement_timezone)[1]
-                ),
-            )
-            for target in train_dates
-        ]
-        artifact = fit_model_calibration_artifact(
-            observations,
-            artifact_id=(
-                f"cal-research-{station_id}-{model}-d{lead_days}-"
-                + content_sha256(train_dates)[:12]
-            ),
-            trained_through_utc=_utc_text(trained_through),
-            valid_from_utc=_utc_text(valid_from),
-            valid_until_utc=_utc_text(valid_until),
-            parent_scale_c=1.5,
-            kappa=8.0,
-            bias_enabled=True,
-            promoted=False,
+        artifact_id = (
+            f"cal-research-{station_id}-{model}-d{lead_days}-"
+            + content_sha256(train_dates)[:12]
         )
-        artifacts.append(_artifact_mapping(artifact))
+        if model in MODEL_IDS:
+            observations = [
+                ResidualObservation(
+                    residual_id=(
+                        "prev-runs-"
+                        + content_sha256({
+                            "model": model,
+                            "lead_days": lead_days,
+                            "event_date": target,
+                        })[:32]
+                    ),
+                    station_id=station_id,
+                    model_id=model,
+                    season_bin=season_bin,
+                    lead_bucket=f"d{lead_days}",
+                    run_cycle=run_cycle_value,
+                    residual_c=residuals[(model, target)],
+                    target_local_date=target,
+                    paired_asof_utc=_utc_text(
+                        _event_window(target, settlement_timezone)[1]
+                    ),
+                )
+                for target in train_dates
+            ]
+            artifact = fit_model_calibration_artifact(
+                observations,
+                artifact_id=artifact_id,
+                trained_through_utc=_utc_text(trained_through),
+                valid_from_utc=_utc_text(valid_from),
+                valid_until_utc=_utc_text(valid_until),
+                parent_scale_c=1.5,
+                kappa=8.0,
+                bias_enabled=True,
+                promoted=False,
+            )
+            artifact_row = _artifact_mapping(artifact)
+            bias_c = artifact.bias_c
+        else:
+            # Regional model IDs are registry-governed but are not yet part of
+            # the production ModelCalibrationArtifact enum.  Compute the same
+            # deterministic shrunk correction for OOS diagnostics without
+            # pretending it is promotable under the global-only schema.
+            values = [residuals[(model, target)] for target in train_dates]
+            mean_residual = sum(values) / len(values)
+            n_eff = float(len(train_dates))
+            rho = n_eff / (n_eff + 8.0)
+            variance = sum(
+                (value - mean_residual) ** 2 for value in values
+            ) / max(1, len(values) - 1)
+            bias_c = rho * mean_residual
+            residual_scale_c = math.sqrt(
+                max(1e-6, rho * variance + (1.0 - rho) * 1.5**2)
+            )
+            artifact_identity = {
+                "calibration_artifact_id": artifact_id,
+                "station_id": station_id,
+                "model_id": model,
+                "season_bin": season_bin,
+                "lead_bucket": f"d{lead_days}",
+                "run_cycle": run_cycle_value,
+                "settlement_definition": "official_daily_tmax_c",
+                "trained_through_utc": _utc_text(trained_through),
+                "sample_n": len(train_dates),
+                "effective_sample_n": n_eff,
+                "bias_c": bias_c,
+                "residual_scale_c": residual_scale_c,
+                "tail_parameters": {"lower_q": 0.05, "upper_q": 0.95},
+                "valid_from_utc": _utc_text(valid_from),
+                "valid_until_utc": _utc_text(valid_until),
+                "promoted": False,
+                "authority_scope": "REGIONAL_OOS_DIAGNOSTIC_ONLY",
+            }
+            artifact_row = {
+                **artifact_identity,
+                "content_sha256": content_sha256(artifact_identity),
+            }
+        artifacts.append(artifact_row)
         raw_holdout = [residuals[(model, target)] for target in holdout_dates]
         model_oos.append({
             "model_id": model,
             "train_n": len(train_dates),
             "holdout_n": len(holdout_dates),
-            "bias_c": artifact.bias_c,
+            "bias_c": bias_c,
             "raw": _metrics(raw_holdout),
-            "calibrated": _metrics(raw_holdout, artifact.bias_c),
+            "calibrated": _metrics(raw_holdout, bias_c),
         })
     covariance, correlation = _residual_matrices(
         models=models,
@@ -818,7 +866,11 @@ def _build_oos(
         "candidate_model_pool": list(models),
         "candidate_count": len(candidate_scores),
         "selected_models": list(selected),
-        "selected_model_set_hash": model_set_hash(selected),
+        "selected_model_set_hash": (
+            model_set_hash(selected)
+            if not (set(selected) - set(MODEL_IDS))
+            else content_sha256({"models": sorted(selected)})
+        ),
         "selected_weights": dict(winner["weights"]),
         "holdout_oos": {
             key: holdout_metrics[key]

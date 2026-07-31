@@ -32,7 +32,6 @@ from .atomic_ledger import (
 )
 from .contracts import (
     ContractError,
-    MODEL_IDS,
     ProbabilityEnvelope,
     content_sha256,
     timestamp_eq,
@@ -60,7 +59,6 @@ from .production_io import (
     compile_production_cycle_from_ssot,
     load_materialized_probability_envelopes,
     load_post_fill_recompute_requests,
-    load_production_artifacts,
     target_atomic_facts_from_cycle,
 )
 from .market_ingress import materialize_official_ws_evidence_cache
@@ -80,6 +78,12 @@ from .resource_bounds import (
     write_bounded_json,
     write_bounded_json_if_changed,
 )
+from .nwp_rotation_state import (
+    build_rotation_state,
+    load_rotation_state,
+    persist_rotation_state,
+    scope_key as nwp_rotation_scope_key,
+)
 from .runtime_config import (
     DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG,
     load_target_no_live_runtime_config,
@@ -91,13 +95,28 @@ from .market_registry import (
 )
 from .official_nwp_capture_scheduler import (
     MAX_DISCOVERED_SCOPES,
-    candidate_run_initializations,
-    capture_scope as capture_official_nwp_scope,
-    prefetch_candidate_raw_training,
     registry_capture_scopes,
 )
-from .p0_producer import compatible_run_candidates
-from .resident_nwp_producer import refresh_resident_p0
+from .open_meteo_ensemble import (
+    SCHEMA as OPEN_METEO_FORWARD_PACKET_SCHEMA,
+    capture_scope as capture_open_meteo_ensemble_scope,
+)
+from .official_native_forward_packet import (
+    SCHEMA as OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA,
+)
+from .native_ensemble_contract import P0_PROBABILITY_PATHWAY
+from .native_ensemble_oos import (
+    NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS,
+    NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS,
+    build_native_ensemble_oos,
+    persist_native_ensemble_oos,
+)
+from .native_ensemble_p0 import (
+    compile_native_ensemble_p0,
+    persist_native_ensemble_forward_prediction,
+)
+from .native_ensemble_store import ingest_forward_packet
+from .native_ensemble_training_facts import ingest_forward_taf_inbox
 from .p0_preselection import (
     commit_p0_preselection,
     compile_p0_preselection,
@@ -117,7 +136,8 @@ from .regime_materialization import (
 )
 from .ssot import production_ssot_schema_status
 from .settlement_truth import materialize_settled_training_truths
-from .station_registry import coordinate_registry_manifest
+from .settlement_time import settlement_day_window
+from .station_registry import coordinate_registry_manifest, station_coordinates
 from .taf_revision import (
     TafRevisionArtifact,
     compile_taf_revision_proof,
@@ -146,6 +166,7 @@ PRODUCTION_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
 MAX_FORWARD_P0_STATIONS = 45
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
+MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
 MAX_POST_FILL_RECOMPUTES_PER_PASS = 128
 MAX_REGIME_ARTIFACTS_PER_PASS = 256
@@ -399,6 +420,207 @@ def _blocked(reason: str, *, station_id: str | None = None, event_date: str | No
     return result
 
 
+def _native_ensemble_truth_signatures(
+    conn: sqlite3.Connection,
+    *,
+    max_stations: int = MAX_FORWARD_P0_STATIONS,
+    max_cases_per_station: int = (
+        MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION
+    ),
+) -> dict[str, str]:
+    """Hash every bounded accepted truth identity matched to member scope."""
+
+    rows = conn.execute(
+        "WITH matched AS ("
+        "SELECT DISTINCT m.station_id,t.local_date,t.content_sha256 "
+        "FROM calibration_native_ensemble_member_run m "
+        "JOIN calibration_station_daily_high_truth t "
+        "ON t.station_id=m.station_id "
+        "AND t.local_date=m.target_local_date "
+        "AND t.qc_status='ACCEPTED' "
+        "WHERE m.authority_scope="
+        "'PRODUCTION_NO_LIVE_CANDIDATE'"
+        "), selected_stations AS ("
+        "SELECT DISTINCT station_id FROM matched "
+        "ORDER BY station_id LIMIT ?"
+        "), ranked AS ("
+        "SELECT matched.station_id,matched.local_date,"
+        "matched.content_sha256,"
+        "ROW_NUMBER() OVER ("
+        "PARTITION BY matched.station_id "
+        "ORDER BY matched.local_date DESC,matched.content_sha256"
+        ") AS truth_rank "
+        "FROM matched JOIN selected_stations "
+        "ON selected_stations.station_id=matched.station_id"
+        ") "
+        "SELECT station_id,local_date,content_sha256 "
+        "FROM ranked WHERE truth_rank<=? "
+        "ORDER BY station_id,local_date,content_sha256",
+        (max_stations, max_cases_per_station),
+    ).fetchall()
+    identities_by_station: dict[str, list[dict[str, str]]] = {}
+    for station_id, local_date, truth_sha in rows:
+        station = str(station_id)
+        identities_by_station.setdefault(station, []).append({
+            "local_date": str(local_date),
+            "truth_content_sha256": str(truth_sha),
+        })
+    return {
+        station: content_sha256({
+            "station_id": station,
+            "accepted_truths": identities,
+        })
+        for station, identities in sorted(
+            identities_by_station.items()
+        )
+    }
+
+
+def _upsert_native_p0_inbox(
+    path: Path,
+    *,
+    compiled_packets: Sequence[Mapping[str, Any]],
+    generated_at_utc: str,
+) -> dict[str, Any]:
+    """Merge bounded compiled native P0 packets by station-day identity."""
+
+    existing_rows: list[dict[str, Any]] = []
+    if path.is_file():
+        existing = load_bounded_json(path)
+        identity = {
+            key: value
+            for key, value in existing.items()
+            if key != "content_sha256"
+        }
+        if (
+            existing.get("schema")
+            != "bayes_basket_target_p0_inbox_v1"
+            or not isinstance(existing.get("packets"), list)
+            or str(existing.get("content_sha256") or "")
+            != content_sha256(identity)
+        ):
+            raise ContractError("native_p0_inbox_invalid")
+        existing_rows = [
+            dict(item)
+            for item in existing["packets"]
+            if isinstance(item, Mapping)
+            and item.get("source_class")
+            == "calibrated_native_cross_ensemble"
+        ]
+    merged_by_scope = {
+        (
+            str((row.get("packet") or {}).get("station_id") or "")
+            .strip()
+            .upper(),
+            str((row.get("packet") or {}).get("event_date") or ""),
+        ): row
+        for row in existing_rows
+    }
+    def source_priority(row: Mapping[str, Any]) -> int:
+        packet = row.get("packet")
+        if not isinstance(packet, Mapping):
+            return 0
+        envelope = packet.get("native_probability_envelope")
+        if not isinstance(envelope, Mapping):
+            return 0
+        lineage = envelope.get("lineage")
+        if not isinstance(lineage, Mapping):
+            return 0
+        provider = lineage.get("native_transport_provider")
+        if provider in {
+            "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+            "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+        }:
+            return 2
+        if provider == "OPEN_METEO":
+            return 1
+        return 0
+
+    accepted_count = 0
+    for compiled in compiled_packets:
+        if compiled.get("schema") != (
+            "calibrated_native_cross_ensemble_p0_packet_v1"
+        ):
+            continue
+        packet = compiled.get("packet")
+        if not isinstance(packet, Mapping):
+            raise ContractError("native_p0_compiled_packet_invalid")
+        scope = (
+            str(packet.get("station_id") or "").strip().upper(),
+            str(packet.get("event_date") or ""),
+        )
+        if not all(scope):
+            raise ContractError("native_p0_compiled_scope_missing")
+        candidate_row = {
+            "source_class": compiled["source_class"],
+            "packet_content_sha256": compiled[
+                "packet_content_sha256"
+            ],
+            "packet": dict(packet),
+        }
+        current = merged_by_scope.get(scope)
+        if (
+            current is None
+            # SAME and MIXED are one official authority tier.  Keep the
+            # already selected official packet on a tie so a replay of an
+            # older SAME-cycle packet cannot replace a current MIXED packet.
+            or source_priority(candidate_row) > source_priority(current)
+        ):
+            merged_by_scope[scope] = candidate_row
+        accepted_count += 1
+    rows = [
+        merged_by_scope[key]
+        for key in sorted(
+            merged_by_scope,
+            key=lambda item: (item[1], item[0]),
+        )
+    ][-256:]
+    inbox_identity = {
+        "schema": "bayes_basket_target_p0_inbox_v1",
+        "generated_at_utc": generated_at_utc,
+        "packets": rows,
+    }
+    wrote = write_bounded_json_if_changed(path, {
+        **inbox_identity,
+        "content_sha256": content_sha256(inbox_identity),
+    })
+    return {
+        "state": "COMMITTED" if accepted_count else "NO_COMPILED_P0",
+        "accepted_count": accepted_count,
+        "packet_count": len(rows),
+        "wrote": wrote,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+
+
+def _load_native_forward_inbox(
+    path: Path,
+    *,
+    error_code: str,
+) -> list[Mapping[str, Any]]:
+    inbox = load_bounded_json(path)
+    identity = {
+        key: value
+        for key, value in inbox.items()
+        if key != "content_sha256"
+    }
+    if (
+        inbox.get("schema") != "native_ensemble_forward_inbox_v1"
+        or not isinstance(inbox.get("packets"), list)
+        or len(inbox["packets"]) > 256
+        or str(inbox.get("content_sha256") or "")
+        != content_sha256(identity)
+    ):
+        raise ContractError(error_code)
+    return [
+        packet
+        for packet in inbox["packets"]
+        if isinstance(packet, Mapping)
+    ]
+
+
 def _resolve_target_remaining_budget() -> float:
     """Resolve only the target-owned no-live budget.
 
@@ -568,7 +790,40 @@ class TargetProductionWorker:
         )
         if len(self.event_date_allowlist) > 7:
             raise RuntimeError("target_event_date_allowlist_cap_exceeded")
+        self.nwp_rotation_state_path = (
+            self.nwp_runtime_root / "rotation_state.json"
+        )
+        self.taf_rotation_state_path = (
+            self.nwp_runtime_root / "taf_rotation_state.json"
+        )
+        self._nwp_rotation_state: dict[str, Any] | None = None
+        self._nwp_rotation_state_load_error: str | None = None
+        try:
+            self._nwp_rotation_state = load_rotation_state(
+                self.nwp_rotation_state_path,
+                station_ids=self.station_allowlist,
+            )
+            if self._nwp_rotation_state is not None:
+                self._resident_nwp_scope_cursor_by_priority = {
+                    int(key): int(value)
+                    for key, value in (
+                        self._nwp_rotation_state.get(
+                            "cursor_by_priority"
+                        ) or {}
+                    ).items()
+                }
+        except Exception as exc:
+            self._nwp_rotation_state_load_error = (
+                f"{type(exc).__name__}:{exc}"
+            )
         self._resident_open_scope_cursor = 0
+        self._native_ensemble_scope_cursor = int(
+            getattr(
+                self,
+                "_resident_nwp_scope_cursor_by_priority",
+                {},
+            ).get(0, 0)
+        )
         self.skip_nwp_refresh = str(
             os.environ.get("PM_TARGET_SKIP_NWP_REFRESH", "") or ""
         ).strip().lower() in {"1", "true", "yes", "on"}
@@ -676,6 +931,29 @@ class TargetProductionWorker:
         read_conn = getattr(self, "commit_conn", None) or getattr(
             self, "conn", None
         )
+        rotation_state_load_error = getattr(
+            self,
+            "_nwp_rotation_state_load_error",
+            None,
+        )
+        if rotation_state_load_error:
+            return {
+                "schema": "bayes_basket_target_resident_nwp_cycle_v1",
+                "state": "blocked_fail_closed",
+                "reason": (
+                    "resident_nwp_rotation_state_invalid:"
+                    + rotation_state_load_error
+                ),
+                "station_scope_mode": "canonical_allowlist",
+                "configured_station_ids": list(
+                    getattr(self, "station_allowlist", ())
+                ),
+                "writes_target_database": False,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
         if read_conn is None:
             return {
                 "state": "not_attempted",
@@ -808,6 +1086,10 @@ class TargetProductionWorker:
                 ),
                 "station_allowlist": list(station_allowlist),
                 "event_date_allowlist": list(event_date_allowlist),
+                "station_scope_mode": "canonical_allowlist",
+                "configured_station_ids": list(self.station_allowlist),
+                "discovered_station_ids": [],
+                "scope_count": 0,
                 "registry_export": export,
                 "registry_ingress": registry_ingress,
                 "writes_target_database": bool(
@@ -818,501 +1100,296 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
-        def p0_status(
-            scope: Mapping[str, Any],
-        ) -> tuple[int, str, bool]:
-            """Rank missing, stale, then fresh without requiring forward OOS."""
-
-            params = (
-                str(scope["station_ids"][0]).strip().upper(),
-                str(scope["event_date"]),
-            )
-            try:
-                row = read_conn.execute(
-                    "SELECT decision_at_utc,fresh_until_utc "
-                    "FROM basket_probability_envelope "
-                    "WHERE station_id=? AND event_date=? AND stage='P0' "
-                    "AND state='COMMITTED' "
-                    "ORDER BY decision_at_utc DESC LIMIT 1",
-                    params,
-                ).fetchone()
-            except sqlite3.OperationalError:
-                # Legacy rehearsal schemas have no freshness column. Treat
-                # their existing root as stale so production never assumes
-                # freshness that the schema cannot prove.
-                row = read_conn.execute(
-                    "SELECT decision_at_utc,NULL "
-                    "FROM basket_probability_envelope "
-                    "WHERE station_id=? AND event_date=? AND stage='P0' "
-                    "AND state='COMMITTED' "
-                    "ORDER BY decision_at_utc DESC LIMIT 1",
-                    params,
-                ).fetchone()
-            if row is None:
-                return (0, "", False)
-            decision = str(row[0] or "")
-            fresh = bool(str(row[1] or "") > as_of_utc)
-            return (2 if fresh else 1, decision, fresh)
-
-        # Priority is missing -> stale -> fresh, but every non-empty class
-        # receives one slot before the remaining capacity returns to priority
-        # order.  This preserves urgency without letting a permanent backlog
-        # of missing scopes starve stale/fresh updates forever.
-        priority_groups: dict[
-            int, list[tuple[str, str, bool, Mapping[str, Any]]]
-        ] = {0: [], 1: [], 2: []}
-        for item in scopes:
-            priority, decision, fresh = p0_status(item)
-            priority_groups[priority].append((
-                str(item["event_date"]),
-                str(item["station_ids"][0]).strip().upper(),
-                fresh,
-                item,
-            ))
-        cursors = dict(
-            getattr(self, "_resident_nwp_scope_cursor_by_priority", {})
-            or {}
+        # P0 authority was replaced by calibrated native-member ensembles.
+        # Capture one bounded station-day per forecast turn, publish a
+        # content-addressed inbox, and stop before the retired deterministic
+        # residual pipeline.
+        native_scope_index = (
+            int(getattr(self, "_native_ensemble_scope_cursor", 0))
+            % len(scopes)
         )
-        selected: list[tuple[bool, Mapping[str, Any]]] = []
-        rotated_by_priority: dict[
-            int, list[tuple[str, str, bool, Mapping[str, Any]]]
-        ] = {}
-        base_cursor_by_priority: dict[int, int] = {}
-        taken_by_priority = {0: 0, 1: 0, 2: 0}
-        for priority in (0, 1, 2):
-            ordered = sorted(
-                priority_groups[priority],
-                key=lambda row: (row[0], row[1]),
+        native_scope = scopes[native_scope_index]
+        self._native_ensemble_scope_cursor = (
+            native_scope_index + 1
+        ) % len(scopes)
+        native_station = str(
+            native_scope["station_ids"][0]
+        ).strip().upper()
+        native_event_date = str(native_scope["event_date"])
+        native_rows = [
+            row
+            for row in registry.get("rows") or []
+            if isinstance(row, Mapping)
+            and str(row.get("station_id") or "").strip().upper()
+            == native_station
+            and str(row.get("event_date") or "")
+            == native_event_date
+        ]
+        try:
+            coordinates = station_coordinates(native_station)
+            native_packet = capture_open_meteo_ensemble_scope(
+                station_id=native_station,
+                event_date=native_event_date,
+                latitude=float(coordinates["latitude"]),
+                longitude=float(coordinates["longitude"]),
+                settlement_timezone=str(
+                    native_scope["settlement_timezone"]
+                ),
+                registry_rows=native_rows,
+                captured_at_utc=as_of_utc,
             )
-            if not ordered:
-                continue
-            cursor = int(cursors.get(priority, 0)) % len(ordered)
-            base_cursor_by_priority[priority] = cursor
-            rotated_by_priority[priority] = (
-                ordered[cursor:] + ordered[:cursor]
+            native_inbox_path = (
+                self.nwp_runtime_root
+                / "native_ensemble_forward_inbox.json"
             )
-        for priority in (0, 1, 2):
-            rotated = rotated_by_priority.get(priority, [])
-            if (
-                not rotated
-                or len(selected) >= MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
-            ):
-                continue
-            _day, _station, fresh, scope = rotated[0]
-            selected.append((fresh, scope))
-            taken_by_priority[priority] = 1
-        while len(selected) < MAX_RESIDENT_NWP_SCOPES_PER_CYCLE:
-            advanced = False
-            for priority in (0, 1, 2):
-                rotated = rotated_by_priority.get(priority, [])
-                index = taken_by_priority[priority]
-                if (
-                    index >= len(rotated)
-                    or len(selected)
-                    >= MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
-                ):
-                    continue
-                _day, _station, fresh, scope = rotated[index]
-                selected.append((fresh, scope))
-                taken_by_priority[priority] += 1
-                advanced = True
-            if not advanced:
-                break
-        for priority, rotated in rotated_by_priority.items():
-            take = taken_by_priority[priority]
-            cursors[priority] = (
-                base_cursor_by_priority[priority] + take
-            ) % len(rotated)
-        self._resident_nwp_scope_cursor_by_priority = cursors
-
-        scope_failures: list[dict[str, Any]] = []
-        scope_results: list[dict[str, Any]] = []
-        successful_inboxes: list[
-            tuple[tuple[str, str], Mapping[str, Any]]
-        ] = []
-        candidate_prefetch_results: list[dict[str, Any]] = []
-        candidate_prefetch_attempt_count = 0
-        run_cursors = dict(
-            getattr(self, "_nwp_run_fallback_cursor_by_scope", {})
-            or {}
-        )
-        for current_p0_fresh, scope in selected:
-            assert_process_memory_budget()
-            station = str(scope["station_ids"][0]).strip().upper()
-            event_date = str(scope["event_date"])
-            scope_key = f"{station}|{event_date}"
-            try:
-                raw_run_candidates = candidate_run_initializations(
-                    as_of_utc=as_of_utc,
-                    event_date=event_date,
-                    settlement_timezone=str(
-                        scope["settlement_timezone"]
-                    ),
+            existing_packets: list[dict[str, Any]] = []
+            if native_inbox_path.is_file():
+                existing_inbox = load_bounded_json(
+                    native_inbox_path
                 )
-                try:
-                    artifacts = load_production_artifacts(
-                        read_conn,
-                        station_id=station,
-                        evaluation_at_utc=as_of_utc,
-                        require_calibration=True,
-                        require_policy=False,
-                    )
-                    compatible = compatible_run_candidates(
-                        artifacts=artifacts,
-                        station=station,
-                        event_date=event_date,
-                        settlement_timezone=str(
-                            scope["settlement_timezone"]
-                        ),
-                        decision_at_utc=as_of_utc,
-                        run_initializations=raw_run_candidates,
-                    )
-                    # Formal P0 is station-scoped and always uses an activated
-                    # ensemble of at least two models. Forward scorecard/OOS is
-                    # intentionally not consulted by this no-live scheduler.
-                    compatible = [
-                        item
-                        for item in compatible
-                        if len({
-                            str(value or "").strip().upper()
-                            for value in (
-                                item.get("activation_binding") or {}
-                            ).get("selected_models", [])
-                            if str(value or "").strip()
-                        }) >= 2
-                    ]
-                    if not compatible:
-                        raise ContractError(
-                            "resident_nwp_no_activated_two_model_run_scope"
-                        )
-                except Exception:
-                    # Raw candidate acquisition must not depend on an already
-                    # activated P0 combination: that would make evidence
-                    # collection circular and leave new stations permanently
-                    # unable to accumulate strict publication/arrival history.
-                    # Keep this lane candidate-only and bounded to one scope
-                    # per resident cycle; it never writes the P0 inbox.
-                    if (
-                        raw_run_candidates
-                        and candidate_prefetch_attempt_count
-                        < MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE
-                    ):
-                        candidate_run = raw_run_candidates[
-                            1 if len(raw_run_candidates) > 1 else 0
-                        ]
-                        candidate_prefetch_attempt_count += 1
-                        try:
-                            candidate_prefetch_results.append(
-                                prefetch_candidate_raw_training(
-                                    registry_snapshot_path=registry_path,
-                                    scope=scope,
-                                    as_of_utc=as_of_utc,
-                                    run_initialization_utc=candidate_run,
-                                    candidate_models=MODEL_IDS,
-                                    output_root=(
-                                        self.nwp_runtime_root / "captures"
-                                    ),
-                                )
-                            )
-                        except Exception as candidate_exc:
-                            candidate_prefetch_results.append({
-                                "state": "BLOCKED_FAIL_CLOSED",
-                                "candidate_only": True,
-                                "p0_materialization_authorized": False,
-                                "station_id": station,
-                                "event_date": event_date,
-                                "reason": (
-                                    "resident_nwp_candidate_prefetch_failed:"
-                                    f"{type(candidate_exc).__name__}:"
-                                    f"{candidate_exc}"
-                                ),
-                                "writes_target_database": False,
-                                "calls_order_gateway": False,
-                                "places_orders": False,
-                                "live_submit_authorized": False,
-                                "orders_submitted": 0,
-                            })
-                    raise
-
-                capture_candidates = list(compatible)
-                fallback_policy = "BOUNDED_MATURE_FALLBACK"
-                if current_p0_fresh:
-                    capture_candidates = capture_candidates[:1]
-                    fallback_policy = (
-                        "NEWEST_ACTIVATED_ONLY_CURRENT_P0_FRESH"
-                    )
-                else:
-                    index = int(run_cursors.get(scope_key, 0)) % len(
-                        capture_candidates
-                    )
-                    capture_candidates = [capture_candidates[index]]
-                    run_cursors[scope_key] = (
-                        index + 1
-                    ) % len(compatible)
-                    fallback_policy = (
-                        "ONE_RUN_PER_CYCLE_ROTATING_FALLBACK"
-                    )
-                capture = capture_official_nwp_scope(
-                    registry_snapshot_path=registry_path,
-                    scope=scope,
-                    as_of_utc=as_of_utc,
-                    output_root=self.nwp_runtime_root / "captures",
-                    activation_bindings_by_run={
-                        str(item["run_initialization_utc"]): {
-                            "activation_binding": dict(
-                                item["activation_binding"]
-                            ),
-                            "ensemble_activation": dict(
-                                item["ensemble_activation"]
-                            ),
-                            "ensemble_artifact": dict(
-                                item["ensemble_artifact"]
-                            ),
-                        }
-                        for item in capture_candidates
-                    },
-                    run_initializations=[
-                        str(item["run_initialization_utc"])
-                        for item in capture_candidates
-                    ],
-                )
-                capture_paths = [
-                    Path(value)
-                    for value in capture.get("capture_paths") or []
-                    if str(value).strip()
-                ]
                 if (
-                    capture.get("state") != "CAPTURED"
-                    or not capture_paths
-                ):
-                    raise ContractError(
-                        "resident_nwp_scope_capture_incomplete"
-                    )
-
-                scope_root = self.nwp_runtime_root / "compiled" / station
-                # The per-scope inbox is only a merge intermediate.  Keep it
-                # for the shortest possible lifetime while preserving the
-                # compiled decode/state/P0 artifacts that carry lineage.
-                with tempfile.TemporaryDirectory(
-                    prefix=".resident-nwp-scope-inbox-",
-                    dir=self.nwp_runtime_root,
-                ) as temporary:
-                    scope_inbox = Path(temporary) / "p0-inbox.json"
-                    p0 = refresh_resident_p0(
-                        capture_paths=capture_paths,
-                        registry_snapshot_path=registry_path,
-                        event_date=event_date,
-                        output_root=scope_root,
-                        inbox_path=scope_inbox,
-                        db_path=self.db_path,
-                    )
-                    candidate_inbox = load_bounded_json(scope_inbox)
-                if (
-                    not isinstance(candidate_inbox, Mapping)
-                    or candidate_inbox.get("schema")
-                    != "bayes_basket_target_p0_inbox_v1"
+                    existing_inbox.get("schema")
+                    != "native_ensemble_forward_inbox_v1"
                     or not isinstance(
-                        candidate_inbox.get("packets"), list
+                        existing_inbox.get("packets"), list
                     )
-                    or not candidate_inbox["packets"]
                 ):
                     raise ContractError(
-                        "resident_nwp_scope_p0_inbox_invalid"
+                        "native_ensemble_forward_inbox_invalid"
                     )
-                for row in candidate_inbox["packets"]:
-                    packet = (
-                        row.get("packet")
-                        if isinstance(row, Mapping)
-                        else None
-                    )
-                    if (
-                        not isinstance(packet, Mapping)
-                        or str(
-                            packet.get("station_id") or ""
-                        ).strip().upper() != station
-                        or str(packet.get("event_date") or "")
-                        != event_date
-                    ):
-                        raise ContractError(
-                            "resident_nwp_scope_p0_packet_mismatch"
-                        )
-                successful_inboxes.append(
-                    ((station, event_date), candidate_inbox)
-                )
-                scope_results.append({
-                    "station_id": station,
-                    "event_date": event_date,
-                    "scope": scope,
-                    "state": str(
-                        p0.get("state") or "blocked_fail_closed"
-                    ),
-                    "capture": capture,
-                    "run_fallback_policy": fallback_policy,
-                    "p0": p0,
-                })
-            except Exception as exc:
-                scope_failures.append({
-                    "station_id": station,
-                    "event_date": event_date,
-                    "reason": (
-                        "resident_nwp_scope_failed:"
-                        f"{type(exc).__name__}:{exc}"
-                    ),
-                })
-        self._nwp_run_fallback_cursor_by_scope = run_cursors
-
-        inbox_wrote = False
-        merged_packet_count = 0
-        if successful_inboxes:
-            existing_rows: list[Mapping[str, Any]] = []
-            existing_generated_at = ""
-            if self.p0_inbox_path.is_file():
-                existing = load_bounded_json(self.p0_inbox_path)
-                if (
-                    not isinstance(existing, Mapping)
-                    or existing.get("schema")
-                    != "bayes_basket_target_p0_inbox_v1"
-                    or not isinstance(existing.get("packets"), list)
-                ):
-                    raise ContractError(
-                        "resident_nwp_shared_p0_inbox_invalid"
-                    )
-                identity = {
-                    "schema": existing["schema"],
-                    "generated_at_utc": existing.get(
-                        "generated_at_utc"
-                    ),
-                    "packets": existing["packets"],
-                }
-                if str(
-                    existing.get("content_sha256") or ""
-                ) != content_sha256(identity):
-                    raise ContractError(
-                        "resident_nwp_shared_p0_inbox_sha_mismatch"
-                    )
-                existing_generated_at = str(
-                    existing.get("generated_at_utc") or ""
-                )
-                existing_rows = [
-                    row
-                    for row in existing["packets"]
-                    if isinstance(row, Mapping)
-                    and isinstance(row.get("packet"), Mapping)
-                    and str(
-                        row["packet"].get("decision_at_utc") or ""
-                    ) <= as_of_utc
-                    and str(
-                        row["packet"].get("fresh_until_utc") or ""
-                    ) > as_of_utc
+                existing_packets = [
+                    dict(item)
+                    for item in existing_inbox["packets"]
+                    if isinstance(item, Mapping)
                 ]
-            replaced_scopes = {
-                scope_key for scope_key, _inbox in successful_inboxes
-            }
-            merged_rows = [
-                dict(row)
-                for row in existing_rows
+            same_snapshot = next(
+                (
+                    item
+                    for item in existing_packets
+                    if str(item.get("station_id") or "")
+                    == native_station
+                    and str(item.get("event_date") or "")
+                    == native_event_date
+                    and str(
+                        item.get("snapshot_content_sha256") or ""
+                    )
+                    == str(
+                        native_packet[
+                            "snapshot_content_sha256"
+                        ]
+                    )
+                ),
+                None,
+            )
+            if same_snapshot is None:
+                merged_packets = [
+                    item
+                    for item in existing_packets
+                    if not (
+                        str(item.get("station_id") or "")
+                        == native_station
+                        and str(item.get("event_date") or "")
+                        == native_event_date
+                    )
+                ]
+                merged_packets.append(native_packet)
+                merged_packets.sort(
+                    key=lambda item: (
+                        str(item.get("event_date") or ""),
+                        str(item.get("station_id") or ""),
+                    )
+                )
+                if len(merged_packets) > 256:
+                    merged_packets = merged_packets[-256:]
+                inbox_identity = {
+                    "schema": "native_ensemble_forward_inbox_v1",
+                    "packets": merged_packets,
+                }
+                native_inbox = {
+                    **inbox_identity,
+                    "content_sha256": content_sha256(
+                        inbox_identity
+                    ),
+                }
+                inbox_wrote = write_bounded_json_if_changed(
+                    native_inbox_path,
+                    native_inbox,
+                )
+            else:
+                native_packet = same_snapshot
+                inbox_wrote = False
+            native_p0_compile: dict[str, Any]
+            try:
+                native_p0_compile = compile_native_ensemble_p0(
+                    read_conn,
+                    forward_packet=native_packet,
+                    decision_at_utc=as_of_utc,
+                )
+            except Exception as exc:
+                native_p0_compile = {
+                    "state": "FAIL_CLOSED_NO_P0",
+                    "reason": f"{type(exc).__name__}:{exc}",
+                    "station_id": native_station,
+                    "event_date": native_event_date,
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
+                }
+            existing_p0_rows: list[dict[str, Any]] = []
+            if self.p0_inbox_path.is_file():
+                existing_p0 = load_bounded_json(
+                    self.p0_inbox_path
+                )
                 if (
+                    existing_p0.get("schema")
+                    == "bayes_basket_target_p0_inbox_v1"
+                    and isinstance(existing_p0.get("packets"), list)
+                ):
+                    existing_p0_rows = [
+                        dict(item)
+                        for item in existing_p0["packets"]
+                        if isinstance(item, Mapping)
+                        and item.get("source_class")
+                        == "calibrated_native_cross_ensemble"
+                    ]
+            existing_p0_rows = [
+                item
+                for item in existing_p0_rows
+                if not (
                     str(
-                        row["packet"].get("station_id") or ""
-                    ).strip().upper(),
-                    str(row["packet"].get("event_date") or ""),
-                ) not in replaced_scopes
+                        (item.get("packet") or {}).get(
+                            "station_id"
+                        ) or ""
+                    ).strip().upper()
+                    == native_station
+                    and str(
+                        (item.get("packet") or {}).get(
+                            "event_date"
+                        ) or ""
+                    )
+                    == native_event_date
+                )
             ]
-            generated_at_values = [existing_generated_at]
-            for _scope_key, candidate in successful_inboxes:
-                generated_at_values.append(
-                    str(candidate.get("generated_at_utc") or "")
-                )
-                merged_rows.extend(
-                    dict(row) for row in candidate["packets"]
-                )
-            merged_rows.sort(key=lambda row: (
-                str(row["packet"].get("station_id") or ""),
-                str(row["packet"].get("event_date") or ""),
-                str(row["packet"].get("decision_at_utc") or ""),
-                str(row.get("packet_content_sha256") or ""),
+            if native_p0_compile.get("schema") == (
+                "calibrated_native_cross_ensemble_p0_packet_v1"
+            ):
+                existing_p0_rows.append({
+                    "source_class": native_p0_compile[
+                        "source_class"
+                    ],
+                    "packet_content_sha256": native_p0_compile[
+                        "packet_content_sha256"
+                    ],
+                    "packet": native_p0_compile["packet"],
+                })
+            existing_p0_rows.sort(key=lambda item: (
+                str(
+                    (item.get("packet") or {}).get("event_date")
+                    or ""
+                ),
+                str(
+                    (item.get("packet") or {}).get("station_id")
+                    or ""
+                ),
             ))
-            if len(merged_rows) > 256:
-                raise ContractError(
-                    "resident_nwp_shared_p0_inbox_packet_cap_exceeded"
-                )
-            merged_identity = {
+            if len(existing_p0_rows) > 256:
+                existing_p0_rows = existing_p0_rows[-256:]
+            p0_inbox_identity = {
                 "schema": "bayes_basket_target_p0_inbox_v1",
-                "generated_at_utc": max(generated_at_values),
-                "packets": merged_rows,
+                "generated_at_utc": as_of_utc,
+                "packets": existing_p0_rows,
             }
-            merged = {
-                **merged_identity,
-                "content_sha256": content_sha256(merged_identity),
+            p0_inbox = {
+                **p0_inbox_identity,
+                "content_sha256": content_sha256(
+                    p0_inbox_identity
+                ),
             }
-            inbox_wrote = write_bounded_json_if_changed(
+            p0_inbox_wrote = write_bounded_json_if_changed(
                 self.p0_inbox_path,
-                merged,
+                p0_inbox,
             )
-            merged_packet_count = len(merged_rows)
-
-        candidate_capture_succeeded = any(
-            row.get("state") == "CAPTURED_CANDIDATE"
-            for row in candidate_prefetch_results
-        )
-        if scope_results:
-            state = (
-                "updated"
-                if inbox_wrote
-                or any(
-                    row["state"] == "updated"
-                    for row in scope_results
-                )
-                else "unchanged_zero_write"
+            rotation_state = build_rotation_state(
+                station_ids=station_allowlist,
+                scopes=scopes,
+                selected_scopes=[native_scope],
+                cursor_by_priority={
+                    0: self._native_ensemble_scope_cursor,
+                },
+                outcomes=[{
+                    "scope_key": nwp_rotation_scope_key(native_scope),
+                    "state": "CAPTURED_CANDIDATE",
+                    "candidate_only": True,
+                    "reason": (
+                        "native_ensemble_calibration_and_cross_family_oos_required"
+                    ),
+                }],
+                previous=getattr(
+                    self,
+                    "_nwp_rotation_state",
+                    None,
+                ),
+                updated_at_utc=as_of_utc,
             )
-            first = scope_results[0]
-            reason = ""
-        elif candidate_capture_succeeded:
-            state = "candidate_capture_only"
-            first = {}
-            reason = "formal_p0_scope_not_eligible"
-        else:
-            state = "blocked_fail_closed"
-            first = {}
-            reason = "resident_nwp_no_successful_scope"
-        return {
-            "schema": "bayes_basket_target_resident_nwp_cycle_v1",
-            "state": state,
-            **({"reason": reason} if reason else {}),
-            "registry_export": export,
-            "registry_ingress": registry_ingress,
-            "scope": first.get("scope"),
-            "scopes": [row["scope"] for row in scope_results],
-            "selected_scope_count": len(selected),
-            "successful_scope_count": len(scope_results),
-            "scope_count": len(scopes),
-            "scope_results": scope_results,
-            "scope_failures": scope_failures,
-            "skipped_incompatible_scopes": scope_failures,
-            "candidate_prefetch_results": candidate_prefetch_results,
-            "candidate_prefetch_attempt_count":
-                candidate_prefetch_attempt_count,
-            "candidate_prefetch_success_count": sum(
-                row.get("state") == "CAPTURED_CANDIDATE"
-                for row in candidate_prefetch_results
-            ),
-            "candidate_prefetch_scope_limit":
-                MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE,
-            "capture": first.get("capture"),
-            "run_fallback_policy": first.get(
-                "run_fallback_policy"
-            ),
-            "p0": first.get("p0"),
-            "merged_p0_packet_count": merged_packet_count,
-            "p0_inbox_wrote": inbox_wrote,
-            "writes_target_database": bool(
-                registry_ingress.get("wrote_rows")
-            ),
-            "calls_order_gateway": False,
-            "places_orders": False,
-            "live_submit_authorized": False,
-            "orders_submitted": 0,
-        }
+            rotation_state_path = getattr(
+                self,
+                "nwp_rotation_state_path",
+                self.nwp_runtime_root / "rotation_state.json",
+            )
+            rotation_state_wrote = persist_rotation_state(
+                rotation_state_path,
+                rotation_state,
+            )
+            self._nwp_rotation_state = rotation_state
+            return {
+                "schema": "bayes_basket_target_resident_native_ensemble_cycle_v1",
+                "state": "candidate_captured_no_p0",
+                "reason": (
+                    "native_ensemble_calibration_and_cross_family_oos_required"
+                ),
+                "station_id": native_station,
+                "event_date": native_event_date,
+                "available_product_count": len(
+                    native_packet.get("systems") or []
+                ),
+                "unavailable_product_count": len(
+                    native_packet.get("unavailable_products") or []
+                ),
+                "cross_model_gate": native_packet.get(
+                    "cross_model_gate"
+                ),
+                "native_p0_compile": native_p0_compile,
+                "p0_inbox_path": str(self.p0_inbox_path),
+                "p0_inbox_wrote": p0_inbox_wrote,
+                "p0_inbox_packet_count": len(existing_p0_rows),
+                "snapshot_content_sha256": native_packet.get(
+                    "snapshot_content_sha256"
+                ),
+                "inbox_path": str(native_inbox_path),
+                "inbox_wrote": inbox_wrote,
+                "rotation_state_path": str(rotation_state_path),
+                "rotation_state_wrote": rotation_state_wrote,
+                "rotation_generation": rotation_state["generation"],
+                "next_scope_cursor": self._native_ensemble_scope_cursor,
+                "writes_target_database": False,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
+        except Exception as exc:
+            return {
+                "schema": "bayes_basket_target_resident_native_ensemble_cycle_v1",
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}",
+                "station_id": native_station,
+                "event_date": native_event_date,
+                "writes_target_database": False,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
 
     def _assert_db_activation(self, activation: Mapping[str, Any]) -> None:
         if self.commit_conn is None:
@@ -3747,12 +3824,19 @@ class TargetProductionWorker:
                                 ),
                             )
                         )
+                write_count = sum(
+                    1 for write in writes if write.get("wrote") is True
+                )
                 receipts.append({
                     "station_id": station,
                     "event_date": day,
-                    "state": "COMMITTED",
+                    "state": (
+                        "COMMITTED"
+                        if write_count
+                        else "ALREADY_COMMITTED"
+                    ),
                     "observation_count": len(observations),
-                    "p1_update_count": len(packets),
+                    "p1_update_count": write_count,
                     "p0_rebase": rebasing,
                     "current_consumable": current_consumable,
                     "replay_cursor_only": not current_consumable,
@@ -3788,7 +3872,8 @@ class TargetProductionWorker:
             "receipts": receipts,
             "blockers": blockers,
             "writes_target_ssot": any(
-                item["state"] == "COMMITTED" for item in receipts
+                int(item.get("p1_update_count") or 0) > 0
+                for item in receipts
             ),
             "places_orders": False,
             "calls_order_gateway": False,
@@ -3819,24 +3904,27 @@ class TargetProductionWorker:
         inbox = load_bounded_json(self.taf_inbox_path)
         if not isinstance(artifact_raw, Mapping) or not isinstance(inbox, Mapping):
             raise ContractError("resident_taf_input_invalid")
-        artifact = TafRevisionArtifact.from_mapping(artifact_raw)
-        if (
-            artifact.nwp_live_compatibility_contract_version is None
-            or artifact.nwp_live_compatibility_fingerprint_sha256 is None
-            or artifact.nwp_live_compatibility_evidence_sha256 is None
-            or not artifact.nwp_live_compatibility_validated
-        ):
+        if inbox.get("schema") != "bayes_basket_target_taf_revision_inbox_v1":
+            raise ContractError("resident_taf_inbox_schema_invalid")
+        try:
+            taf_fact_ingress = ingest_forward_taf_inbox(
+                self.commit_conn,
+                inbox,
+            )
+        except ContractError as exc:
+            if str(exc) != "forward_taf_capture_content_conflict":
+                raise
             return {
                 "schema": "bayes_basket_target_resident_taf_ingress_v1",
                 "state": "BLOCKED_FAIL_CLOSED",
+                "taf_fact_ingress": {
+                    "state": "BLOCKED_FAIL_CLOSED",
+                    "reason": f"ContractError:{exc}",
+                    "wrote_count": 0,
+                },
                 "receipts": [],
                 "blockers": [{
-                    "station_id": artifact.station_id,
-                    "event_date": "",
-                    "reason": (
-                        "ContractError:"
-                        "resident_taf_nwp_live_compatibility_bridge_missing"
-                    ),
+                    "reason": f"ContractError:{exc}",
                 }],
                 "writes_target_ssot": False,
                 "places_orders": False,
@@ -3844,8 +3932,72 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
-        if inbox.get("schema") != "bayes_basket_target_taf_revision_inbox_v1":
-            raise ContractError("resident_taf_inbox_schema_invalid")
+        if artifact_raw.get("schema") == (
+            "bayes_basket_target_taf_revision_artifact_registry_v1"
+        ):
+            registry_identity = {
+                key: value
+                for key, value in artifact_raw.items()
+                if key != "content_sha256"
+            }
+            if str(artifact_raw.get("content_sha256") or "") != (
+                content_sha256(registry_identity)
+            ):
+                raise ContractError(
+                    "resident_taf_artifact_registry_content_sha_mismatch"
+                )
+            raw_artifacts = artifact_raw.get("artifacts")
+            if (
+                not isinstance(raw_artifacts, list)
+                or len(raw_artifacts) > 256
+            ):
+                raise ContractError(
+                    "resident_taf_artifact_registry_count_invalid"
+                )
+        else:
+            # Legacy one-artifact files remain valid for their exact station
+            # only; they must never become an implicit fallback for peers.
+            raw_artifacts = [artifact_raw]
+        artifacts = [
+            TafRevisionArtifact.from_mapping(item)
+            for item in raw_artifacts
+            if isinstance(item, Mapping)
+        ]
+        if len(artifacts) != len(raw_artifacts):
+            raise ContractError("resident_taf_artifact_registry_row_invalid")
+        invalid_compatibility = [
+            artifact
+            for artifact in artifacts
+            if (
+                artifact.nwp_live_compatibility_contract_version is None
+                or artifact.nwp_live_compatibility_fingerprint_sha256 is None
+                or artifact.nwp_live_compatibility_evidence_sha256 is None
+                or not artifact.nwp_live_compatibility_validated
+            )
+        ]
+        if invalid_compatibility:
+            return {
+                "schema": "bayes_basket_target_resident_taf_ingress_v1",
+                "state": "BLOCKED_FAIL_CLOSED",
+                "receipts": [],
+                "blockers": [
+                    {
+                        "station_id": artifact.station_id,
+                        "event_date": "",
+                        "reason": (
+                            "ContractError:"
+                            "resident_taf_nwp_live_compatibility_bridge_missing"
+                        ),
+                    }
+                    for artifact in invalid_compatibility
+                ],
+                "taf_fact_ingress": taf_fact_ingress,
+                "writes_target_ssot": False,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
         raw_captures = inbox.get("captures")
         if not isinstance(raw_captures, list) or len(raw_captures) > 256:
             raise ContractError("resident_taf_inbox_capture_count_invalid")
@@ -3882,10 +4034,24 @@ class TargetProductionWorker:
         receipts: list[dict[str, Any]] = []
         blockers: list[dict[str, str]] = []
         ignored_inactive_scope_count = 0
+        ignored_no_artifact_scope_count = 0
         for (station, day), captures in sorted(captures_by_scope.items()):
             try:
-                if station != artifact.station_id:
-                    raise ContractError("resident_taf_artifact_station_mismatch")
+                station_artifacts = [
+                    item
+                    for item in artifacts
+                    if item.station_id == station
+                ]
+                if not station_artifacts:
+                    ignored_no_artifact_scope_count += 1
+                    receipts.append({
+                        "station_id": station,
+                        "event_date": day,
+                        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
+                        "write_count": 0,
+                        "writes": [],
+                    })
+                    continue
                 scope_exists = self.commit_conn.execute(
                     "SELECT 1 FROM basket_probability_envelope "
                     "WHERE station_id=? AND event_date=? "
@@ -3924,16 +4090,35 @@ class TargetProductionWorker:
                     })
                     continue
                 root = roots[-1]
-                if (
-                    root.settlement_timezone != artifact.settlement_timezone
-                    or str(root.lineage.get("season_bin") or "")
-                    != artifact.season_bin
-                    or str(root.lineage.get("lead_bucket") or "")
-                    != artifact.lead_bucket
-                    or str(root.lineage.get("run_cycle") or "")
-                    != artifact.run_cycle
-                ):
-                    raise ContractError("resident_taf_artifact_scope_mismatch")
+                exact_artifacts = [
+                    item
+                    for item in station_artifacts
+                    if (
+                        root.settlement_timezone
+                        == item.settlement_timezone
+                        and str(root.lineage.get("season_bin") or "")
+                        == item.season_bin
+                        and str(root.lineage.get("lead_bucket") or "")
+                        == item.lead_bucket
+                        and str(root.lineage.get("run_cycle") or "")
+                        == item.run_cycle
+                    )
+                ]
+                if not exact_artifacts:
+                    ignored_no_artifact_scope_count += 1
+                    receipts.append({
+                        "station_id": station,
+                        "event_date": day,
+                        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
+                        "write_count": 0,
+                        "writes": [],
+                    })
+                    continue
+                if len(exact_artifacts) != 1:
+                    raise ContractError(
+                        "resident_taf_artifact_exact_scope_ambiguous"
+                    )
+                artifact = exact_artifacts[0]
                 centers_raw = json.loads(
                     str(root.lineage.get("bucket_centers_c_json") or "")
                 )
@@ -4106,11 +4291,18 @@ class TargetProductionWorker:
                             envelope,
                             created_at_utc=decision_at,
                         ))
+                write_count = sum(
+                    1 for write in writes if write.get("wrote") is True
+                )
                 receipts.append({
                     "station_id": station,
                     "event_date": day,
-                    "state": "COMMITTED" if writes else "NO_NEW_TAF_REVISION",
-                    "write_count": len(writes),
+                    "state": (
+                        "COMMITTED"
+                        if write_count
+                        else "NO_NEW_TAF_REVISION"
+                    ),
+                    "write_count": write_count,
                     "writes": writes,
                 })
             except Exception as exc:
@@ -4123,9 +4315,12 @@ class TargetProductionWorker:
         return {
             "schema": "bayes_basket_target_resident_taf_ingress_v1",
             "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
+            "taf_fact_ingress": taf_fact_ingress,
             "receipts": receipts,
             "blockers": blockers,
             "ignored_inactive_scope_count": ignored_inactive_scope_count,
+            "ignored_no_artifact_scope_count":
+                ignored_no_artifact_scope_count,
             "writes_target_ssot": any(
                 item["write_count"] > 0 for item in receipts
             ),
@@ -4164,6 +4359,23 @@ class TargetProductionWorker:
         rows = inbox.get("packets")
         if not isinstance(rows, list) or len(rows) > 256:
             raise ContractError("resident_p0_inbox_packet_count_invalid")
+        if not rows:
+            return {
+                "schema": "bayes_basket_target_resident_p0_ingress_v1",
+                "state": "BLOCKED_FAIL_CLOSED",
+                "reason": "FAIL_CLOSED_NO_P0:"
+                "native_cross_ensemble_activation_missing",
+                "receipts": [],
+                "blockers": [{
+                    "reason": "FAIL_CLOSED_NO_P0:"
+                    "native_cross_ensemble_activation_missing",
+                }],
+                "writes_target_ssot": False,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
         receipts: list[dict[str, Any]] = []
         blockers: list[dict[str, str]] = []
         pending_envelopes: list[ProbabilityEnvelope] = []
@@ -4178,17 +4390,43 @@ class TargetProductionWorker:
                 packet = raw.get("packet")
                 if (
                     raw.get("source_class")
-                    != "official_forward_model_bundle"
+                    != "calibrated_native_cross_ensemble"
                     or not isinstance(packet, Mapping)
                 ):
                     raise ContractError(
-                        "resident_p0_forward_bundle_required"
+                        "resident_p0_calibrated_native_cross_ensemble_required"
+                    )
+                if (
+                    packet.get("probability_pathway")
+                    != P0_PROBABILITY_PATHWAY
+                ):
+                    raise ContractError(
+                        "resident_p0_probability_pathway_invalid"
                     )
                 if str(raw.get("packet_content_sha256") or "") != content_sha256(packet):
                     raise ContractError(
                         "resident_p0_packet_content_sha_mismatch"
                     )
                 envelope = build_probability_envelope(packet)
+                settlement_end = (
+                    datetime.fromisoformat(envelope.event_date)
+                    .replace(
+                        tzinfo=ZoneInfo(
+                            envelope.settlement_timezone
+                        )
+                    )
+                    + timedelta(days=1)
+                ).astimezone(timezone.utc)
+                if settlement_end <= datetime.fromisoformat(
+                    as_of_utc.replace("Z", "+00:00")
+                ).astimezone(timezone.utc):
+                    receipts.append({
+                        "station_id": envelope.station_id,
+                        "event_date": envelope.event_date,
+                        "state": "IGNORED_CLOSED_SETTLEMENT_SCOPE",
+                        "wrote": False,
+                    })
+                    continue
                 proof_raw = packet.get("p0_historical_tilt_proof")
                 if (
                     not isinstance(proof_raw, Mapping)
@@ -5031,12 +5269,83 @@ class TargetProductionWorker:
                         newest_page[0] or 0
                     ) if newest_page is not None else 0
                     source_cursor = max(0, first_source_rowid - 1)
+                additional_scopes: list[tuple[str, str]] = []
+                native_table = self.commit_conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='calibration_native_ensemble_member_run'"
+                ).fetchone()
+                if native_table is not None:
+                    # Bootstrap truth directly from bounded forward member
+                    # scope identities.  Without this bridge the first strict
+                    # OOS P0 is circular: basket facts require P0, while truth
+                    # discovery previously required basket facts.
+                    native_rows = self.commit_conn.execute(
+                        "SELECT DISTINCT m.station_id,m.target_local_date,"
+                        "r.settlement_timezone "
+                        "FROM calibration_native_ensemble_member_run m "
+                        "JOIN basket_target_market_registry r "
+                        "ON r.station_id=m.station_id "
+                        "AND r.event_date=m.target_local_date "
+                        "AND r.source_eligible=1 "
+                        "WHERE m.authority_scope="
+                        "'PRODUCTION_NO_LIVE_CANDIDATE' "
+                        "AND NOT EXISTS ("
+                        "SELECT 1 FROM "
+                        "calibration_station_daily_high_truth t "
+                        "WHERE t.station_id=m.station_id "
+                        "AND t.local_date=m.target_local_date "
+                        "AND t.qc_status='ACCEPTED'"
+                        ") "
+                        "ORDER BY m.target_local_date,m.station_id "
+                        "LIMIT ?",
+                        (45 * 4,),
+                    ).fetchall()
+                    as_of = datetime.fromisoformat(
+                        as_of_utc.replace("Z", "+00:00")
+                    ).astimezone(timezone.utc)
+                    timezone_by_scope: dict[
+                        tuple[str, str], set[str]
+                    ] = {}
+                    for row in native_rows:
+                        scope = (
+                            str(row[0] or "").strip().upper(),
+                            str(row[1] or "").strip(),
+                        )
+                        timezone_by_scope.setdefault(
+                            scope,
+                            set(),
+                        ).add(str(row[2] or "").strip())
+                    for scope, timezone_names in sorted(
+                        timezone_by_scope.items()
+                    ):
+                        if len(timezone_names) != 1 or "" in timezone_names:
+                            raise ContractError(
+                                "native_truth_scope_timezone_not_unique"
+                            )
+                        window = settlement_day_window(
+                            scope[1],
+                            next(iter(timezone_names)),
+                        )
+                        closed_at = datetime.fromisoformat(
+                            str(
+                                window["target_day_end_utc"]
+                            ).replace("Z", "+00:00")
+                        ).astimezone(timezone.utc)
+                        if closed_at <= as_of:
+                            additional_scopes.append(scope)
+                        if len(additional_scopes) >= 45:
+                            break
+                truth_kwargs: dict[str, Any] = {
+                    "as_of_utc": as_of_utc,
+                    "max_scopes": 45,
+                    "after_fact_rowid": source_cursor,
+                }
+                if additional_scopes:
+                    truth_kwargs["additional_scopes"] = additional_scopes
                 result = materialize_settled_training_truths(
                     self.commit_conn,
                     self.canonical_source_conn,
-                    as_of_utc=as_of_utc,
-                    max_scopes=45,
-                    after_fact_rowid=source_cursor,
+                    **truth_kwargs,
                 )
                 if result.get("state") == "blocked_fail_closed":
                     blockers = result.get("blockers")
@@ -5166,6 +5475,8 @@ class TargetProductionWorker:
         delta_v2_label_ingress: dict[str, Any] | None = None
         post_fill_recompute: dict[str, Any] | None = None
         resident_registry_ingress: dict[str, Any] | None = None
+        native_ensemble_ingress: dict[str, Any] | None = None
+        native_ensemble_oos_ingress: dict[str, Any] | None = None
         forward_p0_preselections: list[dict[str, Any]] = []
         try:
             registry_path = (
@@ -5186,6 +5497,485 @@ class TargetProductionWorker:
                     "writes_target_database": False,
                     "calls_order_gateway": False,
                     "places_orders": False,
+                }
+            native_inbox_path = (
+                self.nwp_runtime_root
+                / "native_ensemble_forward_inbox.json"
+            )
+            official_inbox_path = (
+                self.nwp_runtime_root
+                / "official_native_ensemble_forward_inbox.json"
+            )
+            if (
+                native_inbox_path.is_file()
+                or official_inbox_path.is_file()
+            ):
+                valid_native_packets: list[Mapping[str, Any]] = []
+                if native_inbox_path.is_file():
+                    valid_native_packets.extend(
+                        _load_native_forward_inbox(
+                            native_inbox_path,
+                            error_code=(
+                                "native_ensemble_forward_inbox_invalid"
+                            ),
+                        )
+                    )
+                if official_inbox_path.is_file():
+                    valid_native_packets.extend(
+                        _load_native_forward_inbox(
+                            official_inbox_path,
+                            error_code=(
+                                "official_native_forward_inbox_invalid"
+                            ),
+                        )
+                    )
+                if len(valid_native_packets) > 256:
+                    raise ContractError(
+                        "combined_native_forward_inbox_limit_exceeded"
+                    )
+                if any(
+                    packet.get("schema")
+                    not in {
+                        OPEN_METEO_FORWARD_PACKET_SCHEMA,
+                        OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA,
+                    }
+                    for packet in valid_native_packets
+                ):
+                    raise ContractError(
+                        "native_forward_packet_schema_invalid"
+                    )
+                pending_native_packets: list[Mapping[str, Any]] = []
+                for packet in valid_native_packets:
+                    if packet.get("schema") != (
+                        OPEN_METEO_FORWARD_PACKET_SCHEMA
+                    ):
+                        continue
+                    station_id = str(
+                        packet.get("station_id") or ""
+                    ).strip().upper()
+                    event_date = str(
+                        packet.get("event_date") or ""
+                    )
+                    bucket_contract_sha = str(
+                        packet.get("bucket_contract_sha256") or ""
+                    )
+                    for system in packet.get("systems") or []:
+                        if not isinstance(system, Mapping):
+                            continue
+                        exists = self.commit_conn.execute(
+                            "SELECT 1 FROM "
+                            "calibration_native_ensemble_member_bucket "
+                            "WHERE ensemble_system_id=? "
+                            "AND station_id=? AND target_local_date=? "
+                            "AND member_set_sha256=? "
+                            "AND bucket_contract_sha256=? LIMIT 1",
+                            (
+                                str(
+                                    system.get(
+                                        "ensemble_system_id"
+                                    )
+                                    or ""
+                                ),
+                                station_id,
+                                event_date,
+                                str(
+                                    system.get("member_set_sha256")
+                                    or ""
+                                ),
+                                bucket_contract_sha,
+                            ),
+                        ).fetchone()
+                        if exists is None:
+                            pending_native_packets.append(packet)
+                            break
+                selected_native_packets = pending_native_packets[
+                    :MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
+                ]
+                native_receipts = [
+                    ingest_forward_packet(
+                        self.commit_conn,
+                        packet,
+                    )
+                    for packet in selected_native_packets
+                ]
+                native_ensemble_ingress = {
+                    "schema": "native_ensemble_forward_ingress_batch_v1",
+                    "state": "COMMITTED",
+                    "packet_count": len(native_receipts),
+                    "inbox_packet_count": len(valid_native_packets),
+                    "pending_packet_count_before": len(
+                        pending_native_packets
+                    ),
+                    "remaining_packet_count_after": max(
+                        0,
+                        len(pending_native_packets)
+                        - len(selected_native_packets),
+                    ),
+                    "max_packets_per_cycle":
+                        MAX_RESIDENT_NWP_SCOPES_PER_CYCLE,
+                    "receipts": native_receipts,
+                    "writes_target_database": any(
+                        sum(receipt["counts"].values()) > 0
+                        for receipt in native_receipts
+                    ),
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
+                }
+                active_native_stations = {
+                    str(row[0]).strip().upper()
+                    for row in self.commit_conn.execute(
+                        "SELECT DISTINCT station_id FROM "
+                        "calibration_native_ensemble_activation "
+                        "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+                        "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+                        "AND valid_from_utc<=? AND valid_until_utc>? "
+                        "ORDER BY station_id LIMIT ?",
+                        (now, now, MAX_FORWARD_P0_STATIONS),
+                    )
+                }
+                active_replay_packets = []
+                for packet in sorted(
+                    valid_native_packets,
+                    key=lambda item: (
+                        str(item.get("event_date") or ""),
+                        str(item.get("station_id") or ""),
+                    ),
+                    reverse=True,
+                ):
+                    station = str(
+                        packet.get("station_id") or ""
+                    ).strip().upper()
+                    if station not in active_native_stations:
+                        continue
+                    try:
+                        window = settlement_day_window(
+                            str(packet.get("event_date") or ""),
+                            str(
+                                packet.get("settlement_timezone")
+                                or ""
+                            ),
+                        )
+                        closes_at = datetime.fromisoformat(
+                            str(
+                                window["target_day_end_utc"]
+                            ).replace("Z", "+00:00")
+                        ).astimezone(timezone.utc)
+                    except Exception:
+                        continue
+                    if closes_at <= datetime.fromisoformat(
+                        now.replace("Z", "+00:00")
+                    ).astimezone(timezone.utc):
+                        continue
+                    active_replay_packets.append(packet)
+                    if len(active_replay_packets) >= (
+                        MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
+                    ):
+                        break
+                active_replay_compiled = []
+                active_replay_failures = []
+                for replay_packet in active_replay_packets:
+                    try:
+                        compiled = compile_native_ensemble_p0(
+                            self.commit_conn,
+                            forward_packet=replay_packet,
+                            decision_at_utc=now,
+                        )
+                        compiled["forward_prediction_persistence"] = (
+                            persist_native_ensemble_forward_prediction(
+                                self.commit_conn,
+                                compiled,
+                            )
+                        )
+                        active_replay_compiled.append(compiled)
+                    except Exception as exc:
+                        active_replay_failures.append({
+                            "station_id": str(
+                                replay_packet.get("station_id") or ""
+                            ),
+                            "event_date": str(
+                                replay_packet.get("event_date") or ""
+                            ),
+                            "reason": f"{type(exc).__name__}:{exc}",
+                        })
+                active_activation_p0_replay = (
+                    _upsert_native_p0_inbox(
+                        self.p0_inbox_path,
+                        compiled_packets=active_replay_compiled,
+                        generated_at_utc=now,
+                    )
+                    if active_replay_compiled
+                    else {
+                        "state": "NO_COMPILED_P0",
+                        "accepted_count": 0,
+                        "packet_count": 0,
+                        "wrote": False,
+                        "calls_order_gateway": False,
+                        "orders_submitted": 0,
+                        "live_submit_authorized": False,
+                    }
+                )
+                active_activation_p0_replay["active_station_count"] = (
+                    len(active_native_stations)
+                )
+                active_activation_p0_replay["failures"] = (
+                    active_replay_failures
+                )
+                native_ensemble_ingress[
+                    "active_activation_p0_replay"
+                ] = active_activation_p0_replay
+                now_mono = time.monotonic()
+                last_oos_scan = getattr(
+                    self,
+                    "_last_native_ensemble_oos_scan_monotonic",
+                    None,
+                )
+                new_oos_stations = sorted({
+                    str(receipt["station_id"])
+                    for receipt in native_receipts
+                    if sum(receipt["counts"].values()) > 0
+                })
+                all_oos_stations = [
+                    str(row[0])
+                    for row in self.commit_conn.execute(
+                        "SELECT DISTINCT station_id FROM "
+                        "calibration_native_ensemble_member_run "
+                        "WHERE authority_scope="
+                        "'PRODUCTION_NO_LIVE_CANDIDATE' "
+                        "ORDER BY station_id LIMIT ?",
+                        (MAX_FORWARD_P0_STATIONS,),
+                    )
+                ]
+                truth_signatures = (
+                    _native_ensemble_truth_signatures(
+                        self.commit_conn,
+                    )
+                )
+                previous_truth_signatures = dict(getattr(
+                    self,
+                    "_native_ensemble_oos_truth_signature_by_station",
+                    {},
+                ))
+                changed_truth_stations = [
+                    station
+                    for station, signature
+                    in sorted(truth_signatures.items())
+                    if previous_truth_signatures.get(station)
+                    != signature
+                ]
+                new_oos_stations = sorted(set(
+                    new_oos_stations + changed_truth_stations
+                ))
+                oos_due = (
+                    bool(new_oos_stations)
+                    or last_oos_scan is None
+                    or now_mono - float(last_oos_scan) >= 600.0
+                )
+                if oos_due and all_oos_stations:
+                    if new_oos_stations:
+                        oos_station = new_oos_stations[0]
+                    else:
+                        cursor = int(getattr(
+                            self,
+                            "_native_ensemble_oos_station_cursor",
+                            0,
+                        )) % len(all_oos_stations)
+                        oos_station = all_oos_stations[cursor]
+                        self._native_ensemble_oos_station_cursor = (
+                            cursor + 1
+                        ) % len(all_oos_stations)
+                    self._last_native_ensemble_oos_scan_monotonic = (
+                        now_mono
+                    )
+                    if oos_station in truth_signatures:
+                        previous_truth_signatures[oos_station] = (
+                            truth_signatures[oos_station]
+                        )
+                    self._native_ensemble_oos_truth_signature_by_station = (
+                        previous_truth_signatures
+                    )
+                    try:
+                        oos_report = build_native_ensemble_oos(
+                            self.commit_conn,
+                            station_id=oos_station,
+                            as_of_utc=now,
+                            min_train_days=(
+                                NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS
+                            ),
+                            min_holdout_days=(
+                                NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS
+                            ),
+                        )
+                        oos_persist = persist_native_ensemble_oos(
+                            self.commit_conn,
+                            oos_report,
+                            activated_at_utc=now,
+                        )
+                    except Exception as exc:
+                        native_ensemble_oos_ingress = {
+                            "state": "blocked_fail_closed",
+                            "reason": f"{type(exc).__name__}:{exc}",
+                            "station_id": oos_station,
+                            "isolated_from_probability_and_execution":
+                                True,
+                            "calls_order_gateway": False,
+                            "orders_submitted": 0,
+                            "live_submit_authorized": False,
+                        }
+                    else:
+                        activation_replay_compiled = []
+                        activation_replay_failures = []
+                        if any(
+                            row.get("state")
+                            == "PRODUCTION_NO_LIVE_OOS_PASS"
+                            for row in oos_report["cross_candidates"]
+                        ):
+                            replay_packets = sorted(
+                                (
+                                    packet
+                                    for packet in valid_native_packets
+                                    if str(
+                                        packet.get("station_id") or ""
+                                    ).strip().upper()
+                                    == oos_station
+                                ),
+                                key=lambda packet: str(
+                                    packet.get("event_date") or ""
+                                ),
+                                reverse=True,
+                            )[:MAX_RESIDENT_NWP_SCOPES_PER_CYCLE]
+                            for replay_packet in replay_packets:
+                                try:
+                                    compiled = (
+                                        compile_native_ensemble_p0(
+                                            self.commit_conn,
+                                            forward_packet=replay_packet,
+                                            decision_at_utc=now,
+                                        )
+                                    )
+                                except Exception as exc:
+                                    activation_replay_failures.append({
+                                        "station_id": oos_station,
+                                        "event_date": str(
+                                            replay_packet.get(
+                                                "event_date"
+                                            )
+                                            or ""
+                                        ),
+                                        "reason": (
+                                            f"{type(exc).__name__}:{exc}"
+                                        ),
+                                    })
+                                else:
+                                    compiled[
+                                        "forward_prediction_persistence"
+                                    ] = (
+                                        persist_native_ensemble_forward_prediction(
+                                            self.commit_conn,
+                                            compiled,
+                                        )
+                                    )
+                                    activation_replay_compiled.append(
+                                        compiled
+                                    )
+                        activation_replay = (
+                            _upsert_native_p0_inbox(
+                                self.p0_inbox_path,
+                                compiled_packets=(
+                                    activation_replay_compiled
+                                ),
+                                generated_at_utc=now,
+                            )
+                            if activation_replay_compiled
+                            else {
+                                "state": "NO_COMPILED_P0",
+                                "accepted_count": 0,
+                                "packet_count": 0,
+                                "wrote": False,
+                                "calls_order_gateway": False,
+                                "orders_submitted": 0,
+                                "live_submit_authorized": False,
+                            }
+                        )
+                        activation_replay["failures"] = (
+                            activation_replay_failures
+                        )
+                        native_ensemble_oos_ingress = {
+                            "schema": oos_report["schema"],
+                            "state": (
+                                "OOS_READY"
+                                if oos_report["cross_candidates"]
+                                else "ACCUMULATING_STRICT_OOS"
+                            ),
+                            "station_id": oos_station,
+                            "registered_system_count": oos_report[
+                                "registered_system_count"
+                            ],
+                            "threshold_profile": oos_report[
+                                "threshold_profile"
+                            ],
+                            "min_train_days": oos_report[
+                                "min_train_days"
+                            ],
+                            "min_holdout_days": oos_report[
+                                "min_holdout_days"
+                            ],
+                            "formal_p0_eligible": oos_report[
+                                "formal_p0_eligible"
+                            ],
+                            "readiness": oos_report["readiness"],
+                            "cross_candidate_states": [
+                                {
+                                    "season_bin": row["season_bin"],
+                                    "lead_bucket": row["lead_bucket"],
+                                    "run_cycle": row["run_cycle"],
+                                    "state": row["state"],
+                                    "selected_system_count": row[
+                                        "selected_system_count"
+                                    ],
+                                    "independent_family_count": row[
+                                        "independent_family_count"
+                                    ],
+                                    "oos_metrics": row["oos_metrics"],
+                                }
+                                for row in oos_report[
+                                    "cross_candidates"
+                                ]
+                            ],
+                            "persist": oos_persist,
+                            "activation_p0_replay": activation_replay,
+                            "report_content_sha256": oos_report[
+                                "content_sha256"
+                            ],
+                            "calls_order_gateway": False,
+                            "orders_submitted": 0,
+                            "live_submit_authorized": False,
+                        }
+                else:
+                    native_ensemble_oos_ingress = {
+                        "state": "throttled",
+                        "reason": "native_ensemble_oos_scan_interval",
+                        "calls_order_gateway": False,
+                        "orders_submitted": 0,
+                        "live_submit_authorized": False,
+                    }
+            else:
+                native_ensemble_ingress = {
+                    "state": "not_available",
+                    "reason": (
+                        "native_ensemble_forward_inbox_missing"
+                    ),
+                    "writes_target_database": False,
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
+                }
+                native_ensemble_oos_ingress = {
+                    "state": "not_available",
+                    "reason": "native_ensemble_forward_inbox_missing",
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
                 }
             resident_probability_chain = self._materialize_resident_probability_chain(
                 as_of_utc=now,
@@ -5277,6 +6067,12 @@ class TargetProductionWorker:
                     "orders_submitted": 0,
                     "resident_registry_ingress": (
                         resident_registry_ingress
+                    ),
+                    "native_ensemble_ingress": (
+                        native_ensemble_ingress
+                    ),
+                    "native_ensemble_oos_ingress": (
+                        native_ensemble_oos_ingress
                     ),
                     "resident_probability_chain": (
                         resident_probability_chain
@@ -5520,6 +6316,10 @@ class TargetProductionWorker:
                 "orders_submitted": 0,
                 "market_ingress": market_ingress,
                 "resident_registry_ingress": resident_registry_ingress,
+                "native_ensemble_ingress": native_ensemble_ingress,
+                "native_ensemble_oos_ingress": (
+                    native_ensemble_oos_ingress
+                ),
                 "resident_p0_ingress": resident_p0_ingress,
                 "resident_p0m_ingress": resident_p0m_ingress,
                 "resident_p1_ingress": resident_p1_ingress,
@@ -5608,6 +6408,27 @@ class TargetProductionWorker:
                     "writes_target_database": False,
                     "calls_order_gateway": False,
                     "places_orders": False,
+                }
+            )
+            payload["native_ensemble_ingress"] = (
+                native_ensemble_ingress
+                or {
+                    "state": "blocked_fail_closed",
+                    "reason": reason,
+                    "writes_target_database": False,
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
+                }
+            )
+            payload["native_ensemble_oos_ingress"] = (
+                native_ensemble_oos_ingress
+                or {
+                    "state": "blocked_fail_closed",
+                    "reason": reason,
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "live_submit_authorized": False,
                 }
             )
             payload["resident_p0_ingress"] = resident_p0_ingress or {

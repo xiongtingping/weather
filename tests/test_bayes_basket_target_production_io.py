@@ -14,6 +14,9 @@ from bayes_basket_target.production_io import (
     load_production_market_snapshot,
 )
 from bayes_basket_target.contracts import ProbabilityEnvelope
+from bayes_basket_target.native_ensemble_contract import (
+    P0_PROBABILITY_PATHWAY,
+)
 from bayes_basket_target.stages import select_current_stage
 from bayes_basket_target.probability_bridge import materialize_probability_bridge
 from bayes_basket_target.regime_materialization import (
@@ -107,6 +110,30 @@ def _seed_probability_only(conn: sqlite3.Connection) -> ProbabilityEnvelope:
     conn.row_factory = sqlite3.Row
     apply_production_ssot_schema(conn)
     root = _envelope()
+    _insert_probability_row(
+        conn,
+        root,
+        created_at="2026-07-23T04:00:00Z",
+    )
+    return root
+
+
+def _seed_native_probability_only(
+    conn: sqlite3.Connection,
+) -> ProbabilityEnvelope:
+    conn.row_factory = sqlite3.Row
+    apply_production_ssot_schema(conn)
+    base = _envelope()
+    root = ProbabilityEnvelope.from_mapping(
+        {
+            **base.to_dict(),
+            "lineage": {
+                **dict(base.lineage),
+                "probability_pathway": P0_PROBABILITY_PATHWAY,
+                "p0_probability_pathway": P0_PROBABILITY_PATHWAY,
+            },
+        }
+    )
     _insert_probability_row(
         conn,
         root,
@@ -859,7 +886,7 @@ def test_probability_loader_does_not_hide_corrupt_high_stage_behind_p0_fallback(
     stage: str,
 ) -> None:
     with sqlite3.connect(":memory:") as conn:
-        root = _seed_probability_only(conn)
+        root = _seed_native_probability_only(conn)
         conn.execute(
             """INSERT INTO basket_probability_envelope(
                 envelope_id,stage,checkpoint_id,station_id,event_date,
@@ -906,7 +933,7 @@ def test_highest_existing_stage_expiry_fails_closed_without_crossing(
     stage: str,
 ) -> None:
     with sqlite3.connect(":memory:") as conn:
-        root = _seed_probability_only(conn)
+        root = _seed_native_probability_only(conn)
         higher = _stage_envelope(
             root,
             stage=stage,
@@ -938,7 +965,7 @@ def test_highest_existing_stage_expiry_fails_closed_without_crossing(
 
 def test_stage_routing_only_falls_back_when_higher_stage_is_not_yet_asof() -> None:
     with sqlite3.connect(":memory:") as conn:
-        root = _seed_probability_only(conn)
+        root = _seed_native_probability_only(conn)
         future_p0m = _stage_envelope(
             root,
             stage="P0-M",
@@ -977,7 +1004,7 @@ def test_stage_routing_only_falls_back_when_higher_stage_is_not_yet_asof() -> No
 
 def test_low_high_low_arrival_never_rewinds_selected_p1() -> None:
     with sqlite3.connect(":memory:") as conn:
-        root = _seed_probability_only(conn)
+        root = _seed_native_probability_only(conn)
         p1 = _stage_envelope(
             root,
             stage="P1",
@@ -1010,3 +1037,44 @@ def test_low_high_low_arrival_never_rewinds_selected_p1() -> None:
             at_utc="2026-07-23T05:00:04Z",
         )
         assert selected.checkpoint_id == "p1-authority"
+
+
+def test_native_root_keeps_legacy_p1_without_copied_pathway_visible() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        root = _seed_native_probability_only(conn)
+        p1 = _stage_envelope(
+            root,
+            stage="P1",
+            checkpoint_id="p1-before-pathway-inheritance",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        p1 = ProbabilityEnvelope.from_mapping(
+            {
+                **p1.to_dict(),
+                "lineage": {
+                    key: value
+                    for key, value in p1.lineage.items()
+                    if key not in {
+                        "probability_pathway",
+                        "p0_probability_pathway",
+                    }
+                },
+            }
+        )
+        _insert_probability_row(
+            conn,
+            p1,
+            created_at="2026-07-23T05:00:01Z",
+        )
+
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:02Z",
+        )
+        assert select_current_stage(
+            envelopes,
+            at_utc="2026-07-23T05:00:02Z",
+        ).checkpoint_id == "p1-before-pathway-inheritance"

@@ -173,8 +173,8 @@ def test_service_missing_or_drift_fails_closed(tmp_path: Path) -> None:
         service_probe=lambda: {"com.weather.market_ws": 2, "unexpected": 3},
     )
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
-    assert "system_service_set_drift" in result["blockers"]
-    assert "system_service_missing:com.weather.reported_trajectory_no" in result["blockers"]
+    assert "user_service_set_drift" in result["blockers"]
+    assert "user_service_missing:com.weather.reported_trajectory_no" in result["blockers"]
 
 
 def test_stale_official_ws_fails_closed(tmp_path: Path) -> None:

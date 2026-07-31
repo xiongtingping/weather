@@ -32,7 +32,9 @@ def _execute_sql_script_transactional(conn: sqlite3.Connection, script: str) -> 
         raise RuntimeError("sqlite_script_incomplete_statement")
 
 
-SCHEMA_VERSION = "bayes_basket_target_ssot_v5_five_model_pool"
+SCHEMA_VERSION = (
+    "bayes_basket_target_ssot_v7_native_ensemble_market_timezone_binding"
+)
 
 DDL = """
 PRAGMA foreign_keys = ON;
@@ -46,6 +48,21 @@ CREATE TABLE IF NOT EXISTS calibration_station_registry (
   settlement_definition TEXT NOT NULL,
   registry_version TEXT NOT NULL,
   source_role TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_station_market_timezone_binding (
+  binding_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL UNIQUE
+    REFERENCES calibration_station_registry(station_id),
+  settlement_timezone TEXT NOT NULL,
+  market_registry_timezone_count INTEGER NOT NULL
+    CHECK(market_registry_timezone_count=1),
+  historical_truth_evidence_sha256 TEXT
+    CHECK(historical_truth_evidence_sha256 IS NULL OR
+      length(historical_truth_evidence_sha256)=64),
+  binding_version TEXT NOT NULL,
+  bound_at_utc TEXT NOT NULL,
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64)
 );
 
@@ -198,6 +215,394 @@ CREATE TABLE IF NOT EXISTS calibration_ensemble_selection_evidence (
   max_weight_delta REAL NOT NULL CHECK(max_weight_delta>=0),
   actual_max_weight_delta REAL NOT NULL CHECK(actual_max_weight_delta>=0 AND actual_max_weight_delta<=max_weight_delta),
   content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64)
+);
+
+-- Long-term P0 authority.  These tables deliberately do not reuse the legacy
+-- calibration_ensemble_* namespace: that namespace combines deterministic
+-- model distributions, while this namespace preserves native members first.
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_system (
+  ensemble_system_id TEXT PRIMARY KEY,
+  canonical_name TEXT NOT NULL UNIQUE,
+  independence_family_id TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  source_class TEXT NOT NULL CHECK(source_class='NATIVE_ENSEMBLE_PROVIDER'),
+  aggregator_or_republisher INTEGER NOT NULL DEFAULT 0
+    CHECK(aggregator_or_republisher=0),
+  expected_member_count INTEGER NOT NULL CHECK(expected_member_count>=2),
+  member_identity_contract_version TEXT NOT NULL,
+  publication_contract_version TEXT NOT NULL,
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_member_run (
+  member_run_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  run_init_utc TEXT,
+  member_id TEXT NOT NULL,
+  member_role TEXT NOT NULL CHECK(member_role IN ('CONTROL','PERTURBED')),
+  published_at_utc TEXT,
+  received_at_utc TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  raw_tmax_c REAL NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  extraction_version TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  transport_provider_id TEXT NOT NULL,
+  native_timestamps_complete INTEGER NOT NULL
+    CHECK(native_timestamps_complete IN (0,1)),
+  aggregator_snapshot_at_utc TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  raw_object_ref TEXT NOT NULL,
+  source_object_sha256 TEXT NOT NULL CHECK(length(source_object_sha256)=64),
+  qc_status TEXT NOT NULL CHECK(qc_status IN ('ACCEPTED','QUARANTINED')),
+  authority_scope TEXT NOT NULL
+    CHECK(authority_scope IN ('FORMAL_NATIVE_ELIGIBLE','PRODUCTION_NO_LIVE_CANDIDATE')),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(
+    authority_scope<>'FORMAL_NATIVE_ELIGIBLE'
+    OR (
+      native_timestamps_complete=1
+      AND run_init_utc IS NOT NULL
+      AND published_at_utc IS NOT NULL
+    )
+  ),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,run_init_utc,
+    member_id,extraction_version
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_member_bucket (
+  member_bucket_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  aggregator_snapshot_at_utc TEXT NOT NULL,
+  member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
+  member_count INTEGER NOT NULL CHECK(member_count>=2),
+  bucket_contract_sha256 TEXT NOT NULL CHECK(length(bucket_contract_sha256)=64),
+  bucket_intervals_json TEXT NOT NULL,
+  raw_bucket_probabilities_json TEXT NOT NULL,
+  source_role TEXT NOT NULL CHECK(source_role='aggregator_republisher'),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,
+    member_set_sha256,bucket_contract_sha256
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
+  historical_member_run_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  archive_lead_bucket TEXT NOT NULL CHECK(
+    archive_lead_bucket IN ('d0','d2')
+  ),
+  run_cycle TEXT NOT NULL CHECK(
+    run_cycle IN (
+      'AGGREGATOR_UNKNOWN_NATIVE_CYCLE','00Z','06Z','12Z','18Z'
+    )
+  ),
+  member_id TEXT NOT NULL,
+  member_role TEXT NOT NULL CHECK(member_role IN ('CONTROL','PERTURBED')),
+  raw_tmax_c REAL NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  extraction_version TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  transport_provider_id TEXT NOT NULL CHECK(
+    transport_provider_id IN (
+      'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
+      'ECCC_DD_WEATHER'
+    )
+  ),
+  native_run_init_utc TEXT,
+  offline_oos_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(offline_oos_eligible IN (0,1)),
+  archive_query_at_utc TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  raw_object_ref TEXT NOT NULL,
+  source_object_sha256 TEXT NOT NULL CHECK(length(source_object_sha256)=64),
+  qc_status TEXT NOT NULL CHECK(qc_status IN ('ACCEPTED','QUARANTINED')),
+  authority_scope TEXT NOT NULL CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+  holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(
+    offline_oos_eligible=0
+    OR (
+      transport_provider_id IN (
+        'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
+        'ECCC_DD_WEATHER'
+      )
+      AND native_run_init_utc IS NOT NULL
+      AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
+    )
+  ),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,
+    archive_lead_bucket,member_id,extraction_version
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_bucket (
+  historical_member_bucket_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  archive_lead_bucket TEXT NOT NULL CHECK(
+    archive_lead_bucket IN ('d0','d2')
+  ),
+  archive_query_at_utc TEXT NOT NULL,
+  member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
+  member_count INTEGER NOT NULL CHECK(member_count>=2),
+  bucket_contract_sha256 TEXT NOT NULL CHECK(length(bucket_contract_sha256)=64),
+  bucket_intervals_json TEXT NOT NULL,
+  raw_bucket_probabilities_json TEXT NOT NULL,
+  source_role TEXT NOT NULL CHECK(
+    source_role IN ('aggregator_republisher','official_native_archive')
+  ),
+  authority_scope TEXT NOT NULL CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+  holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,
+    archive_lead_bucket,member_set_sha256,bucket_contract_sha256
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_system_artifact (
+  system_artifact_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+  station_id TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  calibration_method TEXT NOT NULL,
+  bias_parameters_json TEXT NOT NULL,
+  spread_parameters_json TEXT NOT NULL,
+  reliability_parameters_json TEXT NOT NULL,
+  member_qc_contract_sha256 TEXT NOT NULL CHECK(length(member_qc_contract_sha256)=64),
+  train_start_date TEXT NOT NULL,
+  train_end_date TEXT NOT NULL,
+  holdout_start_date TEXT NOT NULL,
+  holdout_end_date TEXT NOT NULL,
+  rolling_origin_fold_count INTEGER NOT NULL CHECK(rolling_origin_fold_count>=1),
+  effective_sample_n REAL NOT NULL CHECK(effective_sample_n>0),
+  oos_metrics_json TEXT NOT NULL,
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(train_end_date < holdout_start_date)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_selection_evidence (
+  selection_evidence_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  method_version TEXT NOT NULL,
+  candidate_system_ids_json TEXT NOT NULL,
+  selected_system_ids_json TEXT NOT NULL,
+  selected_system_count INTEGER NOT NULL CHECK(selected_system_count>=2),
+  independent_family_count INTEGER NOT NULL CHECK(independent_family_count>=2),
+  selected_weights_json TEXT NOT NULL,
+  family_weights_json TEXT NOT NULL,
+  family_weight_caps_json TEXT NOT NULL,
+  supported_exact_masks_json TEXT NOT NULL,
+  train_start_date TEXT NOT NULL,
+  train_end_date TEXT NOT NULL,
+  holdout_start_date TEXT NOT NULL,
+  holdout_end_date TEXT NOT NULL,
+  rolling_origin_fold_count INTEGER NOT NULL CHECK(rolling_origin_fold_count>=1),
+  effective_sample_n REAL NOT NULL CHECK(effective_sample_n>0),
+  oos_metrics_json TEXT NOT NULL,
+  cross_system_residual_correlation_json TEXT NOT NULL,
+  deterministic_baseline_metrics_json TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(train_end_date < holdout_start_date)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_artifact (
+  cross_ensemble_artifact_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  ensemble_system_ids_json TEXT NOT NULL,
+  ensemble_system_count INTEGER NOT NULL CHECK(ensemble_system_count>=2),
+  independent_family_count INTEGER NOT NULL CHECK(independent_family_count>=2),
+  supported_exact_masks_json TEXT NOT NULL,
+  selection_evidence_sha256 TEXT NOT NULL CHECK(length(selection_evidence_sha256)=64),
+  combination_method TEXT NOT NULL,
+  family_weight_caps_json TEXT NOT NULL,
+  probability_pathway TEXT NOT NULL
+    CHECK(probability_pathway='CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE'),
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_oos_prediction (
+  prediction_id TEXT PRIMARY KEY,
+  cross_ensemble_artifact_id TEXT NOT NULL
+    REFERENCES calibration_cross_native_ensemble_artifact(
+      cross_ensemble_artifact_id
+    ),
+  selection_evidence_sha256 TEXT NOT NULL
+    CHECK(length(selection_evidence_sha256)=64),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  trained_through_event_date TEXT NOT NULL,
+  decision_at_utc TEXT NOT NULL,
+  ensemble_system_ids_json TEXT NOT NULL,
+  independence_family_ids_json TEXT NOT NULL,
+  system_family_ids_json TEXT NOT NULL,
+  system_weights_json TEXT NOT NULL,
+  family_weight_caps_json TEXT NOT NULL,
+  system_member_set_shas_json TEXT NOT NULL,
+  probabilities_json TEXT NOT NULL,
+  bucket_centers_c_json TEXT NOT NULL,
+  prediction_oos INTEGER NOT NULL CHECK(prediction_oos=1),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='PRODUCTION_NO_LIVE_ONLY'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(trained_through_event_date < event_date),
+  UNIQUE(
+    cross_ensemble_artifact_id,station_id,event_date,
+    season_bin,lead_bucket,run_cycle
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_forward_taf_capture (
+  taf_capture_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  revision_id TEXT NOT NULL,
+  revision_kind TEXT NOT NULL,
+  revision_sequence INTEGER NOT NULL CHECK(revision_sequence>=1),
+  issued_at_utc TEXT NOT NULL,
+  received_at_utc TEXT NOT NULL,
+  provider_available_at_utc TEXT NOT NULL,
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  source_object_sha256 TEXT NOT NULL CHECK(length(source_object_sha256)=64),
+  source_capture_sha256 TEXT NOT NULL CHECK(length(source_capture_sha256)=64),
+  tx_c REAL,
+  tx_available INTEGER NOT NULL CHECK(tx_available IN (0,1)),
+  cloud_cover_fraction REAL NOT NULL
+    CHECK(cloud_cover_fraction>=0 AND cloud_cover_fraction<=1),
+  precipitation_probability REAL NOT NULL
+    CHECK(precipitation_probability>=0 AND precipitation_probability<=1),
+  wind_speed_mps REAL NOT NULL CHECK(wind_speed_mps>=0),
+  source_class TEXT NOT NULL CHECK(
+    source_class='official_forward_native_receipt'
+  ),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='PRODUCTION_NO_LIVE_ONLY'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK((tx_available=1 AND tx_c IS NOT NULL) OR
+        (tx_available=0 AND tx_c IS NULL)),
+  UNIQUE(station_id,event_date,revision_id)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_historical_taf_capture (
+  historical_taf_capture_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  decision_anchor_utc TEXT NOT NULL,
+  issued_at_utc TEXT NOT NULL,
+  provider_available_at_utc TEXT NOT NULL,
+  tx_c REAL NOT NULL,
+  tx_valid_at_utc TEXT NOT NULL,
+  cloud_cover_fraction REAL NOT NULL
+    CHECK(cloud_cover_fraction>=0 AND cloud_cover_fraction<=1),
+  precipitation_probability REAL NOT NULL
+    CHECK(precipitation_probability>=0 AND
+          precipitation_probability<=1),
+  wind_speed_mps REAL NOT NULL CHECK(wind_speed_mps>=0),
+  raw_taf_sha256 TEXT NOT NULL CHECK(length(raw_taf_sha256)=64),
+  taf_response_sha256 TEXT NOT NULL
+    CHECK(length(taf_response_sha256)=64),
+  source_sample_sha256 TEXT NOT NULL
+    CHECK(length(source_sample_sha256)=64),
+  source_class TEXT NOT NULL CHECK(
+    source_class='official_date_addressed_historical_replay'
+  ),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='CALIBRATION_TRAIN_ONLY'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(issued_at_utc<=provider_available_at_utc),
+  CHECK(provider_available_at_utc<=decision_anchor_utc),
+  UNIQUE(station_id,event_date,source_sample_sha256)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_promotion (
+  promotion_decision_id TEXT PRIMARY KEY,
+  artifact_kind TEXT NOT NULL CHECK(
+    artifact_kind IN ('NATIVE_ENSEMBLE_SYSTEM_CALIBRATION','CROSS_NATIVE_ENSEMBLE')
+  ),
+  artifact_id TEXT NOT NULL,
+  decision_seq INTEGER NOT NULL CHECK(decision_seq>=1),
+  decision TEXT NOT NULL CHECK(decision IN ('PROMOTED','REJECTED','SUPERSEDED')),
+  gate_version TEXT NOT NULL,
+  decided_at_utc TEXT NOT NULL,
+  receipt_sha256 TEXT NOT NULL CHECK(length(receipt_sha256)=64),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(artifact_kind,artifact_id,gate_version,decision_seq)
+);
+
+CREATE TABLE IF NOT EXISTS calibration_native_ensemble_activation (
+  activation_id TEXT PRIMARY KEY,
+  artifact_kind TEXT NOT NULL CHECK(
+    artifact_kind IN ('NATIVE_ENSEMBLE_SYSTEM_CALIBRATION','CROSS_NATIVE_ENSEMBLE')
+  ),
+  artifact_id TEXT NOT NULL,
+  station_id TEXT NOT NULL,
+  ensemble_system_id_or_star TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  available_system_set_hash_or_star TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK(generation>=1),
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  activated_at_utc TEXT NOT NULL,
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope IN ('FORMAL_PROMOTED','PRODUCTION_NO_LIVE_ONLY')
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(
+    artifact_kind,station_id,ensemble_system_id_or_star,season_bin,
+    lead_bucket,run_cycle,available_system_set_hash_or_star,generation
+  )
 );
 
 CREATE TABLE IF NOT EXISTS calibration_artifact_promotion (
@@ -368,10 +773,22 @@ CREATE INDEX IF NOT EXISTS calibration_model_scope_idx ON calibration_model_arti
 CREATE INDEX IF NOT EXISTS calibration_ensemble_scope_idx ON calibration_ensemble_artifact(station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_ensemble_selection_scope_idx ON calibration_ensemble_selection_evidence(station_id,season_bin,lead_bucket,run_cycle,train_end_date,holdout_end_date);
 CREATE INDEX IF NOT EXISTS calibration_activation_asof_idx ON calibration_activation(station_id,artifact_kind,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc,generation);
+CREATE INDEX IF NOT EXISTS calibration_native_member_scope_idx ON calibration_native_ensemble_member_run(ensemble_system_id,station_id,target_local_date,run_init_utc,member_id);
+CREATE INDEX IF NOT EXISTS calibration_native_member_bucket_scope_idx ON calibration_native_ensemble_member_bucket(ensemble_system_id,station_id,target_local_date,aggregator_snapshot_at_utc);
+CREATE INDEX IF NOT EXISTS calibration_native_historical_member_scope_idx ON calibration_native_ensemble_historical_member_run(ensemble_system_id,station_id,target_local_date,archive_lead_bucket,member_id);
+CREATE INDEX IF NOT EXISTS calibration_native_historical_bucket_scope_idx ON calibration_native_ensemble_historical_member_bucket(ensemble_system_id,station_id,target_local_date,archive_query_at_utc);
+CREATE INDEX IF NOT EXISTS calibration_native_system_artifact_scope_idx ON calibration_native_ensemble_system_artifact(ensemble_system_id,station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
+CREATE INDEX IF NOT EXISTS calibration_cross_native_artifact_scope_idx ON calibration_cross_native_ensemble_artifact(station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
+CREATE INDEX IF NOT EXISTS calibration_cross_native_oos_prediction_scope_idx ON calibration_cross_native_ensemble_oos_prediction(station_id,event_date,season_bin,lead_bucket,run_cycle,decision_at_utc);
+CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_scope_idx ON calibration_forward_taf_capture(station_id,event_date,provider_available_at_utc,revision_sequence);
+CREATE INDEX IF NOT EXISTS calibration_historical_taf_capture_scope_idx ON calibration_historical_taf_capture(station_id,event_date,provider_available_at_utc);
+CREATE INDEX IF NOT EXISTS calibration_native_activation_asof_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc,generation);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
 
 CREATE TRIGGER IF NOT EXISTS calibration_station_registry_no_update BEFORE UPDATE ON calibration_station_registry BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_station_registry_no_delete BEFORE DELETE ON calibration_station_registry BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_station_market_timezone_binding_no_update BEFORE UPDATE ON calibration_station_market_timezone_binding BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_station_market_timezone_binding_no_delete BEFORE DELETE ON calibration_station_market_timezone_binding BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_truth_no_update BEFORE UPDATE ON calibration_station_daily_high_truth BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_truth_no_delete BEFORE DELETE ON calibration_station_daily_high_truth BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_model_run_no_update BEFORE UPDATE ON calibration_historical_asof_model_run BEGIN SELECT RAISE(ABORT,'append_only'); END;
@@ -384,6 +801,32 @@ CREATE TRIGGER IF NOT EXISTS calibration_ensemble_artifact_no_update BEFORE UPDA
 CREATE TRIGGER IF NOT EXISTS calibration_ensemble_artifact_no_delete BEFORE DELETE ON calibration_ensemble_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_ensemble_selection_evidence_no_update BEFORE UPDATE ON calibration_ensemble_selection_evidence BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_ensemble_selection_evidence_no_delete BEFORE DELETE ON calibration_ensemble_selection_evidence BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_system_no_update BEFORE UPDATE ON calibration_native_ensemble_system BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_system_no_delete BEFORE DELETE ON calibration_native_ensemble_system BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_member_run_no_update BEFORE UPDATE ON calibration_native_ensemble_member_run BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_member_run_no_delete BEFORE DELETE ON calibration_native_ensemble_member_run BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_member_bucket_no_update BEFORE UPDATE ON calibration_native_ensemble_member_bucket BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_member_bucket_no_delete BEFORE DELETE ON calibration_native_ensemble_member_bucket BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_historical_member_no_update BEFORE UPDATE ON calibration_native_ensemble_historical_member_run BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_historical_member_no_delete BEFORE DELETE ON calibration_native_ensemble_historical_member_run BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_historical_bucket_no_update BEFORE UPDATE ON calibration_native_ensemble_historical_member_bucket BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_historical_bucket_no_delete BEFORE DELETE ON calibration_native_ensemble_historical_member_bucket BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_system_artifact_no_update BEFORE UPDATE ON calibration_native_ensemble_system_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_system_artifact_no_delete BEFORE DELETE ON calibration_native_ensemble_system_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_selection_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_selection_evidence BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_selection_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_selection_evidence BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_artifact_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_artifact_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_prediction_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_oos_prediction BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_prediction_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_oos_prediction BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_forward_taf_capture_no_update BEFORE UPDATE ON calibration_forward_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_forward_taf_capture_no_delete BEFORE DELETE ON calibration_forward_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_capture_no_update BEFORE UPDATE ON calibration_historical_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_capture_no_delete BEFORE DELETE ON calibration_historical_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_update BEFORE UPDATE ON calibration_native_ensemble_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_delete BEFORE DELETE ON calibration_native_ensemble_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_activation_no_update BEFORE UPDATE ON calibration_native_ensemble_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_native_activation_no_delete BEFORE DELETE ON calibration_native_ensemble_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_promotion_no_update BEFORE UPDATE ON calibration_artifact_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_promotion_no_delete BEFORE DELETE ON calibration_artifact_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_activation_no_update BEFORE UPDATE ON calibration_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
@@ -1395,6 +1838,7 @@ BEFORE DELETE ON basket_target_prepared_supersession_receipts BEGIN SELECT RAISE
 
 CALIBRATION_TABLES = (
     "calibration_station_registry",
+    "calibration_station_market_timezone_binding",
     "calibration_station_daily_high_truth",
     "calibration_historical_asof_model_run",
     "calibration_model_station_residual",
@@ -1404,6 +1848,335 @@ CALIBRATION_TABLES = (
     "calibration_artifact_promotion",
     "calibration_activation",
 )
+NATIVE_ENSEMBLE_FOUNDATION_TABLES = (
+    "calibration_native_ensemble_system",
+    "calibration_native_ensemble_member_run",
+    "calibration_native_ensemble_member_bucket",
+    "calibration_native_ensemble_historical_member_run",
+    "calibration_native_ensemble_historical_member_bucket",
+    "calibration_native_ensemble_system_artifact",
+    "calibration_cross_native_ensemble_selection_evidence",
+    "calibration_cross_native_ensemble_artifact",
+    "calibration_cross_native_ensemble_oos_prediction",
+    "calibration_forward_taf_capture",
+    "calibration_native_ensemble_promotion",
+    "calibration_native_ensemble_activation",
+)
+NATIVE_ENSEMBLE_ADDITIVE_TABLES = (
+    "calibration_historical_taf_capture",
+)
+NATIVE_ENSEMBLE_SCHEMA_TABLES = (
+    *NATIVE_ENSEMBLE_FOUNDATION_TABLES,
+    *NATIVE_ENSEMBLE_ADDITIVE_TABLES,
+)
+
+
+def native_ensemble_foundation_schema_status(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    rows = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    missing = sorted(set(NATIVE_ENSEMBLE_FOUNDATION_TABLES) - rows)
+    required_member_columns = {
+        "run_init_utc",
+        "published_at_utc",
+        "received_at_utc",
+        "transport_provider_id",
+        "native_timestamps_complete",
+        "aggregator_snapshot_at_utc",
+        "authority_scope",
+        "content_sha256",
+    }
+    member_columns = (
+        {
+            str(row[1])
+            for row in conn.execute(
+                "PRAGMA table_info(calibration_native_ensemble_member_run)"
+            )
+        }
+        if "calibration_native_ensemble_member_run" in rows
+        else set()
+    )
+    missing_member_columns = sorted(
+        required_member_columns - member_columns
+    )
+    return {
+        "ok": not missing and not missing_member_columns,
+        "missing_tables": missing,
+        "missing_member_columns": missing_member_columns,
+        "tables": list(NATIVE_ENSEMBLE_FOUNDATION_TABLES),
+    }
+
+
+def _migrate_native_historical_source_contract(
+    conn: sqlite3.Connection,
+) -> None:
+    """Broaden the old Open-Meteo-only history tables without changing facts."""
+
+    member_sql_row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND "
+        "name='calibration_native_ensemble_historical_member_run'"
+    ).fetchone()
+    member_sql = (
+        str(member_sql_row[0]) if member_sql_row is not None else ""
+    )
+    if member_sql_row is not None and (
+        "offline_oos_eligible" not in member_sql
+        or "'d2'" not in member_sql
+        or "ECMWF_OPEN_DATA_S3" not in member_sql
+        or "ECCC_DD_WEATHER" not in member_sql
+    ):
+        had_offline_columns = "offline_oos_eligible" in member_sql
+        conn.execute(
+            "DROP TRIGGER IF EXISTS "
+            "calibration_native_historical_member_no_update"
+        )
+        conn.execute(
+            "DROP TRIGGER IF EXISTS "
+            "calibration_native_historical_member_no_delete"
+        )
+        conn.execute(
+            "DROP INDEX IF EXISTS "
+            "calibration_native_historical_member_scope_idx"
+        )
+        conn.execute(
+            "ALTER TABLE calibration_native_ensemble_historical_member_run "
+            "RENAME TO calibration_native_ensemble_historical_member_run_v1"
+        )
+        conn.execute("""
+            CREATE TABLE calibration_native_ensemble_historical_member_run (
+              historical_member_run_id TEXT PRIMARY KEY,
+              ensemble_system_id TEXT NOT NULL
+                REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+              station_id TEXT NOT NULL
+                REFERENCES calibration_station_registry(station_id),
+              target_local_date TEXT NOT NULL,
+              archive_lead_bucket TEXT NOT NULL
+                CHECK(archive_lead_bucket IN ('d0','d2')),
+              run_cycle TEXT NOT NULL CHECK(
+                run_cycle IN (
+                  'AGGREGATOR_UNKNOWN_NATIVE_CYCLE',
+                  '00Z','06Z','12Z','18Z'
+                )
+              ),
+              member_id TEXT NOT NULL,
+              member_role TEXT NOT NULL
+                CHECK(member_role IN ('CONTROL','PERTURBED')),
+              raw_tmax_c REAL NOT NULL,
+              settlement_definition TEXT NOT NULL,
+              extraction_version TEXT NOT NULL,
+              provider_id TEXT NOT NULL,
+              transport_provider_id TEXT NOT NULL CHECK(
+                transport_provider_id IN (
+                  'OPEN_METEO','NOAA_GEFS_PDS_S3',
+                  'ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER'
+                )
+              ),
+              native_run_init_utc TEXT,
+              offline_oos_eligible INTEGER NOT NULL DEFAULT 0
+                CHECK(offline_oos_eligible IN (0,1)),
+              archive_query_at_utc TEXT NOT NULL,
+              source_url TEXT NOT NULL,
+              raw_object_ref TEXT NOT NULL,
+              source_object_sha256 TEXT NOT NULL
+                CHECK(length(source_object_sha256)=64),
+              qc_status TEXT NOT NULL
+                CHECK(qc_status IN ('ACCEPTED','QUARANTINED')),
+              authority_scope TEXT NOT NULL
+                CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+              holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+              content_sha256 TEXT NOT NULL UNIQUE
+                CHECK(length(content_sha256)=64),
+              CHECK(
+                offline_oos_eligible=0
+                OR (
+                  transport_provider_id IN (
+                    'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
+                    'ECCC_DD_WEATHER'
+                  )
+                  AND native_run_init_utc IS NOT NULL
+                  AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
+                )
+              ),
+              UNIQUE(
+                ensemble_system_id,station_id,target_local_date,
+                archive_lead_bucket,member_id,extraction_version
+              )
+            )
+        """)
+        destination_columns = """
+              historical_member_run_id,ensemble_system_id,station_id,
+              target_local_date,archive_lead_bucket,run_cycle,member_id,
+              member_role,raw_tmax_c,settlement_definition,
+              extraction_version,provider_id,transport_provider_id,
+              native_run_init_utc,offline_oos_eligible,
+              archive_query_at_utc,source_url,raw_object_ref,
+              source_object_sha256,qc_status,authority_scope,
+              holdout_eligible,content_sha256
+        """
+        if had_offline_columns:
+            source_columns = destination_columns
+        else:
+            source_columns = """
+              historical_member_run_id,ensemble_system_id,station_id,
+              target_local_date,archive_lead_bucket,run_cycle,member_id,
+              member_role,raw_tmax_c,settlement_definition,
+              extraction_version,provider_id,transport_provider_id,
+              NULL,0,archive_query_at_utc,source_url,raw_object_ref,
+              source_object_sha256,qc_status,authority_scope,
+              holdout_eligible,content_sha256
+            """
+        conn.execute(
+            "INSERT INTO "
+            "calibration_native_ensemble_historical_member_run("
+            + destination_columns
+            + ") SELECT "
+            + source_columns
+            + " FROM "
+            "calibration_native_ensemble_historical_member_run_v1"
+        )
+        conn.execute(
+            "DROP TABLE "
+            "calibration_native_ensemble_historical_member_run_v1"
+        )
+
+    bucket_sql_row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND "
+        "name='calibration_native_ensemble_historical_member_bucket'"
+    ).fetchone()
+    bucket_sql = (
+        str(bucket_sql_row[0]) if bucket_sql_row is not None else ""
+    )
+    if bucket_sql_row is not None and (
+        "official_native_archive" not in bucket_sql
+        or "'d2'" not in bucket_sql
+    ):
+        conn.execute(
+            "DROP TRIGGER IF EXISTS "
+            "calibration_native_historical_bucket_no_update"
+        )
+        conn.execute(
+            "DROP TRIGGER IF EXISTS "
+            "calibration_native_historical_bucket_no_delete"
+        )
+        conn.execute(
+            "DROP INDEX IF EXISTS "
+            "calibration_native_historical_bucket_scope_idx"
+        )
+        conn.execute(
+            "ALTER TABLE calibration_native_ensemble_historical_member_bucket "
+            "RENAME TO calibration_native_ensemble_historical_member_bucket_v1"
+        )
+        conn.execute("""
+            CREATE TABLE calibration_native_ensemble_historical_member_bucket (
+              historical_member_bucket_id TEXT PRIMARY KEY,
+              ensemble_system_id TEXT NOT NULL
+                REFERENCES calibration_native_ensemble_system(ensemble_system_id),
+              station_id TEXT NOT NULL
+                REFERENCES calibration_station_registry(station_id),
+              target_local_date TEXT NOT NULL,
+              archive_lead_bucket TEXT NOT NULL
+                CHECK(archive_lead_bucket IN ('d0','d2')),
+              archive_query_at_utc TEXT NOT NULL,
+              member_set_sha256 TEXT NOT NULL
+                CHECK(length(member_set_sha256)=64),
+              member_count INTEGER NOT NULL CHECK(member_count>=2),
+              bucket_contract_sha256 TEXT NOT NULL
+                CHECK(length(bucket_contract_sha256)=64),
+              bucket_intervals_json TEXT NOT NULL,
+              raw_bucket_probabilities_json TEXT NOT NULL,
+              source_role TEXT NOT NULL CHECK(
+                source_role IN (
+                  'aggregator_republisher','official_native_archive'
+                )
+              ),
+              authority_scope TEXT NOT NULL
+                CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+              holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+              content_sha256 TEXT NOT NULL UNIQUE
+                CHECK(length(content_sha256)=64),
+              UNIQUE(
+                ensemble_system_id,station_id,target_local_date,
+                archive_lead_bucket,member_set_sha256,
+                bucket_contract_sha256
+              )
+            )
+        """)
+        conn.execute("""
+            INSERT INTO calibration_native_ensemble_historical_member_bucket
+            SELECT *
+            FROM calibration_native_ensemble_historical_member_bucket_v1
+        """)
+        conn.execute(
+            "DROP TABLE "
+            "calibration_native_ensemble_historical_member_bucket_v1"
+        )
+
+
+def apply_native_ensemble_foundation_schema(
+    conn: sqlite3.Connection,
+    *,
+    commit: bool = True,
+) -> dict[str, object]:
+    """Install only the additive native-ensemble tables/indexes/triggers."""
+
+    conn.execute("SAVEPOINT native_ensemble_foundation")
+    try:
+        _migrate_native_historical_source_contract(conn)
+        statement = ""
+        for line in DDL.splitlines(keepends=True):
+            statement += line
+            if not sqlite3.complete_statement(statement):
+                continue
+            sql = statement.strip()
+            statement = ""
+            if sql and any(
+                table in sql
+                for table in NATIVE_ENSEMBLE_SCHEMA_TABLES
+            ):
+                conn.execute(sql)
+        if statement.strip():
+            raise RuntimeError(
+                "native_ensemble_schema_source_incomplete"
+            )
+        status = native_ensemble_foundation_schema_status(conn)
+        if status["ok"] is not True:
+            raise RuntimeError(
+                "native_ensemble_foundation_schema_incomplete"
+            )
+        additive_rows = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        missing_additive = sorted(
+            set(NATIVE_ENSEMBLE_ADDITIVE_TABLES) - additive_rows
+        )
+        if missing_additive:
+            raise RuntimeError(
+                "native_ensemble_additive_schema_incomplete"
+            )
+    except Exception:
+        conn.execute("ROLLBACK TO native_ensemble_foundation")
+        conn.execute("RELEASE native_ensemble_foundation")
+        raise
+    conn.execute("RELEASE native_ensemble_foundation")
+    if commit:
+        conn.commit()
+    return {
+        "schema": "native_ensemble_foundation_schema_v1",
+        "state": "READY",
+        **status,
+        "additive_tables": list(NATIVE_ENSEMBLE_ADDITIVE_TABLES),
+        "performs_legacy_backfill": False,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+    }
 CALIBRATION_FIVE_MODEL_TABLES = (
     "calibration_historical_asof_model_run",
     "calibration_model_station_residual",
@@ -1575,6 +2348,9 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
         conn,
         DDL + MAKER_GRID_OOS_AUTHORITY_DDL + PROBABILITY_EVIDENCE_DDL,
     )
+    forward_taf_optional_tx_upgrade = (
+        _upgrade_forward_taf_optional_tx_schema(conn)
+    )
     _upgrade_calibration_activation_authority(conn)
     _upgrade_calibration_ensemble_governance(conn)
     _upgrade_empty_calibration_base_fact_schema(conn)
@@ -1597,12 +2373,16 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
         "schema": SCHEMA_VERSION,
         "ok": set(tables) == set(
             CALIBRATION_TABLES
+            + NATIVE_ENSEMBLE_FOUNDATION_TABLES
             + POLICY_TABLES
             + MAKER_GRID_OOS_AUTHORITY_TABLES
             + PROBABILITY_EVIDENCE_TABLES
         ),
         "tables": list(tables),
         "calibration_model_pool_upgrade": calibration_model_pool_upgrade,
+        "forward_taf_optional_tx_upgrade": (
+            forward_taf_optional_tx_upgrade
+        ),
         "live_order_authorized": False,
         "writes_production_db": False,
     }
@@ -2068,6 +2848,9 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         + PRODUCTION_LEDGER_DDL
         + PROBABILITY_EVIDENCE_DDL,
     )
+    forward_taf_optional_tx_upgrade = (
+        _upgrade_forward_taf_optional_tx_schema(conn)
+    )
     delta_v2_promotion_upgrade = (
         _upgrade_delta_v2_promotion_decision_constraint(conn)
     )
@@ -2118,11 +2901,134 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         "execution_vector_upgrade": execution_vector_upgrade,
         "regime_superseded_upgrade": regime_superseded_upgrade,
         "calibration_model_pool_upgrade": calibration_model_pool_upgrade,
+        "forward_taf_optional_tx_upgrade": (
+            forward_taf_optional_tx_upgrade
+        ),
         "strict_delta_candidate_upgrade": strict_delta_candidate_upgrade,
         "live_order_authorized": False,
         "writes_orders": False,
         "writes_production_db": True,
     }
+
+
+def _upgrade_forward_taf_optional_tx_schema(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Preserve native TAF receipts when the bulletin omits optional TX."""
+
+    table = "calibration_forward_taf_capture"
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    if exists is None:
+        return {"state": "not_present", "rows_copied": 0}
+    columns = {
+        str(row[1]): {
+            "notnull": int(row[3]),
+        }
+        for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    if (
+        "tx_available" in columns
+        and columns.get("tx_c", {}).get("notnull") == 0
+    ):
+        return {"state": "already_current", "rows_copied": 0}
+
+    legacy = "calibration_forward_taf_capture_legacy_required_tx_v1"
+    collision = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (legacy,),
+    ).fetchone()
+    if collision is not None:
+        raise RuntimeError("forward_taf_optional_tx_legacy_collision")
+    row_count = int(
+        conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    )
+    conn.execute("DROP TRIGGER IF EXISTS calibration_forward_taf_capture_no_update")
+    conn.execute("DROP TRIGGER IF EXISTS calibration_forward_taf_capture_no_delete")
+    conn.execute("DROP INDEX IF EXISTS calibration_forward_taf_capture_scope_idx")
+    conn.execute(f"ALTER TABLE {table} RENAME TO {legacy}")
+    conn.execute(
+        f"""
+        CREATE TABLE {table} (
+          taf_capture_id TEXT PRIMARY KEY,
+          station_id TEXT NOT NULL,
+          event_date TEXT NOT NULL,
+          settlement_timezone TEXT NOT NULL,
+          revision_id TEXT NOT NULL,
+          revision_kind TEXT NOT NULL,
+          revision_sequence INTEGER NOT NULL CHECK(revision_sequence>=1),
+          issued_at_utc TEXT NOT NULL,
+          received_at_utc TEXT NOT NULL,
+          provider_available_at_utc TEXT NOT NULL,
+          valid_from_utc TEXT NOT NULL,
+          valid_until_utc TEXT NOT NULL,
+          source_object_sha256 TEXT NOT NULL
+            CHECK(length(source_object_sha256)=64),
+          source_capture_sha256 TEXT NOT NULL
+            CHECK(length(source_capture_sha256)=64),
+          tx_c REAL,
+          tx_available INTEGER NOT NULL CHECK(tx_available IN (0,1)),
+          cloud_cover_fraction REAL NOT NULL
+            CHECK(cloud_cover_fraction>=0 AND cloud_cover_fraction<=1),
+          precipitation_probability REAL NOT NULL
+            CHECK(precipitation_probability>=0 AND
+                  precipitation_probability<=1),
+          wind_speed_mps REAL NOT NULL CHECK(wind_speed_mps>=0),
+          source_class TEXT NOT NULL CHECK(
+            source_class='official_forward_native_receipt'
+          ),
+          authority_scope TEXT NOT NULL CHECK(
+            authority_scope='PRODUCTION_NO_LIVE_ONLY'
+          ),
+          content_sha256 TEXT NOT NULL UNIQUE
+            CHECK(length(content_sha256)=64),
+          CHECK((tx_available=1 AND tx_c IS NOT NULL) OR
+                (tx_available=0 AND tx_c IS NULL)),
+          UNIQUE(station_id,event_date,revision_id)
+        )
+        """
+    )
+    old_columns = [
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({legacy})")
+    ]
+    copied_columns = [
+        name
+        for name in old_columns
+        if name != "tx_available"
+    ]
+    conn.execute(
+        f"INSERT INTO {table}("
+        + ",".join(copied_columns)
+        + ",tx_available) SELECT "
+        + ",".join(copied_columns)
+        + f",1 FROM {legacy}"
+    )
+    copied = int(
+        conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    )
+    if copied != row_count:
+        raise RuntimeError("forward_taf_optional_tx_copy_count_mismatch")
+    conn.execute(f"DROP TABLE {legacy}")
+    conn.execute(
+        "CREATE INDEX calibration_forward_taf_capture_scope_idx "
+        "ON calibration_forward_taf_capture("
+        "station_id,event_date,provider_available_at_utc,"
+        "revision_sequence)"
+    )
+    conn.execute(
+        "CREATE TRIGGER calibration_forward_taf_capture_no_update "
+        "BEFORE UPDATE ON calibration_forward_taf_capture "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    conn.execute(
+        "CREATE TRIGGER calibration_forward_taf_capture_no_delete "
+        "BEFORE DELETE ON calibration_forward_taf_capture "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    return {"state": "upgraded", "rows_copied": copied}
 
 
 def _upgrade_target_execution_deadline_columns(conn: sqlite3.Connection) -> dict[str, object]:
@@ -3131,6 +4037,9 @@ def _upgrade_settlement_timezone_columns(
 __all__ = [
     "CALIBRATION_FIVE_MODEL_TABLES",
     "CALIBRATION_TABLES",
+    "NATIVE_ENSEMBLE_FOUNDATION_TABLES",
+    "apply_native_ensemble_foundation_schema",
+    "native_ensemble_foundation_schema_status",
     "DDL",
     "MAKER_GRID_OOS_AUTHORITY_DDL",
     "MAKER_GRID_OOS_AUTHORITY_TABLES",

@@ -210,6 +210,7 @@ def _taf_row(
     end: datetime,
     event_date: str,
     timezone_name: str,
+    require_tx: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     candidates = [
         row for row in rows
@@ -223,7 +224,19 @@ def _taf_row(
     available_time = _parse_utc(taf.get("dbPopTime") or taf.get("issueTime"))
     if available_time >= end:
         raise ContractError("awc_taf_not_available_before_truth_close")
-    tx_c, tx_valid_at = _tx(raw_taf, issue_time=issue_time, start=start, end=end)
+    try:
+        tx_c, tx_valid_at = _tx(
+            raw_taf,
+            issue_time=issue_time,
+            start=start,
+            end=end,
+        )
+    except ContractError as exc:
+        if require_tx or str(exc) != (
+            "awc_taf_tx_for_settlement_day_missing"
+        ):
+            raise
+        tx_c, tx_valid_at = None, None
     cloud, precip, wind = _forecast_features(
         taf,
         event_date=event_date,
@@ -387,6 +400,10 @@ def capture(
                 event_date=event_date,
                 timezone_name=timezone_name,
             )
+            if _parse_utc(taf["available_time_utc"]) > anchor:
+                raise ContractError(
+                    "awc_taf_historical_available_after_decision_anchor"
+                )
             truth_tmax, observations = _truth_rows(
                 metar_rows,
                 station_id=station,
@@ -428,11 +445,17 @@ def capture(
             if str(exc) in {
                 "awc_taf_tx_for_settlement_day_missing",
                 "awc_taf_peak_window_features_missing",
+                "awc_taf_historical_available_after_decision_anchor",
             }:
                 excluded_samples.append({
                     "event_date": event_date,
                     "reason": reason,
-                    "classification": "official_taf_structural_missing_field",
+                    "classification": (
+                        "official_taf_not_available_at_decision_anchor"
+                        if str(exc)
+                        == "awc_taf_historical_available_after_decision_anchor"
+                        else "official_taf_structural_missing_field"
+                    ),
                 })
             else:
                 blockers.append({"event_date": event_date, "reason": reason})

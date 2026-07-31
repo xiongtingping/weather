@@ -1,0 +1,24 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "9f7a4f1793c6a90f13f7d0f83f7709c0cb1461e84b779697dfb7f141cfbbb790",
+  "facts": {
+    "checkpointed_frames": 0,
+    "log_frames": 0,
+    "wal_bytes_after": 0
+  },
+  "forward_oos_boundary": {
+    "blocks_formal_promotion_or_live": true,
+    "blocks_production_no_live": false
+  },
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "payload_content_sha256": "b4fe86b7ed06b9883f9c1e72ec73d98833836ab90b5ddc671d32dee2a9aa8dac",
+  "payload_schema": "bayes_basket_target_wal_checkpoint_v1",
+  "payload_state": "CHECKPOINTED",
+  "production_no_live": true,
+  "schema": "bayes_basket_target_m9_06_stage_receipt_v1",
+  "source_path": "/Users/xiong/weather/output/audits/bayes_basket_target_wal_checkpoint_20260730T075118Z.json",
+  "source_sha256": "f5271d467a2e98f3250aa60fa2cfbbc4476825792fb5e9003caf760b662c9a62",
+  "stage": "wal_checkpoint",
+  "state": "CHECKPOINTED"
+}

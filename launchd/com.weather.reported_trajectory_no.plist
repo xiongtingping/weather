@@ -31,6 +31,10 @@
     <string>http://127.0.0.1:7897</string>
     <key>PM_TARGET_EXECUTION_MODE</key>
     <string>production_no_live</string>
+    <key>PM_TARGET_PRODUCTION_WRITER</key>
+    <string>1</string>
+    <key>WEATHER_SERVICE_DOMAIN</key>
+    <string>user</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

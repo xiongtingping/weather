@@ -1,36 +1,53 @@
+from __future__ import annotations
+
+import subprocess
 from pathlib import Path
 
 
-SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "scripts/reload_p0_economic_identity_system_no_live.sh"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts/reload_p0_economic_identity_system_no_live.sh"
+REPLACEMENT = (
+    "scripts/cutover_bayes_basket_target_probability_evidence_no_live.sh"
 )
 
 
-def test_reload_is_two_service_only_and_keeps_order_service_frozen() -> None:
+def test_p0_reload_entry_is_retired_before_any_state_change() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
+    commands = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", "#!"))
+    ]
 
-    assert 'kickstart -k "system/$MARKET_LABEL"' in text
-    assert 'kickstart -k "system/$TARGET_LABEL"' in text
-    assert 'kickstart -k "system/$ORDER_LABEL"' not in text
-    assert "p0_economic_reload_order_service_pid_changed" in text
+    assert commands[0] == "exit 78"
+    assert commands.count("exit 78") == 1
+    assert REPLACEMENT in text
+    assert "scripts/targetctl.sh" in text
+    for forbidden in (
+        "system/",
+        "LaunchDaemon",
+        "sudo",
+        "launchctl",
+        "sqlite",
+        "python",
+        "touch",
+        "write",
+    ):
+        assert forbidden not in text
 
 
-def test_reload_fences_live_disk_and_database_integrity() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
+def test_p0_reload_entry_is_side_effect_free(tmp_path: Path) -> None:
+    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+    completed = subprocess.run(
+        ["/bin/bash", str(SCRIPT)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
 
-    assert "/usr/bin/touch \"$LIVE_PAUSE\"" in text
-    assert "production_no_live" in text
-    assert "live_submit_authorized" in text
-    assert "authorizes_order" in text
-    assert "2 * 1024 * 1024 * 1024" in text
-    assert text.count("PRAGMA quick_check") == 2
-
-
-def test_reload_requires_new_economic_identity_and_zero_duplicates() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
-
-    assert "economic_quote_sha256" in text
-    assert "p0_economic_reload_duplicate_economic_write" in text
-    assert "orders_submitted" in text
-    assert "--confirm-p0-economic-identity-production-no-live" in text
+    assert completed.returncode == 78
+    assert sorted(
+        path.relative_to(tmp_path) for path in tmp_path.rglob("*")
+    ) == before

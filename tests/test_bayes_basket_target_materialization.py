@@ -89,6 +89,98 @@ def _envelope() -> ProbabilityEnvelope:
     })
 
 
+def _mixed_native_envelope() -> ProbabilityEnvelope:
+    """Build an official GEFS/ECMWF + GEPS mixed-cycle P0 fixture."""
+
+    base = _envelope()
+    run_cycle_by_system = {"ECMWF_ENS": "18Z", "GEPS": "00Z"}
+    run_init_by_system = {
+        "ECMWF_ENS": "2026-07-22T18:00:00Z",
+        "GEPS": "2026-07-23T00:00:00Z",
+    }
+    archive_query_by_system = {
+        "ECMWF_ENS": "2026-07-23T03:00:00Z",
+        "GEPS": "2026-07-23T03:00:00Z",
+    }
+    availability_identity = {
+        "available_at_utc": "2026-07-23T03:00:00Z",
+        "by_system": {
+            "ECMWF_ENS": {
+                "run_cycle": run_cycle_by_system["ECMWF_ENS"],
+                "run_init_utc": run_init_by_system["ECMWF_ENS"],
+                "archive_query_at_utc": archive_query_by_system["ECMWF_ENS"],
+            },
+            "GEPS": {
+                "run_cycle": run_cycle_by_system["GEPS"],
+                "run_init_utc": run_init_by_system["GEPS"],
+                "archive_query_at_utc": archive_query_by_system["GEPS"],
+            },
+        },
+    }
+    availability = {
+        **availability_identity,
+        "content_sha256": content_sha256(availability_identity),
+    }
+    native_identity = {
+        "run_cycle_scope": "PER_SYSTEM_NATIVE_CYCLE",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "run_cycle_by_system": run_cycle_by_system,
+        "run_init_utc_by_system": run_init_by_system,
+        "archive_query_at_utc_by_system": archive_query_by_system,
+        "availability_evidence": availability,
+        "source_class": "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+        "source_archive_set_sha256": "d" * 64,
+        "source_archives": [],
+    }
+    native_sha = content_sha256(native_identity)
+    compatibility_identity = json.loads(
+        base.lineage["taf_nwp_live_compatibility_json"]
+    )
+    compatibility_identity.pop("fingerprint_sha256", None)
+    compatibility_identity.update({
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "run_cycle_scope": "PER_SYSTEM_NATIVE_CYCLE",
+        "run_cycle_by_system": run_cycle_by_system,
+        "run_init_utc_by_system": run_init_by_system,
+        "archive_query_at_utc_by_system": archive_query_by_system,
+        "availability_evidence": availability,
+        "native_forward_lineage": native_identity,
+        "native_forward_lineage_sha256": native_sha,
+    })
+    compatibility = {
+        **compatibility_identity,
+        "fingerprint_sha256": content_sha256(compatibility_identity),
+    }
+    lineage = {
+        **base.lineage,
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "run_cycle_scope": "PER_SYSTEM_NATIVE_CYCLE",
+        "run_cycle_by_system_json": json.dumps(
+            run_cycle_by_system, sort_keys=True, separators=(",", ":")
+        ),
+        "run_init_utc_by_system_json": json.dumps(
+            run_init_by_system, sort_keys=True, separators=(",", ":")
+        ),
+        "archive_query_at_utc_by_system_json": json.dumps(
+            archive_query_by_system, sort_keys=True, separators=(",", ":")
+        ),
+        "native_forward_availability_evidence_json": json.dumps(
+            availability, sort_keys=True, separators=(",", ":")
+        ),
+        "native_forward_lineage_sha256": native_sha,
+        "taf_nwp_live_compatibility_fingerprint_sha256": (
+            compatibility["fingerprint_sha256"]
+        ),
+        "taf_nwp_live_compatibility_json": json.dumps(
+            compatibility, sort_keys=True, separators=(",", ":")
+        ),
+    }
+    return ProbabilityEnvelope.from_mapping({
+        **base.to_dict(),
+        "lineage": lineage,
+    })
+
+
 def _lineage(*, event_id: str = "obs-1") -> dict[str, str]:
     return {
         "canonical_observation_event_id": event_id,
@@ -419,6 +511,136 @@ def test_p0m_first_and_replacement_are_weak_only_and_asof_ordered() -> None:
             taf_revision_proof=first_proof,
             decision_at_utc="2026-07-23T03:00:00Z",
             fresh_until_utc="2026-07-23T05:00:00Z",
+            bridge_sha256="b" * 64,
+        )
+
+
+def test_mixed_native_lineage_is_inherited_by_p0m_and_p1() -> None:
+    p0 = _mixed_native_envelope()
+    artifact = _taf_artifact(
+        station_id=p0.station_id,
+        run_cycle=p0.lineage["run_cycle"],
+        nwp_live_compatibility_fingerprint_sha256=(
+            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
+        ),
+    )
+    proof = _taf_proof(
+        p0,
+        p0_root=p0,
+        revision=_forecast_revision(revision_id="taf-mixed-native"),
+        artifact=artifact,
+    )
+    p0m = materialize_p0m(
+        p0,
+        p0_root=p0,
+        taf_revision_artifact=artifact,
+        taf_revision_proof=proof,
+        decision_at_utc="2026-07-23T05:00:00Z",
+        fresh_until_utc="2026-07-23T06:00:00Z",
+        bridge_sha256="b" * 64,
+    )
+    keys = (
+        "run_cycle",
+        "run_cycle_scope",
+        "run_cycle_by_system_json",
+        "run_init_utc_by_system_json",
+        "archive_query_at_utc_by_system_json",
+        "native_forward_availability_evidence_json",
+        "native_forward_lineage_sha256",
+        "taf_nwp_live_compatibility_fingerprint_sha256",
+        "taf_nwp_live_compatibility_json",
+    )
+    assert {key: p0m.lineage[key] for key in keys} == {
+        key: p0.lineage[key] for key in keys
+    }
+
+    p1 = ProbabilityEnvelope.from_mapping(
+        _trajectory_packet(p0m, temperature_c=37.0)["expected_envelope"]
+    )
+    assert {key: p1.lineage[key] for key in keys} == {
+        key: p0.lineage[key] for key in keys
+    }
+
+
+@pytest.mark.parametrize(
+    "missing_key",
+    (
+        "run_cycle_scope",
+        "run_cycle_by_system_json",
+        "run_init_utc_by_system_json",
+        "archive_query_at_utc_by_system_json",
+        "native_forward_availability_evidence_json",
+        "native_forward_lineage_sha256",
+    ),
+)
+def test_mixed_native_lineage_missing_root_field_fails_closed(
+    missing_key: str,
+) -> None:
+    p0 = _mixed_native_envelope()
+    lineage = dict(p0.lineage)
+    lineage.pop(missing_key)
+    broken = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": lineage,
+    })
+    artifact = _taf_artifact(
+        station_id=p0.station_id,
+        run_cycle=p0.lineage["run_cycle"],
+        nwp_live_compatibility_fingerprint_sha256=(
+            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
+        ),
+    )
+    proof = _taf_proof(
+        broken,
+        p0_root=broken,
+        revision=_forecast_revision(revision_id="taf-mixed-missing"),
+        artifact=artifact,
+    )
+    with pytest.raises(ContractError, match="native_forward_lineage_missing"):
+        materialize_p0m(
+            broken,
+            p0_root=broken,
+            taf_revision_artifact=artifact,
+            taf_revision_proof=proof,
+            decision_at_utc="2026-07-23T05:00:00Z",
+            fresh_until_utc="2026-07-23T06:00:00Z",
+            bridge_sha256="b" * 64,
+        )
+
+
+def test_mixed_native_lineage_predecessor_tampering_fails_closed() -> None:
+    p0 = _mixed_native_envelope()
+    lineage = dict(p0.lineage)
+    lineage["run_cycle_by_system_json"] = json.dumps(
+        {"ECMWF_ENS": "00Z", "GEPS": "00Z"},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    broken_predecessor = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": lineage,
+    })
+    artifact = _taf_artifact(
+        station_id=p0.station_id,
+        run_cycle=p0.lineage["run_cycle"],
+        nwp_live_compatibility_fingerprint_sha256=(
+            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
+        ),
+    )
+    proof = _taf_proof(
+        broken_predecessor,
+        p0_root=p0,
+        revision=_forecast_revision(revision_id="taf-mixed-tampered"),
+        artifact=artifact,
+    )
+    with pytest.raises(ContractError, match="native_forward_lineage_conflict"):
+        materialize_p0m(
+            broken_predecessor,
+            p0_root=p0,
+            taf_revision_artifact=artifact,
+            taf_revision_proof=proof,
+            decision_at_utc="2026-07-23T05:00:00Z",
+            fresh_until_utc="2026-07-23T06:00:00Z",
             bridge_sha256="b" * 64,
         )
 

@@ -1,0 +1,1705 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "048a45830e33743f38af3757c81d842915a326b70d35a7699557a5d38376e2e1",
+  "end_date": "2026-07-29",
+  "excluded_sample_count": 0,
+  "excluded_samples": [],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 100881,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 67108864
+  },
+  "sample_count": 8,
+  "samples": [
+    {
+      "decision_anchor_utc": "2026-07-21T16:00:00Z",
+      "event_date": "2026-07-22",
+      "receipts": {
+        "metar_response_sha256": "dd8b7748b009d934fe081dfa488969a0f914e888b545c99db999d8bea154d960",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260722_1500",
+        "taf_response_sha256": "ac0a483a361022b811dc6ed11acb8449969a7fcb569284ff510c4c338f11846e",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-21T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-8a2666674bdf37415b674aa915ced508",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-22T15:00:00Z",
+        "start_utc": "2026-07-21T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-21T11:05:36Z",
+        "cloud_cover_fraction": 0.375,
+        "issue_time_utc": "2026-07-21T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 211100Z 2112/2218 21006KT 9999 SCT030 TN26/2121Z TX33/2205Z BECMG 2201/2202 24012KT BECMG 2210/2211 24006KT",
+        "raw_taf_sha256": "da0ef673297a78a28ed61cb4bf6fe562c6b6e2a6dc596656cc8c7f1b4378bd68",
+        "tx_c": 33.0,
+        "tx_valid_at_utc": "2026-07-22T05:00:00Z",
+        "wind_speed_mps": 4.801477333333333
+      },
+      "truth": {
+        "observation_count": 20,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-21T15:00:00Z",
+            "raw_report": "METAR RKPK 211500Z 18002KT 9999 SCT020 SCT040 27/25 Q1009",
+            "received_at_utc": "2026-07-21T15:04:38.849Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T21:00:00Z",
+            "raw_report": "METAR RKPK 212100Z 22005KT 9999 FEW010 FEW015 27/25 Q1009",
+            "received_at_utc": "2026-07-21T21:40:45.510Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T22:00:00Z",
+            "raw_report": "METAR RKPK 212200Z 22006KT 9999 FEW010 FEW025 28/25 Q1010",
+            "received_at_utc": "2026-07-21T22:04:30.408Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-21T23:00:00Z",
+            "raw_report": "METAR RKPK 212300Z 21006KT 9999 FEW010 FEW025 30/26 Q1010",
+            "received_at_utc": "2026-07-21T23:04:28.869Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T00:00:00Z",
+            "raw_report": "METAR RKPK 220000Z 22007KT 9999 FEW030 31/25 Q1009",
+            "received_at_utc": "2026-07-22T00:04:26.591Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T01:00:00Z",
+            "raw_report": "METAR RKPK 220100Z 23011KT 9999 FEW030 32/25 Q1009",
+            "received_at_utc": "2026-07-22T01:04:36.559Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T02:00:00Z",
+            "raw_report": "METAR RKPK 220200Z 23011KT 9999 FEW030 33/25 Q1009",
+            "received_at_utc": "2026-07-22T02:04:35.196Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T03:00:00Z",
+            "raw_report": "METAR RKPK 220300Z 22011KT 9999 FEW030 32/26 Q1009",
+            "received_at_utc": "2026-07-22T03:04:30.758Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T04:00:00Z",
+            "raw_report": "METAR RKPK 220400Z 18011KT 9999 FEW030 32/26 Q1008",
+            "received_at_utc": "2026-07-22T04:04:28.664Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T05:00:00Z",
+            "raw_report": "METAR RKPK 220500Z 19011KT 9999 FEW030 32/26 Q1008",
+            "received_at_utc": "2026-07-22T05:04:51.328Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T05:52:00Z",
+            "raw_report": "SPECI RKPK 220552Z 25011KT 9999 FEW030 34/24 Q1008",
+            "received_at_utc": "2026-07-22T06:00:46.120Z",
+            "report_type": "SPECI",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T06:00:00Z",
+            "raw_report": "METAR RKPK 220600Z 25011KT 9999 FEW030 34/23 Q1008",
+            "received_at_utc": "2026-07-22T06:04:23.557Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T07:00:00Z",
+            "raw_report": "METAR RKPK 220700Z 24010G20KT 9999 FEW030 32/24 Q1008",
+            "received_at_utc": "2026-07-22T07:04:27.217Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T08:00:00Z",
+            "raw_report": "METAR RKPK 220800Z 24010G20KT 9999 FEW030 32/24 Q1008",
+            "received_at_utc": "2026-07-22T08:04:31.099Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T09:00:00Z",
+            "raw_report": "METAR RKPK 220900Z 25011KT 9999 FEW030 31/23 Q1008",
+            "received_at_utc": "2026-07-22T09:04:27.753Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T10:00:00Z",
+            "raw_report": "METAR RKPK 221000Z 24008KT 9999 FEW030 30/24 Q1008",
+            "received_at_utc": "2026-07-22T10:04:19.695Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T11:00:00Z",
+            "raw_report": "METAR RKPK 221100Z 25007KT 9999 SCT030 29/25 Q1009",
+            "received_at_utc": "2026-07-22T11:04:21.341Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T12:00:00Z",
+            "raw_report": "METAR RKPK 221200Z 25007KT 9999 FEW030 29/25 Q1009",
+            "received_at_utc": "2026-07-22T12:04:33.778Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T13:00:00Z",
+            "raw_report": "METAR RKPK 221300Z 25005KT 9999 FEW030 28/25 Q1009",
+            "received_at_utc": "2026-07-22T13:04:28.941Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T14:00:00Z",
+            "raw_report": "METAR RKPK 221400Z 27002KT 9999 FEW020 FEW030 28/25 Q1009",
+            "received_at_utc": "2026-07-22T14:04:30.000Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 34.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-22T16:00:00Z",
+      "event_date": "2026-07-23",
+      "receipts": {
+        "metar_response_sha256": "0a44403813c684812d2836642f19a1825152a34eb2b28466697ea402d84427d8",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260723_1500",
+        "taf_response_sha256": "2baf953df13dde3be4da1066350106c22e92336aefdf33f9f46037b127365743",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-22T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-fadeea06628d02636239eb76f470e06e",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-23T15:00:00Z",
+        "start_utc": "2026-07-22T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-22T11:05:42Z",
+        "cloud_cover_fraction": 0.5416666666666666,
+        "issue_time_utc": "2026-07-22T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 221100Z 2212/2318 24006KT 9999 FEW030 TN26/2220Z TX34/2305Z BECMG 2218/2219 21006KT BKN020 BECMG 2301/2302 21006G16KT 9999 SCT030 BECMG 2311/2312 21006KT",
+        "raw_taf_sha256": "568fc776e9a32aa5f99a155ae0102201f0e8f04d3b61c3402d446c5f5a499150",
+        "tx_c": 34.0,
+        "tx_valid_at_utc": "2026-07-23T05:00:00Z",
+        "wind_speed_mps": 3.086664
+      },
+      "truth": {
+        "observation_count": 27,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-22T15:00:00Z",
+            "raw_report": "METAR RKPK 221500Z 23005KT 9999 FEW020 SCT030 28/25 Q1009",
+            "received_at_utc": "2026-07-22T15:04:23.236Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T16:00:00Z",
+            "raw_report": "METAR RKPK 221600Z 23003KT 9999 SCT020 28/25 Q1009",
+            "received_at_utc": "2026-07-22T16:04:12.065Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T17:00:00Z",
+            "raw_report": "METAR RKPK 221700Z 24005KT 9999 SCT020 28/25 Q1008",
+            "received_at_utc": "2026-07-22T17:04:25.446Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T18:00:00Z",
+            "raw_report": "METAR RKPK 221800Z 25003KT 9999 SCT020 27/25 Q1009",
+            "received_at_utc": "2026-07-22T18:04:44.990Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T19:00:00Z",
+            "raw_report": "METAR RKPK 221900Z 14002KT 9999 SCT020 27/25 Q1008",
+            "received_at_utc": "2026-07-22T19:04:23.127Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T20:00:00Z",
+            "raw_report": "METAR RKPK 222000Z 16002KT 9999 SCT020 26/25 Q1008",
+            "received_at_utc": "2026-07-22T20:04:37.316Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T21:00:00Z",
+            "raw_report": "METAR RKPK 222100Z 15001KT 9999 SCT020 27/25 Q1009",
+            "received_at_utc": "2026-07-22T21:04:22.421Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T22:00:00Z",
+            "raw_report": "METAR RKPK 222200Z 19003KT 9999 SCT020 28/26 Q1009",
+            "received_at_utc": "2026-07-22T22:04:31.163Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-22T23:00:00Z",
+            "raw_report": "METAR RKPK 222300Z 20005KT 9999 SCT020 30/21 Q1009",
+            "received_at_utc": "2026-07-22T23:15:41.285Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T00:00:00Z",
+            "raw_report": "METAR RKPK 230000Z 19008KT 9999 SCT020 BKN025 30/26 Q1009",
+            "received_at_utc": "2026-07-23T00:04:18.170Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T00:09:00Z",
+            "raw_report": "SPECI RKPK 230009Z 18009KT 9999 SCT020 BKN030 31/26 Q1009 RMK CIG030",
+            "received_at_utc": "2026-07-23T00:25:06.046Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T01:00:00Z",
+            "raw_report": "METAR RKPK 230100Z 22008KT 9999 FEW020 BKN030 31/26 Q1009",
+            "received_at_utc": "2026-07-23T01:04:36.703Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T02:00:00Z",
+            "raw_report": "METAR RKPK 230200Z 23009KT 9999 FEW020 BKN030 31/25 Q1009",
+            "received_at_utc": "2026-07-23T02:04:32.356Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T02:40:00Z",
+            "raw_report": "SPECI RKPK 230240Z 24008KT 9999 BKN030 33/25 Q1009 RMK CIG030",
+            "received_at_utc": "2026-07-23T02:49:04.395Z",
+            "report_type": "SPECI",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T03:00:00Z",
+            "raw_report": "METAR RKPK 230300Z 23010KT 9999 SCT030 33/25 Q1009",
+            "received_at_utc": "2026-07-23T03:04:30.389Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T04:00:00Z",
+            "raw_report": "METAR RKPK 230400Z 24011KT 9999 FEW030 34/24 Q1008",
+            "received_at_utc": "2026-07-23T04:04:30.692Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T04:45:00Z",
+            "raw_report": "SPECI RKPK 230445Z 22011KT 9999 FEW030 34/25 Q1008",
+            "received_at_utc": "2026-07-23T04:52:04.247Z",
+            "report_type": "SPECI",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T05:00:00Z",
+            "raw_report": "METAR RKPK 230500Z 23010KT 9999 FEW030 33/25 Q1008",
+            "received_at_utc": "2026-07-23T05:04:30.461Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T06:00:00Z",
+            "raw_report": "METAR RKPK 230600Z 22017KT 9999 FEW030 33/25 Q1008",
+            "received_at_utc": "2026-07-23T06:04:33.255Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T07:00:00Z",
+            "raw_report": "METAR RKPK 230700Z 19014KT 9999 FEW030 32/26 Q1008",
+            "received_at_utc": "2026-07-23T07:04:29.943Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T08:00:00Z",
+            "raw_report": "METAR RKPK 230800Z 18014KT 9999 FEW030 31/27 Q1008",
+            "received_at_utc": "2026-07-23T08:04:40.094Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T09:00:00Z",
+            "raw_report": "METAR RKPK 230900Z 20010KT 9999 FEW030 31/26 Q1008",
+            "received_at_utc": "2026-07-23T09:04:28.035Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T10:00:00Z",
+            "raw_report": "METAR RKPK 231000Z 23012KT 9999 FEW030 30/24 Q1009",
+            "received_at_utc": "2026-07-23T10:04:37.843Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T11:00:00Z",
+            "raw_report": "METAR RKPK 231100Z 23008KT 9999 FEW030 30/24 Q1009",
+            "received_at_utc": "2026-07-23T11:04:29.607Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T12:00:00Z",
+            "raw_report": "METAR RKPK 231200Z 24008KT 9999 FEW030 29/24 Q1010",
+            "received_at_utc": "2026-07-23T12:04:25.854Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T13:00:00Z",
+            "raw_report": "METAR RKPK 231300Z 24005KT 9999 FEW030 28/24 Q1010",
+            "received_at_utc": "2026-07-23T13:04:45.686Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T14:00:00Z",
+            "raw_report": "METAR RKPK 231400Z 22005KT 9999 FEW030 28/24 Q1010",
+            "received_at_utc": "2026-07-23T14:04:29.159Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 34.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-23T16:00:00Z",
+      "event_date": "2026-07-24",
+      "receipts": {
+        "metar_response_sha256": "8e02344ccab13bb15c9c7dad8434ca9921cb490d0283a3f6664f836959e02f07",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260724_1500",
+        "taf_response_sha256": "180850b0cff818630c615b316992a5f30728add2ad7a5a8cea82cf9fe398ad06",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-23T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-072e36b34c0e1dd55d2009077dd1c9b0",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-24T15:00:00Z",
+        "start_utc": "2026-07-23T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-23T11:05:31Z",
+        "cloud_cover_fraction": 0.375,
+        "issue_time_utc": "2026-07-23T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 231100Z 2312/2418 24006KT 9999 SCT030 TN26/2320Z TX35/2406Z BECMG 2323/2324 24010KT BECMG 2410/2411 24006KT",
+        "raw_taf_sha256": "74b0f28e9a1a3839ebb1d40cdfef6f47bc363ac2bfd7e25da242216b94f247a9",
+        "tx_c": 35.0,
+        "tx_valid_at_utc": "2026-07-24T06:00:00Z",
+        "wind_speed_mps": 4.687156444444445
+      },
+      "truth": {
+        "observation_count": 26,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-23T15:00:00Z",
+            "raw_report": "METAR RKPK 231500Z 20005KT CAVOK 28/24 Q1010",
+            "received_at_utc": "2026-07-23T15:04:35.412Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T16:00:00Z",
+            "raw_report": "METAR RKPK 231600Z 22004KT CAVOK 28/24 Q1010",
+            "received_at_utc": "2026-07-23T16:04:38.701Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T17:00:00Z",
+            "raw_report": "METAR RKPK 231700Z 21003KT CAVOK 27/24 Q1010",
+            "received_at_utc": "2026-07-23T17:04:32.223Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T18:00:00Z",
+            "raw_report": "METAR RKPK 231800Z 08001KT CAVOK 26/24 Q1010",
+            "received_at_utc": "2026-07-23T18:04:30.289Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T19:00:00Z",
+            "raw_report": "METAR RKPK 231900Z 18002KT CAVOK 26/24 Q1010",
+            "received_at_utc": "2026-07-23T19:04:34.421Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T20:00:00Z",
+            "raw_report": "METAR RKPK 232000Z 23002KT CAVOK 25/24 Q1010",
+            "received_at_utc": "2026-07-23T20:04:23.417Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T21:00:00Z",
+            "raw_report": "METAR RKPK 232100Z 35001KT CAVOK 25/24 Q1010",
+            "received_at_utc": "2026-07-23T21:04:32.461Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T22:00:00Z",
+            "raw_report": "METAR RKPK 232200Z 11002KT CAVOK 27/24 Q1011",
+            "received_at_utc": "2026-07-23T22:04:39.933Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-23T23:00:00Z",
+            "raw_report": "METAR RKPK 232300Z 24003KT CAVOK 30/24 Q1011",
+            "received_at_utc": "2026-07-23T23:04:38.826Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T00:00:00Z",
+            "raw_report": "METAR RKPK 240000Z COR 23004KT CAVOK 31/25 Q1012",
+            "received_at_utc": "2026-07-24T00:05:10.047Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T01:00:00Z",
+            "raw_report": "METAR RKPK 240100Z COR 24008KT 9999 FEW030 32/23 Q1011",
+            "received_at_utc": "2026-07-24T01:09:08.564Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T02:00:00Z",
+            "raw_report": "METAR RKPK 240200Z 23007KT 9999 FEW030 33/24 Q1011",
+            "received_at_utc": "2026-07-24T02:04:27.715Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T03:00:00Z",
+            "raw_report": "METAR RKPK 240300Z 22008KT 9999 FEW030 34/24 Q1011",
+            "received_at_utc": "2026-07-24T03:04:29.791Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T04:00:00Z",
+            "raw_report": "METAR RKPK 240400Z 21007KT 9999 FEW030 35/24 Q1011",
+            "received_at_utc": "2026-07-24T04:04:30.459Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T04:38:00Z",
+            "raw_report": "SPECI RKPK 240438Z 20012KT 9999 FEW030 34/26 Q1011",
+            "received_at_utc": "2026-07-24T04:46:04.239Z",
+            "report_type": "SPECI",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T05:00:00Z",
+            "raw_report": "METAR RKPK 240500Z 20012KT 9999 FEW030 34/25 Q1011",
+            "received_at_utc": "2026-07-24T05:04:34.534Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T06:00:00Z",
+            "raw_report": "METAR RKPK 240600Z 20014KT 9999 FEW030 33/26 Q1011",
+            "received_at_utc": "2026-07-24T06:04:26.699Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T07:00:00Z",
+            "raw_report": "METAR RKPK 240700Z 19014KT 9999 FEW030 32/26 Q1011",
+            "received_at_utc": "2026-07-24T07:04:31.783Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T08:00:00Z",
+            "raw_report": "METAR RKPK 240800Z 19009KT 9999 FEW030 32/26 Q1010",
+            "received_at_utc": "2026-07-24T08:04:37.655Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T09:00:00Z",
+            "raw_report": "METAR RKPK 240900Z 19010KT 9999 FEW030 31/26 Q1010",
+            "received_at_utc": "2026-07-24T09:05:05.902Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T10:00:00Z",
+            "raw_report": "METAR RKPK 241000Z 18012KT 9999 FEW030 29/25 Q1010",
+            "received_at_utc": "2026-07-24T10:04:39.797Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T11:00:00Z",
+            "raw_report": "METAR RKPK 241100Z 18010KT 9999 FEW030 28/25 Q1010",
+            "received_at_utc": "2026-07-24T11:04:36.939Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T11:15:00Z",
+            "raw_report": "SPECI RKPK 241115Z 16008KT 9999 FEW030 28/25 Q1010",
+            "received_at_utc": "2026-07-24T11:22:03.584Z",
+            "report_type": "SPECI",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T12:00:00Z",
+            "raw_report": "METAR RKPK 241200Z 18005KT 9999 FEW030 28/25 Q1011",
+            "received_at_utc": "2026-07-24T12:04:27.729Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T13:00:00Z",
+            "raw_report": "METAR RKPK 241300Z 23006KT 9999 FEW030 28/24 Q1011",
+            "received_at_utc": "2026-07-24T13:04:31.390Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T14:00:00Z",
+            "raw_report": "METAR RKPK 241400Z 24006KT 9999 FEW030 28/25 Q1011",
+            "received_at_utc": "2026-07-24T14:04:42.759Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 35.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-24T16:00:00Z",
+      "event_date": "2026-07-25",
+      "receipts": {
+        "metar_response_sha256": "04d7bc7056d6b0806d4a86789752ad85911c248bcad45f749289bb477c64f9a0",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260725_1500",
+        "taf_response_sha256": "dcc642420238434184e6a9509678db70abb9b4beee4e75583775e445d9b4dd61",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-24T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-1dba4c5a5eba020d8a205a9b4e62eee9",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-25T15:00:00Z",
+        "start_utc": "2026-07-24T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-24T11:05:39Z",
+        "cloud_cover_fraction": 0.375,
+        "issue_time_utc": "2026-07-24T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 241100Z 2412/2518 21006KT 9999 SCT030 TN26/2421Z TX36/2506Z BECMG 2423/2424 21012KT BECMG 2510/2511 21006KT",
+        "raw_taf_sha256": "5c4b205c69876072967d00ab903755b63e4f0fd1d3c070896657dae5c79a5b01",
+        "tx_c": 36.0,
+        "tx_valid_at_utc": "2026-07-25T06:00:00Z",
+        "wind_speed_mps": 5.487402666666666
+      },
+      "truth": {
+        "observation_count": 25,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-24T15:00:00Z",
+            "raw_report": "METAR RKPK 241500Z 25004KT 9999 FEW030 27/24 Q1011",
+            "received_at_utc": "2026-07-24T15:04:20.128Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T16:00:00Z",
+            "raw_report": "METAR RKPK 241600Z 26002KT 9999 FEW030 27/24 Q1011",
+            "received_at_utc": "2026-07-24T16:04:44.740Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T17:00:00Z",
+            "raw_report": "METAR RKPK 241700Z 25002KT 9999 FEW030 26/24 Q1011",
+            "received_at_utc": "2026-07-24T17:04:27.831Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T18:00:00Z",
+            "raw_report": "METAR RKPK 241800Z 23002KT 9999 FEW030 26/24 Q1011",
+            "received_at_utc": "2026-07-24T18:04:39.439Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T19:00:00Z",
+            "raw_report": "METAR RKPK 241900Z 23002KT 9999 FEW030 26/24 Q1012",
+            "received_at_utc": "2026-07-24T19:04:25.317Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T20:00:00Z",
+            "raw_report": "METAR RKPK 242000Z 28001KT 9999 FEW030 25/24 Q1012",
+            "received_at_utc": "2026-07-24T20:04:32.799Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T21:00:00Z",
+            "raw_report": "METAR RKPK 242100Z 29001KT 9999 FEW030 SCT250 25/24 Q1012",
+            "received_at_utc": "2026-07-24T21:04:49.206Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T22:00:00Z",
+            "raw_report": "METAR RKPK 242200Z 09001KT 9999 FEW030 SCT250 28/24 Q1012",
+            "received_at_utc": "2026-07-24T22:04:37.225Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-24T23:00:00Z",
+            "raw_report": "METAR RKPK 242300Z 24001KT 9999 FEW030 SCT250 29/24 Q1012",
+            "received_at_utc": "2026-07-24T23:04:52.975Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T00:00:00Z",
+            "raw_report": "METAR RKPK 250000Z 29002KT 9999 FEW030 BKN250 31/25 Q1012",
+            "received_at_utc": "2026-07-25T00:05:58.521Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T01:00:00Z",
+            "raw_report": "METAR RKPK 250100Z 27002KT 9999 FEW030 BKN250 30/25 Q1012",
+            "received_at_utc": "2026-07-25T01:04:33.364Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T02:00:00Z",
+            "raw_report": "METAR RKPK 250200Z 28003KT 9999 FEW030 BKN250 31/25 Q1012",
+            "received_at_utc": "2026-07-25T02:04:23.201Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T03:00:00Z",
+            "raw_report": "METAR RKPK 250300Z 25005KT 9999 FEW030 BKN250 34/26 Q1011",
+            "received_at_utc": "2026-07-25T03:04:37.944Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T04:00:00Z",
+            "raw_report": "METAR RKPK 250400Z 23005KT 9999 FEW030 BKN250 35/25 Q1011",
+            "received_at_utc": "2026-07-25T04:04:40.019Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T05:00:00Z",
+            "raw_report": "METAR RKPK 250500Z 16011KT 9999 FEW030 BKN250 34/26 Q1010",
+            "received_at_utc": "2026-07-25T05:04:44.201Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T06:00:00Z",
+            "raw_report": "METAR RKPK 250600Z 19011KT 9999 FEW030 BKN250 35/25 Q1010",
+            "received_at_utc": "2026-07-25T06:04:37.352Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T07:00:00Z",
+            "raw_report": "METAR RKPK 250700Z 18009KT 9999 FEW030 BKN250 34/26 Q1009",
+            "received_at_utc": "2026-07-25T07:04:38.184Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T08:00:00Z",
+            "raw_report": "METAR RKPK 250800Z 19008KT 9999 FEW030 BKN250 33/26 Q1009",
+            "received_at_utc": "2026-07-25T08:04:42.081Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T09:00:00Z",
+            "raw_report": "METAR RKPK 250900Z 18012KT 9999 FEW030 SCT250 31/26 Q1009",
+            "received_at_utc": "2026-07-25T09:04:37.398Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T10:00:00Z",
+            "raw_report": "METAR RKPK 251000Z 18010KT CAVOK 30/26 Q1009",
+            "received_at_utc": "2026-07-25T10:04:31.586Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T10:37:00Z",
+            "raw_report": "SPECI RKPK 251037Z 19009KT CAVOK 30/26 Q1009",
+            "received_at_utc": "2026-07-25T10:45:04.843Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T11:00:00Z",
+            "raw_report": "METAR RKPK 251100Z 19009KT CAVOK 29/26 Q1009",
+            "received_at_utc": "2026-07-25T11:04:23.694Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T12:00:00Z",
+            "raw_report": "METAR RKPK 251200Z 19005KT CAVOK 29/26 Q1010",
+            "received_at_utc": "2026-07-25T12:04:25.078Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T13:00:00Z",
+            "raw_report": "METAR RKPK 251300Z 22003KT CAVOK 29/25 Q1010",
+            "received_at_utc": "2026-07-25T13:04:28.621Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T14:00:00Z",
+            "raw_report": "METAR RKPK 251400Z 20003KT CAVOK 28/25 Q1010",
+            "received_at_utc": "2026-07-25T14:04:48.591Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 35.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-25T16:00:00Z",
+      "event_date": "2026-07-26",
+      "receipts": {
+        "metar_response_sha256": "7fcf7788a0583c727a25e3e5e0ebbf8e20f02fddcc54668c3c2dec6a09c1c845",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260726_1500",
+        "taf_response_sha256": "e2b80b57791204a2c5a34f2586c27388029ad4fcf559a4efbf0a4925a171cd6a",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-25T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-3408ccbbb252f6161bfa4f6dc41696a2",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-26T15:00:00Z",
+        "start_utc": "2026-07-25T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-25T11:05:50Z",
+        "cloud_cover_fraction": 0.375,
+        "issue_time_utc": "2026-07-25T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 251100Z 2512/2618 18006KT 9999 SCT030 SCT200 TN26/2520Z TX35/2605Z BECMG 2523/2524 18010KT BECMG 2606/2607 BKN030 BKN200 BECMG 2610/2611 18006KT BECMG 2615/2616 SCT030 SCT200",
+        "raw_taf_sha256": "d9e839ed417556b87f76feedef9b40fd6cb64b0f66551a77629224e701d1ea97",
+        "tx_c": 35.0,
+        "tx_valid_at_utc": "2026-07-26T05:00:00Z",
+        "wind_speed_mps": 4.687156444444445
+      },
+      "truth": {
+        "observation_count": 26,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-25T15:00:00Z",
+            "raw_report": "METAR RKPK 251500Z 18002KT CAVOK 28/26 Q1010",
+            "received_at_utc": "2026-07-25T15:04:37.969Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T16:00:00Z",
+            "raw_report": "METAR RKPK 251600Z 19002KT CAVOK 28/26 Q1010",
+            "received_at_utc": "2026-07-25T16:04:34.103Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T17:00:00Z",
+            "raw_report": "METAR RKPK 251700Z 26002KT CAVOK 27/26 Q1010",
+            "received_at_utc": "2026-07-25T17:04:28.885Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T18:00:00Z",
+            "raw_report": "METAR RKPK 251800Z 28001KT CAVOK 27/25 Q1010",
+            "received_at_utc": "2026-07-25T18:04:32.559Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T19:00:00Z",
+            "raw_report": "METAR RKPK 251900Z 35001KT CAVOK 27/26 Q1010",
+            "received_at_utc": "2026-07-25T19:04:33.291Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T20:00:00Z",
+            "raw_report": "METAR RKPK 252000Z 03002KT CAVOK 27/25 Q1010",
+            "received_at_utc": "2026-07-25T20:04:22.470Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T21:00:00Z",
+            "raw_report": "METAR RKPK 252100Z COR 03002KT 9999 FEW030 FEW200 27/25 Q1011",
+            "received_at_utc": "2026-07-25T21:43:34.728Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T22:00:00Z",
+            "raw_report": "METAR RKPK 252200Z 35003KT 9999 FEW030 FEW200 29/26 Q1011",
+            "received_at_utc": "2026-07-25T22:04:38.789Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-25T23:00:00Z",
+            "raw_report": "METAR RKPK 252300Z 33005KT 9999 FEW030 FEW200 30/26 Q1011",
+            "received_at_utc": "2026-07-25T23:04:29.955Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T00:00:00Z",
+            "raw_report": "METAR RKPK 260000Z 33002KT 9999 FEW030 FEW200 32/26 Q1011",
+            "received_at_utc": "2026-07-26T00:04:24.803Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T01:00:00Z",
+            "raw_report": "METAR RKPK 260100Z 29004KT 9999 FEW030 FEW200 33/25 Q1011",
+            "received_at_utc": "2026-07-26T01:04:38.722Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T02:00:00Z",
+            "raw_report": "METAR RKPK 260200Z 24003KT 9999 FEW030 35/24 Q1010",
+            "received_at_utc": "2026-07-26T02:04:55.359Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T03:00:00Z",
+            "raw_report": "METAR RKPK 260300Z 31004KT 9999 FEW030 SCT250 37/24 Q1010",
+            "received_at_utc": "2026-07-26T03:04:38.903Z",
+            "report_type": "METAR",
+            "temperature_c": 37.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T03:18:00Z",
+            "raw_report": "SPECI RKPK 260318Z 20008KT 9999 FEW030 SCT250 36/25 Q1010",
+            "received_at_utc": "2026-07-26T03:25:03.643Z",
+            "report_type": "SPECI",
+            "temperature_c": 36.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T04:00:00Z",
+            "raw_report": "METAR RKPK 260400Z 20009KT 9999 FEW030 SCT250 36/25 Q1010",
+            "received_at_utc": "2026-07-26T04:04:28.555Z",
+            "report_type": "METAR",
+            "temperature_c": 36.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T05:00:00Z",
+            "raw_report": "METAR RKPK 260500Z 20009KT 9999 FEW030 SCT250 36/25 Q1009",
+            "received_at_utc": "2026-07-26T05:04:32.506Z",
+            "report_type": "METAR",
+            "temperature_c": 36.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T06:00:00Z",
+            "raw_report": "METAR RKPK 260600Z 20009KT 9999 FEW030 SCT250 34/26 Q1009",
+            "received_at_utc": "2026-07-26T06:04:32.919Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T07:00:00Z",
+            "raw_report": "METAR RKPK 260700Z 20013KT 9999 FEW030 FEW250 34/25 Q1009",
+            "received_at_utc": "2026-07-26T07:04:36.991Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T08:00:00Z",
+            "raw_report": "METAR RKPK 260800Z 20009KT 9999 FEW030 FEW250 34/24 Q1009",
+            "received_at_utc": "2026-07-26T08:05:47.825Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T09:00:00Z",
+            "raw_report": "METAR RKPK 260900Z 19012KT 9999 FEW030 FEW250 33/23 Q1009",
+            "received_at_utc": "2026-07-26T09:04:49.207Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T10:00:00Z",
+            "raw_report": "METAR RKPK 261000Z 18009KT 9999 FEW030 FEW250 30/25 Q1009",
+            "received_at_utc": "2026-07-26T10:04:31.436Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T10:05:00Z",
+            "raw_report": "SPECI RKPK 261005Z 19008KT 9999 FEW030 FEW250 30/25 Q1009",
+            "received_at_utc": "2026-07-26T10:12:03.459Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T11:00:00Z",
+            "raw_report": "METAR RKPK 261100Z 18006KT 9999 FEW030 SCT250 30/25 Q1009",
+            "received_at_utc": "2026-07-26T11:04:30.108Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T12:00:00Z",
+            "raw_report": "METAR RKPK 261200Z 18005KT 9999 FEW030 SCT250 30/25 Q1010",
+            "received_at_utc": "2026-07-26T12:04:51.351Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T13:00:00Z",
+            "raw_report": "METAR RKPK 261300Z 21003KT 9999 FEW030 SCT250 30/25 Q1010",
+            "received_at_utc": "2026-07-26T13:04:24.555Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T14:00:00Z",
+            "raw_report": "METAR RKPK 261400Z 29002KT 9999 FEW030 SCT250 29/25 Q1010",
+            "received_at_utc": "2026-07-26T14:04:35.849Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 37.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-26T16:00:00Z",
+      "event_date": "2026-07-27",
+      "receipts": {
+        "metar_response_sha256": "c4585bed1d0b21fd20e0c48f2a7333fffea54c85e243ac00ebaf352430849a7d",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260727_1500",
+        "taf_response_sha256": "8f8338d989b4d14b50db426adce59f2017b932414e1948695070ec1f498968b5",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-26T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-132410040d8df313c5142463825f9a5f",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-27T15:00:00Z",
+        "start_utc": "2026-07-26T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-26T11:05:47Z",
+        "cloud_cover_fraction": 0.375,
+        "issue_time_utc": "2026-07-26T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 261100Z 2612/2718 18006KT 9999 SCT030 SCT200 TN26/2620Z TX35/2706Z BECMG 2623/2624 18010KT BECMG 2710/2711 18006KT",
+        "raw_taf_sha256": "a63ac9e2421d87fa0199228ecbf2af01fba21061c1c48270893a78fea69a0cd3",
+        "tx_c": 35.0,
+        "tx_valid_at_utc": "2026-07-27T06:00:00Z",
+        "wind_speed_mps": 4.687156444444445
+      },
+      "truth": {
+        "observation_count": 26,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-26T15:00:00Z",
+            "raw_report": "METAR RKPK 261500Z 05002KT 9999 FEW030 SCT250 29/25 Q1011",
+            "received_at_utc": "2026-07-26T15:04:36.644Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T16:00:00Z",
+            "raw_report": "METAR RKPK 261600Z 31003KT CAVOK 28/24 Q1011",
+            "received_at_utc": "2026-07-26T16:04:27.223Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T17:00:00Z",
+            "raw_report": "METAR RKPK 261700Z 32001KT CAVOK 28/24 Q1010",
+            "received_at_utc": "2026-07-26T17:04:27.859Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T18:00:00Z",
+            "raw_report": "METAR RKPK 261800Z 31002KT CAVOK 28/24 Q1011",
+            "received_at_utc": "2026-07-26T18:04:33.398Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T19:00:00Z",
+            "raw_report": "METAR RKPK 261900Z 29003KT CAVOK 26/24 Q1011",
+            "received_at_utc": "2026-07-26T19:04:29.504Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T20:00:00Z",
+            "raw_report": "METAR RKPK 262000Z 31002KT CAVOK 26/23 Q1011",
+            "received_at_utc": "2026-07-26T20:04:31.335Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T21:00:00Z",
+            "raw_report": "METAR RKPK 262100Z 31003KT CAVOK 26/23 Q1011",
+            "received_at_utc": "2026-07-26T21:04:34.346Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T22:00:00Z",
+            "raw_report": "METAR RKPK 262200Z 30003KT CAVOK 28/24 Q1012",
+            "received_at_utc": "2026-07-26T22:04:45.240Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-26T23:00:00Z",
+            "raw_report": "METAR RKPK 262300Z 36001KT CAVOK 30/25 Q1012",
+            "received_at_utc": "2026-07-26T23:04:37.440Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T00:00:00Z",
+            "raw_report": "METAR RKPK 270000Z 26002KT 9999 FEW030 SCT250 32/26 Q1012",
+            "received_at_utc": "2026-07-27T00:04:41.448Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T01:00:00Z",
+            "raw_report": "METAR RKPK 270100Z 30003KT 9999 FEW030 SCT250 33/25 Q1012",
+            "received_at_utc": "2026-07-27T01:04:26.435Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T02:00:00Z",
+            "raw_report": "METAR RKPK 270200Z 20009KT 9999 FEW030 BKN250 34/26 Q1012",
+            "received_at_utc": "2026-07-27T02:04:31.371Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T03:00:00Z",
+            "raw_report": "METAR RKPK 270300Z 20011KT 9999 FEW030 SCT250 34/26 Q1012",
+            "received_at_utc": "2026-07-27T03:04:29.822Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T03:03:00Z",
+            "raw_report": "SPECI RKPK 270303Z 21012KT 9999 FEW030 SCT240 34/26 Q1012",
+            "received_at_utc": "2026-07-27T03:11:04.346Z",
+            "report_type": "SPECI",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T04:00:00Z",
+            "raw_report": "METAR RKPK 270400Z 20010KT 9999 FEW030 SCT250 35/25 Q1012",
+            "received_at_utc": "2026-07-27T04:04:28.021Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T05:00:00Z",
+            "raw_report": "METAR RKPK 270500Z 19011KT 9999 FEW030 BKN240 35/24 Q1012",
+            "received_at_utc": "2026-07-27T05:04:25.274Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T06:00:00Z",
+            "raw_report": "METAR RKPK 270600Z 20015KT 9999 FEW030 BKN250 34/26 Q1011",
+            "received_at_utc": "2026-07-27T06:04:38.726Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T07:00:00Z",
+            "raw_report": "METAR RKPK 270700Z 20016KT 9999 FEW030 SCT250 33/25 Q1011",
+            "received_at_utc": "2026-07-27T07:04:36.611Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T08:00:00Z",
+            "raw_report": "METAR RKPK 270800Z 19012KT 9999 FEW030 FEW250 33/25 Q1011",
+            "received_at_utc": "2026-07-27T08:04:32.974Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T09:00:00Z",
+            "raw_report": "METAR RKPK 270900Z 18010KT 9999 FEW030 SCT250 32/25 Q1011",
+            "received_at_utc": "2026-07-27T09:04:43.901Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T10:00:00Z",
+            "raw_report": "METAR RKPK 271000Z 19010KT 9999 FEW030 SCT250 30/24 Q1011",
+            "received_at_utc": "2026-07-27T10:04:43.220Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T11:00:00Z",
+            "raw_report": "METAR RKPK 271100Z 19010KT 9999 FEW030 FEW250 29/24 Q1011",
+            "received_at_utc": "2026-07-27T11:04:27.996Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T11:33:00Z",
+            "raw_report": "SPECI RKPK 271133Z 18006KT 9999 FEW030 FEW250 28/25 Q1012",
+            "received_at_utc": "2026-07-27T11:40:01.876Z",
+            "report_type": "SPECI",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T12:00:00Z",
+            "raw_report": "METAR RKPK 271200Z 20008KT 9999 FEW030 FEW250 29/25 Q1012",
+            "received_at_utc": "2026-07-27T12:04:29.761Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T13:00:00Z",
+            "raw_report": "METAR RKPK 271300Z 19005KT 9999 FEW030 FEW250 28/25 Q1012",
+            "received_at_utc": "2026-07-27T13:04:34.225Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T14:00:00Z",
+            "raw_report": "METAR RKPK 271400Z 19004KT 9999 FEW030 FEW250 28/26 Q1012",
+            "received_at_utc": "2026-07-27T14:05:27.723Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 35.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-27T16:00:00Z",
+      "event_date": "2026-07-28",
+      "receipts": {
+        "metar_response_sha256": "8c1a9984aef0c3844db204948cf12930e3221a8135623daa70bc9b1933902061",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260728_1500",
+        "taf_response_sha256": "efaf980168f97e3ee4cdca8ac286c2173790179931427ef6a5a397adcae1eea5",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-27T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-0c8d6e5396ba55eb1d52a9c3743be08c",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-28T15:00:00Z",
+        "start_utc": "2026-07-27T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-27T11:05:33Z",
+        "cloud_cover_fraction": 0.5416666666666666,
+        "issue_time_utc": "2026-07-27T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 271100Z 2712/2818 21006KT 9999 SCT030 SCT200 TN26/2721Z TX38/2806Z BECMG 2802/2803 24008G18KT SCT030 BKN200 BECMG 2810/2811 24006KT",
+        "raw_taf_sha256": "5e87bd0a5ef5e899a02076a685c87669a2b7bd786e3c2844329a84726aa7c758",
+        "tx_c": 38.0,
+        "tx_valid_at_utc": "2026-07-28T06:00:00Z",
+        "wind_speed_mps": 3.5439475555555555
+      },
+      "truth": {
+        "observation_count": 25,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-27T15:00:00Z",
+            "raw_report": "METAR RKPK 271500Z 18002KT 9999 FEW030 FEW250 28/26 Q1012",
+            "received_at_utc": "2026-07-27T15:05:44.390Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T16:00:00Z",
+            "raw_report": "METAR RKPK 271600Z 24001KT 9999 FEW030 BKN230 27/26 Q1012",
+            "received_at_utc": "2026-07-27T16:04:41.674Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T17:00:00Z",
+            "raw_report": "METAR RKPK 271700Z 26001KT 9999 FEW030 BKN230 27/26 Q1012",
+            "received_at_utc": "2026-07-27T17:04:19.974Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T18:00:00Z",
+            "raw_report": "METAR RKPK 271800Z 25002KT 9999 FEW030 BKN230 28/26 Q1012",
+            "received_at_utc": "2026-07-27T18:05:40.326Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T19:00:00Z",
+            "raw_report": "METAR RKPK 271900Z 22002KT 9999 FEW030 BKN230 27/25 Q1012",
+            "received_at_utc": "2026-07-27T19:04:28.292Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T20:00:00Z",
+            "raw_report": "METAR RKPK 272000Z 26002KT 9999 FEW030 BKN220 27/25 Q1012",
+            "received_at_utc": "2026-07-27T20:04:35.670Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T21:00:00Z",
+            "raw_report": "METAR RKPK 272100Z 03002KT 9999 FEW030 BKN220 27/24 Q1012",
+            "received_at_utc": "2026-07-27T21:04:37.038Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T22:00:00Z",
+            "raw_report": "METAR RKPK 272200Z 32004KT 9999 FEW030 BKN220 29/24 Q1013",
+            "received_at_utc": "2026-07-27T22:04:57.286Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-27T23:00:00Z",
+            "raw_report": "METAR RKPK 272300Z 32007KT CAVOK 30/25 Q1013",
+            "received_at_utc": "2026-07-27T23:04:31.495Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T00:00:00Z",
+            "raw_report": "METAR RKPK 280000Z 33005KT CAVOK 32/24 Q1013",
+            "received_at_utc": "2026-07-28T00:04:40.872Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T01:00:00Z",
+            "raw_report": "METAR RKPK 280100Z 31007KT CAVOK 32/23 Q1013",
+            "received_at_utc": "2026-07-28T01:04:38.178Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T02:00:00Z",
+            "raw_report": "METAR RKPK 280200Z 32006KT 9999 FEW040 SCT220 34/23 Q1013",
+            "received_at_utc": "2026-07-28T02:04:45.107Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T03:00:00Z",
+            "raw_report": "METAR RKPK 280300Z 28005KT 9999 FEW030 FEW220 35/23 Q1013",
+            "received_at_utc": "2026-07-28T03:04:44.635Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T03:15:00Z",
+            "raw_report": "SPECI RKPK 280315Z COR 22008KT 9999 FEW030 SCT250 34/25 Q1013",
+            "received_at_utc": "2026-07-28T03:24:36.380Z",
+            "report_type": "SPECI",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T04:00:00Z",
+            "raw_report": "METAR RKPK 280400Z 20012KT 9999 FEW030 SCT200 35/24 Q1012",
+            "received_at_utc": "2026-07-28T04:04:40.190Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T05:00:00Z",
+            "raw_report": "METAR RKPK 280500Z 20013KT 9999 FEW030 BKN220 34/24 Q1012",
+            "received_at_utc": "2026-07-28T05:04:35.843Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T06:00:00Z",
+            "raw_report": "METAR RKPK 280600Z 20013KT 9999 FEW030 BKN220 33/22 Q1012",
+            "received_at_utc": "2026-07-28T06:04:32.613Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T07:00:00Z",
+            "raw_report": "METAR RKPK 280700Z 21013KT 9999 FEW030 BKN210 32/23 Q1012",
+            "received_at_utc": "2026-07-28T07:04:34.442Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T08:00:00Z",
+            "raw_report": "METAR RKPK 280800Z 19010KT 9999 FEW030 BKN190 32/24 Q1011",
+            "received_at_utc": "2026-07-28T08:04:37.052Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T09:00:00Z",
+            "raw_report": "METAR RKPK 280900Z 19006KT 9999 FEW050 BKN200 32/25 Q1011",
+            "received_at_utc": "2026-07-28T09:04:29.145Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T10:00:00Z",
+            "raw_report": "METAR RKPK 281000Z 18001KT 9999 FEW050 BKN180 32/25 Q1011",
+            "received_at_utc": "2026-07-28T10:04:29.600Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T11:00:00Z",
+            "raw_report": "METAR RKPK 281100Z 17003KT 9999 FEW050 BKN180 31/25 Q1011",
+            "received_at_utc": "2026-07-28T11:04:30.139Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T12:00:00Z",
+            "raw_report": "METAR RKPK 281200Z 22003KT 9999 FEW050 BKN180 31/26 Q1012",
+            "received_at_utc": "2026-07-28T12:04:35.432Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T13:00:00Z",
+            "raw_report": "METAR RKPK 281300Z 22003KT CAVOK 31/26 Q1012",
+            "received_at_utc": "2026-07-28T13:04:37.818Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T14:00:00Z",
+            "raw_report": "METAR RKPK 281400Z 30002KT CAVOK 30/26 Q1012",
+            "received_at_utc": "2026-07-28T14:04:32.295Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 35.0
+      }
+    },
+    {
+      "decision_anchor_utc": "2026-07-28T16:00:00Z",
+      "event_date": "2026-07-29",
+      "receipts": {
+        "metar_response_sha256": "e15a9ebfebcc47ef8477e10964b0f350b68ba8c24137f9aa73009043566a9a28",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=RKPK&format=json&taf=false&hours=24&date=20260729_1500",
+        "taf_response_sha256": "360ea4a7d8185c3e96657f19ecfe4afeeac63fb91e9d9f50fbfc4560440641d5",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKPK&format=json&time=issue&date=2026-07-28T16%3A00%3A00Z"
+      },
+      "sample_id": "taf-sample-64164ccb185494fb494294a163962666",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_window": {
+        "end_utc": "2026-07-29T15:00:00Z",
+        "start_utc": "2026-07-28T15:00:00Z"
+      },
+      "station_id": "RKPK",
+      "taf": {
+        "available_time_utc": "2026-07-28T11:05:52Z",
+        "cloud_cover_fraction": 0.5416666666666666,
+        "issue_time_utc": "2026-07-28T11:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF RKPK 281100Z 2812/2918 30006KT 9999 FEW030 SCT200 TN27/2821Z TX38/2906Z BECMG 2902/2903 20008G18KT FEW030 BKN200 BECMG 2911/2912 30006KT 9999",
+        "raw_taf_sha256": "885e8b97372f6d95fb5aa71caf12a97f60e52baffff78756ad67fd9ab1fef697",
+        "tx_c": 38.0,
+        "tx_valid_at_utc": "2026-07-29T06:00:00Z",
+        "wind_speed_mps": 3.5439475555555555
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-28T15:00:00Z",
+            "raw_report": "METAR RKPK 281500Z 34001KT CAVOK 30/25 Q1012",
+            "received_at_utc": "2026-07-28T15:04:43.581Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T16:00:00Z",
+            "raw_report": "METAR RKPK 281600Z 34004KT CAVOK 30/24 Q1012",
+            "received_at_utc": "2026-07-28T16:04:41.827Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T17:00:00Z",
+            "raw_report": "METAR RKPK 281700Z 31004KT CAVOK 30/24 Q1011",
+            "received_at_utc": "2026-07-28T17:04:35.933Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T18:00:00Z",
+            "raw_report": "METAR RKPK 281800Z 31005KT CAVOK 30/23 Q1011",
+            "received_at_utc": "2026-07-28T18:04:37.917Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T19:00:00Z",
+            "raw_report": "METAR RKPK 281900Z 35004KT CAVOK 29/23 Q1011",
+            "received_at_utc": "2026-07-28T19:04:28.724Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T20:00:00Z",
+            "raw_report": "METAR RKPK 282000Z 33005KT CAVOK 29/23 Q1010",
+            "received_at_utc": "2026-07-28T20:04:24.703Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T21:00:00Z",
+            "raw_report": "METAR RKPK 282100Z 32004KT CAVOK 29/23 Q1011",
+            "received_at_utc": "2026-07-28T21:04:27.384Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T22:00:00Z",
+            "raw_report": "METAR RKPK 282200Z 31004KT CAVOK 29/24 Q1011",
+            "received_at_utc": "2026-07-28T22:04:46.260Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "observed_at_utc": "2026-07-28T23:00:00Z",
+            "raw_report": "METAR RKPK 282300Z 31006KT CAVOK 30/23 Q1011",
+            "received_at_utc": "2026-07-28T23:04:28.390Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T00:00:00Z",
+            "raw_report": "METAR RKPK 290000Z 33005KT CAVOK 30/23 Q1011",
+            "received_at_utc": "2026-07-29T00:04:30.532Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T01:00:00Z",
+            "raw_report": "METAR RKPK 290100Z 30006KT CAVOK 33/23 Q1011",
+            "received_at_utc": "2026-07-29T01:04:28.502Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T02:00:00Z",
+            "raw_report": "METAR RKPK 290200Z 30007KT CAVOK 34/22 Q1010",
+            "received_at_utc": "2026-07-29T02:04:31.796Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T03:00:00Z",
+            "raw_report": "METAR RKPK 290300Z 30008KT CAVOK 34/23 Q1010",
+            "received_at_utc": "2026-07-29T03:04:19.696Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T04:00:00Z",
+            "raw_report": "METAR RKPK 290400Z 28008KT CAVOK 36/25 Q1009",
+            "received_at_utc": "2026-07-29T04:04:35.706Z",
+            "report_type": "METAR",
+            "temperature_c": 36.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T05:00:00Z",
+            "raw_report": "METAR RKPK 290500Z 31009KT CAVOK 37/23 Q1008",
+            "received_at_utc": "2026-07-29T05:04:33.616Z",
+            "report_type": "METAR",
+            "temperature_c": 37.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T06:00:00Z",
+            "raw_report": "METAR RKPK 290600Z 30009KT CAVOK 38/23 Q1008",
+            "received_at_utc": "2026-07-29T06:04:33.576Z",
+            "report_type": "METAR",
+            "temperature_c": 38.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T07:00:00Z",
+            "raw_report": "METAR RKPK 290700Z 29006KT CAVOK 39/23 Q1007",
+            "received_at_utc": "2026-07-29T07:04:34.144Z",
+            "report_type": "METAR",
+            "temperature_c": 39.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T08:00:00Z",
+            "raw_report": "METAR RKPK 290800Z 30007KT CAVOK 38/22 Q1007",
+            "received_at_utc": "2026-07-29T08:04:46.115Z",
+            "report_type": "METAR",
+            "temperature_c": 38.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T09:00:00Z",
+            "raw_report": "METAR RKPK 290900Z 32005KT CAVOK 37/22 Q1007",
+            "received_at_utc": "2026-07-29T09:04:31.827Z",
+            "report_type": "METAR",
+            "temperature_c": 37.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T10:00:00Z",
+            "raw_report": "METAR RKPK 291000Z 29003KT CAVOK 36/22 Q1007",
+            "received_at_utc": "2026-07-29T10:04:32.184Z",
+            "report_type": "METAR",
+            "temperature_c": 36.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T11:00:00Z",
+            "raw_report": "METAR RKPK 291100Z 34006KT CAVOK 34/22 Q1007",
+            "received_at_utc": "2026-07-29T11:04:28.440Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T12:00:00Z",
+            "raw_report": "METAR RKPK 291200Z 31004KT CAVOK 33/23 Q1008",
+            "received_at_utc": "2026-07-29T12:04:32.830Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T13:00:00Z",
+            "raw_report": "METAR RKPK 291300Z 32003KT CAVOK 32/23 Q1008",
+            "received_at_utc": "2026-07-29T13:04:30.381Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "observed_at_utc": "2026-07-29T14:00:00Z",
+            "raw_report": "METAR RKPK 291400Z 31005KT CAVOK 30/23 Q1008",
+            "received_at_utc": "2026-07-29T14:04:26.403Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 39.0
+      }
+    }
+  ],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "Asia/Seoul",
+  "source_class": "official_date_addressed_historical_replay",
+  "start_date": "2026-07-22",
+  "station_id": "RKPK"
+}

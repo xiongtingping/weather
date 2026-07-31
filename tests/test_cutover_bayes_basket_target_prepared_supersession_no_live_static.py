@@ -11,10 +11,15 @@ SCRIPT = (
 
 def test_cutover_is_target_only_and_retains_no_live_boundary() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
-    assert 'launchctl bootout "system/$TARGET_LABEL"' in text
-    assert 'launchctl bootstrap system "$INSTALLED_PLIST"' in text
-    assert 'launchctl bootout "system/$MARKET_LABEL"' not in text
-    assert 'launchctl bootout "system/$ORDER_LABEL"' not in text
+    assert 'launchctl bootout "${DOMAIN}/$TARGET_LABEL"' in text
+    assert 'launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST"' in text
+    assert 'launchctl bootout "${DOMAIN}/$MARKET_LABEL"' not in text
+    assert 'launchctl bootout "${DOMAIN}/$ORDER_LABEL"' not in text
+    assert "/usr/bin/sudo" not in text
+    assert "\nsudo " not in text
+    assert 'DOMAIN="gui/${UID_VALUE}"' in text
+    assert "${HOME}/Library/LaunchAgents" in text
+    assert "prepared_supersession_system_domain_residue" in text
     assert 'touch "$PAUSE"' in text
     assert "live_pause_retained=true" in text
     assert "--confirm-prepared-supersession-production-no-live" in text

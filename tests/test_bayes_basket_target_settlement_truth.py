@@ -445,7 +445,7 @@ def test_closed_day_uses_registry_timezone_and_ignores_nonhourly_reference() -> 
         source,
         station_id="RKPK",
         event_date="2026-07-28",
-        as_of_utc="2026-07-28T15:00:00Z",
+        as_of_utc="2026-07-28T19:00:00Z",
     )
 
     assert result["state"] == "committed"
@@ -653,6 +653,84 @@ def test_truth_batch_pages_more_than_45_scopes_without_global_block() -> None:
     assert second["has_more"] is False
     assert second["cursor_wrapped"] is False
     assert second["source_cursor_after"] > first["source_cursor_after"]
+
+
+def test_truth_batch_bootstraps_scope_before_basket_training_fact() -> None:
+    target = _target()
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="bootstrap-00",
+        valid_at="2026-07-28T00:00:00Z",
+        temperature_c=31,
+        committed_at="2026-07-28T00:00:10Z",
+    )
+
+    result = materialize_settled_training_truths(
+        target,
+        source,
+        as_of_utc="2026-07-28T15:00:00Z",
+        additional_scopes=[("RKPK", "2026-07-28")],
+    )
+
+    assert result["state"] == "complete"
+    assert result["scope_count"] == 1
+    assert result["additional_scope_count"] == 1
+    assert result["training_fact_scope_count"] == 0
+    assert result["written_count"] == 1
+    assert target.execute(
+        "SELECT COUNT(*) FROM calibration_station_daily_high_truth"
+    ).fetchone()[0] == 1
+
+
+def test_truth_batch_commits_unrelated_scope_when_one_station_is_halted() -> None:
+    target = _target()
+    source = _canonical()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "VILK", "2026-07-28", "Asia/Kolkata", "awc", 1,
+            "e" * 64, "2026-07-27T14:00:00Z",
+        ),
+    )
+    _observation(
+        source,
+        observation_id="a-good-hourly",
+        valid_at="2026-07-28T00:00:00Z",
+        temperature_c=31,
+        committed_at="2026-07-28T00:00:10Z",
+    )
+    source.execute(
+        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            "halted-hourly",
+            "awc",
+            "VILK",
+            "METAR",
+            "2026-07-28T00:00:00Z",
+            32,
+            "d" * 64,
+            "2026-07-28T00:00:10Z",
+            1,
+        ),
+    )
+
+    result = materialize_settled_training_truths(
+        target,
+        source,
+        as_of_utc="2026-07-28T19:00:00Z",
+        additional_scopes=[
+            ("RKPK", "2026-07-28"),
+            ("VILK", "2026-07-28"),
+        ],
+    )
+
+    assert result["state"] == "partial_fail_closed"
+    assert result["written_count"] == 1
+    assert result["blockers"][0]["station_id"] == "VILK"
+    assert target.execute(
+        "SELECT station_id FROM calibration_station_daily_high_truth"
+    ).fetchall() == [("RKPK",)]
 
 
 def test_truth_batch_cursor_wraps_and_revisits_old_scope() -> None:

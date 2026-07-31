@@ -138,13 +138,14 @@ def _bounded_json(raw: Any, field: str) -> Mapping[str, Any]:
 
 
 def _service_pids() -> dict[str, int]:
-    """Probe exactly the three system-domain services and nothing else."""
+    """Probe exactly the three user-domain services and nothing else."""
 
     result: dict[str, int] = {}
+    domain = f"gui/{os.getuid()}"
     for label in CORE_SERVICES:
         try:
             completed = subprocess.run(
-                ["/bin/launchctl", "print", f"system/{label}"],
+                ["/bin/launchctl", "print", f"{domain}/{label}"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -176,13 +177,13 @@ def _audit_services(probe: Callable[[], Any]) -> tuple[dict[str, Any], list[str]
     except Exception as exc:  # fail closed while retaining the cause in JSON
         return (
             {
-                "domain": "system",
+                "domain": "user",
                 "expected_services": list(CORE_SERVICES),
                 "observed": {},
                 "state": "PROBE_FAILED",
                 "error": f"{type(exc).__name__}:{exc}",
             },
-            ["system_service_probe_failed"],
+            ["user_service_probe_failed"],
         )
     if isinstance(raw, Mapping) and "services" in raw:
         raw = raw.get("services")
@@ -198,17 +199,17 @@ def _audit_services(probe: Callable[[], Any]) -> tuple[dict[str, Any], list[str]
     expected = set(CORE_SERVICES)
     actual = set(observed)
     if actual != expected:
-        blockers.append("system_service_set_drift")
+        blockers.append("user_service_set_drift")
         for label in sorted(expected - actual):
-            blockers.append(f"system_service_missing:{label}")
+            blockers.append(f"user_service_missing:{label}")
         for label in sorted(actual - expected):
-            blockers.append(f"system_service_unexpected:{label}")
+            blockers.append(f"user_service_unexpected:{label}")
     for label in CORE_SERVICES:
         if label in observed and observed[label] <= 0:
-            blockers.append(f"system_service_pid_invalid:{label}")
+            blockers.append(f"user_service_pid_invalid:{label}")
     return (
         {
-            "domain": "system",
+            "domain": "user",
             "expected_services": list(CORE_SERVICES),
             "observed": {key: observed[key] for key in sorted(observed)},
             "count": len(observed),
@@ -745,11 +746,13 @@ def audit(
     station_id: str = "RKPK",
     as_of_utc: str | None = None,
     raw_root: Path | str | None = None,
-    service_probe: Callable[[], Any] = _service_pids,
+    service_probe: Callable[[], Any] | None = None,
     resource_probe: Callable[..., Mapping[str, Any]] = inspect_target_resource_budget,
 ) -> dict[str, Any]:
     """Run the M10-04 audit without any database or service mutation."""
 
+    if service_probe is None:
+        service_probe = _service_pids
     station = str(station_id).strip().upper()
     if not station:
         raise ValueError("station_id_required")

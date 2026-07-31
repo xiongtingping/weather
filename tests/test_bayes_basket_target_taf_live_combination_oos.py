@@ -10,6 +10,7 @@ from bayes_basket_target.contracts import (
     ContractError,
     FORMAL_ENSEMBLE_METHOD_VERSION,
     content_sha256,
+    model_set_hash,
 )
 from bayes_basket_target.taf_live_combination_oos import (
     CANDIDATE_SCHEMA,
@@ -22,26 +23,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _inbox() -> dict:
-    inbox = json.loads(
-        (ROOT / "data" / "bayes_basket_target_p0_inbox.json").read_text()
+    bundle = json.loads(
+        (
+            ROOT
+            / "output/audits/"
+            "bayes_basket_target_no_live_vertical_slice_RKPK_v3.json"
+        ).read_text()
     )
-    # The retained inbox is an audit fixture from the v3 selector. Rebind its
-    # synthetic copy to the current formal contract; never mutate or promote
-    # the retained historical artifact itself.
-    wrapper = inbox["packets"][0]
-    packet = wrapper["packet"]
-    packet["station_id"] = "RKPK"
-    ensemble = packet["ensemble_artifact"]
+    # Build an isolated legacy-transport fixture from the retained v3 bundle.
+    # The production inbox now carries only native member envelopes and must
+    # never be rewritten back into this retired deterministic packet shape.
+    ensemble = dict(bundle["ensemble_artifacts"][0])
     ensemble["station_id"] = "RKPK"
     ensemble["season_bin"] = "summer"
     ensemble["lead_bucket"] = "d2_fallback"
     ensemble["run_cycle"] = "18Z"
     ensemble["weight_method"] = FORMAL_ENSEMBLE_METHOD_VERSION
-    supported_mask = next(iter(ensemble["supported_masks"]))
+    ensemble["max_weight_delta"] = 0.20
+    ensemble["holdout_end_date"] = "2026-07-28"
+    supported_mask = model_set_hash(("GFS", "ICON"))
+    ensemble["candidate_models"] = ["GFS", "ICON"]
     ensemble["supported_masks"] = {
-        supported_mask: {"ECMWF": 0.4, "GFS": 0.6}
+        supported_mask: {"GFS": 0.6, "ICON": 0.4}
     }
-    for model, calibration in packet["calibration_artifacts"].items():
+    calibrations = {
+        str(row["model_id"]): dict(row)
+        for row in bundle["calibration_artifacts"]
+        if row["model_id"] in {"GFS", "ICON"}
+    }
+    for model, calibration in calibrations.items():
         calibration["station_id"] = "RKPK"
         calibration["model_id"] = model
         calibration["season_bin"] = "summer"
@@ -61,7 +71,20 @@ def _inbox() -> dict:
             if key != "content_sha256"
         }
     )
-    wrapper["packet_content_sha256"] = content_sha256(packet)
+    packet = {
+        "station_id": "RKPK",
+        "settlement_timezone": "Asia/Seoul",
+        "ensemble_artifact": ensemble,
+        "calibration_artifacts": calibrations,
+    }
+    wrapper = {
+        "packet": packet,
+        "packet_content_sha256": content_sha256(packet),
+    }
+    inbox = {
+        "schema": "bayes_basket_target_p0_inbox_v1",
+        "packets": [wrapper],
+    }
     inbox["content_sha256"] = content_sha256(
         {
             key: value
@@ -90,14 +113,14 @@ def _observations(n: int = 32) -> list[dict]:
             "truth": {"tmax_c": truth},
             "nwp_combination": {
                 "model_forecasts_c": {
-                    "ECMWF": truth - 0.2,
+                    "ICON": truth - 0.2,
                     "GFS": truth + 0.3,
                 },
                 "historical_model_forecast_lineage_sha256": {
-                    "ECMWF": "1" * 64,
+                    "ICON": "1" * 64,
                     "GFS": "2" * 64,
                 },
-                "selected_models": ["ECMWF", "GFS"],
+                "selected_models": ["GFS", "ICON"],
                 "selection_evidence_sha256": "3" * 64,
                 "prediction_oos": True,
                 "decision_at_utc": f"{prior_date}T12:00:00Z",
@@ -110,13 +133,13 @@ def test_actual_live_lineage_enters_candidate_and_nested_rows() -> None:
     inbox = _inbox()
     report = evaluate_taf_live_combination_oos(observations=_observations(), live_p0_inbox=inbox, station_id="RKPK", season_bin="summer", lead_bucket="d2_fallback", run_cycle="18Z", minimum_sample_n=10)
     assert report["candidate_only"] is True
-    assert report["live_training_contract"]["model_mask"] == ["ECMWF", "GFS"]
+    assert report["live_training_contract"]["model_mask"] == ["GFS", "ICON"]
     assert report["live_training_contract"]["resolved_weights"] == {
-        "ECMWF": 0.4,
         "GFS": 0.6,
+        "ICON": 0.4,
     }
     assert report["live_training_contract"]["selection_evidence_sha256"]
-    assert set(report["live_training_contract"]["calibration_lineage"]) == {"ECMWF", "GFS"}
+    assert set(report["live_training_contract"]["calibration_lineage"]) == {"GFS", "ICON"}
     for row in report["evaluated_rows"]:
         assert row["nested_train_end_date"] < row["event_date"]
         assert row["nested_weights"] != report["live_training_contract"]["resolved_weights"] or row["nested_train_n"] == 3
@@ -135,9 +158,9 @@ def test_one_model_live_mask_is_rejected() -> None:
     inbox = _inbox()
     wrapper = inbox["packets"][0]
     packet = wrapper["packet"]
-    packet["calibration_artifacts"].pop("GFS")
+    packet["calibration_artifacts"].pop("ICON")
     ensemble = packet["ensemble_artifact"]
-    ensemble["candidate_models"] = ["ECMWF"]
+    ensemble["candidate_models"] = ["GFS"]
     ensemble["supported_masks"] = {}
     wrapper["packet_content_sha256"] = content_sha256(packet)
     inbox["content_sha256"] = content_sha256({key: value for key, value in inbox.items() if key != "content_sha256"})
@@ -166,7 +189,7 @@ def test_insufficient_outer_rows_remains_candidate_na() -> None:
 def test_model_publication_after_combination_as_of_is_rejected() -> None:
     rows = _observations()
     rows[0]["nwp_combination"]["model_rows"] = [{
-        "model_id": "ECMWF",
+        "model_id": "ICON",
         "forecast_daily_max_c": 26.0,
         "published_at_utc": "2026-05-03T00:00:00Z",
     }, {

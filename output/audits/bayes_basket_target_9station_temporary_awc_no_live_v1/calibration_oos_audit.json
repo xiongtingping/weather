@@ -1,0 +1,69 @@
+{
+  "as_of_utc": "2026-07-29T00:00:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "chronological_holdout_no_leakage": true,
+    "ensemble_oos_metrics_materialized": true,
+    "ensemble_probability_oos_materialized": true,
+    "ensemble_selection_non_degradation_vs_uniform": true,
+    "metric_rows_consistent": true
+  },
+  "ensemble_report_rows": [
+    {
+      "brier_score": 0.903575213542184,
+      "crps": 1.311176779396831,
+      "nll": 2.379860716189041,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "f4b3b3d733fe1b2db294b74f926e6f6544fd9ea2eddb2343111b7adb60427115",
+      "selection_mae_improvement_vs_uniform_c": 0.6036491379310358,
+      "selection_rmse_improvement_vs_uniform_c": 0.549635697047727
+    },
+    {
+      "brier_score": 0.9871978149757952,
+      "crps": 1.745791180397978,
+      "nll": 2.5623634847235977,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "81eed8e7c6e35cbf35876ad06ac07c9eb38bd14ca842b0418065243eaa438e48",
+      "selection_mae_improvement_vs_uniform_c": 1.0246249999999986,
+      "selection_rmse_improvement_vs_uniform_c": 1.0270316479440256
+    },
+    {
+      "brier_score": 0.6683779825789606,
+      "crps": 0.4119384805531192,
+      "nll": 1.3766195008485012,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "e6d968113585f5171d24cbd3ddd9a1b972dd71fdf493ff6d722799d8a85cedd7",
+      "selection_mae_improvement_vs_uniform_c": 0.13378999999999852,
+      "selection_rmse_improvement_vs_uniform_c": 0.2832482748421554
+    },
+    {
+      "brier_score": 0.8322825813108293,
+      "crps": 1.172851762868883,
+      "nll": 2.0133039431504036,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "17d55898dd95d5f1368e0002464fa86ab90dac2e77f902e9a3dca50ce395d2e7",
+      "selection_mae_improvement_vs_uniform_c": 1.2465569230769238,
+      "selection_rmse_improvement_vs_uniform_c": 1.226217772289481
+    },
+    {
+      "brier_score": 0.8418020014825048,
+      "crps": 0.9173161869084993,
+      "nll": 2.0543103241211673,
+      "probability_non_degradation_vs_uniform": true,
+      "selection_evidence_sha256": "16410295208af0795a8d6862b58f02def826fa10126d26e62bcf17711ef36774",
+      "selection_mae_improvement_vs_uniform_c": 2.9062067857142835,
+      "selection_rmse_improvement_vs_uniform_c": 2.9735553512688755
+    }
+  ],
+  "evidence_sha256": "c7c00326e82e44841769cfbe4d27efecd536588115dc100cb7734bb095b5ce63",
+  "input_artifact": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_explicit_18z_d2_oos/manifest.json",
+    "receipt_sha256": "1cc2891257e4f3adf43965ab6559df98d990af5d8ef5918050a157b64d05eb60"
+  },
+  "schema": "bayes_basket_target_calibration_oos_audit_v1"
+}

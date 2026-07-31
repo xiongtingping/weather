@@ -1,0 +1,687 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27",
+    "2026-07-28",
+    "2026-07-29"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-01",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-02T03:00:00Z",
+      "target_day_start_utc": "2026-07-01T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-02",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-03T03:00:00Z",
+      "target_day_start_utc": "2026-07-02T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-03",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-04T03:00:00Z",
+      "target_day_start_utc": "2026-07-03T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-04",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-05T03:00:00Z",
+      "target_day_start_utc": "2026-07-04T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-05",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-06T03:00:00Z",
+      "target_day_start_utc": "2026-07-05T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-06",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-07T03:00:00Z",
+      "target_day_start_utc": "2026-07-06T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-07",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-08T03:00:00Z",
+      "target_day_start_utc": "2026-07-07T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-08",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-09T03:00:00Z",
+      "target_day_start_utc": "2026-07-08T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-09",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-10T03:00:00Z",
+      "target_day_start_utc": "2026-07-09T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-10",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-11T03:00:00Z",
+      "target_day_start_utc": "2026-07-10T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-11",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-12T03:00:00Z",
+      "target_day_start_utc": "2026-07-11T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-12",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-13T03:00:00Z",
+      "target_day_start_utc": "2026-07-12T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-13",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-14T03:00:00Z",
+      "target_day_start_utc": "2026-07-13T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-14",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-15T03:00:00Z",
+      "target_day_start_utc": "2026-07-14T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-15",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-16T03:00:00Z",
+      "target_day_start_utc": "2026-07-15T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-16",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-17T03:00:00Z",
+      "target_day_start_utc": "2026-07-16T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-17",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-18T03:00:00Z",
+      "target_day_start_utc": "2026-07-17T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-18",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-19T03:00:00Z",
+      "target_day_start_utc": "2026-07-18T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-19",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-20T03:00:00Z",
+      "target_day_start_utc": "2026-07-19T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-20",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-21T03:00:00Z",
+      "target_day_start_utc": "2026-07-20T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-21",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-22T03:00:00Z",
+      "target_day_start_utc": "2026-07-21T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-22",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-23T03:00:00Z",
+      "target_day_start_utc": "2026-07-22T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-23",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-24T03:00:00Z",
+      "target_day_start_utc": "2026-07-23T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-24",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-25T03:00:00Z",
+      "target_day_start_utc": "2026-07-24T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-25",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-26T03:00:00Z",
+      "target_day_start_utc": "2026-07-25T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-26",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-27T03:00:00Z",
+      "target_day_start_utc": "2026-07-26T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-27",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-28T03:00:00Z",
+      "target_day_start_utc": "2026-07-27T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-28",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-29T03:00:00Z",
+      "target_day_start_utc": "2026-07-28T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "as_of_utc": "2026-07-30T11:35:22Z",
+      "event_date": "2026-07-29",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-30T03:00:00Z",
+      "target_day_start_utc": "2026-07-29T03:00:00Z",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    }
+  ],
+  "evidence_sha256": "2ff65d376edafc6c54a62ac0c63a4123cf06d0d97c1c108adba0d3a16867f714",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-07-01",
+          "response_sha256": "dd8d0a33d9a57be33ff7f0d596f4eb6b1afd1fe5d9468251879676d6889ffa21",
+          "returned_rows": 39,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260702_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-02",
+          "response_sha256": "dce2f869115112ccdecf69ce543cba23ad31e3d19fbee18cbce5f376f082daa6",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260703_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-03",
+          "response_sha256": "ebcd47a068a491cf451447d126ec3ee3576afa095af80a770d274f4e3a5bb221",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260704_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-04",
+          "response_sha256": "79b5e672bccd0b0fa0b44243d7c1bf71fb8c58eed459ccd87b6464dc7eb3b66f",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260705_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-05",
+          "response_sha256": "fd04c18632c8ed09312d2e6958d25d3aecc5e845b42a3ca44e0904e9b55ed78f",
+          "returned_rows": 37,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260706_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-06",
+          "response_sha256": "29dbeb5ba807f452bcfc23709181b426f2fe647b9fa2bc317cd43975dba6c63c",
+          "returned_rows": 34,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260707_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-07",
+          "response_sha256": "9c07a457069afe77b43d1767111de4f0c543898e390b22d85fbb894744f4b841",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260708_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-08",
+          "response_sha256": "d3d0379a14ce617a2dd63330e21ed7457e5170dbb44f441cd178dbc900896954",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260709_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-09",
+          "response_sha256": "ae71154d80206125f6ef382af1a07aa5fafda958b48657f944056803e07d8965",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260710_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-10",
+          "response_sha256": "0a81dda3567f3e42857ca141442f37e3d607f0d01d25cf192870e9c30e03155c",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260711_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-11",
+          "response_sha256": "cedff5299b35d5d8517070e094bfeec45f1460be0a425758245ffae16fa36057",
+          "returned_rows": 42,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260712_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-12",
+          "response_sha256": "0aeab498b7d4f4817a118458ee92f7fae8d4d6b92be73c17bee95841ae604308",
+          "returned_rows": 31,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260713_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-13",
+          "response_sha256": "e302e828cbb8dae4ec55fa02b26cafd4a877b1a171959c3e5f6327c9963d322d",
+          "returned_rows": 27,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260714_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-14",
+          "response_sha256": "3a63dba08e4ade42d87dfdf239954f6b864387152c7c8e92bf8a49fdd76bbc3b",
+          "returned_rows": 26,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260715_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-15",
+          "response_sha256": "d3eefacd25cfb01220adc8473bdf706a9eb4a946691437520a4e4c379d335c9d",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260716_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-16",
+          "response_sha256": "d068f8b9043b90e3e2245b82f41fa0aed3dfb1f92032b5993e4a9f066e8dd77f",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260717_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-17",
+          "response_sha256": "d2506190beeaec9fd872c0dd57f645f9769be48a825ddd951a92f0003b56b1cc",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260718_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-18",
+          "response_sha256": "a37f1f45b34031bdfcad43af83039e825957492475f5ea42129daa31a8a4124e",
+          "returned_rows": 47,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260719_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-19",
+          "response_sha256": "3fe6fca3e25f1a079bf280beb52f59a0ea96e48be79bc1957bb96f2f1a1d8267",
+          "returned_rows": 29,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260720_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-20",
+          "response_sha256": "29b37555baa9579f32d6d347ae92977e8ac071ec44c1203926e519573531815e",
+          "returned_rows": 31,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260721_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-21",
+          "response_sha256": "22a6ed165f03bd8aea3aaf31e8131e1795d8e96c17ce7d8b100b8b80f7bfa18f",
+          "returned_rows": 45,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260722_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-22",
+          "response_sha256": "75c3c022888812d51f47fc3c18da00061c7e6e745ad1479d193cd553055dccca",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260723_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-23",
+          "response_sha256": "c97d39352aaa38b46791b011e8714a28659f2df8390ad99734c7c48e250ed01f",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260724_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-24",
+          "response_sha256": "2bc638ee27748647b7f9a096cbb0b2e1230e6b4a559eb7af07cb7a0c0fe65e6a",
+          "returned_rows": 34,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260725_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-25",
+          "response_sha256": "9b77a2f3ba60e0b6d46ad5345998738eb52c79fdeb80dcb940552e31f47227d5",
+          "returned_rows": 35,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260726_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-26",
+          "response_sha256": "88f1e853161374fe6e1b9fa8d9f8e0561e21c2d31a6fabd0fe11d27d99a62d52",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260727_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-27",
+          "response_sha256": "d8a51214c1818d75dd86b53cae3aec20f3e83ca6600c42ad59505fc5b020e46b",
+          "returned_rows": 28,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260728_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-28",
+          "response_sha256": "5cc2d485a967dc237eebf3d4ce83c75636c93cb64befba4f60fbed9658fb020b",
+          "returned_rows": 36,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260729_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        },
+        {
+          "event_date": "2026-07-29",
+          "response_sha256": "70cb5943bc594780aa4d6c66c42918358de55c607ad2702b87749ef51b7231a8",
+          "returned_rows": 25,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=SAEZ&format=json&date=20260730_0300&hours=24",
+          "stations": [
+            "SAEZ"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 29,
+      "reference_only": false,
+      "returned": 854,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "proxy_or_direct_dns",
+        "batch_budget_sec": 900.0,
+        "budget_exhausted": false,
+        "connect_to": [],
+        "max_attempts": 2,
+        "timeout_sec": 30
+      }
+    }
+  ],
+  "generated_at_utc": "2026-07-30T11:35:22Z",
+  "observation_count": 854,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SAEZ/historical_truth_observations.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/truth_gap_refill",
+  "receipt_sha256": "3b2fd05daa2c943f95a7b31b9e5c869081df8ceb72b7aab72f9ba1578019d3c8",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SAEZ/historical_truth_references.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 854
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 29,
+  "station_day_keys": [
+    "SAEZ|2026-07-01",
+    "SAEZ|2026-07-02",
+    "SAEZ|2026-07-03",
+    "SAEZ|2026-07-04",
+    "SAEZ|2026-07-05",
+    "SAEZ|2026-07-06",
+    "SAEZ|2026-07-07",
+    "SAEZ|2026-07-08",
+    "SAEZ|2026-07-09",
+    "SAEZ|2026-07-10",
+    "SAEZ|2026-07-11",
+    "SAEZ|2026-07-12",
+    "SAEZ|2026-07-13",
+    "SAEZ|2026-07-14",
+    "SAEZ|2026-07-15",
+    "SAEZ|2026-07-16",
+    "SAEZ|2026-07-17",
+    "SAEZ|2026-07-18",
+    "SAEZ|2026-07-19",
+    "SAEZ|2026-07-20",
+    "SAEZ|2026-07-21",
+    "SAEZ|2026-07-22",
+    "SAEZ|2026-07-23",
+    "SAEZ|2026-07-24",
+    "SAEZ|2026-07-25",
+    "SAEZ|2026-07-26",
+    "SAEZ|2026-07-27",
+    "SAEZ|2026-07-28",
+    "SAEZ|2026-07-29"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "amsc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "amsc",
+    "ZGGG": "amsc",
+    "ZGSZ": "amsc",
+    "ZHHH": "amsc",
+    "ZSPD": "amsc",
+    "ZSQD": "amsc",
+    "ZUCK": "amsc",
+    "ZUUU": "amsc"
+  },
+  "target_timezone": "America/Argentina/Buenos_Aires"
+}

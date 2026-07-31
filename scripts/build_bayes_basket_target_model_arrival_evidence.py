@@ -15,7 +15,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,8 +27,12 @@ from bayes_basket_target.model_arrival import (  # noqa: E402
     build_blocked_receipt,
     load_model_arrival_receipts,
 )
+from bayes_basket_target.official_nwp_capture_scheduler import (  # noqa: E402
+    CANDIDATE_PREFETCH_SCHEMA,
+)
 from bayes_basket_target.resource_bounds import (
     MAX_INPUT_FILES_PER_BATCH,
+    MAX_JSON_INPUT_BYTES,
     load_bounded_json,
     write_bounded_json,
 )
@@ -43,15 +47,194 @@ def _now() -> str:
 
 
 def _sha256(path: Path) -> str:
+    if path.is_symlink():
+        raise ContractError("model_arrival_input_symlink_forbidden")
+    size = int(path.stat().st_size)
+    if size <= 0 or size > MAX_JSON_INPUT_BYTES:
+        raise ContractError("model_arrival_input_size_invalid")
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        remaining = size
+        while remaining:
+            chunk = handle.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise ContractError("model_arrival_input_short_read")
             digest.update(chunk)
+            remaining -= len(chunk)
+        if handle.read(1):
+            raise ContractError("model_arrival_input_grew_during_hash")
     return digest.hexdigest()
 
 
-def build(*, capture_paths: list[Path], as_of_utc: str) -> dict[str, Any]:
-    if len(capture_paths) > MAX_INPUT_FILES_PER_BATCH:
+def _candidate_receipt_arrivals(
+    path: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, str]]]:
+    """Project only content-bound native arrivals from one candidate receipt.
+
+    Aggregator rows remain candidate/calibration lineage and are deliberately
+    excluded from the native arrival index.  Missing arrival fields are never
+    synthesized from filenames, schedules, or the candidate receipt.
+    """
+
+    resolved = path.expanduser().resolve()
+    receipt = load_bounded_json(resolved)
+    if (
+        not isinstance(receipt, Mapping)
+        or receipt.get("schema") != CANDIDATE_PREFETCH_SCHEMA
+    ):
+        raise ContractError("candidate_prefetch_receipt_schema_invalid")
+    identity = {
+        str(key): value
+        for key, value in receipt.items()
+        if key != "content_sha256"
+    }
+    if str(receipt.get("content_sha256") or "") != content_sha256(identity):
+        raise ContractError("candidate_prefetch_receipt_hash_mismatch")
+    if (
+        receipt.get("candidate_only") is not True
+        or receipt.get("p0_materialization_authorized") is not False
+        or receipt.get("native_arrival_indexed") is not False
+        or receipt.get("creates_activation") is not False
+        or receipt.get("creates_p0") is not False
+    ):
+        raise ContractError("candidate_prefetch_receipt_boundary_invalid")
+    providers = receipt.get("providers")
+    if not isinstance(providers, list) or len(providers) > 8:
+        raise ContractError("candidate_prefetch_provider_count_invalid")
+    arrivals: list[dict[str, Any]] = []
+    blocked: list[dict[str, Any]] = []
+    inputs = [{
+        "path": str(resolved),
+        "sha256": _sha256(resolved),
+    }]
+    seen_paths: set[str] = set()
+    for provider in providers:
+        if not isinstance(provider, Mapping):
+            raise ContractError("candidate_prefetch_provider_invalid")
+        if provider.get("state") != "COMPLETE":
+            continue
+        provider_id = str(provider.get("provider_id") or "").strip().lower()
+        model_id = str(provider.get("model_id") or "").strip().upper()
+        if (
+            provider.get("source_class") == "aggregator_republisher"
+            or provider.get("aggregator_or_republisher") is True
+        ):
+            blocked.append({
+                "path": str(resolved),
+                "status": "CANDIDATE_ONLY_AGGREGATOR",
+                "provider_id": provider_id,
+                "model_id": model_id,
+                "receipt": build_blocked_receipt(
+                    reason_codes=[
+                        "candidate_aggregator_native_arrival_forbidden"
+                    ],
+                    received_at_utc=str(receipt.get("as_of_utc") or ""),
+                ),
+            })
+            continue
+        if (
+            provider.get("source_class") != "native_or_official"
+            or provider.get("native_arrival_indexed") is not False
+        ):
+            raise ContractError(
+                "candidate_native_provider_boundary_invalid"
+            )
+        bindings = provider.get("evidence_bindings")
+        if (
+            not isinstance(bindings, list)
+            or not bindings
+            or len(bindings) > MAX_INPUT_FILES_PER_BATCH
+        ):
+            raise ContractError(
+                "candidate_native_evidence_bindings_missing"
+            )
+        for binding in bindings:
+            if not isinstance(binding, Mapping):
+                raise ContractError(
+                    "candidate_native_evidence_binding_invalid"
+                )
+            binding_identity = {
+                str(key): value
+                for key, value in binding.items()
+                if key != "binding_sha256"
+            }
+            if str(binding.get("binding_sha256") or "") != content_sha256(
+                binding_identity
+            ):
+                raise ContractError(
+                    "candidate_native_evidence_binding_hash_mismatch"
+                )
+            if (
+                str(binding.get("provider_id") or "").strip().lower()
+                != provider_id
+                or str(binding.get("model_id") or "").strip().upper()
+                != model_id
+                or str(binding.get("station_id") or "").strip().upper()
+                != str(receipt.get("station_id") or "").strip().upper()
+                or str(binding.get("event_date") or "")
+                != str(receipt.get("event_date") or "")
+                or str(binding.get("run_initialization_utc") or "")
+                != str(receipt.get("run_initialization_utc") or "")
+            ):
+                raise ContractError(
+                    "candidate_native_evidence_binding_scope_mismatch"
+                )
+            evidence_path = Path(
+                str(binding.get("evidence_path") or "")
+            ).expanduser().resolve()
+            path_text = str(evidence_path)
+            if path_text in seen_paths:
+                continue
+            seen_paths.add(path_text)
+            payload = load_bounded_json(evidence_path)
+            if (
+                not isinstance(payload, Mapping)
+                or content_sha256(payload)
+                != str(binding.get("evidence_payload_sha256") or "")
+            ):
+                raise ContractError(
+                    "candidate_native_evidence_payload_hash_mismatch"
+                )
+            inputs.append({
+                "path": path_text,
+                "sha256": _sha256(evidence_path),
+            })
+            if len(inputs) > MAX_INPUT_FILES_PER_BATCH:
+                raise ContractError(
+                    "candidate_native_evidence_file_count_exceeded"
+                )
+            arrival = payload.get("arrival")
+            if not isinstance(arrival, Mapping):
+                blocked.append({
+                    "path": path_text,
+                    "status": "BLOCKED",
+                    "receipt": build_blocked_receipt(
+                        reason_codes=[
+                            "candidate_native_arrival_payload_missing"
+                        ],
+                        received_at_utc=str(
+                            binding.get("received_at_utc") or ""
+                        ),
+                    ),
+                })
+                continue
+            arrivals.append(dict(arrival))
+    return arrivals, blocked, inputs
+
+
+def build(
+    *,
+    capture_paths: list[Path],
+    as_of_utc: str,
+    candidate_receipt_paths: list[Path] | None = None,
+) -> dict[str, Any]:
+    candidate_paths = list(candidate_receipt_paths or [])
+    if not capture_paths and not candidate_paths:
+        raise ContractError("target_capture_input_missing")
+    if (
+        len(capture_paths) + len(candidate_paths)
+        > MAX_INPUT_FILES_PER_BATCH
+    ):
         raise ContractError("target_capture_batch_size_exceeded")
     arrivals: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
@@ -79,6 +262,28 @@ def build(*, capture_paths: list[Path], as_of_utc: str) -> dict[str, Any]:
                 "path": str(path),
                 "status": "BLOCKED",
                 "receipt": build_blocked_receipt(reason_codes=[type(exc).__name__ + ":" + str(exc)], received_at_utc=_now()),
+            })
+    for raw_path in candidate_paths:
+        try:
+            projected, quarantined, inputs = (
+                _candidate_receipt_arrivals(raw_path)
+            )
+            arrivals.extend(projected)
+            blocked.extend(quarantined)
+            input_artifacts.extend(inputs)
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ContractError,
+        ) as exc:
+            blocked.append({
+                "path": str(raw_path.expanduser().resolve()),
+                "status": "BLOCKED",
+                "receipt": build_blocked_receipt(
+                    reason_codes=[type(exc).__name__ + ":" + str(exc)],
+                    received_at_utc=_now(),
+                ),
             })
 
     normalized, audit = load_model_arrival_receipts(arrivals, decision_at_utc=as_of_utc)
@@ -115,11 +320,26 @@ def build(*, capture_paths: list[Path], as_of_utc: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", type=Path, action="append", required=True)
+    parser.add_argument(
+        "--capture",
+        type=Path,
+        action="append",
+        default=[],
+    )
+    parser.add_argument(
+        "--candidate-receipt",
+        type=Path,
+        action="append",
+        default=[],
+    )
     parser.add_argument("--as-of-utc", required=True)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
-    result = build(capture_paths=list(args.capture), as_of_utc=args.as_of_utc)
+    result = build(
+        capture_paths=list(args.capture),
+        candidate_receipt_paths=list(args.candidate_receipt),
+        as_of_utc=args.as_of_utc,
+    )
     output = args.output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     write_bounded_json(output, result)

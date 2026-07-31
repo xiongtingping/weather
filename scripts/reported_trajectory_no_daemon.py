@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""System-domain resident daemon for country-routed raw-METAR trajectory NO."""
+"""User-domain resident daemon for country-routed raw-METAR trajectory NO."""
 
 from __future__ import annotations
 
@@ -87,6 +87,7 @@ from reported_trajectory_sources import (
 from bayes_basket_target.database import DEFAULT_TARGET_DB
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
+    load_active_registry_rows,
 )
 from bayes_basket_target.settlement_time import settlement_day_window
 from bayes_basket_target.production_worker import (
@@ -96,8 +97,19 @@ from bayes_basket_target.production_worker import (
     TargetProductionWorker,
     open_target_writer_if_enabled,
 )
-from bayes_basket_target.resource_bounds import load_bounded_json
-from bayes_basket_target.taf_revision import TafRevisionArtifact
+from bayes_basket_target.resource_bounds import (
+    assert_connection_target_capacity,
+    load_bounded_json,
+)
+from bayes_basket_target.taf_rotation_state import (
+    MAX_SELECTED_SCOPES as MAX_TAF_SCOPES_PER_POLL,
+    build_catalog as build_taf_rotation_catalog,
+    build_rotation_state as build_taf_rotation_state,
+    load_rotation_state as load_taf_rotation_state,
+    persist_rotation_state as persist_taf_rotation_state,
+    scope_key as taf_rotation_scope_key,
+    select_scopes as select_taf_rotation_scopes,
+)
 from scripts.capture_bayes_basket_target_awc_taf_revision import (
     capture_forward_awc_taf,
     refresh_forward_taf_inbox,
@@ -110,6 +122,11 @@ DEFAULT_DB = ROOT / "data" / "archive.db"
 DEFAULT_STATUS = ROOT / "data" / "reported_trajectory_no_status.json"
 SCHEMA_VERSION = "reported_trajectory_no_daemon_v1"
 SQLITE_IO_RECOVERY_BACKOFF_SEC = 5.0
+TARGET_WAL_REOPEN_REASONS = (
+    "target_database_wal_checkpoint_failed",
+    "target_database_wal_checkpoint_busy",
+    "target_database_wal_bytes_exceeded_after_checkpoint",
+)
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
@@ -151,7 +168,11 @@ def target_result_has_recoverable_sqlite_io_error(
                 value = None
                 break
             value = value.get(key)
-        if "disk i/o error" in str(value or "").lower():
+        reason = str(value or "").lower()
+        if (
+            "disk i/o error" in reason
+            or any(marker in reason for marker in TARGET_WAL_REOPEN_REASONS)
+        ):
             return True
     return False
 
@@ -287,34 +308,53 @@ def run_target_forecast_refresh_cycle(
                 if getattr(worker, "commit_conn", None) is not None
                 else getattr(worker, "conn", None)
             )
-            if (
-                taf_scope_conn is None
-                or not worker.taf_artifact_path.is_file()
-            ):
+            if taf_scope_conn is None:
                 capture_state = {
                     "state": "not_configured",
                     "calls_order_gateway": False,
                     "places_orders": False,
                 }
             else:
-                artifact_raw = load_bounded_json(
-                    worker.taf_artifact_path
-                )
-                if not isinstance(artifact_raw, Mapping):
-                    raise RuntimeError("target_taf_artifact_invalid")
-                artifact = TafRevisionArtifact.from_mapping(artifact_raw)
                 now = utc_now()
-                rows = taf_scope_conn.execute(
-                    "SELECT DISTINCT station_id,event_date,"
-                    "settlement_timezone FROM basket_probability_envelope "
-                    "WHERE state='COMMITTED' AND stage='P0' "
-                    "AND station_id=? AND decision_at_utc<=? "
-                    "AND fresh_until_utc>? ORDER BY event_date",
-                    (artifact.station_id, now, now),
-                ).fetchall()
+                registry_rows = load_active_registry_rows(
+                    taf_scope_conn
+                )
+                catalog = build_taf_rotation_catalog(
+                    registry_rows,
+                    as_of_utc=now,
+                    station_ids=tuple(
+                        getattr(worker, "station_allowlist", ()) or ()
+                    ),
+                )
+                rotation_path = Path(
+                    getattr(
+                        worker,
+                        "taf_rotation_state_path",
+                        worker.taf_inbox_path.with_name(
+                            "taf_rotation_state.json"
+                        ),
+                    )
+                )
+                previous_rotation = load_taf_rotation_state(
+                    rotation_path
+                )
+                selected, next_cursor, catalog_sha = (
+                    select_taf_rotation_scopes(
+                        catalog,
+                        previous=previous_rotation,
+                        limit=MAX_TAF_SCOPES_PER_POLL,
+                    )
+                )
                 captures: list[dict[str, Any]] = []
                 capture_failures: list[dict[str, str]] = []
-                for station, event_date, settlement_timezone in rows:
+                outcomes: list[dict[str, str]] = []
+                for scope in selected:
+                    station = scope["station_id"]
+                    event_date = scope["event_date"]
+                    settlement_timezone = scope[
+                        "settlement_timezone"
+                    ]
+                    key = taf_rotation_scope_key(scope)
                     try:
                         captures.append(
                             capture_forward_awc_taf(
@@ -325,11 +365,22 @@ def run_target_forecast_refresh_cycle(
                                 ),
                             )
                         )
+                        outcomes.append({
+                            "scope_key": key,
+                            "state": "captured",
+                            "reason": "",
+                        })
                     except Exception as exc:
-                        capture_failures.append({
+                        failure = {
                             "station_id": str(station),
                             "event_date": str(event_date),
                             "reason": f"{type(exc).__name__}:{exc}",
+                        }
+                        capture_failures.append(failure)
+                        outcomes.append({
+                            "scope_key": key,
+                            "state": "failed_isolated",
+                            "reason": failure["reason"],
                         })
                 inbox = (
                     refresh_forward_taf_inbox(
@@ -337,6 +388,19 @@ def run_target_forecast_refresh_cycle(
                         inbox_path=worker.taf_inbox_path,
                     )
                     if captures else None
+                )
+                rotation = build_taf_rotation_state(
+                    catalog=catalog,
+                    selected=selected,
+                    next_cursor=next_cursor,
+                    catalog_sha256=catalog_sha,
+                    outcomes=outcomes,
+                    previous=previous_rotation,
+                    updated_at_utc=now,
+                )
+                rotation_wrote = persist_taf_rotation_state(
+                    rotation_path,
+                    rotation,
                 )
                 capture_state = {
                     "state": (
@@ -346,11 +410,23 @@ def run_target_forecast_refresh_cycle(
                         if captures
                         else "blocked_fail_closed"
                         if capture_failures
-                        else "no_active_p0m_scope"
+                        else "no_active_registry_scope"
                     ),
+                    "scope_source": "target_local_active_market_registry",
+                    "catalog_scope_count": len(catalog),
+                    "selected_scope_count": len(selected),
+                    "selected_scope_keys": [
+                        taf_rotation_scope_key(scope)
+                        for scope in selected
+                    ],
                     "capture_count": len(captures),
                     "failure_count": len(capture_failures),
                     "failures": capture_failures,
+                    "rotation_state_path": str(rotation_path),
+                    "rotation_state_wrote": rotation_wrote,
+                    "rotation_content_sha256": str(
+                        rotation.get("content_sha256") or ""
+                    ),
                     "inbox_content_sha256": str(
                         (inbox or {}).get("content_sha256") or ""
                     ),
@@ -378,12 +454,122 @@ def run_target_forecast_refresh_cycle(
     }
 
 
+def resident_nwp_in_flight_receipt(
+    worker: TargetProductionWorker,
+    *,
+    scheduled_at_utc: str,
+) -> dict[str, Any]:
+    """Publish a real persisted rotation while bounded network work is active.
+
+    A launchd restart must not erase scheduler admission evidence until a
+    potentially slow provider request returns.  The rotation was validated
+    when ``TargetProductionWorker`` loaded it; this receipt never claims that
+    the new capture completed.
+    """
+
+    rotation = getattr(worker, "_nwp_rotation_state", None)
+    configured = list(getattr(worker, "station_allowlist", ()) or ())
+    if not isinstance(rotation, Mapping):
+        return {
+            "state": "in_flight_no_prior_rotation",
+            "scheduled_at_utc": scheduled_at_utc,
+            "station_scope_mode": "canonical_allowlist",
+            "configured_station_ids": configured,
+            "discovered_station_ids": [],
+            "scope_count": 0,
+            "selected_scope_count": 0,
+            "successful_scope_count": 0,
+            "candidate_prefetch_attempt_count": 0,
+            "candidate_prefetch_scope_limit": 1,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+    catalog_keys = [
+        str(value)
+        for value in rotation.get("catalog_scope_keys") or ()
+    ]
+    discovered = sorted({
+        value.split("|", 1)[0].strip().upper()
+        for value in catalog_keys
+        if "|" in value and value.split("|", 1)[0].strip()
+    })
+    outcomes = [
+        value
+        for value in rotation.get("latest_outcomes") or ()
+        if isinstance(value, Mapping)
+    ]
+    candidate_attempts = min(
+        1,
+        sum(bool(value.get("candidate_only")) for value in outcomes),
+    )
+    successful = sum(
+        str(value.get("state") or "").upper()
+        not in {"", "BLOCKED_FAIL_CLOSED"}
+        for value in outcomes
+    )
+    return {
+        "state": "in_flight_previous_rotation",
+        "scheduled_at_utc": scheduled_at_utc,
+        "completion_claimed": False,
+        "station_scope_mode": "canonical_allowlist",
+        "configured_station_ids": configured,
+        "discovered_station_ids": discovered,
+        "scope_count": int(rotation.get("catalog_scope_count") or 0),
+        "scope_catalog_sha256": str(
+            rotation.get("catalog_sha256") or ""
+        ),
+        "selected_scope_count": len(
+            rotation.get("latest_selected_scope_keys") or ()
+        ),
+        "successful_scope_count": successful,
+        "candidate_prefetch_attempt_count": candidate_attempts,
+        "candidate_prefetch_scope_limit": 1,
+        "rotation_state": dict(rotation),
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+
+
 def run_target_production_cycle(
     worker: TargetProductionWorker,
 ) -> dict[str, Any]:
     """Consume only durable inbox/SSOT evidence and compile no-live output."""
 
-    return worker.run()
+    result = worker.run()
+    connection = getattr(worker, "commit_conn", None)
+    if connection is None:
+        return result
+    try:
+        guard = assert_connection_target_capacity(
+            connection,
+            recover_oversized_wal=True,
+        )
+    except Exception as exc:
+        return {
+            **result,
+            "ok": False,
+            "state": "blocked_fail_closed",
+            "reason": f"{type(exc).__name__}:{exc}",
+            "post_cycle_resource_guard": {
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}",
+            },
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+    return {
+        **result,
+        "post_cycle_resource_guard": {
+            "state": "PASS",
+            "database": None if guard is None else str(guard),
+        },
+    }
 
 
 def _open(path: Path, *, ensure_schema: bool = True) -> sqlite3.Connection:
@@ -1433,6 +1619,22 @@ def main() -> int:
                 )
                 next_production = time.monotonic() + 15.0
             if storage_ok and now_mono >= next_forecast and forecast_future is None:
+                state["forecast_prefetch"] = {
+                    "schema": "reported_trajectory_forecast_prefetch_v1",
+                    "resident_nwp_capture": resident_nwp_in_flight_receipt(
+                        forecast_worker,
+                        scheduled_at_utc=utc_now(),
+                    ),
+                    "forward_taf_capture": {
+                        "state": "pending_same_bounded_worker",
+                        "calls_order_gateway": False,
+                        "places_orders": False,
+                    },
+                    "calls_order_gateway": False,
+                    "places_orders": False,
+                    "live_submit_authorized": False,
+                    "orders_submitted": 0,
+                }
                 forecast_future = forecast_executor.submit(
                     run_target_forecast_refresh_cycle,
                     forecast_worker,

@@ -101,6 +101,28 @@ def test_release_manifest_carries_offline_evidence_but_not_as_live_authority(tmp
     assert evidence["output/audits/bayes_basket_target_production_closure_audit.json"]["exists"] is True
     assert evidence["config/bayes_basket_target/runtime_config_isolation_v1.json"]["exists"] is True
     assert result["operator_gates"]["live_submit_authorization_forbidden"] is True
+    assert result["operator_gates"][
+        "user_domain_three_service_cutover_required"
+    ] is True
+    assert result["operator_gates"]["system_domain_residue_forbidden"] is True
+    assert result["operator_gates"][
+        "passwordless_daily_service_control_required"
+    ] is True
+    assert result["operator_gates"][
+        "existing_capital_balance_and_epoch_must_be_bound"
+    ] is True
+    assert "capital_balance_and_epoch_must_be_explicitly_paired" not in (
+        result["operator_gates"]
+    )
+    assert "system_domain_three_service_cutover_required" not in (
+        result["operator_gates"]
+    )
+    assert "verify_existing_live_pause_and_capital_epoch" in (
+        result["required_before_mutation"]
+    )
+    assert "operator_supplies_pause_window_and_capital_epoch" not in (
+        result["required_before_mutation"]
+    )
 
 
 def test_forward_scorecard_is_exported_from_package_public_interface() -> None:

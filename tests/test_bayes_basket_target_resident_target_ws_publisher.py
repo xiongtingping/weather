@@ -114,6 +114,33 @@ def _database(path: Path) -> None:
         conn.commit()
 
 
+def test_scope_closes_target_read_connection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "target.db"
+    _database(db)
+    opened: list[sqlite3.Connection] = []
+    original = publisher._open_target_read_only
+
+    def tracked_open(path: Path = db) -> sqlite3.Connection:
+        conn = original(path)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(publisher, "_open_target_read_only", tracked_open)
+
+    catalog = _scope(
+        db_path=db,
+        as_of_utc="2026-07-27T16:00:00Z",
+    )
+
+    assert catalog["scopes"]
+    assert len(opened) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        opened[0].execute("SELECT 1")
+
+
 def _add_scope(
     path: Path,
     *,

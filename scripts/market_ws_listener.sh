@@ -17,6 +17,13 @@ if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   load_repo_env_file "$ROOT/.env"
 fi
 
+if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then
+  echo "[market_ws] user_domain_required" >&2
+  exit 78
+fi
+export WEATHER_SERVICE_DOMAIN=user
+export PM_TARGET_EXECUTION_MODE=production_no_live
+
 mkdir -p "$ROOT/data"
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then

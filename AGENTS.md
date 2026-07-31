@@ -5,7 +5,7 @@
 
 ## 工程原则（必须遵守）
 - 根因优先、零技术债务：先全链路分析再给长期方案与最小改动。
-- 生产仅保留三个同一域服务：`reported_trajectory_no`、`market_ws`、`clob_order_service`；当前按熊先生要求迁移到 system 域，禁止 user/system 双活。
+- 生产仅保留三个同一用户域服务：`reported_trajectory_no`、`market_ws`、`clob_order_service`；固定运行于`gui/$(id -u)`，禁止user/system双活。root-owned旧LaunchDaemon只允许在一次性迁移中以不弹密码的`sudo -n`退役；迁移后安装、切换、重启和验收不得依赖sudo。
 - UI、monitor、Bayes、模型扫描、市场 REST 刷新、任务队列和行情历史 tick 写入均停用。
 - 正式实时 truth 仍为 AMSC/AWC 双泳道：AMSC 负责中国站点，AWC 负责排除中国站点；对中国站点以 AMSC 官方整点 `:00` METAR 为正式主来源（AMSC 发布更快），实时 truth 禁止交叉 fallback。AMSC 半点 METAR 与为中国站点查询的 AWC 整点 METAR默认只能进入独立 `reference-only` 证据；仅历史校正缺口可按熊先生本次授权显式标记 `TEMPORARY_AWC_CALIBRATION_LABEL` 进入 `production_no_live` OOS/calibration，不得覆盖AMSC对象、进入实时truth、P1或硬NO，后续取得AMSC历史后必须重建替换。
 - Open-Meteo ICON/GEM/CMA 均为显式 `aggregator_republisher`：可参与带 lineage 的历史/forward calibration candidate，但不得伪造 native publication/arrival、进入 native arrival index 或硬 NO；只有独立严格 OOS 生成并激活的至少两模型正式组合才能进入 P0，同模型存在官方 native 证据时优先 native。
@@ -18,7 +18,7 @@
 - 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；METAR/SPECI生成P1。禁止P0-F/P0-F^r分支。
 - 硬 NO lane 不得读取概率、先验、似然、TAF、NWP、regime 或其他天气字段；篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime 和官方 CLOB WS 证据，缺证据即 fail closed。
 - 外置盘仅用于非关键、无用数据的异步冷归档；禁止作为生产数据库备份、回滚、切换、readiness 或服务启停依赖，任何外置盘异常不得影响 AMSC/METAR/SPECI、SSOT 或交易。
-- 需要熊先生执行交互 sudo 时，必须同步给出可复制的完整指令。
+- 禁止把日常生产操作设计为交互sudo；用户域迁移后所有常规服务控制必须由当前登录用户完成。
 - 每次阶段性收尾时自动说明“下一个主线任务”。
 - 若熊先生已否定某个根因假设，不得再次作为当前根因。
 - 若本文件需要新增/修订：保持精简（≤100 行）。
@@ -63,13 +63,9 @@
 - 角色调仓卖单的未成交部分不改变持仓地板；成交后以实际 bid proceeds 计入净结算成本，必须重新计算最低/最高利润。
 
 ## 常用运行（本地）
-- 受控切换：`python3 scripts/cutover_reported_trajectory_no_production.py --confirm-live-reported-trajectory-no-v1`
-- system 域迁移：`sudo bash scripts/install_reported_trajectory_no_system_services.sh`
+- 一次性用户域迁移：`bash scripts/migrate_reported_trajectory_no_to_user_domain.sh --confirm-user-domain-production-no-live`
+- 用户域安装/刷新：`bash scripts/targetctl.sh restart`
+- target-only概率切换：`bash scripts/cutover_bayes_basket_target_probability_evidence_no_live.sh --confirm-target-probability-evidence-production-no-live`
+- 服务状态：`bash scripts/targetctl.sh status`
 - 只读验收：`python3 scripts/reported_trajectory_no_production_acceptance.py`
 - 单次来源诊断：`python3 scripts/reported_trajectory_no_daemon.py --once amsc`
-
-## 关键词触发：订单分析
-- 触发关键词：`订单分析` / `复盘调优` / `策略体检` / `失败特征` / `共同特征` / `参数建议`
-- 默认范围：近 3 天（ET），按市场×策略版本分层
-- 输出：成功/失败共同特征、参数建议、影响评估（信号量/胜率/赔率）
-- 落地顺序：先只读分析报告 → 熊先生确认 → 再执行参数写入与重启

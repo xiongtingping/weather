@@ -17,6 +17,19 @@ from typing import Iterable
 SCHEMA = "bayes_basket_target_official_ws_dependency_audit_v1"
 DEFAULT_ROOTS = ("bayes_basket_target",)
 LEGACY_IMPORT_ROOTS = frozenset({"adaptive_basket_shadow"})
+# Weather-source ingestion is allowed to use bounded HTTP transports.  The
+# market-lane audit must distinguish those modules from a second CLOB/market
+# reader; otherwise adding an NWP source falsely violates the official-WS-only
+# market contract.
+NON_MARKET_NETWORK_MODULES = frozenset(
+    {
+        "bayes_basket_target/native_ensemble_history.py",
+        "bayes_basket_target/native_ensemble_previous_runs.py",
+        "bayes_basket_target/ecmwf_ifs_archive.py",
+        "bayes_basket_target/noaa_gefs_archive.py",
+        "bayes_basket_target/open_meteo_ensemble.py",
+    }
+)
 FORBIDDEN_IMPORT_ROOTS = frozenset(
     {
         "aiohttp",
@@ -107,7 +120,10 @@ def audit_official_ws_dependencies(
             for module in imported:
                 if _module_name(module) in LEGACY_IMPORT_ROOTS:
                     legacy_import_hits.append({"file": relative, "line": int(node.lineno), "module": module})
-                if _module_name(module) in FORBIDDEN_IMPORT_ROOTS:
+                if (
+                    relative not in NON_MARKET_NETWORK_MODULES
+                    and _module_name(module) in FORBIDDEN_IMPORT_ROOTS
+                ):
                     import_hits.append({"file": relative, "line": int(node.lineno), "module": module})
 
             if isinstance(node, ast.Call):

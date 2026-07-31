@@ -1,0 +1,553 @@
+{
+  "activation": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+  "activation_sha256": "",
+  "artifact_bindings": {
+    "calibration_activations": 3,
+    "calibration_artifacts": 2,
+    "cash_phase_authority_manifests": 1,
+    "cash_phase_policies": 1,
+    "ensemble_artifacts": 1,
+    "ensemble_selection_evidence": 1
+  },
+  "artifact_ingress": {
+    "calls_order_gateway": false,
+    "counts": {
+      "calibration_activations": 0,
+      "calibration_artifacts": 0,
+      "calibration_promotions": 0,
+      "cash_phase_authority_manifests": 0,
+      "cash_phase_policies": 0,
+      "ensemble_artifacts": 0,
+      "ensemble_selection_evidence": 0,
+      "global_priors": 0,
+      "policy_activations": 0,
+      "policy_artifacts": 0,
+      "policy_promotions": 0
+    },
+    "places_orders": false,
+    "schema": "bayes_basket_target_artifact_ingress_v1",
+    "state": "STAGED_IN_CALLER_TRANSACTION"
+  },
+  "authorizes_order": false,
+  "backup_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.pre_probability_evidence_20260730T075118Z.backup.db",
+  "boundary": {
+    "protected_resident_pid_preserved": true,
+    "restarts_services": false,
+    "stops_services": false,
+    "target_database_transaction_fenced": true,
+    "target_writer_managed_by_outer_cutover": true,
+    "writes_archive_database": false,
+    "writes_target_database": true
+  },
+  "calls_order_gateway": false,
+  "completed_at_utc": "2026-07-30T07:51:32.063Z",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "elapsed_seconds": 6.67926487501245,
+  "execution_mode": "production_no_live",
+  "idempotent_second_commit_counts": {
+    "calibration_activations": 0,
+    "calibration_artifacts": 0,
+    "calibration_promotions": 0,
+    "cash_phase_authority_manifests": 0,
+    "cash_phase_policies": 0,
+    "ensemble_artifacts": 0,
+    "ensemble_selection_evidence": 0,
+    "global_priors": 0,
+    "policy_activations": 0,
+    "policy_artifacts": 0,
+    "policy_promotions": 0
+  },
+  "live_submit_authorized": false,
+  "lock_acquired_after_seconds": 0.14776949997758493,
+  "migration": {
+    "after": {
+      "blocked_execution_vector_lineage": {
+        "blocked_decision_count": 997,
+        "blockers": [],
+        "calls_order_gateway": false,
+        "candidate_decision_ids": [],
+        "covered_count": 997,
+        "invalid": [],
+        "invalid_count": 0,
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "repair_candidate_count": 0,
+        "schema": "bayes_basket_target_blocked_execution_vector_repair_v1",
+        "state": "complete"
+      },
+      "calls_order_gateway": false,
+      "cash_phase_authority_manifest_schema": {
+        "columns": [
+          [
+            "manifest_sha256",
+            "TEXT",
+            0,
+            1
+          ],
+          [
+            "station_id",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "policy_version",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "artifact_sha256",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "station_timezone",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_from_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_until_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "authority_scope",
+            "TEXT",
+            1,
+            0
+          ]
+        ],
+        "columns_ok": true,
+        "index_columns": [
+          "station_id",
+          "authority_scope",
+          "valid_from_utc",
+          "valid_until_utc"
+        ],
+        "index_ok": true,
+        "missing": [],
+        "ok": true,
+        "table_constraints_ok": true,
+        "table_present": true,
+        "trigger_names": [
+          "basket_cash_phase_authority_no_delete",
+          "basket_cash_phase_authority_no_update"
+        ],
+        "triggers_ok": true
+      },
+      "legacy_decision_row_count": 1241,
+      "legacy_decision_table_collision": false,
+      "legacy_decision_table_present": true,
+      "live_submit_authorized": false,
+      "mutation_required": false,
+      "production_ssot_schema": {
+        "calibration_base_schema_ok": true,
+        "calibration_missing_columns": {
+          "calibration_ensemble_artifact": [],
+          "calibration_historical_asof_model_run": [],
+          "calibration_model_station_residual": [],
+          "calibration_station_daily_high_truth": [],
+          "calibration_station_registry": []
+        },
+        "calibration_model_pool_schema": {
+          "candidate_models": [
+            "ECMWF",
+            "GFS",
+            "ICON",
+            "GEM",
+            "CMA"
+          ],
+          "missing_or_legacy_tables": [],
+          "ok": true,
+          "tables": {
+            "calibration_historical_asof_model_run": {
+              "five_model_check": true,
+              "present": true
+            },
+            "calibration_model_artifact": {
+              "five_model_check": true,
+              "present": true
+            },
+            "calibration_model_station_residual": {
+              "five_model_check": true,
+              "present": true
+            }
+          }
+        },
+        "calibration_model_pool_schema_ok": true,
+        "ledger_missing_columns": {
+          "auto_trade_decisions": [],
+          "basket_target_order_intents": []
+        },
+        "ledger_schema_ok": true,
+        "maker_grid_oos_missing_tables": [],
+        "maker_grid_oos_schema_ok": true,
+        "missing_tables": [],
+        "ok": true,
+        "policy_training_constraint_ok": true,
+        "policy_training_missing_columns": {
+          "basket_policy_training_fact": [],
+          "basket_policy_training_label": []
+        },
+        "policy_training_schema_ok": true,
+        "probability_evidence_schema": {
+          "calls_order_gateway": false,
+          "missing_tables": [],
+          "ok": true,
+          "places_orders": false,
+          "schema": "bayes_basket_probability_evidence_authority_v1",
+          "tables": [
+            "basket_probability_evidence_artifact",
+            "basket_probability_evidence_promotion",
+            "basket_probability_evidence_activation",
+            "basket_probability_update_proof"
+          ]
+        },
+        "probability_stage_contract_ok": true,
+        "quote_freshness_missing_columns": [],
+        "regime_missing_columns": [],
+        "regime_schema_ok": true,
+        "regime_superseded_schema": {
+          "columns_exact": true,
+          "committed_partial_unique_ok": true,
+          "controlled_update_trigger_ok": true,
+          "legacy_no_update_absent": true,
+          "missing_columns": [],
+          "no_delete_trigger_ok": true,
+          "ok": true,
+          "supports_superseded": true,
+          "table_present": true
+        },
+        "schema": "bayes_basket_target_ssot_v5_five_model_pool",
+        "settlement_timezone_missing_columns": {},
+        "strict_delta_candidate_contract_ok": true,
+        "target_tables_present": true
+      },
+      "schema": "bayes_basket_target_ssot_migration_plan_v1",
+      "target_ledger_schema": {
+        "blocking_authority": "auto_trade_decisions",
+        "calls_order_gateway": false,
+        "forbidden_execution_vector_columns": [],
+        "legacy_execution_vector_policy_present": false,
+        "missing_columns": {},
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "schema": "bayes_basket_target_atomic_ledger_v1"
+      },
+      "writes_orders": false
+    },
+    "before": {
+      "blocked_execution_vector_lineage": {
+        "blocked_decision_count": 997,
+        "blockers": [],
+        "calls_order_gateway": false,
+        "candidate_decision_ids": [],
+        "covered_count": 997,
+        "invalid": [],
+        "invalid_count": 0,
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "repair_candidate_count": 0,
+        "schema": "bayes_basket_target_blocked_execution_vector_repair_v1",
+        "state": "complete"
+      },
+      "calls_order_gateway": false,
+      "cash_phase_authority_manifest_schema": {
+        "columns": [
+          [
+            "manifest_sha256",
+            "TEXT",
+            0,
+            1
+          ],
+          [
+            "station_id",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "policy_version",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "artifact_sha256",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "station_timezone",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_from_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "valid_until_utc",
+            "TEXT",
+            1,
+            0
+          ],
+          [
+            "authority_scope",
+            "TEXT",
+            1,
+            0
+          ]
+        ],
+        "columns_ok": true,
+        "index_columns": [
+          "station_id",
+          "authority_scope",
+          "valid_from_utc",
+          "valid_until_utc"
+        ],
+        "index_ok": true,
+        "missing": [],
+        "ok": true,
+        "table_constraints_ok": true,
+        "table_present": true,
+        "trigger_names": [
+          "basket_cash_phase_authority_no_delete",
+          "basket_cash_phase_authority_no_update"
+        ],
+        "triggers_ok": true
+      },
+      "legacy_decision_row_count": 1241,
+      "legacy_decision_table_collision": false,
+      "legacy_decision_table_present": true,
+      "live_submit_authorized": false,
+      "mutation_required": false,
+      "production_ssot_schema": {
+        "calibration_base_schema_ok": true,
+        "calibration_missing_columns": {
+          "calibration_ensemble_artifact": [],
+          "calibration_historical_asof_model_run": [],
+          "calibration_model_station_residual": [],
+          "calibration_station_daily_high_truth": [],
+          "calibration_station_registry": []
+        },
+        "calibration_model_pool_schema": {
+          "candidate_models": [
+            "ECMWF",
+            "GFS",
+            "ICON",
+            "GEM",
+            "CMA"
+          ],
+          "missing_or_legacy_tables": [],
+          "ok": true,
+          "tables": {
+            "calibration_historical_asof_model_run": {
+              "five_model_check": true,
+              "present": true
+            },
+            "calibration_model_artifact": {
+              "five_model_check": true,
+              "present": true
+            },
+            "calibration_model_station_residual": {
+              "five_model_check": true,
+              "present": true
+            }
+          }
+        },
+        "calibration_model_pool_schema_ok": true,
+        "ledger_missing_columns": {
+          "auto_trade_decisions": [],
+          "basket_target_order_intents": []
+        },
+        "ledger_schema_ok": true,
+        "maker_grid_oos_missing_tables": [],
+        "maker_grid_oos_schema_ok": true,
+        "missing_tables": [],
+        "ok": true,
+        "policy_training_constraint_ok": true,
+        "policy_training_missing_columns": {
+          "basket_policy_training_fact": [],
+          "basket_policy_training_label": []
+        },
+        "policy_training_schema_ok": true,
+        "probability_evidence_schema": {
+          "calls_order_gateway": false,
+          "missing_tables": [],
+          "ok": true,
+          "places_orders": false,
+          "schema": "bayes_basket_probability_evidence_authority_v1",
+          "tables": [
+            "basket_probability_evidence_artifact",
+            "basket_probability_evidence_promotion",
+            "basket_probability_evidence_activation",
+            "basket_probability_update_proof"
+          ]
+        },
+        "probability_stage_contract_ok": true,
+        "quote_freshness_missing_columns": [],
+        "regime_missing_columns": [],
+        "regime_schema_ok": true,
+        "regime_superseded_schema": {
+          "columns_exact": true,
+          "committed_partial_unique_ok": true,
+          "controlled_update_trigger_ok": true,
+          "legacy_no_update_absent": true,
+          "missing_columns": [],
+          "no_delete_trigger_ok": true,
+          "ok": true,
+          "supports_superseded": true,
+          "table_present": true
+        },
+        "schema": "bayes_basket_target_ssot_v5_five_model_pool",
+        "settlement_timezone_missing_columns": {},
+        "strict_delta_candidate_contract_ok": true,
+        "target_tables_present": true
+      },
+      "schema": "bayes_basket_target_ssot_migration_plan_v1",
+      "target_ledger_schema": {
+        "blocking_authority": "auto_trade_decisions",
+        "calls_order_gateway": false,
+        "forbidden_execution_vector_columns": [],
+        "legacy_execution_vector_policy_present": false,
+        "missing_columns": {},
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "schema": "bayes_basket_target_atomic_ledger_v1"
+      },
+      "writes_orders": false
+    },
+    "calls_order_gateway": false,
+    "legacy_archive_table": null,
+    "live_submit_authorized": false,
+    "schema": "bayes_basket_target_ssot_migration_receipt_v1",
+    "state": "already_ready",
+    "writes_orders": false
+  },
+  "orders_submitted": 0,
+  "packet_sha256": "91c30974a3e7bd8298607f4ef4b58a69599cd17d79ec4c55b70da688abe8f831",
+  "pause_marker_removed": true,
+  "pause_marker_restored": false,
+  "places_orders": false,
+  "probability_bridge_backfill": {
+    "authoritative_scope_count": 4,
+    "calls_order_gateway": false,
+    "envelope_count": 270,
+    "live_submit_authorized": false,
+    "materialized_count": 0,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "schema": "bayes_basket_target_probability_xsb_bridge_v1",
+    "skipped_legacy_non_authoritative": [
+      {
+        "checkpoint_id": "p1_02ef7e8abbee4f8dadfc50df8c584cbf",
+        "reason": "exact_bucket_intervals_unavailable"
+      },
+      {
+        "checkpoint_id": "p1_dd00fcc9be27ff16ea87d93699febb74",
+        "reason": "exact_bucket_intervals_unavailable"
+      },
+      {
+        "checkpoint_id": "p0_3926bd70a321880253e306b9ba8916dd",
+        "reason": "exact_bucket_intervals_unavailable"
+      },
+      {
+        "checkpoint_id": "p1_576d85c7372b6247e2615afb265361e6",
+        "reason": "exact_bucket_intervals_unavailable"
+      },
+      {
+        "checkpoint_id": "p1_bcd9828a0876ba8cc38c96cb7efccf8d",
+        "reason": "exact_bucket_intervals_unavailable"
+      },
+      {
+        "checkpoint_id": "p0_556053b2807795750d1bd3b0b4b5f431",
+        "reason": "exact_bucket_intervals_unavailable"
+      }
+    ],
+    "skipped_legacy_non_authoritative_count": 6,
+    "state": "BACKFILLED_WITH_LEGACY_GAPS",
+    "unbridgeable_authoritative_scope_count": 1,
+    "unbridgeable_authoritative_scopes": [
+      {
+        "checkpoint_id": "p1_bcd9828a0876ba8cc38c96cb7efccf8d",
+        "event_date": "2026-07-27",
+        "state": "FAIL_CLOSED_NO_LATEST_POINTER",
+        "station_id": "RKPK"
+      }
+    ]
+  },
+  "probability_evidence_idempotent_replay": null,
+  "probability_evidence_ingress": null,
+  "probability_evidence_packet": null,
+  "required_domain": "user",
+  "schema": "bayes_basket_target_transaction_fenced_cutover_v1",
+  "schema_bootstrap_artifact": {
+    "artifact_type": "schema_bootstrap",
+    "caller_scope_contract": "canonical45",
+    "not_production_station_scope": true,
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_no_live_vertical_slice_RKPK_v3.json",
+    "sha256": "91c30974a3e7bd8298607f4ef4b58a69599cd17d79ec4c55b70da688abe8f831"
+  },
+  "service_domain": "gui/501",
+  "service_pid_stability": true,
+  "service_pids_after": {
+    "com.weather.clob_order_service": 79696,
+    "com.weather.market_ws": 79560
+  },
+  "service_pids_before": {
+    "com.weather.clob_order_service": 79696,
+    "com.weather.market_ws": 79560
+  },
+  "state": "MATERIALIZED",
+  "target_writer_stopped": true,
+  "transaction_fence": {
+    "all_core_services_absent": null,
+    "boundary": {
+      "calls_order_gateway": false,
+      "competing_begin_immediate_blocked": true,
+      "exclusive_target_write_fence": true,
+      "places_orders": false,
+      "read_only_probe": false,
+      "stops_services": false,
+      "target_database_only": true
+    },
+    "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "database_identity": {
+      "device": 16777233,
+      "inode": 1235462603,
+      "mtime_ns": 1785397884808240793,
+      "size_bytes": 196227072
+    },
+    "fence_owner_pid": 53370,
+    "observed_at_utc": "2026-07-30T07:51:25Z",
+    "probe_errors": [],
+    "probe_mode": "sqlite_begin_immediate_fence",
+    "quiescent": true,
+    "receipt_sha256": "e699079130fbfa27c175853d1640201a554d3e8eaa7179b65c4a6fe7179b60ec",
+    "schema": "bayes_basket_target_writer_quiescence_receipt_v4",
+    "service_states": {
+      "system": "not_stopped",
+      "user": "not_stopped"
+    },
+    "writer_process_hits": []
+  }
+}

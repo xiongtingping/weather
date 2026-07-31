@@ -1,0 +1,46 @@
+{
+  "authorizes_order": false,
+  "calls_order_gateway": false,
+  "counts": {
+    "calibration_activations": 0,
+    "calibration_artifacts": 0,
+    "calibration_promotions": 0,
+    "cash_phase_authority_manifests": 0,
+    "cash_phase_policies": 0,
+    "ensemble_artifacts": 0,
+    "ensemble_selection_evidence": 0,
+    "global_priors": 0,
+    "policy_activations": 2,
+    "policy_artifacts": 0,
+    "policy_promotions": 0
+  },
+  "execution_mode": "production_no_live",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "packet": "/Users/xiong/weather/output/audits/bayes_basket_target_no_live_candidate_artifacts_OEJN_d0_20260731.json",
+  "packet_binding_counts": {
+    "calibration_activations": 0,
+    "calibration_artifacts": 0,
+    "cash_phase_authority_manifests": 1,
+    "cash_phase_policies": 1,
+    "ensemble_artifacts": 0,
+    "ensemble_selection_evidence": 0
+  },
+  "packet_expected_counts": {
+    "calibration_activations": 0,
+    "calibration_artifacts": 0,
+    "cash_phase_authority_manifests": 1,
+    "cash_phase_policies": 1,
+    "ensemble_artifacts": 0,
+    "ensemble_selection_evidence": 0
+  },
+  "packet_sha256": "69fd13f78e241e6eb67469326f1d4a602da6749da1f676a3130b9b438c75fd44",
+  "places_orders": false,
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "schema": "bayes_basket_target_artifact_ingress_v1",
+  "state": "COMMITTED",
+  "station_count": 1,
+  "station_ids": [
+    "OEJN"
+  ]
+}

@@ -8,21 +8,20 @@ SCRIPT = ROOT / "scripts/cutover_delta_basket_score_v2_no_live.sh"
 
 def test_cutover_stops_only_target_writer_during_schema_migration() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
-    assert 'launchctl bootout "system/$LABEL"' in text
-    assert 'launchctl bootout "system/$MARKET_LABEL"' not in text
-    assert 'launchctl bootout "system/$ORDER_LABEL"' not in text
-    assert 'launchctl bootstrap system "$INSTALLED_PLIST"' in text
+    assert 'launchctl bootout "${DOMAIN}/$LABEL"' in text
+    assert 'launchctl bootout "${DOMAIN}/$MARKET_LABEL"' not in text
+    assert 'launchctl bootout "${DOMAIN}/$ORDER_LABEL"' not in text
+    assert 'launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST"' in text
     assert "--confirm-reported-trajectory-no-stopped" in text
     assert "repair_bayes_basket_target_false_quarantine.py" in text
-    assert '/usr/bin/sudo -u "$CUTOVER_USER" /usr/bin/python3' in text
-    assert (
-        '/usr/bin/sudo -u "$CUTOVER_USER" /usr/bin/python3 - "$ROOT"'
-        in text
-    )
-    assert 'CUTOVER_USER="${SUDO_USER:-xiong}"' in text
+    assert "/usr/bin/sudo" not in text
+    assert "\nsudo " not in text
+    assert 'DOMAIN="gui/${UID_VALUE}"' in text
+    assert "${HOME}/Library/LaunchAgents" in text
+    assert "delta_v2_cutover_system_domain_residue" in text
     assert text.index("launchctl bootout") < text.index(
         "repair_bayes_basket_target_false_quarantine.py"
-    ) < text.rindex('launchctl bootstrap system "$INSTALLED_PLIST"')
+    ) < text.rindex('launchctl bootstrap "$DOMAIN" "$INSTALLED_PLIST"')
     assert "accept_delta_basket_score_v2_no_live.py" in text
     assert "--allow-already-current" in text
 
@@ -51,6 +50,7 @@ def test_cutover_preserves_other_service_pids_and_writer_wiring() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "PM_TARGET_PRODUCTION_WRITER" in text
     assert "PM_TARGET_EXECUTION_MODE" in text
+    assert "WEATHER_SERVICE_DOMAIN" in text
     assert "market_pid_before" in text
     assert "market_pid_after" in text
     assert "order_pid_before" in text

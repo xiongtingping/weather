@@ -37,6 +37,7 @@ from bayes_basket_target import (
 from bayes_basket_target.ssot import (
     CALIBRATION_TABLES,
     MAKER_GRID_OOS_AUTHORITY_TABLES,
+    NATIVE_ENSEMBLE_FOUNDATION_TABLES,
     POLICY_TABLES,
     PROBABILITY_EVIDENCE_TABLES,
     apply_target_ssot_schema,
@@ -538,6 +539,7 @@ def test_target_ssot_is_unified_and_append_only() -> None:
         assert result["ok"] is True
         assert set(result["tables"]) == set(
             CALIBRATION_TABLES
+            + NATIVE_ENSEMBLE_FOUNDATION_TABLES
             + POLICY_TABLES
             + MAKER_GRID_OOS_AUTHORITY_TABLES
             + PROBABILITY_EVIDENCE_TABLES
@@ -545,6 +547,7 @@ def test_target_ssot_is_unified_and_append_only() -> None:
         triggers = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'").fetchone()[0]
         assert triggers == (
             len(CALIBRATION_TABLES)
+            + len(NATIVE_ENSEMBLE_FOUNDATION_TABLES)
             + len(POLICY_TABLES)
             + len(MAKER_GRID_OOS_AUTHORITY_TABLES)
             + len(PROBABILITY_EVIDENCE_TABLES)

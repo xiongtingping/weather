@@ -149,6 +149,7 @@ def test_new_ensemble_is_parent_linked_and_weight_delta_bounded() -> None:
         "holdout_end_date": "2026-05-31",
         "valid_from_utc": "2026-06-01T00:00:00Z",
         "valid_until_utc": "2026-07-31T00:00:00Z",
+        "effective_sample_n": 20.0,
     })
     previous.pop("content_sha256")
     previous["content_sha256"] = content_sha256(previous)
@@ -175,6 +176,19 @@ def test_overlapping_previous_holdout_cannot_constrain_a_reused_holdout() -> Non
         as_of_utc="2026-07-07T00:00:00Z",
         target_timezone="America/New_York",
     )
+    previous = []
+    for raw in first["ensemble_artifacts"]:
+        item = dict(raw)
+        item["effective_sample_n"] = 20.0
+        item["train_start_date"] = "2026-06-20"
+        item["recent_start_date"] = "2026-06-26"
+        item["train_end_date"] = "2026-06-28"
+        item["recent_end_date"] = "2026-06-28"
+        item["holdout_start_date"] = "2026-06-29"
+        item["holdout_end_date"] = "2026-07-06"
+        item.pop("content_sha256")
+        item["content_sha256"] = content_sha256(item)
+        previous.append(item)
 
     with pytest.raises(ContractError, match="previous_ensemble_holdout_overlap"):
         build_calibration_evidence(
@@ -182,7 +196,7 @@ def test_overlapping_previous_holdout_cannot_constrain_a_reused_holdout() -> Non
             observations,
             as_of_utc="2026-07-07T00:00:00Z",
             target_timezone="America/New_York",
-            previous_ensemble_artifacts=first["ensemble_artifacts"],
+            previous_ensemble_artifacts=previous,
         )
 
 

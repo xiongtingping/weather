@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import json
 import math
 import sqlite3
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, canonical_json, content_sha256
 from .correction_review import assert_station_day_corrections_resolved
@@ -340,13 +340,17 @@ def materialize_settled_training_truths(
     as_of_utc: str,
     max_scopes: int = MAX_TRUTH_SCOPES,
     after_fact_rowid: int = 0,
+    additional_scopes: Sequence[tuple[str, str]] = (),
 ) -> dict[str, Any]:
-    """Finalize one bounded keyset page of training-fact truth scopes.
+    """Finalize one bounded page of downstream and bootstrap truth scopes.
 
     A fixed ``SELECT DISTINCT ... LIMIT`` either blocks as soon as history
     exceeds the station cap or repeatedly scans the oldest scopes forever.
     The fact-rowid cursor makes the projection bounded and eventually revisits
     every historical scope, including a scope that receives a later fact.
+    ``additional_scopes`` lets an upstream forward-evidence owner bootstrap
+    truth before the first basket training fact exists; this module still
+    receives only station/date identities and never reads model evidence.
     """
 
     if not 1 <= int(max_scopes) <= MAX_TRUTH_SCOPES:
@@ -357,41 +361,110 @@ def materialize_settled_training_truths(
     ):
         raise ContractError("settlement_truth_cursor_invalid")
     cursor = int(after_fact_rowid)
+    supplemental: list[tuple[str, str]] = []
+    supplemental_seen: set[tuple[str, str]] = set()
+    if (
+        not isinstance(additional_scopes, Sequence)
+        or isinstance(additional_scopes, (str, bytes))
+        or len(additional_scopes) > int(max_scopes)
+    ):
+        raise ContractError("settlement_truth_additional_scope_count_invalid")
+    for raw_scope in additional_scopes:
+        if (
+            not isinstance(raw_scope, Sequence)
+            or isinstance(raw_scope, (str, bytes))
+            or len(raw_scope) != 2
+        ):
+            raise ContractError("settlement_truth_additional_scope_invalid")
+        scope = (
+            str(raw_scope[0] or "").strip().upper(),
+            str(raw_scope[1] or "").strip(),
+        )
+        if not all(scope):
+            raise ContractError("settlement_truth_additional_scope_invalid")
+        if scope in supplemental_seen:
+            continue
+        supplemental_seen.add(scope)
+        supplemental.append(scope)
 
-    def _page(after_rowid: int) -> list[tuple[Any, Any, Any]]:
+    def _page(
+        after_rowid: int,
+        page_limit: int,
+    ) -> list[tuple[Any, Any, Any]]:
+        if page_limit <= 0:
+            return []
         return target_conn.execute(
             "SELECT station_id,event_date,max(rowid) AS source_rowid "
             "FROM basket_policy_training_fact WHERE rowid>? "
             "GROUP BY station_id,event_date "
             "ORDER BY source_rowid,station_id,event_date LIMIT ?",
-            (after_rowid, int(max_scopes) + 1),
+            (after_rowid, int(page_limit)),
         ).fetchall()
 
-    rows = _page(cursor)
+    remaining = int(max_scopes) - len(supplemental)
+    # Read enough fact scopes to fill the residual page even when some are
+    # duplicates of bootstrap scopes, plus one row to preserve has_more.
+    fact_probe_limit = remaining + len(supplemental_seen) + 1
+    rows = _page(cursor, fact_probe_limit)
     wrapped = False
     if not rows and cursor > 0:
-        rows = _page(0)
+        rows = _page(0, fact_probe_limit)
         wrapped = True
-    has_more = len(rows) > int(max_scopes)
-    selected = rows[:int(max_scopes)]
-    scopes = [(row[0], row[1]) for row in selected]
+    selected: list[tuple[Any, Any, Any]] = []
+    for row in rows:
+        scope = (
+            str(row[0] or "").strip().upper(),
+            str(row[1] or "").strip(),
+        )
+        if scope in supplemental_seen:
+            continue
+        if len(selected) >= remaining:
+            break
+        selected.append(row)
+    consumed_rowids = {
+        int(row[2])
+        for row in selected
+    }
+    has_more = any(
+        int(row[2]) not in consumed_rowids
+        and (
+            str(row[0] or "").strip().upper(),
+            str(row[1] or "").strip(),
+        )
+        not in supplemental_seen
+        for row in rows
+    )
+    fact_scopes = [
+        (
+            str(row[0] or "").strip().upper(),
+            str(row[1] or "").strip(),
+        )
+        for row in selected
+    ]
+    scopes = supplemental + fact_scopes
     next_source_rowid = (
         max(int(row[2]) for row in selected)
         if selected
-        else 0
+        else cursor
     )
     results: list[dict[str, Any]] = []
     blockers: list[dict[str, str]] = []
-    for station_id, event_date in scopes:
+    for scope_index, (station_id, event_date) in enumerate(scopes):
+        savepoint = f"settlement_truth_scope_{scope_index}"
+        target_conn.execute(f"SAVEPOINT {savepoint}")
         try:
-            results.append(materialize_settled_station_truth(
+            result = materialize_settled_station_truth(
                 target_conn,
                 canonical_conn,
                 station_id=str(station_id),
                 event_date=str(event_date),
                 as_of_utc=as_of_utc,
-            ))
+            )
+            target_conn.execute(f"RELEASE {savepoint}")
+            results.append(result)
         except Exception as exc:
+            target_conn.execute(f"ROLLBACK TO {savepoint}")
+            target_conn.execute(f"RELEASE {savepoint}")
             blockers.append({
                 "station_id": str(station_id),
                 "event_date": str(event_date),
@@ -400,8 +473,16 @@ def materialize_settled_training_truths(
         assert_process_memory_budget()
     return {
         "schema": "bayes_basket_target_resident_settlement_truth_batch_v1",
-        "state": "blocked_fail_closed" if blockers else "complete",
+        "state": (
+            "partial_fail_closed"
+            if blockers and results
+            else "blocked_fail_closed"
+            if blockers
+            else "complete"
+        ),
         "scope_count": len(scopes),
+        "additional_scope_count": len(supplemental),
+        "training_fact_scope_count": len(fact_scopes),
         "written_count": sum(bool(item.get("wrote")) for item in results),
         "source_cursor_before": cursor,
         "source_cursor_after": next_source_rowid,

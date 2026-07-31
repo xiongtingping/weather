@@ -238,7 +238,37 @@ def test_probability_scope_snapshot_allows_all_in_scope_stations_to_advance(
     tables = runner.PROBABILITY_ACCEPTANCE_TABLES
     with sqlite3.connect(db) as conn:
         for table in tables:
-            if table == "basket_probability_bridge_bucket_probability":
+            if table == "basket_probability_evidence_artifact":
+                conn.execute(
+                    f"CREATE TABLE {table}("
+                    "artifact_id TEXT PRIMARY KEY,"
+                    "station_id TEXT NOT NULL)"
+                )
+                conn.executemany(
+                    f"INSERT INTO {table}(artifact_id,station_id) "
+                    "VALUES(?,?)",
+                    [
+                        ("EGLC-artifact", "EGLC"),
+                        ("RKPK-artifact", "RKPK"),
+                        ("ZUUU-artifact", "ZUUU"),
+                    ],
+                )
+            elif table == "basket_probability_evidence_promotion":
+                conn.execute(
+                    f"CREATE TABLE {table}("
+                    "promotion_id TEXT PRIMARY KEY,"
+                    "artifact_id TEXT NOT NULL)"
+                )
+                conn.executemany(
+                    f"INSERT INTO {table}(promotion_id,artifact_id) "
+                    "VALUES(?,?)",
+                    [
+                        ("EGLC-promotion", "EGLC-artifact"),
+                        ("RKPK-promotion", "RKPK-artifact"),
+                        ("ZUUU-promotion", "ZUUU-artifact"),
+                    ],
+                )
+            elif table == "basket_probability_bridge_bucket_probability":
                 conn.execute(
                     f"CREATE TABLE {table}(history_id TEXT NOT NULL)"
                 )
@@ -399,3 +429,52 @@ def test_two_round_verifier_blocks_when_no_canonical_station_starts() -> None:
     assert "resident_no_canonical_station_started_both_rounds" in result[
         "blockers"
     ]
+
+
+def test_migration_verifier_allows_later_materialization_but_binds_snapshots() -> None:
+    first = _round(
+        rowid=10,
+        current_core=[],
+        current_direction=None,
+        core=["38C"],
+        direction="NEUTRAL",
+    )
+    first.update({
+        "registry_started_station_ids": list(_scope()),
+        "candidate_accumulation_station_ids": [],
+        "outside_scope_station_counts": {"facts": 0},
+        "scoped_station_counts": {"facts": 2},
+        "forbidden_execution_counts": {"order_events": 0},
+        "materialization_pending_blockers": [
+            "RKPK:directional_core_decision_missing"
+        ],
+    })
+    first["probability_evidence_runtime"]["missing_tables"] = []
+    second = {
+        **first,
+        "round_sha256": "b" * 64,
+    }
+    result = runner.verify_migration_two_round_resident_receipts(
+        first,
+        second,
+        before_snapshot=_snapshot(),
+        after_snapshot=_snapshot(),
+        station_ids=_scope(),
+    )
+    assert result["state"] == "PASS"
+    assert result["materialization_pending_blockers"] == [
+        "RKPK:directional_core_decision_missing"
+    ]
+
+    blocked = runner.verify_migration_two_round_resident_receipts(
+        first,
+        second,
+        before_snapshot=_snapshot(0),
+        after_snapshot=_snapshot(1),
+        station_ids=_scope(),
+    )
+    assert blocked["state"] == "BLOCKED_FAIL_CLOSED"
+    assert (
+        "migration_outside_scope_probability_write_detected"
+        in blocked["blockers"]
+    )

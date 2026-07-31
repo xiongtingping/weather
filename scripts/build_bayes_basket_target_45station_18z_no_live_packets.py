@@ -40,6 +40,12 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_45station_18z_no_live_packet_build_v1"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
+FORMAL_TRUTH = "FORMAL_STATION_LANE_TRUTH"
+TEMPORARY_AWC_TRUTH = "TEMPORARY_AWC_CALIBRATION_LABEL"
+ACTIVATION_READY_STATES = {
+    "ACTIVATION_PACKET_READY",
+    "ACTIVATION_PACKET_READY_TEMPORARY_AWC_NO_LIVE",
+}
 
 
 def _truth_dataset_paths(manifest: Mapping[str, Any]) -> dict[str, Path]:
@@ -124,13 +130,15 @@ def _station_quality(
     payload: Mapping[str, Any],
     *,
     truth_by_date: Mapping[str, float],
+    allow_temporary_awc_no_live: bool = False,
 ) -> tuple[dict[str, Any], bool, bool, str]:
     oos = payload.get("oos")
     winner = oos.get("research_winner") if isinstance(oos, Mapping) else None
-    formal_truth = (
-        payload.get("truth_label_authority")
-        == "FORMAL_STATION_LANE_TRUTH"
-    )
+    truth_authority = str(payload.get("truth_label_authority") or "")
+    formal_truth = truth_authority == FORMAL_TRUTH
+    temporary_awc_truth = truth_authority == TEMPORARY_AWC_TRUTH
+    if not formal_truth and not temporary_awc_truth:
+        raise ContractError("explicit_18z_truth_authority_invalid")
     if not isinstance(winner, Mapping):
         point = {
             "holdout_n": 0,
@@ -153,13 +161,49 @@ def _station_quality(
     )
     point["point_oos_materialized"] = True
     point["point_non_degradation_vs_uniform"] = point_passed
-    if not formal_truth:
+    if temporary_awc_truth and not allow_temporary_awc_no_live:
         state = "BLOCKED_TEMPORARY_AWC_TRUTH"
     elif not probability_passed:
         state = "BLOCKED_PROBABILITY_OOS_GATE"
+    elif temporary_awc_truth:
+        state = "ACTIVATION_PACKET_READY_TEMPORARY_AWC_NO_LIVE"
     else:
         state = "ACTIVATION_PACKET_READY"
     return point, probability_passed, point_passed, state
+
+
+def _truth_authority_binding(
+    path: Path,
+    *,
+    station_id: str,
+) -> dict[str, Any]:
+    payload = load_bounded_json(path)
+    identity = {
+        "station_id": station_id,
+        "truth_label_authority": str(
+            payload.get("label_authority") or ""
+        ),
+        "source_lane": "AWC",
+        "dataset_path": str(path.resolve()),
+        "dataset_content_sha256": str(
+            payload.get("content_sha256") or ""
+        ),
+        "enters_realtime_truth": False,
+        "enters_p1": False,
+        "enters_hard_no": False,
+        "replacement_required_when_canonical_history_available": (
+            payload.get("label_authority") == TEMPORARY_AWC_TRUTH
+        ),
+    }
+    if (
+        identity["truth_label_authority"]
+        not in {FORMAL_TRUTH, TEMPORARY_AWC_TRUTH}
+        or len(identity["dataset_content_sha256"]) != 64
+    ):
+        raise ContractError(
+            f"explicit_18z_truth_authority_binding_invalid:{station_id}"
+        )
+    return {**identity, "content_sha256": content_sha256(identity)}
 
 
 def _selection_row(
@@ -283,6 +327,8 @@ def build(
     manifest_path: Path,
     calibration_generation: int,
     ensemble_generation: int,
+    allow_temporary_awc_no_live: bool = False,
+    station_allowlist: set[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     if manifest.get("schema") not in {
         "bayes_basket_target_45station_explicit_18z_d2_oos_v1",
@@ -318,7 +364,13 @@ def build(
         point, probability_passed, point_passed, state = _station_quality(
             payload,
             truth_by_date=_truths(truth_paths[station]),
+            allow_temporary_awc_no_live=allow_temporary_awc_no_live,
         )
+        if (
+            station_allowlist is not None
+            and station not in station_allowlist
+        ):
+            state = "OUTSIDE_REQUESTED_PACKET_SCOPE"
         station_states.append({
             "station_id": station,
             "state": state,
@@ -331,7 +383,7 @@ def build(
             "probability_non_degradation_vs_uniform": probability_passed,
             **point,
         })
-        if state != "ACTIVATION_PACKET_READY":
+        if state not in ACTIVATION_READY_STATES:
             continue
 
         selection = _selection_row(payload, run_cycle=run_cycle)
@@ -392,6 +444,23 @@ def build(
         })
 
     as_of = str(manifest["as_of_utc"])
+    ready_station_ids = {
+        str(row["station_id"])
+        for row in station_states
+        if row["state"] in ACTIVATION_READY_STATES
+    }
+    truth_authority_bindings = [
+        _truth_authority_binding(
+            truth_paths[station],
+            station_id=station,
+        )
+        for station in sorted(ready_station_ids)
+    ]
+    temporary_ready_station_ids = sorted(
+        row["station_id"]
+        for row in truth_authority_bindings
+        if row["truth_label_authority"] == TEMPORARY_AWC_TRUTH
+    )
     evidence_identity = {
         "schema": "bayes_basket_target_calibration_evidence_v1",
         "as_of_utc": as_of,
@@ -402,14 +471,22 @@ def build(
                 row.get("promoted") is False
                 for row in (*calibration_artifacts, *ensembles)
             ),
-            "truth_source_canonical_ingress": True,
+            "truth_source_canonical_ingress":
+                not temporary_ready_station_ids,
+            "truth_source_no_live_calibration_authority_valid": True,
+            "temporary_awc_calibration_label_explicit":
+                bool(temporary_ready_station_ids),
         },
         "boundary": {
             "writes_production_state": False,
             "calls_order_gateway": False,
             "places_orders": False,
             "live_order_authorized": False,
+            "enters_realtime_truth": False,
+            "enters_p1": False,
+            "enters_hard_no": False,
         },
+        "truth_authority_bindings": truth_authority_bindings,
         "calibration_model_rows": model_rows,
         "calibration_artifacts": calibration_artifacts,
         "ensemble_selection_evidence": selection_rows,
@@ -461,7 +538,7 @@ def build(
     packet["station_ids"] = sorted(
         row["station_id"]
         for row in station_states
-        if row["state"] == "ACTIVATION_PACKET_READY"
+        if row["state"] in ACTIVATION_READY_STATES
     )
     packet["execution_mode"] = "production_no_live"
     packet["authorizes_order"] = False
@@ -476,8 +553,14 @@ def build(
         "source_manifest_content_sha256": str(manifest.get("content_sha256") or ""),
         "station_count": 45,
         "activation_packet_ready_station_count": sum(
-            row["state"] == "ACTIVATION_PACKET_READY" for row in station_states
+            row["state"] in ACTIVATION_READY_STATES
+            for row in station_states
         ),
+        "temporary_awc_no_live_activation_station_count": len(
+            temporary_ready_station_ids
+        ),
+        "temporary_awc_no_live_activation_station_ids":
+            temporary_ready_station_ids,
         "station_states": station_states,
         "packet_counts": {
             "calibration_artifacts": len(packet["calibration_artifacts"]),
@@ -501,6 +584,20 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--calibration-generation", type=int, default=3)
     parser.add_argument("--ensemble-generation", type=int, default=3)
+    parser.add_argument(
+        "--allow-temporary-awc-no-live",
+        action="store_true",
+        help=(
+            "Use explicitly labelled AWC historical truth only for "
+            "PRODUCTION_NO_LIVE_ONLY calibration; never realtime/P1/hard-NO."
+        ),
+    )
+    parser.add_argument(
+        "--station-id",
+        action="append",
+        default=[],
+        help="Emit packet rows only for these stations; repeat as needed.",
+    )
     args = parser.parse_args()
     manifest_path = args.input_manifest.expanduser().resolve()
     manifest = load_bounded_json(manifest_path)
@@ -509,6 +606,15 @@ def main() -> int:
         manifest_path=manifest_path,
         calibration_generation=args.calibration_generation,
         ensemble_generation=args.ensemble_generation,
+        allow_temporary_awc_no_live=args.allow_temporary_awc_no_live,
+        station_allowlist=(
+            {
+                str(value).strip().upper()
+                for value in args.station_id
+                if str(value).strip()
+            }
+            or None
+        ),
     )
     output_root = args.output_root.expanduser().resolve()
     write_bounded_json(output_root / "calibration_evidence.json", evidence)
