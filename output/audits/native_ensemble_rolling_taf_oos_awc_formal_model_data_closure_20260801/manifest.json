@@ -1,0 +1,169 @@
+{
+  "as_of_utc": "2026-08-01T05:10:03.000Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "offline_only": true,
+    "orders_submitted": 0,
+    "production_p0_materialized": false,
+    "production_p0m_materialized": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "57d6f259d6c306ac4811ec939080273960c0cf6bc66d92370a20741af1562970",
+  "reports": [
+    {
+      "accumulating_count": 69,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/FACT_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "FACT",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/KBKF_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "KBKF",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/MMMX_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "MMMX",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/RKPK_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "RKPK",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/RKSI_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "RKSI",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/SAEZ_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "SAEZ",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 69,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/SBGR_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "SBGR",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZBAA_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZBAA",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZGGG_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZGGG",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZGSZ_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZGSZ",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZHHH_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZHHH",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZSPD_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZSPD",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZSQD_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZSQD",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZUCK_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZUCK",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 36,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_awc_formal_model_data_closure_20260801/ZUUU_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "ZUUU",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    }
+  ],
+  "schema": "native_ensemble_rolling_taf_oos_build_manifest_v1",
+  "station_count": 15
+}

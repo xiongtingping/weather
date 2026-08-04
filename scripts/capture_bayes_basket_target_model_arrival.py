@@ -57,6 +57,13 @@ ALLOWED_HOSTS = {
         "storage.googleapis.com",
         "ai4edataeuwest.blob.core.windows.net",
     },
+    "ecmwf_aifs025_official": {
+        "data.ecmwf.int",
+        "ecmwf-forecasts.s3.amazonaws.com",
+        "ecmwf-forecasts.s3.eu-central-1.amazonaws.com",
+        "storage.googleapis.com",
+        "ai4edataeuwest.blob.core.windows.net",
+    },
     # NOMADS serves the bounded filtered payload.  NOAA's public S3 PDS is
     # accepted only so --publication-url can HEAD the same native object and
     # bind its Last-Modified timestamp; both hosts remain official NOAA
@@ -701,6 +708,7 @@ def capture(
                 temporary_target = output_root / provider_id / "raw" / f".capture.{capture_nonce}.{sequence}{suffix}"
                 if temporary_target.exists():
                     raise ContractError("model_arrival_capture_temp_collision")
+                created_raw_paths.add(temporary_target)
                 payload_sha, response_bytes = _stream_response(
                     response,
                     destination=temporary_target,
@@ -711,6 +719,13 @@ def capture(
                     min_free_bytes=limits["min_free_bytes"],
                     captured_response_bytes=captured_response_bytes,
                 )
+                if (
+                    advertised_bytes is not None
+                    and response_bytes != advertised_bytes
+                ):
+                    raise ContractError(
+                        "model_arrival_content_length_mismatch"
+                    )
                 captured_response_bytes += response_bytes
                 response_completed_at = _now()
             published_at = publication_from_metadata_url or _timestamp_from_last_modified(last_modified)

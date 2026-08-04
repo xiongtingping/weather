@@ -1,0 +1,14 @@
+{
+  "content_sha256": "9e811d01ea75b0a8714f364e9a54ab52552a64179eb3db713fc955be091b4353",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "3de1c7a9167e8e34a779b6075d41c6e69b4f49f89ae9e85c1b840b988424f882",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Los_Angeles",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KSFO"
+}

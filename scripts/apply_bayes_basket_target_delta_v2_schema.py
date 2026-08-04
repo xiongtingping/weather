@@ -21,12 +21,13 @@ from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
 from bayes_basket_target.execution_transition_runtime import (
     apply_execution_transition_schema,
 )
+from bayes_basket_target.resource_bounds import MAX_TARGET_WAL_BYTES
 from bayes_basket_target.ssot import apply_delta_v2_authority_schema
 
 
 DEFAULT_DB = (ROOT / "data" / "bayes_basket_target_ssot.db").resolve()
-SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
-MAX_WAL_BYTES = 64 * 1024 * 1024
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
+MAX_WAL_BYTES = MAX_TARGET_WAL_BYTES
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 
 

@@ -305,7 +305,7 @@ def test_official_timing_roles_fail_closed_and_preserve_speci(tmp_path: Path) ->
     assert result["accepted_truth_count"] == 1
 
 
-def test_awc_owned_station_accepts_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
+def test_awc_owned_station_rejects_routine_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
     native = tmp_path / "awc-native.db"
     _init_db(native)
     _insert(
@@ -322,8 +322,9 @@ def test_awc_owned_station_accepts_native_53_minute_and_rejects_amsc(tmp_path: P
         station_timezones={"KATL": "America/New_York"},
         station_lane_map={"KATL": "awc"},
     )
-    assert result["state"] == "EXPORTED"
-    assert result["accepted_truth_count"] == 1
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert result["accepted_truth_count"] == 0
+    assert any("awc_metar_timing_invalid" in item for item in result["blockers"])
 
     cross = tmp_path / "awc-cross.db"
     _init_db(cross)

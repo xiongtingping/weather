@@ -934,10 +934,12 @@ def replay_durable_target_chain(
             "materialized_label_count": label_count,
             "required_for_production_no_live_replay": False,
         },
-        "forward_oos": {
+        "historical_oos": {
             "consulted": False,
+            "future_data_counts_as_oos": False,
             "blocks_production_no_live": False,
-            "blocks_formal_parameter_promotion_or_live": True,
+            "blocks_formal_parameter_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_parameter_promotion_or_live": True,
         },
         "boundary": {
             "read_only": True,
@@ -949,6 +951,14 @@ def replay_durable_target_chain(
             "orders_submitted": 0,
             "network_access": False,
         },
+    }
+    # Compatibility projection for older replay readers.  Forward data is
+    # explicitly non-OOS and non-blocking; the canonical status is above.
+    core["forward_oos"] = {
+        "consulted": False,
+        "future_data_counts_as_oos": False,
+        "blocks_production_no_live": False,
+        "blocks_formal_parameter_promotion_or_live": False,
     }
     return {**core, "content_sha256": content_sha256(core)}
 

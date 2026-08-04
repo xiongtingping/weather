@@ -28,7 +28,7 @@ def _evidence() -> dict:
             "station_id": "ZUUU",
             "event_date_local": "2026-07-23",
             "station_timezone": "America/New_York",
-            "source_lane": "AMSC",
+            "source_lane": "AWC",
             "report_type": "METAR",
             "raw_sha256": "c" * 64,
             "canonical_committed_at_utc": "2026-07-23T04:10:00.000Z",
@@ -53,9 +53,24 @@ def _p0() -> ProbabilityEnvelope:
     })
 
 
+def _p0m() -> ProbabilityEnvelope:
+    p0 = _p0()
+    return ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "stage": "P0-M",
+        "checkpoint_id": "p0m-fact-test",
+        "posterior_version": "p0m-test",
+        "lineage": {
+            **p0.lineage,
+            "p0_root_checkpoint_id": p0.checkpoint_id,
+            "p0_root_content_sha256": p0.content_sha256,
+        },
+    })
+
+
 def _p1_kwargs() -> dict:
     packet = compile_station_p1_packets(
-        predecessor=_p0(),
+        predecessor=_p0m(),
         observations=[{
             "observation_id": "obs-target-1",
             "station_id": "ZUUU",
@@ -64,7 +79,7 @@ def _p1_kwargs() -> dict:
             "valid_at_utc": "2026-07-23T04:00:00Z",
             "canonical_committed_at_utc": "2026-07-23T04:10:00Z",
             "raw_sha256": "c" * 64,
-            "source_lane": "AMSC",
+            "source_lane": "AWC",
             "report_type": "METAR",
             "evidence_role": "FORMAL",
             "qc_status": "ACCEPTED",
@@ -113,6 +128,18 @@ def test_target_fact_ingress_is_append_only_and_p1_reads_target_fact_not_archive
         assert conn.execute("SELECT COUNT(*) FROM basket_target_observation_facts").fetchone()[0] == 0
         applied = ingest_canonical_observation_evidence(conn, evidence, commit=True)
         assert applied["inserted_count"] == 1
+        timezone_row = conn.execute(
+            "SELECT settlement_timezone FROM basket_target_observation_facts "
+            "WHERE observation_id=?",
+            ("obs-target-1",),
+        ).fetchone()
+        assert timezone_row == ("America/New_York",)
+        timezone_column = next(
+            row for row in conn.execute(
+                "PRAGMA table_info(basket_target_observation_facts)"
+            ) if row[1] == "settlement_timezone"
+        )
+        assert timezone_column[3] == 1
         replay = ingest_canonical_observation_evidence(conn, evidence, commit=True)
         assert replay["replayed_count"] == 1
         result = materialize_p1_from_canonical_observation(
@@ -153,3 +180,47 @@ def test_canonical_fact_ingress_rejects_future_settlement_day_without_writing() 
         with pytest.raises(ContractError, match="future_event_day_not_allowed"):
             ingest_canonical_observation_evidence(conn, evidence, commit=True)
         assert conn.execute("SELECT COUNT(*) FROM basket_target_observation_facts").fetchone()[0] == 0
+
+
+def test_canonical_fact_ingress_rejects_amsc_without_writing() -> None:
+    evidence = _evidence()
+    evidence["observations"][0]["source_lane"] = "AMSC"
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
+        with pytest.raises(ContractError, match="canonical_fact_source_lane_invalid"):
+            ingest_canonical_observation_evidence(conn, evidence, commit=True)
+        assert conn.execute("SELECT COUNT(*) FROM basket_target_observation_facts").fetchone()[0] == 0
+
+
+def test_canonical_fact_timezone_change_is_an_identity_conflict() -> None:
+    evidence = _evidence()
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
+        ingest_canonical_observation_evidence(conn, evidence, commit=True)
+        evidence["observations"][0]["station_timezone"] = "Asia/Shanghai"
+        with pytest.raises(ContractError, match="canonical_fact_identity_conflict"):
+            ingest_canonical_observation_evidence(conn, evidence, commit=True)
+        assert conn.execute("SELECT COUNT(*) FROM basket_target_observation_facts").fetchone()[0] == 1
+
+
+def test_p1_canonical_observation_bridge_rejects_amsc() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
+        conn.execute(
+            "INSERT INTO basket_target_observation_facts("
+            "observation_fact_id,observation_id,station_id,event_date,"
+            "settlement_timezone,source_lane,report_type,raw_sha256,"
+            "canonical_committed_at,content_sha256,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "obsfact-amsc", "obs-target-1", "ZUUU", "2026-07-23",
+                "America/New_York", "AMSC", "METAR", "c" * 64,
+                "2026-07-23T04:10:00Z", "d" * 64,
+                "2026-07-23T04:10:00Z",
+            ),
+        )
+        with pytest.raises(ContractError, match="canonical_observation_source_lane_invalid"):
+            materialize_p1_from_canonical_observation(conn, **_p1_kwargs())

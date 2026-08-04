@@ -117,7 +117,7 @@ def main() -> int:
             raise ValueError("artifact_ingress_packet_mapping_required")
         packet_sha256 = validate_packet_sha256(
             packet,
-            required=bool(args.require_packet_sha256),
+            required=bool(args.apply or args.require_packet_sha256),
         )
         if args.apply and args.confirm != CONFIRMATION:
             raise ValueError("artifact_ingress_confirmation_invalid")

@@ -21,8 +21,10 @@
       <string>user</string>
       <key>PM_TARGET_EXECUTION_MODE</key>
     <string>production_no_live</string>
-    <key>PM_CLOB_ORDER_SERVICE_READ_ONLY</key>
-    <string>1</string>
+      <key>PM_CLOB_ORDER_SERVICE_READ_ONLY</key>
+      <string>1</string>
+      <key>PM_CLOB_BALANCE_PREFETCH_ENABLED</key>
+      <string>1</string>
     </dict>
     <key>StandardOutPath</key>
     <string>/Users/xiong/weather/data/logs/clob_order_service.out.log</string>

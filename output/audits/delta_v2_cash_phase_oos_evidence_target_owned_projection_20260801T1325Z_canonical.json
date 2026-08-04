@@ -1,0 +1,1780 @@
+{
+  "as_of_utc": "2026-08-01T13:25:00Z",
+  "calls_order_gateway": false,
+  "content_sha256": "aa6ab62e7a655aa2cf60068f243e83f930266e51ac6c94e73688d1a119d291ed",
+  "design_candidate_mutated": false,
+  "evaluation_window": {
+    "end_utc_exclusive": "2026-08-01T13:25:00Z",
+    "start_utc_inclusive": "2026-07-29T15:04:52.274000Z"
+  },
+  "evidence": {
+    "as_of_utc": "2026-08-01T13:25:00Z",
+    "calls_order_gateway": false,
+    "content_sha256": "9d3d2eba33800893a8045325bb6c8f7a01af5d133de7372e0d895a9e5ed36e8a",
+    "design_candidate_mutated": false,
+    "evaluation_window": {
+      "end_utc_exclusive": "2026-08-01T13:25:00Z",
+      "start_utc_inclusive": "2026-07-29T15:04:52.274000Z",
+      "strict_half_open": true
+    },
+    "global_blockers": [
+      "registry_row_invalid"
+    ],
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "production_no_live": true,
+    "promotion_decision_candidates": [],
+    "promotion_eligible_station_count": 0,
+    "resource_bounds": {
+      "max_fault_cases": 256,
+      "max_registry_rows": 4096,
+      "max_rows": 4096,
+      "max_stations": 45,
+      "rows_received": 425
+    },
+    "sample_policy": {
+      "minimum_unique_events_per_phase": 30,
+      "required_phases": [
+        "HEAVY",
+        "STANDARD",
+        "TAIL"
+      ],
+      "required_station_count": 45
+    },
+    "schema": "bayes_basket_target_cash_phase_oos_evidence_v1",
+    "station_gaps": {
+      "CYYZ": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "EDDM": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "EFHK": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "EGLC": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "EHAM": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "EPWA": [
+        "design_candidate_policy_not_unique:0",
+        "policy_training_cutoff_missing"
+      ],
+      "FACT": [
+        "design_candidate_policy_not_unique:0",
+        "policy_training_cutoff_missing"
+      ],
+      "KATL": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KAUS": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KBKF": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KDAL": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KHOU": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KLAX": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KLGA": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KMIA": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KORD": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KSEA": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "KSFO": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "LEMD": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "LFPB": [
+        "design_candidate_policy_not_unique:0",
+        "policy_training_cutoff_missing"
+      ],
+      "LIMC": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "LTAC": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "MMMX": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "MPMG": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "NZWN": [
+        "design_candidate_policy_not_unique:0",
+        "policy_training_cutoff_missing"
+      ],
+      "OEJN": [
+        "design_candidate_policy_not_unique:0",
+        "policy_training_cutoff_missing"
+      ],
+      "OPKC": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "RCSS": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "RJTT": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "RKPK": [
+        "cash_phase_decision_invalid:current_cash_phase_invalid",
+        "cash_phase_policy_version_mismatch",
+        "phase_heavy_sample_size_insufficient",
+        "phase_heavy_unobserved",
+        "phase_standard_sample_size_insufficient",
+        "phase_tail_sample_size_insufficient",
+        "phase_tail_unobserved"
+      ],
+      "RKSI": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "RPLL": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "SAEZ": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "SBGR": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "VILK": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "WMKK": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "WSSS": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZBAA": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZGGG": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZGSZ": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZHHH": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZSPD": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZSQD": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZUCK": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ],
+      "ZUUU": [
+        "design_candidate_policy_not_unique:0",
+        "forward_realized_observations_missing",
+        "policy_training_cutoff_missing"
+      ]
+    },
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "station_scorecards": {
+      "RKPK": {
+        "as_of_utc": "2026-08-01T13:25:00Z",
+        "attribution": {
+          "by_phase": {
+            "HEAVY": {
+              "candidate_authorization": {
+                "count": 0,
+                "interval_95": null,
+                "n_eff": 0.0,
+                "rate": null,
+                "successes": 0
+              },
+              "edge": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "execution_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "fill_nonfill": {
+                "fill_rate": null,
+                "filled": 0,
+                "n_eff": 0.0,
+                "nonfilled": 0
+              },
+              "n_eff": 0.0,
+              "no_execution_evidence": 0,
+              "observation_count": 0,
+              "price_coverage": {
+                "count": 0,
+                "interval_95": null,
+                "n_eff": 0.0,
+                "rate": null,
+                "successes": 0
+              },
+              "probability_coverage": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "realized_pnl": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement_pnl": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              }
+            },
+            "STANDARD": {
+              "candidate_authorization": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.20388330103584862
+                ],
+                "n_eff": 1.0,
+                "rate": 0.0,
+                "successes": 0
+              },
+              "edge": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "execution_cost": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              },
+              "fill_nonfill": {
+                "fill_rate": 0.0,
+                "filled": 0,
+                "n_eff": 1.0,
+                "nonfilled": 15
+              },
+              "n_eff": 1.0,
+              "no_execution_evidence": 15,
+              "observation_count": 15,
+              "price_coverage": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.20388330103584862
+                ],
+                "n_eff": 1.0,
+                "rate": 0.0,
+                "successes": 0
+              },
+              "probability_coverage": {
+                "count": 15,
+                "interval_95": [
+                  0.1934664991681709,
+                  0.1934664991681709
+                ],
+                "mean": 0.1934664991681709,
+                "n_eff": 1.0,
+                "sum": 2.901997487522564
+              },
+              "realized_pnl": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement_pnl": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              }
+            },
+            "TAIL": {
+              "candidate_authorization": {
+                "count": 0,
+                "interval_95": null,
+                "n_eff": 0.0,
+                "rate": null,
+                "successes": 0
+              },
+              "edge": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "execution_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "fill_nonfill": {
+                "fill_rate": null,
+                "filled": 0,
+                "n_eff": 0.0,
+                "nonfilled": 0
+              },
+              "n_eff": 0.0,
+              "no_execution_evidence": 0,
+              "observation_count": 0,
+              "price_coverage": {
+                "count": 0,
+                "interval_95": null,
+                "n_eff": 0.0,
+                "rate": null,
+                "successes": 0
+              },
+              "probability_coverage": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "realized_pnl": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement_pnl": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              }
+            }
+          },
+          "windows": {
+            "15": {
+              "by_phase": {
+                "HEAVY": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                },
+                "STANDARD": {
+                  "candidate_authorization": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": 0.0,
+                    "filled": 0,
+                    "n_eff": 1.0,
+                    "nonfilled": 15
+                  },
+                  "n_eff": 1.0,
+                  "no_execution_evidence": 15,
+                  "observation_count": 15,
+                  "price_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.1934664991681709,
+                      0.1934664991681709
+                    ],
+                    "mean": 0.1934664991681709,
+                    "n_eff": 1.0,
+                    "sum": 2.901997487522564
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  }
+                },
+                "TAIL": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                }
+              },
+              "days": 15,
+              "n_eff": 1.0,
+              "window_end_utc": "2026-08-01T13:25:00Z",
+              "window_start_utc": "2026-07-29T15:04:52.274000Z"
+            },
+            "3": {
+              "by_phase": {
+                "HEAVY": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                },
+                "STANDARD": {
+                  "candidate_authorization": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": 0.0,
+                    "filled": 0,
+                    "n_eff": 1.0,
+                    "nonfilled": 15
+                  },
+                  "n_eff": 1.0,
+                  "no_execution_evidence": 15,
+                  "observation_count": 15,
+                  "price_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.1934664991681709,
+                      0.1934664991681709
+                    ],
+                    "mean": 0.1934664991681709,
+                    "n_eff": 1.0,
+                    "sum": 2.901997487522564
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  }
+                },
+                "TAIL": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                }
+              },
+              "days": 3,
+              "n_eff": 1.0,
+              "window_end_utc": "2026-08-01T13:25:00Z",
+              "window_start_utc": "2026-07-29T15:04:52.274000Z"
+            },
+            "30": {
+              "by_phase": {
+                "HEAVY": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                },
+                "STANDARD": {
+                  "candidate_authorization": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": 0.0,
+                    "filled": 0,
+                    "n_eff": 1.0,
+                    "nonfilled": 15
+                  },
+                  "n_eff": 1.0,
+                  "no_execution_evidence": 15,
+                  "observation_count": 15,
+                  "price_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.1934664991681709,
+                      0.1934664991681709
+                    ],
+                    "mean": 0.1934664991681709,
+                    "n_eff": 1.0,
+                    "sum": 2.901997487522564
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  }
+                },
+                "TAIL": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                }
+              },
+              "days": 30,
+              "n_eff": 1.0,
+              "window_end_utc": "2026-08-01T13:25:00Z",
+              "window_start_utc": "2026-07-29T15:04:52.274000Z"
+            },
+            "7": {
+              "by_phase": {
+                "HEAVY": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                },
+                "STANDARD": {
+                  "candidate_authorization": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": 0.0,
+                    "filled": 0,
+                    "n_eff": 1.0,
+                    "nonfilled": 15
+                  },
+                  "n_eff": 1.0,
+                  "no_execution_evidence": 15,
+                  "observation_count": 15,
+                  "price_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.20388330103584862
+                    ],
+                    "n_eff": 1.0,
+                    "rate": 0.0,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 15,
+                    "interval_95": [
+                      0.1934664991681709,
+                      0.1934664991681709
+                    ],
+                    "mean": 0.1934664991681709,
+                    "n_eff": 1.0,
+                    "sum": 2.901997487522564
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 15,
+                    "interval_95": [
+                      0.0,
+                      0.0
+                    ],
+                    "mean": 0.0,
+                    "n_eff": 1.0,
+                    "sum": 0.0
+                  }
+                },
+                "TAIL": {
+                  "candidate_authorization": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "edge": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "execution_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "failure_cost": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "fill_nonfill": {
+                    "fill_rate": null,
+                    "filled": 0,
+                    "n_eff": 0.0,
+                    "nonfilled": 0
+                  },
+                  "n_eff": 0.0,
+                  "no_execution_evidence": 0,
+                  "observation_count": 0,
+                  "price_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "n_eff": 0.0,
+                    "rate": null,
+                    "successes": 0
+                  },
+                  "probability_coverage": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "realized_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  },
+                  "settlement_pnl": {
+                    "count": 0,
+                    "interval_95": null,
+                    "mean": null,
+                    "n_eff": 0.0,
+                    "sum": 0.0
+                  }
+                }
+              },
+              "days": 7,
+              "n_eff": 1.0,
+              "window_end_utc": "2026-08-01T13:25:00Z",
+              "window_start_utc": "2026-07-29T15:04:52.274000Z"
+            }
+          }
+        },
+        "blockers": [
+          "cash_phase_policy_version_mismatch",
+          "phase_heavy_sample_size_insufficient",
+          "phase_heavy_unobserved",
+          "phase_standard_sample_size_insufficient",
+          "phase_tail_sample_size_insufficient",
+          "phase_tail_unobserved"
+        ],
+        "calls_order_gateway": false,
+        "checks": {
+          "candidate_fill_scorecard_complete": false,
+          "cash_phase_does_not_change_weather_plan": true,
+          "fault_scorecard_complete": true,
+          "phase_monotonic": true,
+          "pnl_attribution_complete": true,
+          "price_coverage_complete": false,
+          "promotion_eligible": false,
+          "sample_size_complete": false,
+          "strict_asof": true,
+          "strict_time_extrapolation": true,
+          "target_only": true,
+          "windows_3_7_15_30_complete": false
+        },
+        "content_sha256": "c09fdf66e8c391494ad263f8d6dcd7ebeb563c2ffafba13e5341c0dc41b68666",
+        "coverage": {
+          "candidate_fill": {
+            "complete": false,
+            "sample_count": 15
+          },
+          "pnl_attribution": {
+            "complete": true,
+            "sample_count": 15
+          },
+          "price": {
+            "complete": false,
+            "sample_count": 15
+          }
+        },
+        "fault_scorecard": {
+          "all_boundary_cases_pass": true,
+          "case_count": 6,
+          "cases": [
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "78c27b8ac79c91058c60abfbad9374751fc5ec775ec5e2d93bb0ea1b298a7ef5",
+              "name": "duplicate_conflict_rejected",
+              "passed": true
+            },
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "2ce15f92de8b86918449687de7719b0945d574fdbc2c180352f7a210436e373c",
+              "name": "future_label_excluded",
+              "passed": true
+            },
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "c2fa80e3236cfdb61947a69db3e9a81a7643ad18211998b5264750319c973c76",
+              "name": "half_open_end_excluded",
+              "passed": true
+            },
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "4f811562df8382ef7b2dbc58bbbf9305448fb083eb2ccdb762a600b0a90f62fd",
+              "name": "half_open_start_included",
+              "passed": true
+            },
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "ca32b4df3625b99cf48bce6c70bb31a4e89ceae8be3e3d27b40224fda337a8c0",
+              "name": "phase_rewind_rejected",
+              "passed": true
+            },
+            {
+              "evidence_owner": "bayes_basket_target",
+              "evidence_sha256": "b00a51d2bad85cc0524541070a00b571e217a3062445d7d6f467e8dd0d455b0e",
+              "name": "timezone_mismatch_rejected",
+              "passed": true
+            }
+          ],
+          "required_cases": [
+            "duplicate_conflict_rejected",
+            "future_label_excluded",
+            "half_open_end_excluded",
+            "half_open_start_included",
+            "phase_rewind_rejected",
+            "timezone_mismatch_rejected"
+          ]
+        },
+        "live_order_authorized": false,
+        "orders_submitted": 0,
+        "phase_observations": {
+          "HEAVY": {
+            "count": 0,
+            "n_eff": 0.0,
+            "observed": false
+          },
+          "STANDARD": {
+            "count": 15,
+            "n_eff": 1.0,
+            "observed": true
+          },
+          "TAIL": {
+            "count": 0,
+            "n_eff": 0.0,
+            "observed": false
+          }
+        },
+        "pnl_attribution": {
+          "attributed_event_count": 15,
+          "by_phase": {
+            "HEAVY": {
+              "execution_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "realized": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              }
+            },
+            "STANDARD": {
+              "execution_cost": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              },
+              "realized": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement": {
+                "count": 15,
+                "interval_95": [
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "n_eff": 1.0,
+                "sum": 0.0
+              }
+            },
+            "TAIL": {
+              "execution_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "failure_cost": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "realized": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              },
+              "settlement": {
+                "count": 0,
+                "interval_95": null,
+                "mean": null,
+                "n_eff": 0.0,
+                "sum": 0.0
+              }
+            }
+          },
+          "settled_event_count": 15
+        },
+        "policy_evidence_status": "DESIGN_CANDIDATE",
+        "policy_promoted": false,
+        "policy_version": "target-no-live-cash-design-v2-RKPK",
+        "production_no_live": true,
+        "resource_bounds": {
+          "database": false,
+          "gateway": false,
+          "max_rows": 4096,
+          "maximum_fault_cases": 256,
+          "maximum_stations": 45,
+          "network": false,
+          "rows_materialized": 15
+        },
+        "schema": "bayes_basket_target_cash_phase_forward_scorecard_v1",
+        "scope": {
+          "decision_count": 15,
+          "event_count": 15,
+          "policy_training_cutoff_utc": "2026-07-29T15:00:00Z",
+          "station_count": 1,
+          "station_id": "RKPK",
+          "station_timezone": "Asia/Seoul",
+          "window_end_utc": "2026-08-01T13:25:00Z",
+          "window_start_utc": "2026-07-29T15:04:52.274000Z"
+        },
+        "writes_production_db": false
+      }
+    },
+    "station_timezones": {
+      "CYYZ": "America/Toronto",
+      "EDDM": "Europe/Berlin",
+      "EFHK": "Europe/Helsinki",
+      "EGLC": "Europe/London",
+      "EHAM": "Europe/Amsterdam",
+      "EPWA": "Europe/Warsaw",
+      "FACT": "Africa/Johannesburg",
+      "KATL": "America/New_York",
+      "KAUS": "America/Chicago",
+      "KBKF": "America/Denver",
+      "KDAL": "America/Chicago",
+      "KHOU": "America/Chicago",
+      "KLAX": "America/Los_Angeles",
+      "KLGA": "America/New_York",
+      "KMIA": "America/New_York",
+      "KORD": "America/Chicago",
+      "KSEA": "America/Los_Angeles",
+      "KSFO": "America/Los_Angeles",
+      "LEMD": "Europe/Madrid",
+      "LFPB": "Europe/Paris",
+      "LIMC": "Europe/Rome",
+      "LTAC": "Europe/Istanbul",
+      "MMMX": "America/Mexico_City",
+      "MPMG": "America/Panama",
+      "NZWN": "Pacific/Auckland",
+      "OEJN": "Asia/Riyadh",
+      "OPKC": "Asia/Karachi",
+      "RCSS": "Asia/Taipei",
+      "RJTT": "Asia/Tokyo",
+      "RKPK": "Asia/Seoul",
+      "RKSI": "Asia/Seoul",
+      "RPLL": "Asia/Manila",
+      "SAEZ": "America/Argentina/Buenos_Aires",
+      "SBGR": "America/Sao_Paulo",
+      "VILK": "Asia/Kolkata",
+      "WMKK": "Asia/Kuala_Lumpur",
+      "WSSS": "Asia/Singapore",
+      "ZBAA": "Asia/Shanghai",
+      "ZGGG": "Asia/Shanghai",
+      "ZGSZ": "Asia/Shanghai",
+      "ZHHH": "Asia/Shanghai",
+      "ZSPD": "Asia/Shanghai",
+      "ZSQD": "Asia/Shanghai",
+      "ZUCK": "Asia/Shanghai",
+      "ZUUU": "Asia/Shanghai"
+    },
+    "status": "NA",
+    "writes_authority": false,
+    "writes_production_db": false
+  },
+  "input_gaps": [],
+  "input_paths": {
+    "fault_cases": "/Users/xiong/weather/output/audits/delta_v2_cash_phase_fault_cases_20260801T1233Z.json",
+    "observations": "/Users/xiong/weather/output/audits/delta_v2_target_owned_forward_observation_candidate_20260801T1325Z.json",
+    "policies": "/Users/xiong/weather/output/audits/bayes_basket_target_kst_recalibration_20260727/no_live_candidate_artifacts_RKPK_20260727.json",
+    "registry": "/Users/xiong/weather/data/bayes_basket_target_market_registry_snapshot_boundary_fixed.json",
+    "training_cutoffs": "/Users/xiong/weather/output/audits/delta_v2_target_owned_training_cutoff_candidate_20260801T1230Z.json"
+  },
+  "live_order_authorized": false,
+  "orders_submitted": 0,
+  "required_station_count": 45,
+  "rkpk": {
+    "design_candidate_policy_count": 1,
+    "minimum_unique_events_per_phase": 30,
+    "missing_requirements": [
+      "phase_heavy_unique_event_deficit:30",
+      "phase_standard_unique_event_deficit:13"
+    ],
+    "observation_count": 298,
+    "phase_observation_counts": {
+      "HEAVY": 0,
+      "STANDARD": 17,
+      "TAIL": 281
+    },
+    "price_coverage_count": 168,
+    "registry_timezones": [
+      "Asia/Seoul"
+    ],
+    "settled_attribution_count": 298,
+    "station_id": "RKPK",
+    "status": "NA"
+  },
+  "schema": "bayes_basket_target_cash_phase_oos_evidence_v1",
+  "status": "NA",
+  "writes_authority": false,
+  "writes_production_db": false
+}

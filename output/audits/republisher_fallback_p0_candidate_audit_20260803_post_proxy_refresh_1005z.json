@@ -1,0 +1,1793 @@
+{
+  "as_of_utc": "2026-08-03T10:05:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "read_only_database": true,
+    "writes_production_p0": false,
+    "writes_production_p0m": false,
+    "writes_production_p1": false
+  },
+  "candidate_count": 45,
+  "content_sha256": "409df33185989b5315ab1fcc8c924268310bdd32faa6117a78c1014ac20a7b6b",
+  "event_date_filter": "2026-08-03",
+  "official_compiled_count": 0,
+  "official_inbox": {
+    "content_sha256": "c46557fd474b69365127b3e70568e4618a931dd862a006e81d97e5d4a614ca50",
+    "path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/official_native_ensemble_forward_inbox_20260803_revalidated_1082.json"
+  },
+  "policy": {
+    "fallback_requires_same_station_event_day": true,
+    "future_data_is_not_oos": true,
+    "metadata_normalization_does_not_change_raw_receipt": true,
+    "official_native_first": true,
+    "republisher_is_not_formal_live_authority": true,
+    "republisher_is_not_native_arrival": true,
+    "republisher_is_not_p1": true
+  },
+  "republisher_fallback_compiled_count": 45,
+  "republisher_inbox": {
+    "content_sha256": "2065010b8ca361504aab9f17763740a20794a59f10cf9a8ac43496bff6eddc60",
+    "path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/native_ensemble_forward_inbox.json"
+  },
+  "rows": [
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "3a44b673427c5c4961bf774447d6c11402406e744200e2c9df172a6944e2e7f0",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e2930c24d8ee18b69e67946a54cf3b1f893e8b52774d7ec631b940eaab4b0959",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "6777d4231b5709cab6e57c1929ada1e6158703cf3f1a94aedfb7ceaf981d6d09",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e2930c24d8ee18b69e67946a54cf3b1f893e8b52774d7ec631b940eaab4b0959",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "6777d4231b5709cab6e57c1929ada1e6158703cf3f1a94aedfb7ceaf981d6d09",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "c16654cf66748d8dd35d50f2033c3b0394c8d97a62a0ca4d34649cfdb5687caa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "fd4e4377e92074095634b647c769158523d68ea5940f1aa49d5bc3a1c1df97e9",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "dda066529dbf472559eb00a5c2636909f981eb8efd0c4ebf2dd5f1fce0f0c9bb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "fd4e4377e92074095634b647c769158523d68ea5940f1aa49d5bc3a1c1df97e9",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "dda066529dbf472559eb00a5c2636909f981eb8efd0c4ebf2dd5f1fce0f0c9bb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "f085d4d395024a8b480237ced2fa8ff69a84e1f88e0430c9e4a5c8de62d07749",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "44ec0a81cb38be9db6d782d0bf29eb00f7261a306d16b0fd191b8ac0435f5cea",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2d77419dada8682d201bd06cd470fe33f8ef5573368c4cf67976cbcd70b1ad31",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "44ec0a81cb38be9db6d782d0bf29eb00f7261a306d16b0fd191b8ac0435f5cea",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2d77419dada8682d201bd06cd470fe33f8ef5573368c4cf67976cbcd70b1ad31",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "3dec7e02abac345f10873ab41c27cef672702014fedad8927e41fcfb33471270",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e895f2f804c424289da82ea531c4a0fd2549dfa6b3d44315aa1e59483763f792",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "c9a5fd228ea1fac3869d698605d535f59e2d745ac27a763945ce2e66903536d2",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e895f2f804c424289da82ea531c4a0fd2549dfa6b3d44315aa1e59483763f792",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "c9a5fd228ea1fac3869d698605d535f59e2d745ac27a763945ce2e66903536d2",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "fc7ef5659ca464812fa05b727326c830f01ef7c53aca34628d7bfc9c8fa22eb1",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "2c558c13a34b15ddf3f63a52b73fa3542074f3c6741f366d6346108eb17cb5da",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "8363759a5fdb279112065e761e2cc81c6006bedf2cf8771620ca9b0bb71d6146",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "2c558c13a34b15ddf3f63a52b73fa3542074f3c6741f366d6346108eb17cb5da",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "8363759a5fdb279112065e761e2cc81c6006bedf2cf8771620ca9b0bb71d6146",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "4761808e76d6a595f4388098bb1d82b415b61663d8eeab53a558deb67dea2d28",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "307dd1c9590e6bc692e144401ed0f5ebc04eb974fedb83602bc5bcf8d8afb4af",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f2e29d24ea4a202e2ee6ee723eb86c50f8b165d66eff4ab1d88170d4de247dc6",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "307dd1c9590e6bc692e144401ed0f5ebc04eb974fedb83602bc5bcf8d8afb4af",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f2e29d24ea4a202e2ee6ee723eb86c50f8b165d66eff4ab1d88170d4de247dc6",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b4aee4744fda3cc7e743343118486fc05c796761aa99d117fd073a7f8ef2963d",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "62a3649653b045c12e31294537740654c47778aeecc84d98c530107a80694406",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "15ca1e755d16bf24dbf258e404acca6119d18b150a5ba83c922d0cd4b209a643",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "62a3649653b045c12e31294537740654c47778aeecc84d98c530107a80694406",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "15ca1e755d16bf24dbf258e404acca6119d18b150a5ba83c922d0cd4b209a643",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "1840642cf9f7ca28901b84e36d2e49c1301cdc314e1cdef032a8a1132bb28c04",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "0faf689ea42b393e93676b22153ee954b9cae61a2e25090e0d9be627b6f5d207",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "01dcf9bdb93e0b8bb72a619533a2fcacdb993533429fc89c42e7b4aa14cf50ca",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "0faf689ea42b393e93676b22153ee954b9cae61a2e25090e0d9be627b6f5d207",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "01dcf9bdb93e0b8bb72a619533a2fcacdb993533429fc89c42e7b4aa14cf50ca",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6a29a53791df5425789bce29adfe37a0fc0716eb30a509f4ba24796706449707",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "6de3c24a48227a1ab8b89f4194c6ca15766b7473365a7470736567f481e75e21",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "7051987677bb46ffc8b4e47ca6b786f008c9702ac78730ad77727ddb9ceeba2f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "6de3c24a48227a1ab8b89f4194c6ca15766b7473365a7470736567f481e75e21",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "7051987677bb46ffc8b4e47ca6b786f008c9702ac78730ad77727ddb9ceeba2f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "5439b4cb59b0d071f1894c4a796f342bbdd97d6830a09bc82e01df9c02f4e217",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "d10d7e4f8d6fc0f09e070fd366d29e1c32e1cc10366d75aea81c8556fd883fe5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "4c55a77f77f2b4ad97de7e18611f770014e2791df59f7c31a0b07beee44a0fee",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "d10d7e4f8d6fc0f09e070fd366d29e1c32e1cc10366d75aea81c8556fd883fe5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "4c55a77f77f2b4ad97de7e18611f770014e2791df59f7c31a0b07beee44a0fee",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "f95c3f43529fd501e38d9c5a2baa65c2451954485a4f9585ec97caf0fcb1e226",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "49c6644b19a6cc6eca468a23a75c822992015d01f30269982bfbf98a9e973af5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "96cc3bd582d4f38ae80812d3c6cf5d8c1b5c5e7d58b4828d9c6508dc0cb0ce71",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "49c6644b19a6cc6eca468a23a75c822992015d01f30269982bfbf98a9e973af5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "96cc3bd582d4f38ae80812d3c6cf5d8c1b5c5e7d58b4828d9c6508dc0cb0ce71",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "e9a08a5b800404cb212c58012adfec892480aa76277162ca405f6db21fc07fb6",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "4846dcd5c6e544ed83269d76db9756d9c123d07151c2a7b717eaf2c233fb4e93",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2cdea15f7746f6875e64f23496e9643b97510a910176fd15ff833474ff6c7e1f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "4846dcd5c6e544ed83269d76db9756d9c123d07151c2a7b717eaf2c233fb4e93",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2cdea15f7746f6875e64f23496e9643b97510a910176fd15ff833474ff6c7e1f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "a9ace497fd8502778e5389a05ccd3565a1013b4784d6c477887bbe1005ca962c",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "853f58a132da98e83a9287fc330e41d3e5d76704a5a0cd3666a3b5cc319cc104",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "4c0ed1352167824c1dfcfb8535fa543855f66e34d7cb4cc09a6bf72d16bc40aa",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "853f58a132da98e83a9287fc330e41d3e5d76704a5a0cd3666a3b5cc319cc104",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "4c0ed1352167824c1dfcfb8535fa543855f66e34d7cb4cc09a6bf72d16bc40aa",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "5f15b1b2c91531f1b4eddfcc006ebda171c878f5dd9a1bc6349ecc4757b4586a",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "fa2033aa233b1f82465a59ba5dc246c0d0be41e4bd8aefec0fcc44b03c04e1f2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "1060b2593652602d1ce458938f9572841df170dbb63367c9f3e86d18c13e4faa",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "fa2033aa233b1f82465a59ba5dc246c0d0be41e4bd8aefec0fcc44b03c04e1f2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "1060b2593652602d1ce458938f9572841df170dbb63367c9f3e86d18c13e4faa",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "427d574ee34d3ef159eaa508002b331166c0c1d63712ea49a8d0d8d95c91e16b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "39344efe27ceebc94b1f710e300a39b1645f660a4adf0c27ef55826ee44f3754",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ac257e3ba2593c790172c0604154966c9c21359166dd172b2fae5dcab1dffe04",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "39344efe27ceebc94b1f710e300a39b1645f660a4adf0c27ef55826ee44f3754",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ac257e3ba2593c790172c0604154966c9c21359166dd172b2fae5dcab1dffe04",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "cb72695ea57b5b0332867b252f379857ccebf25c5e4fe092eb59e599e836549c",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "f5e803a06a1aaef10d19297dc7ed11642bedab56b1049b862c40a55117fe3d89",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ebf5e52e7aaad333cb191dec169ba78749ad15150e583c7a3067e7a58b4fac91",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "f5e803a06a1aaef10d19297dc7ed11642bedab56b1049b862c40a55117fe3d89",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ebf5e52e7aaad333cb191dec169ba78749ad15150e583c7a3067e7a58b4fac91",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "e1d34bdc2514706d77fab9df8922e513188e6d9e148733093a4d0265be30b8e7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "751869e0a83c3a2fc1ada60ad33f90c005a167dec8c3b0566842c2efda187094",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "92d0872d862a5fba6a57089a29d1a41eb9d3377b5a79122e8b474f0de98e4878",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "751869e0a83c3a2fc1ada60ad33f90c005a167dec8c3b0566842c2efda187094",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "92d0872d862a5fba6a57089a29d1a41eb9d3377b5a79122e8b474f0de98e4878",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "9363a4d96ffc003714a460d9ef63d5b74a5203543a7b267d848045b9e4b34aec",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "7e305974d4b4f0094422f59d7c34fc2dbd82377259e116dae1b412390f1ea76c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "286b0bacf18b360827de98a082f2fc189c24b511ce28f0c8a6bc5b9a2f6e8f25",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "7e305974d4b4f0094422f59d7c34fc2dbd82377259e116dae1b412390f1ea76c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "286b0bacf18b360827de98a082f2fc189c24b511ce28f0c8a6bc5b9a2f6e8f25",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b6df1a0db7baac4e5526588080e0198c0d755f0f53793fb06c77ab65a03eae40",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "260e44a9f7696e61087b09a51ef98078fba152886b766528a73fdea5ed22031b",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "821822185f5f6b493f73af5ee6f4e79d27785d622d655c6cc9f0acd19915c7d5",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "260e44a9f7696e61087b09a51ef98078fba152886b766528a73fdea5ed22031b",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "821822185f5f6b493f73af5ee6f4e79d27785d622d655c6cc9f0acd19915c7d5",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "86032d9b5b904baa15875a75eabdbbbb291f357b7df86cce7b0f288a6583c0e7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "b21f7004813a1770b31b8108bc52cd66886e7f2fd8e1b252228f00ac692a2d2a",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "21799e10aa671b73a88cdcd0540cd6a4ba619509de2dad13cfceb751ba3d4fa8",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "b21f7004813a1770b31b8108bc52cd66886e7f2fd8e1b252228f00ac692a2d2a",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "21799e10aa671b73a88cdcd0540cd6a4ba619509de2dad13cfceb751ba3d4fa8",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "204f25e425bb433f968a852eed94722a758953a14f28487e6e9ff8349b0155ef",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "dcc08a209a4b85977ed896557229da78c8b7cfbdd0e72e24eb4512c97413ff72",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "b4fe77d024ba9b873e6df492d5c452879767490b38fea599ff8d146b06eba18e",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "dcc08a209a4b85977ed896557229da78c8b7cfbdd0e72e24eb4512c97413ff72",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "b4fe77d024ba9b873e6df492d5c452879767490b38fea599ff8d146b06eba18e",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "bd1be6e94ad58d52b16c8817e8d00d81a0534c80add8394e178077a82e631f45",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e1592460097ede23255bc3060280fee608dfffbf112108c28e567c9aaac63310",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "184d78ff90670b93fe73d98b2a69eb6f49dc0578849a2a6f1e85af49bf1247e6",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e1592460097ede23255bc3060280fee608dfffbf112108c28e567c9aaac63310",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "184d78ff90670b93fe73d98b2a69eb6f49dc0578849a2a6f1e85af49bf1247e6",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "3404f0ae873b5dcd80d1645938428fc9cee5b01f5228a91933f514c08e7dd7aa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "db06127e6822b374ef37ea1097c423324c7dfd0b763891007f9d8f8c5c61b5e3",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ba3f94080ba7f8968beb0e539864d7e1ef6e3892ec3d94018a698ef3c5b77d09",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "db06127e6822b374ef37ea1097c423324c7dfd0b763891007f9d8f8c5c61b5e3",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "ba3f94080ba7f8968beb0e539864d7e1ef6e3892ec3d94018a698ef3c5b77d09",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "bfeebbac90ca38f6691221258ad1e958c2b8dfb3bd04fd12dd9393afc9f88d8f",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "b8ea2bfb943fca4f657eac451d167e87a6ce84823deaff3418957be5765796bd",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "136c78a59ba18b89b3a014383b1a8122cf33be880cfe720dc1f6bda70583f3e0",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "b8ea2bfb943fca4f657eac451d167e87a6ce84823deaff3418957be5765796bd",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "136c78a59ba18b89b3a014383b1a8122cf33be880cfe720dc1f6bda70583f3e0",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "5f8497436995e2f9540df9c6156de3fc3dd2ac1894061d4d5eefdb05643a14dd",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "30c1dc69ecc79e326e6509544eac9f06f85d61cd276207383012511ef096de7b",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2a08b0a21827f89b10ec421818559ad7993ac83729a4500a1b11e579b17287f4",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "30c1dc69ecc79e326e6509544eac9f06f85d61cd276207383012511ef096de7b",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2a08b0a21827f89b10ec421818559ad7993ac83729a4500a1b11e579b17287f4",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b5edcb12973d04d7cab49fada4f06ec73f3f3255d446bc8547dc320f499b6281",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "23139f8d9f36392ce921b7b145e40a193ba95d03d64f69e1d6d7c4e3c01b17ae",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "958e40c95e87b0bcd1769e75052085de3d48b275c013eadd2181c6fc291c3303",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "23139f8d9f36392ce921b7b145e40a193ba95d03d64f69e1d6d7c4e3c01b17ae",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "958e40c95e87b0bcd1769e75052085de3d48b275c013eadd2181c6fc291c3303",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "7ac630937f91e6b5ab1618e5ccaad43c1272762ac227bc3acb73647a6c0786c7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "a6c9bd6b75c1003fbcb2e7c319142ab301d92eaf6f4db5690dfa96e433cb6f33",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "a573dbc6f4cd8e3a5b11dc994acdc7baeea7fc6b0d357b756b57f1238ebef27e",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "a6c9bd6b75c1003fbcb2e7c319142ab301d92eaf6f4db5690dfa96e433cb6f33",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "a573dbc6f4cd8e3a5b11dc994acdc7baeea7fc6b0d357b756b57f1238ebef27e",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "a947c11349e30d6c051e7d2d9f33bc5b049dd93d2174010712145d52eb272c11",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "a586c89663dfdb12668b847d0ccec3761351fa19aa0bce9a973d8ae2b0ae554d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "61214ec742773caff998036d454e2ac06518ba5a6ea74fc3e0145a434889012d",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "a586c89663dfdb12668b847d0ccec3761351fa19aa0bce9a973d8ae2b0ae554d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "61214ec742773caff998036d454e2ac06518ba5a6ea74fc3e0145a434889012d",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "486aa2d3401a4305459cd3e6c7d557a3731ae04e8adf7e58ea4e32c899efa652",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "81edc275a364bfe8cb3444a1c5807f253f0b5e79518ef29be9ba92745b48681f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "91cb48c497004b693795b1ef8c90493010f0515b5ae41996d845944816872392",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "81edc275a364bfe8cb3444a1c5807f253f0b5e79518ef29be9ba92745b48681f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "91cb48c497004b693795b1ef8c90493010f0515b5ae41996d845944816872392",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "385e30ca4d285512f80492b998432f7504b1e2f1e64b206c608876fcb810eed6",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "86e0eb25d3dd1fe0e9e43e809d1643b32194583866155c3ddfa2fc54de07b23c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "722120fb70333bdb76825dcbbe8657e02dfd5b540bc2ca8dd817da24adccaf85",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "86e0eb25d3dd1fe0e9e43e809d1643b32194583866155c3ddfa2fc54de07b23c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "722120fb70333bdb76825dcbbe8657e02dfd5b540bc2ca8dd817da24adccaf85",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "df115e4ece0e4eca8ccdcb0030ffff0f26b699a4de98fddc1374d00a507583f5",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "f183036962da1cc1f845be29fbbef936e028d7ebfed0ad7f92fd0be931d8745c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d02161756bd0b012f807fbdf900de48c64d3f07e0f6ee62bf51959e97f7056af",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "f183036962da1cc1f845be29fbbef936e028d7ebfed0ad7f92fd0be931d8745c",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d02161756bd0b012f807fbdf900de48c64d3f07e0f6ee62bf51959e97f7056af",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "59e69fe5349e9efca493c88c8df76bd583e5b10154cdd6ac5133b5d1c99134aa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e437e88eb0f1bee2432b72fdbbac7d252e282279892b769a97b0fdc5f662da2e",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d2fe2cbf6e3f6a61facd24752b775bd1495b488c9e73206611b99fad4e3feea7",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e437e88eb0f1bee2432b72fdbbac7d252e282279892b769a97b0fdc5f662da2e",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d2fe2cbf6e3f6a61facd24752b775bd1495b488c9e73206611b99fad4e3feea7",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6365d8ae5713ea609a9de2e8250fc16e08d3304d58b0a5d2e83553f5d1591def",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "c30f42b0acb9e807a41803bf17e44c6a6d910a74a2d2c3529b1a5b29c6e02250",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "0413df569a81303b9022fe267ea4909b6d6fc1e288cb44f56c9c9b15b2d60c6f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "c30f42b0acb9e807a41803bf17e44c6a6d910a74a2d2c3529b1a5b29c6e02250",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "0413df569a81303b9022fe267ea4909b6d6fc1e288cb44f56c9c9b15b2d60c6f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "8cda180369c0928f1e3459d1d79bfccb3e204eeac180b19dbdaf2d49496f396c",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "9b38229492d634439ee694691d6a66d52d7d2957efb2eb0cb8077d1c6d9ae8ba",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2ca5970ab478e18f6ff1a2411e3672c189dbff8a66fff7fbf4a10094eea72456",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "9b38229492d634439ee694691d6a66d52d7d2957efb2eb0cb8077d1c6d9ae8ba",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "2ca5970ab478e18f6ff1a2411e3672c189dbff8a66fff7fbf4a10094eea72456",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "bb4b7eee88394e61cb4fe5fc4f90fcbb246b40c7741252e0c780aed12cd43e84",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "ef54d4f4a081c1d3e28865e8c17fac4c3829b9876676853e605bc7f0ce410a2d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f85152a8e3e45f37a7cd565e8ce282fa2052edb1fcc16355d54201d76143bafb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "ef54d4f4a081c1d3e28865e8c17fac4c3829b9876676853e605bc7f0ce410a2d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f85152a8e3e45f37a7cd565e8ce282fa2052edb1fcc16355d54201d76143bafb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "93a82b3393f7685b52ccdc740d9825fba79abff11057c1fa939e02742a147cb6",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "adc700db01e73f3985dfa4c4e9e6b56b1770bf412fe59cf0b0bbfc99157b564f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "b6974cdbf36c076a82d0a2efa7ce605cf2f802013f613a6a8db7aee01749ad1f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "adc700db01e73f3985dfa4c4e9e6b56b1770bf412fe59cf0b0bbfc99157b564f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "b6974cdbf36c076a82d0a2efa7ce605cf2f802013f613a6a8db7aee01749ad1f",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "11ad3a8eae05c35009a202e3bcdae3690a1ee5dbfa5f586be3bab1ebcbc065a9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "a72cb721870e5c544ef7997c34d66f5985f53394af071be7c1c81904746ba4e5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "04e58fad3252eb23042dfe643f55bbe91aea11be0b5c0bed1613e4a67a041585",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "a72cb721870e5c544ef7997c34d66f5985f53394af071be7c1c81904746ba4e5",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "04e58fad3252eb23042dfe643f55bbe91aea11be0b5c0bed1613e4a67a041585",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "8153f7a374354ed95366c07e9cf6d39e8af49d7dd1bbf283435a4c0014b76aee",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "6dc685ee372c35c40f2c4233282011a8995e634eedd8bad244eb00ae76164b4d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "c46a1e58fdc5b63115727d83fc499f8c9178a3bc2304bdd6e7654181d840f307",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "6dc685ee372c35c40f2c4233282011a8995e634eedd8bad244eb00ae76164b4d",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "c46a1e58fdc5b63115727d83fc499f8c9178a3bc2304bdd6e7654181d840f307",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "ea2c1206be69bf5490a85d2005c32ef4cbc7f988c1a65248e9f66e4837362e89",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "4b4f904724f736449bcc8e4e03d2317bd4902c108f7ed8a93d9fbfedeeb03590",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "5c27d541b402bf8b1ba304c5e8803891b2d5665d803c9071c61b7097c498f23a",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "4b4f904724f736449bcc8e4e03d2317bd4902c108f7ed8a93d9fbfedeeb03590",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "5c27d541b402bf8b1ba304c5e8803891b2d5665d803c9071c61b7097c498f23a",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "1473b17d905bc59d0ee37c022024d1560dbee011f5723c463e0dd650ad840989",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "dc6a3dd328025ae90ad459268fcec9fb4a4089f4230df2c31897f90b567e70be",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f8d71c8bb3cf0d5ac4b96a9a66f353a481c546b7206f525d6ea175dfe96897ed",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "dc6a3dd328025ae90ad459268fcec9fb4a4089f4230df2c31897f90b567e70be",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f8d71c8bb3cf0d5ac4b96a9a66f353a481c546b7206f525d6ea175dfe96897ed",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "ca8fe46c08f91845875559840d6fe20a466c0bf8157403319872e34a106dc463",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "452b8970461ae4e9ed7582f978d816cd5209cb3f68a141b2c17579fdc0fc0b9f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f6e73f691dc00228e7495e8aab2864afb67679913466ac03ba7e257e50592cec",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "452b8970461ae4e9ed7582f978d816cd5209cb3f68a141b2c17579fdc0fc0b9f",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "f6e73f691dc00228e7495e8aab2864afb67679913466ac03ba7e257e50592cec",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "8e68246163f46f44c5e0b9abd77991897ec8404422b662fecc4289f9e6bb9a48",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "bf4ac826151eaaa79d111efd945762de5cbc25ea1ca9c6e70f4aa6a1127b1188",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "6de077625adf39bcf9a5616fb4782aac8c8b5bbbb8035fa5f7a5a9661ec3f743",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "bf4ac826151eaaa79d111efd945762de5cbc25ea1ca9c6e70f4aa6a1127b1188",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "6de077625adf39bcf9a5616fb4782aac8c8b5bbbb8035fa5f7a5a9661ec3f743",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "e2f3d7a1e36ef8a7f618f27a1237780da3c6d700544c12b4e92b26ba8890890f",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e97e20c222972633c7041a67bbf55b4c41a55f6f76e69bb03a3c3e8eb61ddbb2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "caea7a2b85115c66c573e59bcaa59c294ecc8a0e0b0ba2abfd21a7d563f5835b",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e97e20c222972633c7041a67bbf55b4c41a55f6f76e69bb03a3c3e8eb61ddbb2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "caea7a2b85115c66c573e59bcaa59c294ecc8a0e0b0ba2abfd21a7d563f5835b",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "bc93a37c56642ffa0caf22f0ad211246ae446dec8aff3d106b4f5ddeb6284dd9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "e0c558ad84bc66d1745d1ed8c99e9c3afff2240a0f8bdf1c9add40e8491dd968",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d136389bf8459a7549537ee1d172d359ffd05448faf38748446bdbe7d7e06673",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "e0c558ad84bc66d1745d1ed8c99e9c3afff2240a0f8bdf1c9add40e8491dd968",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "d136389bf8459a7549537ee1d172d359ffd05448faf38748446bdbe7d7e06673",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "51696019ad962e7802f8ccaf9bc60b428dac7e30167f973e8f2e749f26aa16ad",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "compiled_content_sha256": "fd9f9b4cdbfaad552e60cfadbafaf5fd15599cc085921e73bcb5d8ce5518b7e2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "46c3d9fc65b543f7a2dbfae6577f207142d18f73d4982ac7fff3daf19731a2fb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "compiled_content_sha256": "fd9f9b4cdbfaad552e60cfadbafaf5fd15599cc085921e73bcb5d8ce5518b7e2",
+        "formal_p0_eligible": false,
+        "native_arrival_index_eligible": "false",
+        "packet_content_sha256": "46c3d9fc65b543f7a2dbfae6577f207142d18f73d4982ac7fff3daf19731a2fb",
+        "source_class": "aggregator_republisher",
+        "state": "CANDIDATE_COMPILED",
+        "transport_lineage_class": "aggregator_republisher",
+        "writes_p0": false,
+        "writes_p0m": false,
+        "writes_p1": false
+      },
+      "station_id": "ZUUU"
+    }
+  ],
+  "schema": "bayes_basket_target_republisher_fallback_p0_candidate_audit_v1",
+  "station_count": 45
+}

@@ -1,0 +1,759 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/ensemble-api",
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-08-02T02:35:43.410Z",
+  "bucket_contract_sha256": "d1f535e1a982d8e7414d433ff34f4d18003d5fc4977abb41587ba5ec5d175a33",
+  "bucket_intervals": {
+    "77°F or below": [
+      null,
+      25.27777777777778
+    ],
+    "78-79°F": [
+      25.27777777777778,
+      26.38888888888889
+    ],
+    "80-81°F": [
+      26.38888888888889,
+      27.5
+    ],
+    "82-83°F": [
+      27.5,
+      28.61111111111111
+    ],
+    "84-85°F": [
+      28.61111111111111,
+      29.72222222222222
+    ],
+    "86-87°F": [
+      29.72222222222222,
+      30.833333333333332
+    ],
+    "88-89°F": [
+      30.833333333333332,
+      31.944444444444443
+    ],
+    "90-91°F": [
+      31.944444444444443,
+      33.05555555555556
+    ],
+    "92-93°F": [
+      33.05555555555556,
+      34.166666666666664
+    ],
+    "94-95°F": [
+      34.166666666666664,
+      35.27777777777778
+    ],
+    "96°F or higher": [
+      35.27777777777778,
+      null
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "5488367dd602cdd88ac0871ad280f53c0e018684d6ce502b87c4e1a328fbf2d4",
+      "event_date": "2026-07-01",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "10edfb3d8033717075d4524d7d16af079abf1ac04078a27d7832652ccf027dcf",
+      "event_date": "2026-07-02",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "c6a7b40db12ef03d0540f1df03060dc06ea3ef2665f7cf7ff7db0ecbb3011b37",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3fea9b0e5ea1c596e9f4438f75bf1ece7e120dcb14c698022fb4ce58feee4cf7",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3ad341d650e751c75205e3ae7d72f6f343dd95380370196f3305e584ebae98d6",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "22b9405b1ee46b7e1c9d45befc7169e78a5d1011020104c29468104e39eaae21",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "db07996254b7d378d14358f3304d31c26f75120349101e80092e1fa049b91154",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "411c3096c807eedc5770b13a6a3ac442bdfb34e883f71a6b86a5489d7d8c4489",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "5cbab2a8793cfff8c55d11bf06da53beae5eff669e99fb9951dc607fc5dea568",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ddaa4ee9c4eec292c06130abf85dab96cef5d003a3baff2359e9fb6a0c0e1d4e",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "848cd8a976690aafe17554e5968f20f9aa38c7d86639c6f08df99a384db578cf",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "cc1868c12dafc6bce7afbb775b58b4227f482a4dc18777e71785260a36f4da9a",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0a8d04fd59696c54b22412ef28a4877997a5419734e2de2be002c139c90d69e3",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "22e945ed7ca35928c78c4bee658e2dfb3e6d75908c720b751af8ac9ae4859e6b",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "4cfbab14fa9b068cf57f91ee7a798e0b0616ad818c038fe6b4a3e0d33afd02ef",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ae126136f8b65bb5a88abf99f829cd22213a54533e7b08867bce8061549d9252",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ba067639770fc0cb477faae123154fe656cfbe4770231614ae60b4706ef8a0be",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1242bd5748fec449f1c56a6b1b3b4937fb154849aaa125d09bbdacaf93505b21",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "70cdbe6ed2469fefffe5a267ee09503b5fb2e0c11c4007e346e14d2bafa3fe49",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "94bffe82407191dd9b1069c4e5c60d7db4219156f6282b18c02b26b98f37b42f",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "905975cb0092574d028be9ccabfb4b52891a81f9db6e63b49a437212117af1c7",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "d63287fdd98d27fa9491b11fc962afcb9ac0856eaee309bdb02abda1b51829c7",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "fd59302994589777498b8e6a0f9b078f0ae1b47de0d31adaeeeed01317bb0a74",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "41d9ce177fb6b941413db708bdd8ac9d160415a6cf8ad4af158a761e0814b1e9",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "70e04bab5e806b6ed1cc8cdb3e37a04a3d76d79297263fa73587e8700ed66521",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "217896c99faf1137d5bcd4c33d0072c65515bab8d56ee15dc6eb46e1c7f787b6",
+  "event_date_count": 25,
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25"
+  ],
+  "latitude": 33.93817,
+  "live_submit_authorized": false,
+  "longitude": -118.3866,
+  "orders_submitted": 0,
+  "request_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=33.93817&longitude=-118.3866&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble%2Cukmo_global_ensemble_20km&timezone=America%2FLos_Angeles&start_date=2026-07-01&end_date=2026-07-25",
+  "response_sha256": "aeef4f95b53b3ef7dfc37ef698ccadd4b0d9517d14f7cd0d1f125395e868d6d9",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "selected_system_ids": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "UKMO_GLOBAL_ENS"
+  ],
+  "settlement_timezone": "America/Los_Angeles",
+  "station_id": "KLAX",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 25
+}

@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-f3d3d6212e06b52ac3d4d39b",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "155cfaa72291622ba071df631a2ef1b782817c4915a201b0e124ea19f03c4aeb",
+    "decision_at_utc": "2026-08-01T05:47:31Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ICON",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "icon_global_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-31T20:51:09Z",
+    "raw_payload_sha256s": [
+      "372c4515e2e643f8c1e3c056ba04bb0a9488ff268a026318ad6b983e2f087ae6"
+    ],
+    "receipt_sha256": "530c1f5b36f0343c34632cdefbf69c00579c0631f8548690d78b38488ca7a2d5",
+    "received_at_utc": "2026-08-01T05:47:31Z",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_022_T_2M.grib2.bz2",
+    "station_id": "OEJN",
+    "target_local_date": "2026-08-01",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-08-01T16:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-08-01T05:53:33.495Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/icon_global_official_capture_20260801/icon_global_official/receipts/6b498dd85c2bfaf57466ec651127ad5d06a2e40d30817b048d2f6b5463c35947.json"
+}

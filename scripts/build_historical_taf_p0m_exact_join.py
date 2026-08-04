@@ -31,7 +31,7 @@ from bayes_basket_target.database import (  # noqa: E402
 )
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
     build_taf_native_exact_join,
-    ingest_historical_taf_calibration,
+    ingest_historical_taf_calibration_with_quarantine,
 )
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_connection_target_capacity,
@@ -57,6 +57,18 @@ MAX_TAF_ARTIFACTS = 45
 MAX_SCOPES = 45
 MAX_SAMPLES_PER_ARCHIVE = 366
 REQUIRED_HISTORICAL_TAF_TABLE = "calibration_historical_taf_capture"
+OPEN_TRUTH_DAY_BLOCKER = "awc_taf_calibration_open_truth_day_forbidden"
+FORMAL_STATION_LANE_TRUTH = "FORMAL_STATION_LANE_TRUTH"
+AWC_TAF_AUTHORITY = {
+    "station_source_lane": "AWC",
+    "evidence_source_lane": "AWC",
+    "truth_label_authority": FORMAL_STATION_LANE_TRUTH,
+    "reference_only": False,
+    "enters_realtime_truth": False,
+    "enters_p1": False,
+    "enters_hard_no": False,
+    "replacement_required_when_canonical_history_available": False,
+}
 
 
 def _path(path: Path, *, must_exist: bool = True) -> Path:
@@ -101,6 +113,22 @@ def _utc(value: Any, *, name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _is_unsettled_future_blocker(item: Any) -> bool:
+    """Return whether a capture blocker is only an unclosed future day.
+
+    The capture producer emits this blocker when a requested date is still
+    open.  Such a row cannot enter an exact join because the canonical daily
+    truth query below will have no settled truth for it.  Keep the blocker in
+    the manifest for auditability, but do not let it veto unrelated settled
+    historical rows from the same archive/station.
+    """
+
+    if not isinstance(item, Mapping):
+        return False
+    raw_reason = str(item.get("reason") or item.get("code") or "").strip()
+    return raw_reason.rsplit(":", 1)[-1] == OPEN_TRUTH_DAY_BLOCKER
+
+
 def _archive_station(archive: Mapping[str, Any], *, source: Path) -> str:
     station = str(archive.get("station_id") or "").strip().upper()
     if not station:
@@ -112,19 +140,27 @@ def _validate_archive_contract(
     archive: Mapping[str, Any],
     *,
     source: Path,
+    candidate_only: bool = False,
 ) -> dict[str, Any]:
     """Validate the immutable archive envelope without changing the DB.
 
     Field-level validation remains in ``ingest_historical_taf_calibration``;
     this preflight only rejects malformed envelopes before a commit can begin
-    and records capture blockers so an incomplete station can never produce a
-    P0-M candidate.
+    and records capture blockers.  Only blockers tied to a historical input
+    can veto a P0-M candidate; an explicitly open future day is audit-only.
     """
 
     if archive.get("schema") != "bayes_basket_awc_taf_calibration_dataset_v1":
         raise RuntimeError(f"historical_taf_archive_schema_invalid:{source}")
     if archive.get("source_class") != "official_date_addressed_historical_replay":
         raise RuntimeError(f"historical_taf_archive_source_class_invalid:{source}")
+    if (
+        str(archive.get("source_lane") or "").strip().upper() != "AWC"
+        or str(archive.get("truth_label_authority") or "")
+        != FORMAL_STATION_LANE_TRUTH
+        or archive.get("truth_authority") != AWC_TAF_AUTHORITY
+    ):
+        raise RuntimeError(f"historical_taf_archive_awc_formal_authority_required:{source}")
     boundary = archive.get("boundary")
     if not isinstance(boundary, Mapping):
         raise RuntimeError(f"historical_taf_archive_boundary_missing:{source}")
@@ -136,6 +172,12 @@ def _validate_archive_contract(
         or boundary.get("writes_production_db") is not False
         or boundary.get("calls_order_gateway") is not False
         or boundary.get("places_orders") is not False
+        or boundary.get("reference_only") is not False
+        or boundary.get("enters_realtime_truth") is not False
+        or boundary.get("enters_p1") is not False
+        or boundary.get("enters_hard_no") is not False
+        or boundary.get("replacement_required_when_canonical_history_available")
+        is not False
     ):
         raise RuntimeError(f"historical_taf_archive_boundary_invalid:{source}")
     supplied_sha = _verify_content_hash(archive, name="historical_taf_archive")
@@ -144,10 +186,55 @@ def _validate_archive_contract(
         raise RuntimeError(f"historical_taf_archive_samples_invalid:{source}")
     if int(archive.get("sample_count", -1)) != len(samples):
         raise RuntimeError(f"historical_taf_archive_sample_count_invalid:{source}")
+    # Truth-only samples preserve official AWC closed-day evidence when the
+    # contemporaneous TAF lacks TX.  They must be self-describing and are
+    # intentionally excluded from this TAF -> P0-M pipeline: using their
+    # maximum as a substitute TX would manufacture a P0-M feature.
+    truth_only_samples = archive.get("truth_only_samples", [])
+    if (
+        not isinstance(truth_only_samples, list)
+        or len(truth_only_samples) > MAX_SAMPLES_PER_ARCHIVE
+        or int(archive.get("truth_only_sample_count", 0))
+        != len(truth_only_samples)
+    ):
+        raise RuntimeError(f"historical_taf_archive_truth_only_samples_invalid:{source}")
     station = _archive_station(archive, source=source)
     timezone_name = str(archive.get("settlement_timezone") or "").strip()
     if not timezone_name:
         raise RuntimeError(f"historical_taf_archive_timezone_missing:{source}")
+
+    truth_only_manual_review_count = 0
+    for truth_only in truth_only_samples:
+        if not isinstance(truth_only, Mapping):
+            raise RuntimeError(
+                f"historical_taf_archive_truth_only_sample_invalid:{source}"
+            )
+        recovery = truth_only.get("truth_recovery")
+        if (
+            str(truth_only.get("station_id") or "").strip().upper()
+            != station
+            or str(truth_only.get("settlement_timezone") or "")
+            != timezone_name
+            or str(truth_only.get("source_lane") or "").strip().upper()
+            != "AWC"
+            or str(truth_only.get("truth_label_authority") or "")
+            != FORMAL_STATION_LANE_TRUTH
+            or truth_only.get("truth_authority") != AWC_TAF_AUTHORITY
+            or truth_only.get("reference_only") is not False
+            or truth_only.get("truth_only") is not True
+            or truth_only.get("taf_p0m_eligible") is not False
+            or "taf" in truth_only
+            or not isinstance(truth_only.get("truth"), Mapping)
+            or not isinstance(recovery, Mapping)
+            or recovery.get("historical_replay_only") is not True
+            or recovery.get("automatic_ssot_commit_eligible") is not False
+            or recovery.get("requires_authoritative_review") is not True
+        ):
+            raise RuntimeError(
+                f"historical_taf_archive_truth_only_contract_invalid:{source}"
+            )
+        if recovery.get("requires_manual_correction_review") is True:
+            truth_only_manual_review_count += 1
 
     # The capture producer may have retained a row whose official database
     # availability is after the historical decision anchor.  The existing
@@ -155,6 +242,7 @@ def _validate_archive_contract(
     # the CLI can still ingest the valid rows while making the station
     # ineligible for a P0-M candidate.  We never pass the late row downstream.
     late_sample_count = 0
+    invalid_issue_availability_order_count = 0
     for sample in samples:
         if not isinstance(sample, Mapping):
             raise RuntimeError(f"historical_taf_archive_sample_invalid:{source}")
@@ -162,6 +250,21 @@ def _validate_archive_contract(
             raise RuntimeError(f"historical_taf_archive_sample_station_mismatch:{source}")
         if str(sample.get("settlement_timezone") or "") != timezone_name:
             raise RuntimeError(f"historical_taf_archive_sample_timezone_mismatch:{source}")
+        truth = sample.get("truth")
+        if (
+            str(sample.get("source_lane") or "").strip().upper() != "AWC"
+            or str(sample.get("truth_label_authority") or "")
+            != FORMAL_STATION_LANE_TRUTH
+            or sample.get("truth_authority") != AWC_TAF_AUTHORITY
+            or sample.get("reference_only") is not False
+            or not isinstance(truth, Mapping)
+            or str(truth.get("source_lane") or "").strip().upper() != "AWC"
+            or str(truth.get("truth_label_authority") or "")
+            != FORMAL_STATION_LANE_TRUTH
+        ):
+            raise RuntimeError(
+                f"historical_taf_archive_sample_awc_formal_authority_required:{source}"
+            )
         taf = sample.get("taf")
         if not isinstance(taf, Mapping):
             raise RuntimeError(f"historical_taf_archive_sample_taf_missing:{source}")
@@ -172,7 +275,15 @@ def _validate_archive_contract(
             name="historical_taf_decision_anchor",
         )
         if issued > available:
-            raise RuntimeError("historical_taf_strict_asof_violation")
+            # A historical replay cannot establish an arrival time earlier
+            # than its bulletin issue time.  A read-only candidate must keep
+            # this as explicit disqualifying evidence rather than aborting
+            # every unrelated station in the bounded 45-station run.  Commit
+            # mode still rejects it before touching the calibration table.
+            if not candidate_only:
+                raise RuntimeError("historical_taf_strict_asof_violation")
+            invalid_issue_availability_order_count += 1
+            continue
         if available > anchor:
             late_sample_count += 1
 
@@ -184,21 +295,49 @@ def _validate_archive_contract(
         raise RuntimeError(f"historical_taf_archive_excluded_samples_invalid:{source}")
     if int(archive.get("excluded_sample_count", -1)) != len(excluded):
         raise RuntimeError(f"historical_taf_archive_excluded_count_invalid:{source}")
+    unsettled_future_blockers = [
+        item for item in blockers if _is_unsettled_future_blocker(item)
+    ]
+    historical_blockers = [
+        item for item in blockers if not _is_unsettled_future_blocker(item)
+    ]
     return {
         "source": str(source),
         "station_id": station,
         "settlement_timezone": timezone_name,
         "content_sha256": supplied_sha,
         "sample_count": len(samples),
+        "truth_only_sample_count": len(truth_only_samples),
+        "truth_only_manual_review_count": truth_only_manual_review_count,
         "excluded_sample_count": len(excluded),
-        "blocker_count": len(blockers) + late_sample_count,
+        "blocker_count": (
+            len(blockers)
+            + late_sample_count
+            + invalid_issue_availability_order_count
+        ),
+        "candidate_blocker_count": (
+            len(historical_blockers)
+            + late_sample_count
+            + invalid_issue_availability_order_count
+        ),
+        "unsettled_future_blocker_count": len(unsettled_future_blockers),
         "blocker_codes": sorted({
             str(item.get("code") or item.get("reason") or "unknown")
             for item in blockers
             if isinstance(item, Mapping)
-        } | ({"historical_taf_strict_asof_violation"} if late_sample_count else set())),
+        } | ({"historical_taf_strict_asof_violation"} if late_sample_count else set()) | ({
+            "historical_taf_issue_after_availability"
+        } if invalid_issue_availability_order_count else set())),
         "strict_asof_skipped_sample_count": late_sample_count,
-        "candidate_input_complete": not blockers and not late_sample_count and bool(samples),
+        "issue_after_availability_sample_count": (
+            invalid_issue_availability_order_count
+        ),
+        "candidate_input_complete": (
+            not historical_blockers
+            and not late_sample_count
+            and not invalid_issue_availability_order_count
+            and bool(samples)
+        ),
     }
 
 
@@ -227,6 +366,8 @@ def _archive_paths(
 def _load_archives(
     explicit: Sequence[Path],
     archive_dir: Path | None,
+    *,
+    candidate_only: bool = False,
 ) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
     archives: list[Mapping[str, Any]] = []
     metadata: list[dict[str, Any]] = []
@@ -236,7 +377,11 @@ def _load_archives(
             reason=f"historical_taf_archive_mapping_required:{source}",
         )
         archives.append(archive)
-        metadata.append(_validate_archive_contract(archive, source=source))
+        metadata.append(_validate_archive_contract(
+            archive,
+            source=source,
+            candidate_only=candidate_only,
+        ))
     stations = {str(item["station_id"]) for item in metadata}
     if len(stations) > MAX_STATIONS:
         raise RuntimeError("historical_taf_station_count_exceeded")
@@ -534,7 +679,13 @@ def run_pipeline(
         archives_by_station[station].append(archive)
         metadata_by_station[station].append(metadata)
     archive_blockers_by_station = {
-        station: sum(int(row.get("blocker_count") or 0) for row in rows)
+        station: sum(
+            int(
+                row.get("candidate_blocker_count", row.get("blocker_count"))
+                or 0
+            )
+            for row in rows
+        )
         for station, rows in metadata_by_station.items()
     }
     missing_archives = {
@@ -551,7 +702,9 @@ def run_pipeline(
         if is_writer:
             try:
                 receipts = [
-                    ingest_historical_taf_calibration(conn, archive)
+                    ingest_historical_taf_calibration_with_quarantine(
+                        conn, archive
+                    )
                     for archive in archives
                 ]
             except Exception:
@@ -632,7 +785,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_path = _path(args.output, must_exist=False)
     if output_path == db_path or output_path == live_p0_inbox_path:
         raise RuntimeError("historical_taf_pipeline_output_input_collision")
-    archives, archive_metadata = _load_archives(args.archive, args.archive_dir)
+    archives, archive_metadata = _load_archives(
+        args.archive,
+        args.archive_dir,
+        candidate_only=not bool(args.commit),
+    )
     artifact_by_scope = _load_taf_artifacts(
         args.taf_artifact,
         args.taf_artifact_dir,

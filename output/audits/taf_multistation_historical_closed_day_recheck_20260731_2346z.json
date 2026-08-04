@@ -1,0 +1,77 @@
+{
+  "blocker_count": 0,
+  "calls_order_gateway": false,
+  "completed_station_count": 0,
+  "excluded_sample_count": 0,
+  "failed_station_count": 16,
+  "failures": [
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "CYYZ"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KATL"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KAUS"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KBKF"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KDAL"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KHOU"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KLAX"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KLGA"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KMIA"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KORD"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KSEA"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "KSFO"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "MMMX"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "MPMG"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "SAEZ"
+    },
+    {
+      "reason": "ContractError:awc_taf_calibration_open_truth_day_forbidden",
+      "station_id": "SBGR"
+    }
+  ],
+  "orders_submitted": 0,
+  "outputs": [],
+  "sample_count": 0,
+  "station_count": 16
+}

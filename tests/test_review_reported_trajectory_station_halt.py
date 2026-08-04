@@ -7,8 +7,8 @@ from bayes_basket_target.correction_review import (
     CLEAR_REFERENCE_ONLY,
     QUARANTINE_STATION_DAY,
 )
-from reported_trajectory_no_schema import (
-    apply_reported_trajectory_no_schema,
+from weather_basket_yes_schema import (
+    apply_weather_basket_yes_schema,
 )
 from scripts.review_reported_trajectory_station_halt import apply_review
 
@@ -16,7 +16,7 @@ from scripts.review_reported_trajectory_station_halt import apply_review
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "archive.db"
     with sqlite3.connect(path) as conn:
-        apply_reported_trajectory_no_schema(conn)
+        apply_weather_basket_yes_schema(conn)
         conn.execute(
             """
             INSERT INTO reported_trajectory_market_registry(

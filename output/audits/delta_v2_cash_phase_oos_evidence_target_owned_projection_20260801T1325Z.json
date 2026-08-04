@@ -1,0 +1,49 @@
+{
+  "as_of_utc": "2026-08-01T13:25:00Z",
+  "calls_order_gateway": false,
+  "content_sha256": "a76e9912d32506e7c46960ae5768ed89cfcd65b09be02a09f0474f6630f8f50d",
+  "design_candidate_mutated": false,
+  "evaluation_window": {
+    "end_utc_exclusive": "2026-08-02T00:00:00Z",
+    "start_utc_inclusive": "2026-07-26T00:00:00Z"
+  },
+  "evidence": null,
+  "input_gaps": [
+    "evidence_contract_blocked:cash_phase_oos_evaluation_window_invalid"
+  ],
+  "input_paths": {
+    "fault_cases": "/Users/xiong/weather/output/audits/delta_v2_cash_phase_fault_cases_20260801T1233Z.json",
+    "observations": "/Users/xiong/weather/output/audits/delta_v2_target_owned_forward_observation_candidate_20260801T1325Z.json",
+    "policies": "/Users/xiong/weather/output/audits/bayes_basket_target_kst_recalibration_20260727/no_live_candidate_artifacts_RKPK_20260727.json",
+    "registry": "/Users/xiong/weather/data/bayes_basket_target_market_registry_snapshot_boundary_fixed.json",
+    "training_cutoffs": "/Users/xiong/weather/output/audits/delta_v2_target_owned_training_cutoff_candidate_20260801T1230Z.json"
+  },
+  "live_order_authorized": false,
+  "orders_submitted": 0,
+  "required_station_count": 45,
+  "rkpk": {
+    "design_candidate_policy_count": 1,
+    "minimum_unique_events_per_phase": 30,
+    "missing_requirements": [
+      "phase_heavy_unique_event_deficit:30",
+      "phase_standard_unique_event_deficit:13"
+    ],
+    "observation_count": 298,
+    "phase_observation_counts": {
+      "HEAVY": 0,
+      "STANDARD": 17,
+      "TAIL": 281
+    },
+    "price_coverage_count": 168,
+    "registry_timezones": [
+      "Asia/Seoul"
+    ],
+    "settled_attribution_count": 298,
+    "station_id": "RKPK",
+    "status": "NA"
+  },
+  "schema": "bayes_basket_target_cash_phase_oos_evidence_v1",
+  "status": "NA",
+  "writes_authority": false,
+  "writes_production_db": false
+}

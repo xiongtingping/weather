@@ -7,7 +7,16 @@ import pytest
 
 from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.metar_trajectory import (
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
+)
+from bayes_basket_target.future_temperature_curve import (
+    build_root_future_temperature_curve,
+)
+from bayes_basket_target.metar_path_state import (
+    PATH_STATE_SCHEMA,
+    compile_conditional_metar_path_state,
 )
 from bayes_basket_target.metar_trajectory_training import (
     train_metar_trajectory_artifact,
@@ -95,6 +104,120 @@ def _parameters() -> dict[str, object]:
     }
 
 
+def _conditional_parameters() -> dict[str, object]:
+    return {
+        **_parameters(),
+        "path_feature_schema": PATH_STATE_SCHEMA,
+        "path_model_coefficients": {
+            "base_distribution_mean": 0.3,
+            "root_expected_remaining_warming": 0.5,
+            "momentum_c_per_hour": 0.35,
+            "acceleration_c_per_hour2": 0.1,
+            "drawdown_from_high_c": -0.5,
+            "dewpoint_depression_c": 0.01,
+            "cloud_cover_fraction": -0.8,
+            "precipitation_present": -1.0,
+            "wind_speed_mps": -0.02,
+            "remaining_hours": 0.02,
+        },
+        "path_model_sigma_c": 0.8,
+        "method_version": METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+    }
+
+
+def _conditional_fold(year: int) -> dict[str, object]:
+    fold = _fold(year)
+    cutoff = str(fold["training_cutoff_utc"])
+    fold["conditional_path_state"] = compile_conditional_metar_path_state(
+        [
+            {
+                "observation_id": f"{year}-1",
+                "observed_at_utc": f"{year}-07-30T09:00:00Z",
+                "temperature_c": 0.0,
+                "raw_text": f"METAR RKPK 300900Z 18005KT CAVOK 00/M05 Q1008",
+            },
+            {
+                "observation_id": f"{year}-2",
+                "observed_at_utc": f"{year}-07-30T10:00:00Z",
+                "temperature_c": 1.0,
+                "raw_text": f"METAR RKPK 301000Z 18005KT CAVOK 01/M04 Q1008",
+            },
+            {
+                "observation_id": f"{year}-3",
+                "observed_at_utc": f"{year}-07-30T11:00:00Z",
+                "temperature_c": 2.0,
+                "raw_text": f"METAR RKPK 301100Z 18005KT CAVOK 02/M03 Q1008",
+            },
+        ],
+        as_of_utc=cutoff,
+        settlement_timezone="Asia/Seoul",
+        root_probabilities=fold["root_probabilities"],
+        bucket_centers_c=fold["bucket_centers_c"],
+    ).to_dict()
+    return fold
+
+
+def _hourly_curve_parameters() -> dict[str, object]:
+    parameters = _conditional_parameters()
+    parameters["path_model_coefficients"] = {
+        **parameters["path_model_coefficients"],
+        "predicted_peak_remaining_warming_c": 0.35,
+        "minutes_to_predicted_peak": 0.02,
+        "next_curve_delta_from_high_c": 0.15,
+        "future_curve_slope_c_per_hour": 0.10,
+    }
+    parameters["method_version"] = (
+        METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
+    return parameters
+
+
+def _hourly_curve_fold(year: int) -> dict[str, object]:
+    fold = _fold(year)
+    checkpoint_id = f"root-{year}"
+    posterior_sha = f"{year % 10}" * 64
+    curve = build_root_future_temperature_curve({
+        "station_id": "RKPK",
+        "event_date": f"{year}-07-30",
+        "settlement_timezone": "Asia/Seoul",
+        "root_checkpoint_id": checkpoint_id,
+        "root_probability_sha256": posterior_sha,
+        "available_at_utc": f"{year}-07-30T08:00:00Z",
+        "source_snapshot_sha256": "a" * 64,
+        "independence_family_ids": ["ECMWF", "NOAA_GEFS"],
+        "points": [
+            {"valid_time_utc": f"{year}-07-30T12:30:00Z", "temperature_c": 2.5},
+            {"valid_time_utc": f"{year}-07-30T13:00:00Z", "temperature_c": 3.0},
+            {"valid_time_utc": f"{year}-07-30T14:00:00Z", "temperature_c": 3.5},
+            {"valid_time_utc": f"{year}-07-30T14:30:00Z", "temperature_c": 3.0},
+        ],
+    })
+    fold["conditional_path_state"] = compile_conditional_metar_path_state(
+        [
+            {
+                "observation_id": f"{year}-{index}",
+                "observed_at_utc": f"{year}-07-30T{hour:02d}:00:00Z",
+                "temperature_c": float(index - 1),
+                "raw_text": (
+                    f"METAR RKPK 30{hour:02d}00Z 18005KT CAVOK "
+                    f"0{index - 1}/M05 Q1008"
+                ),
+            }
+            for index, hour in enumerate((9, 10, 11), start=1)
+        ],
+        as_of_utc=str(fold["training_cutoff_utc"]),
+        settlement_timezone="Asia/Seoul",
+        root_probabilities=fold["root_probabilities"],
+        bucket_centers_c=fold["bucket_centers_c"],
+        future_curve=curve,
+        root_checkpoint_id=checkpoint_id,
+        root_probability_sha256=posterior_sha,
+        station_id="RKPK",
+        event_date=f"{year}-07-30",
+    ).to_dict()
+    return fold
+
+
 def _train() -> dict[str, object]:
     return train_metar_trajectory_artifact(
         folds=[_fold(year) for year in range(2021, 2026)],
@@ -122,6 +245,41 @@ def test_expanding_window_oos_builds_formal_artifact() -> None:
     assert evidence["oos_gate_passed"] is True
     assert artifact.activated is True
     assert artifact.remaining_warming_distribution[2.0] > 1 / 3
+
+
+def test_conditional_path_oos_uses_only_complete_strict_asof_states() -> None:
+    incomplete = _fold(2020)
+    result = train_metar_trajectory_artifact(
+        folds=[incomplete] + [_conditional_fold(year) for year in range(2021, 2026)],
+        smoothing_candidates=[0.1, 1.0, 10.0],
+        minimum_training_folds=1,
+        minimum_effective_sample_n=3.0,
+        artifact_parameters=_conditional_parameters(),
+    )
+    artifact = MetarTrajectoryLikelihoodArtifact.from_mapping(result["artifact"])
+    evidence = result["training_evidence"]
+    assert artifact.method_version == METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION
+    assert evidence["input_fold_count"] == 6
+    assert evidence["fold_count"] == 5
+    assert evidence["incomplete_path_fold_count"] == 1
+    assert evidence["formal_probability_oos_available"] is True
+
+
+def test_hourly_curve_oos_excludes_complete_paths_without_curve() -> None:
+    result = train_metar_trajectory_artifact(
+        folds=[_conditional_fold(2020)] + [
+            _hourly_curve_fold(year) for year in range(2021, 2026)
+        ],
+        smoothing_candidates=[0.1, 1.0, 10.0],
+        minimum_training_folds=1,
+        minimum_effective_sample_n=3.0,
+        artifact_parameters=_hourly_curve_parameters(),
+    )
+    evidence = result["training_evidence"]
+    assert evidence["input_fold_count"] == 6
+    assert evidence["fold_count"] == 5
+    assert evidence["incomplete_path_fold_count"] == 0
+    assert evidence["incomplete_future_curve_fold_count"] == 1
 
 
 def test_training_rejects_late_or_unsettled_training_truth() -> None:

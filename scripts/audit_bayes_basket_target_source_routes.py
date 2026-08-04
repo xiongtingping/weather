@@ -196,16 +196,19 @@ def _validate_config(
     if not isinstance(policy, Mapping):
         return reasons | {"reference_policy_missing"}
     expected = {
-        "amsc_hourly_metar_for_amsc_station": "formal_truth_primary",
-        "amsc_half_hour_metar": "reference_only",
-        "awc_hourly_for_amsc_station": "reference_only",
-        "awc_hourly_precedence_over_amsc_hourly": False,
+        # The current SSOT is one global AWC lane.  AMSC is retained only as
+        # explicitly labelled offline/audit evidence and cannot be a route.
+        "awc_global_metar_speci": "formal_truth_primary_for_all_45_stations",
+        "amsc_production_lane": "retired_history_only",
+        "amsc_reference_evidence": "offline_audit_only",
         "reference_enters_formal_truth": False,
         "reference_enters_calibration": False,
     }
     for key, wanted in expected.items():
         if policy.get(key) != wanted:
             reasons.add(f"reference_policy_invalid:{key}")
+    if policy.get("temporary_awc_calibration") != "retired_history_only":
+        reasons.add("reference_policy_invalid:temporary_awc_calibration")
     return reasons
 
 

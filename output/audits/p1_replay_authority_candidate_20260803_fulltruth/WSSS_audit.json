@@ -1,0 +1,78 @@
+{
+  "all_retained_source_rows_bindable": true,
+  "archive_database": "/Users/xiong/weather/data/archive.db",
+  "authority_validation": {
+    "blockers": [],
+    "content_sha256": "aef45fc42b5c88b74dcddcbbea81a7246c6427e519ac59b78ef3b5d82c26f8a7",
+    "state": "AUTHORITY_OBJECT_VALID"
+  },
+  "blockers": [],
+  "boundary": {
+    "archive_database_mode": "read_only_query_only",
+    "calls_order_gateway": false,
+    "creates_replay_authority": false,
+    "fetches_weather_data": false,
+    "materializes_p1": false,
+    "orders_submitted": 0,
+    "writes_archive_database": false,
+    "writes_canonical_evidence": false,
+    "writes_target_database": false
+  },
+  "canonical_evidence": {
+    "path": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/WSSS_2026-08-01_p1_replay_authority_candidate.json",
+    "receipt_sha256": "bc6f58e24fc0cb4ce4bc3b1391451b215231ab2d2b53e9bc30e6566c2a5d3f14"
+  },
+  "content_sha256": "863b13eb541cc759203335bae1fe1f871db43890f7769fc9803818a98a07b3d1",
+  "decision_at_utc": "2026-07-31T17:44:47.361Z",
+  "event_date": "2026-08-01",
+  "formal_observation_count": 2,
+  "p1_replay_authority_eligible": true,
+  "schema": "bayes_basket_target_p1_historical_replay_authority_audit_v1",
+  "source_rows": [
+    {
+      "blockers": [],
+      "canonical_source_poll_id": "rtpoll_3d98f4c07a4ee29355b90cfc4e112b70",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T16:01:35.641Z",
+          "poll_content_sha256": "acc06ed863e9e9b05f36ebec0cf7449f3f2d32aa698420f2f3892ac0c52a0b8f",
+          "raw_sha256": "2d2c90e8bc1e478b530db7913550c015eca23af929dc97b137800aff0baccc57",
+          "received_at_utc": "2026-07-31T16:01:35.602Z",
+          "source_observation_id": "rtobs_30b20e462dd59d1d74159ab83073556b",
+          "source_poll_id": "rtpoll_3d98f4c07a4ee29355b90cfc4e112b70",
+          "source_report_issued_at_utc": "2026-07-31T16:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T16:00:00.000Z"
+        }
+      ],
+      "observation_id": "rtobs_30b20e462dd59d1d74159ab83073556b",
+      "raw_sha256": "2d2c90e8bc1e478b530db7913550c015eca23af929dc97b137800aff0baccc57",
+      "state": "RETAINED_AWC_SOURCE_BINDABLE"
+    },
+    {
+      "blockers": [],
+      "canonical_source_poll_id": "rtpoll_5b7310aeadeae140a04f1410599e324d",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T17:01:35.426Z",
+          "poll_content_sha256": "424a2dfda9cd15bc538a67150836bb55ce40b90918bc64e24518e452ee517030",
+          "raw_sha256": "f6f0571e59d075fc157b58913ee707f6c9cbc610598d962b02b74f7bc753ea9f",
+          "received_at_utc": "2026-07-31T17:01:35.378Z",
+          "source_observation_id": "rtobs_14a1182fc8b8f51ce4031b06f91a8b3a",
+          "source_poll_id": "rtpoll_5b7310aeadeae140a04f1410599e324d",
+          "source_report_issued_at_utc": "2026-07-31T17:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T17:00:00.000Z"
+        }
+      ],
+      "observation_id": "rtobs_14a1182fc8b8f51ce4031b06f91a8b3a",
+      "raw_sha256": "f6f0571e59d075fc157b58913ee707f6c9cbc610598d962b02b74f7bc753ea9f",
+      "state": "RETAINED_AWC_SOURCE_BINDABLE"
+    }
+  ],
+  "state": "FORMAL_AWC_HISTORICAL_REPLAY_AUTHORITY_VALID",
+  "station_id": "WSSS",
+  "strict_asof_bindable_observation_count": 2
+}

@@ -1,0 +1,11 @@
+{
+  "content_sha256": "fa3753d26f4fbbebef70aa51a8ca721b7e98d0dc9e362c8635c71e7c2f21414c",
+  "formal_p0_eligible": false,
+  "hard_no_eligible": false,
+  "native_arrival_index_eligible": false,
+  "quarantined_artifact": "/Users/xiong/weather/output/audits/quarantine/icon_global_eps_station_members_r02b06_grid_mismatch_20260801.json",
+  "reason": "DWD_R02B06_grid_uuid_and_cell_count_do_not_match_ICON_EPS_raw",
+  "replacement_artifact": "/Users/xiong/weather/output/audits/icon_global_eps_station_members_r03b06_20260801.json",
+  "schema": "bayes_basket_target_icon_global_eps_station_member_cohort_quarantine_v1",
+  "state": "QUARANTINED_GRID_SIGNATURE_MISMATCH"
+}

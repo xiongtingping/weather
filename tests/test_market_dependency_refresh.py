@@ -80,7 +80,7 @@ def test_provider_failure_does_not_skip_other_sources(monkeypatch, tmp_path: Pat
 
     monkeypatch.setattr(refresh, "_command_result", fake_command)
     plan = {
-        "actions": ["model_release_probe", "model_scan", "official_nwp_daily_curve", "official_nwp_p1_materialization"],
+        "actions": ["model_release_probe", "model_scan", "official_nwp_daily_curve"],
         "target_event_dates": ["2026-07-22"],
         "target_day_offsets": [1],
         "required_models": ["gfs_seamless", "ecmwf_ifs025"],
@@ -98,7 +98,7 @@ def test_provider_failure_does_not_skip_other_sources(monkeypatch, tmp_path: Pat
     assert curve_timeouts
     assert all(60.0 <= timeout <= 900.0 for timeout in curve_timeouts)
     assert any("--provider" in command and command[command.index("--provider") + 1] == "gfs" for command in calls)
-    assert any("materialize_official_nwp_daily_peak_p1_ingress.py" in " ".join(command) for command in calls)
+    assert not any("p1" in " ".join(command).lower() for command in calls)
 
 
 def test_unready_official_peak_window_skips_broad_model_scan(monkeypatch, tmp_path: Path) -> None:

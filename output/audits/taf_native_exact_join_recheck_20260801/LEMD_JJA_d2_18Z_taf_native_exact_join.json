@@ -1,0 +1,14 @@
+{
+  "content_sha256": "24984fed8fcfa8cdd90ad002429f863d2db3eebfdf7b6a5abec61562001c3781",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "3466f238ba4cc88820370962a0fb0affc12ef43008e86fef788482637bed9a92",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Madrid",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LEMD"
+}

@@ -1,0 +1,2555 @@
+{
+  "as_of_utc": "2026-08-01T21:03:52Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_formal_provider_binding": false,
+    "downloads_raw": false,
+    "formal_p0_eligible": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "reads_ssot_read_only": true,
+    "writes_production_database": false
+  },
+  "content_sha256": "1e2a9f3d4a2682dddfc80fd6ad2e49cbd41fd4eb0e7105781d9836f3c8527ab7",
+  "curve_count_scanned": 45,
+  "fact_count": 15,
+  "inputs": {
+    "aifs_decode_audit_sha256": "e08585771b20390ff705f2d21b07cf559ea788586091cd2dfafa37f088fc5ff3",
+    "eligible_arrival_lineage": [
+      {
+        "arrival_content_sha256": "05044e2312f58c032359e60c9adb742f28478ac27e666d1678627bb15b0e38c0",
+        "arrival_identity_sha256": "05044e2312f58c032359e60c9adb742f28478ac27e666d1678627bb15b0e38c0",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "5fcca4bb768c9c4122c812dc2c1c6e494ae2923aebfe47a498b1091883133661",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "682a23540462bf45fe0829eb0803661c83346ae61e7760860a409f29e7ed5070",
+        "wrapper_current_sha256": "682a23540462bf45fe0829eb0803661c83346ae61e7760860a409f29e7ed5070",
+        "wrapper_immutable_sha256": "4cd3994017a4750a5670da01095da9e1934b944085aa446b0bd0885416ccc185"
+      },
+      {
+        "arrival_content_sha256": "06da33c311d21b2c5f093d28370d0ebe8ce44a21aeb8665ae43a7e0cf6255d11",
+        "arrival_identity_sha256": "06da33c311d21b2c5f093d28370d0ebe8ce44a21aeb8665ae43a7e0cf6255d11",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "4f2a8fd7a7b9fb463e56682cffe1388270c4dba65713404867aa29d032ea0e7a",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RCSS_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "af5d92e19f008295453caa5b82d487715e09a984f2865a79967b2f4156b073cc",
+        "wrapper_current_sha256": "af5d92e19f008295453caa5b82d487715e09a984f2865a79967b2f4156b073cc",
+        "wrapper_immutable_sha256": "7a6d20e496f84882dcb6738bdb5066b0fc9e7e35068b4e36202c33370c60f443"
+      },
+      {
+        "arrival_content_sha256": "133c382ad68d2ef886d0ad85b9e1f6739c19ae0d8ca4e5ef2702266f7d8a0c28",
+        "arrival_identity_sha256": "133c382ad68d2ef886d0ad85b9e1f6739c19ae0d8ca4e5ef2702266f7d8a0c28",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "248a758ec94d0be7014e78a419f9b4c7649150a56423eda63000dbe32f222727",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUUU_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "35ddbf9db77cbfdf71d1761929bd8cfbefab295b0cc826e7940895f70b21fd95",
+        "wrapper_current_sha256": "35ddbf9db77cbfdf71d1761929bd8cfbefab295b0cc826e7940895f70b21fd95",
+        "wrapper_immutable_sha256": "1d5ec25941eb133e018710107f17b748e761efde735e224f3c8fb44c9ee77280"
+      },
+      {
+        "arrival_content_sha256": "13cfb0ede8263c20546ae83c8040eaced38519c8f0134bd9f0fdea58db7e006e",
+        "arrival_identity_sha256": "13cfb0ede8263c20546ae83c8040eaced38519c8f0134bd9f0fdea58db7e006e",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "2fb4d4ba03f85672fdc236e24d3377a4f5fcd1c6e92e6da2223d93ce17f6fdcc",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUCK_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "b407ca7c912229bb54820ad63c868861d1e2fd4262266e6bfcd0fa6dd229b53c",
+        "wrapper_current_sha256": "b407ca7c912229bb54820ad63c868861d1e2fd4262266e6bfcd0fa6dd229b53c",
+        "wrapper_immutable_sha256": "6f5498802159df1800edd1ad1dfb6a2ca2a4fd1adc6ab684c237ba4afdeb1e44"
+      },
+      {
+        "arrival_content_sha256": "1a328bb237f16a753505aa7ad45ad973f2277d121971ca54b007b841bf893e0f",
+        "arrival_identity_sha256": "1a328bb237f16a753505aa7ad45ad973f2277d121971ca54b007b841bf893e0f",
+        "arrival_raw_payload_sha256s": [
+          "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4"
+        ],
+        "arrival_receipt_sha256": "38b9ac3ad6536269e53a5a1731db2a68ccb616bea161520f627555a2abfa4f80",
+        "arrival_timing_identity_sha256": "cf2288606c04cb626bf338b6e68b2ca7120fca70890dbc54c04e417f9eecc42b",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/OPKC_20260801T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4.grib2"
+        ],
+        "wrapper_capture_sha256": "da6d6d5a477ed86d65727de49398b846987177fd2faa39484be0e9aee28bcf5c",
+        "wrapper_current_sha256": "da6d6d5a477ed86d65727de49398b846987177fd2faa39484be0e9aee28bcf5c",
+        "wrapper_immutable_sha256": "02cd387670068c151f5251bf4a1c21d0e520caece965b3cfce6eaa48dbffb923"
+      },
+      {
+        "arrival_content_sha256": "1ba2d05fa2b1698de9960271d00139130b1d05f38d98b215ee4d6a0d99eb48ac",
+        "arrival_identity_sha256": "1ba2d05fa2b1698de9960271d00139130b1d05f38d98b215ee4d6a0d99eb48ac",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "08ee48edcdf5bc201e739b319b4e42c85449fc30119b8aeaa74caf2a73978332",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/WSSS_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "7b342144077588937f1d1277b2e59410375f14feddc133263e2b9d9f49c4705f",
+        "wrapper_current_sha256": "7b342144077588937f1d1277b2e59410375f14feddc133263e2b9d9f49c4705f",
+        "wrapper_immutable_sha256": "7f1e28e1e3ffc81511a30dd8551f7e6f7dc4039af8a060da36ea1ebf8483ef4f"
+      },
+      {
+        "arrival_content_sha256": "1ee8cd96572f6a11c89d9209334e50da88848c5d4fc6f84dc6e50dbd8cad8974",
+        "arrival_identity_sha256": "1ee8cd96572f6a11c89d9209334e50da88848c5d4fc6f84dc6e50dbd8cad8974",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "9f0b237b87a6154496df275972ac18229e355692eb0f14d8a7fc7a848a83ba0a",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGSZ_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "5165277c9497571d768ba0b5f9771d800392893ca9eac6e79e01aa168e5239c7",
+        "wrapper_current_sha256": "5165277c9497571d768ba0b5f9771d800392893ca9eac6e79e01aa168e5239c7",
+        "wrapper_immutable_sha256": "9407134d2457f7851136a0b49e7846944dff44b54eb358a20dde713600150bc8"
+      },
+      {
+        "arrival_content_sha256": "21b3f17fa9d6cfd38671f23e370cf048687b7c05df04374b5735463331544686",
+        "arrival_identity_sha256": "21b3f17fa9d6cfd38671f23e370cf048687b7c05df04374b5735463331544686",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "a94b30d87e4d71d1e994c8015cd449fedfb9e28fa5bba5bcbef2001e9f3fc5dc",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/WSSS_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "17d675609cdb67cb1cd5437ee154e18747871ecc2c6a46567fac525964e5e6c8",
+        "wrapper_current_sha256": "17d675609cdb67cb1cd5437ee154e18747871ecc2c6a46567fac525964e5e6c8",
+        "wrapper_immutable_sha256": "4795dcd4b27b330e6b0f2d8c8861f71b7b55971fa4a258d338834d799cd68165"
+      },
+      {
+        "arrival_content_sha256": "26f9a344629ec2e67985f963d98d2929f31aec3a0d0e207c6740e149a9090dfe",
+        "arrival_identity_sha256": "26f9a344629ec2e67985f963d98d2929f31aec3a0d0e207c6740e149a9090dfe",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "ed98ef5bda3b0a1f12d5456241650aa7e92965209739c1b0ca48a8e21a972804",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/OPKC_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "fc58722382924cb459aa3df18f32dfb2b224603fb496087509884116ca7ff36e",
+        "wrapper_current_sha256": "fc58722382924cb459aa3df18f32dfb2b224603fb496087509884116ca7ff36e",
+        "wrapper_immutable_sha256": "f95c24fa060eb890daf75f49265a06294c7f3cb5b964a10e9befcd90fa0f298e"
+      },
+      {
+        "arrival_content_sha256": "2b467658a5cae75313752ae6713ade8ee39b4355b7c58fa0a344eea0d5e0854c",
+        "arrival_identity_sha256": "2b467658a5cae75313752ae6713ade8ee39b4355b7c58fa0a344eea0d5e0854c",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "0842da41c93795a130c3f3aff9022fc0b702f1b3522a06e1b7a5621a16bedf90",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSPD_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "28b77a2592aab2b1839f3a67125c82126c8829c407f2b108c566d112cd876069",
+        "wrapper_current_sha256": "28b77a2592aab2b1839f3a67125c82126c8829c407f2b108c566d112cd876069",
+        "wrapper_immutable_sha256": "81b06a204455dc011a584a0aa96bd004c088bfd068ce23fda97e49b8f9d054fd"
+      },
+      {
+        "arrival_content_sha256": "2b52cb5214d0288aae3f897cf75f6736d9a60f53d3979164e0ec841c3bbc332e",
+        "arrival_identity_sha256": "2b52cb5214d0288aae3f897cf75f6736d9a60f53d3979164e0ec841c3bbc332e",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "c5d96b7a27e6db66f523e587a0c0a5119817feeb1b6018cfc162293e9bf42b19",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGGG_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "be04fd402d5fc9ddbea2f1b86622919e63d666ae1b0390bc50509283a30c7bbb",
+        "wrapper_current_sha256": "be04fd402d5fc9ddbea2f1b86622919e63d666ae1b0390bc50509283a30c7bbb",
+        "wrapper_immutable_sha256": "811e6163356a5951fa4d43412ffefc575bf16a55ac33e36108e67a033e096dc1"
+      },
+      {
+        "arrival_content_sha256": "2d14b6f6237716c6c4e797a7ce71eed3a28da589fc8f197d1244b4b3a6384050",
+        "arrival_identity_sha256": "2d14b6f6237716c6c4e797a7ce71eed3a28da589fc8f197d1244b4b3a6384050",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "5fe21359f3b59af2a05393a8a31dc8d00657c150348ff5689905488f42aea377",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGSZ_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "6a2f97abd03551f3dab60dfba2c8d35b25690049e93f1f86431af912c8044fe9",
+        "wrapper_current_sha256": "6a2f97abd03551f3dab60dfba2c8d35b25690049e93f1f86431af912c8044fe9",
+        "wrapper_immutable_sha256": "ea1af7c3c9f8e4d84aab3e8d79e6a6b90a2ee6413d5cca70a1bf443ce279026e"
+      },
+      {
+        "arrival_content_sha256": "2dcc03000b8b6a5ce0f6d096f8a4058bb56b6bbb08ea48840c944cdb90a2b913",
+        "arrival_identity_sha256": "2dcc03000b8b6a5ce0f6d096f8a4058bb56b6bbb08ea48840c944cdb90a2b913",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "aab3b17c4eb764cfdb3a82d932a0d8f621184bb8b78ddfe2109c2d696628955f",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUUU_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "0a183f27a3816f5981af5982696c20e5e2693807da72ed036b8c558cb13756cf",
+        "wrapper_current_sha256": "0a183f27a3816f5981af5982696c20e5e2693807da72ed036b8c558cb13756cf",
+        "wrapper_immutable_sha256": "7426018c9a2d0fcf0c5ae5d407a6a93583ff1921ed03b0ebed2c036d11891ac0"
+      },
+      {
+        "arrival_content_sha256": "300190337354ab6f28af2c18df9c92fe0c5dfb6295c22b6d66acfa00e7bacb24",
+        "arrival_identity_sha256": "300190337354ab6f28af2c18df9c92fe0c5dfb6295c22b6d66acfa00e7bacb24",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "d60b3c36c213bddb1ce40e68fc625d3d7415cf349d1b1f642507c5a924b09204",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/OPKC_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "ffa251a939c68ef49530abf938546d67b306ef89a60b44e87e61a38b98c1cf21",
+        "wrapper_current_sha256": "ffa251a939c68ef49530abf938546d67b306ef89a60b44e87e61a38b98c1cf21",
+        "wrapper_immutable_sha256": "33bdf74ef038d919ad50f58cb1c40609cb010a8422a03b0ef176fff9256bf40c"
+      },
+      {
+        "arrival_content_sha256": "3485da160527831cb7b865238efea426673a58fe5986673a8b26551885dfb846",
+        "arrival_identity_sha256": "3485da160527831cb7b865238efea426673a58fe5986673a8b26551885dfb846",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "a9a165d903c3ff04b0bc2751c8e703d28760d0a6f92260eaf4fb5e5df8b83034",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/WSSS_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "41bab861bd2c043fe8d0e0acd2b6c32e15bcfe1d8bf5284795ddb1402e0c091b",
+        "wrapper_current_sha256": "41bab861bd2c043fe8d0e0acd2b6c32e15bcfe1d8bf5284795ddb1402e0c091b",
+        "wrapper_immutable_sha256": "1b396e565588ffbc28834d59467f61f567c110a4a837fe9001b8dee7c253f381"
+      },
+      {
+        "arrival_content_sha256": "34af1035439234b5807f491971773380ee56a883c109e17c04d85262c1c9e96e",
+        "arrival_identity_sha256": "34af1035439234b5807f491971773380ee56a883c109e17c04d85262c1c9e96e",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "9850a015ec8975bd431e93ae2dc7bc855b34a71be127ba75d4e25f0eb5ad666e",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZBAA_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "8c46069fab3b0dc75dd1c123b9fc935a848f1ba4157b0ccc14c6bf2176cb17b1",
+        "wrapper_current_sha256": "8c46069fab3b0dc75dd1c123b9fc935a848f1ba4157b0ccc14c6bf2176cb17b1",
+        "wrapper_immutable_sha256": "891446b1b155884d32c030c08b5ca2db792732db3711f30a2f2f7bbeb8d5aa84"
+      },
+      {
+        "arrival_content_sha256": "369727b6326525fafdca0bbdbb732c7ca3c1a8b2e665ed1beecf46db1f67ebc1",
+        "arrival_identity_sha256": "369727b6326525fafdca0bbdbb732c7ca3c1a8b2e665ed1beecf46db1f67ebc1",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "ee71b61c383780ca929bc3ecf3c857145f4c7e5f1ae3f102b8ca5c0e9fea0d0b",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSPD_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "e65cee16066b9f45e88c197c468e9eb4e67cee050711a2ded5e438fe76a8c2bb",
+        "wrapper_current_sha256": "e65cee16066b9f45e88c197c468e9eb4e67cee050711a2ded5e438fe76a8c2bb",
+        "wrapper_immutable_sha256": "601bb89d80409ef2fb9e5eb43271ae3f17324193132e4df8b1e8b4d08a42eae0"
+      },
+      {
+        "arrival_content_sha256": "39ba386ff9199055b94d8e3662d47ce90d67673cdcec4997bfa6b2968e04c0dd",
+        "arrival_identity_sha256": "39ba386ff9199055b94d8e3662d47ce90d67673cdcec4997bfa6b2968e04c0dd",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "daf284a27267f806a4cdfaf3ad5076dde9f50073f0953da16324cc37fa2cd0ad",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUCK_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "1d4b76bf8487214e6bb02000e9fdc98392db9f6065d5ea5a79eca0280cf3b3fb",
+        "wrapper_current_sha256": "1d4b76bf8487214e6bb02000e9fdc98392db9f6065d5ea5a79eca0280cf3b3fb",
+        "wrapper_immutable_sha256": "844d27203a73693fc6d88225d0de31f102c5ede35442e42bc2095919b0f3af7c"
+      },
+      {
+        "arrival_content_sha256": "3f7c08e0affa2414410cce9bdc090f97027eba62d3d1cdb4427f0c4f0ca0539c",
+        "arrival_identity_sha256": "3f7c08e0affa2414410cce9bdc090f97027eba62d3d1cdb4427f0c4f0ca0539c",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "3148c51a75ed255e046db69c42d1cf4a4716610935850639e30e60d43bead950",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZHHH_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "83da9fd8ab68d21c293c39143c94c6f2c1bb882cc2931651bd78987ae5823f20",
+        "wrapper_current_sha256": "83da9fd8ab68d21c293c39143c94c6f2c1bb882cc2931651bd78987ae5823f20",
+        "wrapper_immutable_sha256": "517f254c57339cf0f6661579dc9d7e5749ddff519d0391e1144856aac66e57c5"
+      },
+      {
+        "arrival_content_sha256": "41be9e6208769369e2c445d04e87d899cf6098187728514373c8a516d4549c82",
+        "arrival_identity_sha256": "41be9e6208769369e2c445d04e87d899cf6098187728514373c8a516d4549c82",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "b21aff3be02ea88bd4e54fb9eef1cf244b8e47e81172d74c133eb4b147888bc9",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RPLL_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "1a804e6f8b4de3e107aeed87ff0fe8b1b163807ffa56d110735634b8e561d884",
+        "wrapper_current_sha256": "1a804e6f8b4de3e107aeed87ff0fe8b1b163807ffa56d110735634b8e561d884",
+        "wrapper_immutable_sha256": "beb99335e78e8e216f56088b75dc2b7494398983db898bcf183eed35b888657e"
+      },
+      {
+        "arrival_content_sha256": "4335f7125e8f6cc5156969581160b62631710e6c4c685a9601fe23e23188e4e8",
+        "arrival_identity_sha256": "4335f7125e8f6cc5156969581160b62631710e6c4c685a9601fe23e23188e4e8",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "5c682326b98a54fc415f709a7f72d179d7dac53c3e79ae25f657845c73542269",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "3e07b0c24dd94aec2d75e54f77b2463b62477dea0e31666c62c7dc82b0269b5c",
+        "wrapper_current_sha256": "3e07b0c24dd94aec2d75e54f77b2463b62477dea0e31666c62c7dc82b0269b5c",
+        "wrapper_immutable_sha256": "478f97872fde5e2de03e6797dd4cdb3a8e6239ab16cbc24109f88f1b9a5b475c"
+      },
+      {
+        "arrival_content_sha256": "493e8711c5509a9878b55980bd050013efc596334bc3e18d161a63fb6ac4dc7f",
+        "arrival_identity_sha256": "493e8711c5509a9878b55980bd050013efc596334bc3e18d161a63fb6ac4dc7f",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "7ff87e05931a3659e1cfb962c737f38c344478a2148f0b00aeaab62f826bba74",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSQD_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "5be02e1c0e9de7225c9cd6d8fe70330bf64b2fb9f663f691b76b85c989174922",
+        "wrapper_current_sha256": "5be02e1c0e9de7225c9cd6d8fe70330bf64b2fb9f663f691b76b85c989174922",
+        "wrapper_immutable_sha256": "d80f48d4ea9ecde0a2cb4586527a7d459cdc087b5e15be928ad58f81ec9f142c"
+      },
+      {
+        "arrival_content_sha256": "4ccd941175a79acdb019d35c7816ba185f14c4e380978dd714bddc2a3d475d89",
+        "arrival_identity_sha256": "4ccd941175a79acdb019d35c7816ba185f14c4e380978dd714bddc2a3d475d89",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "9b346e54008df212abcc4aafa63612f7c99bc313a2ff72f3abeb2a657094c0fb",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZHHH_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "c3b5080ac0d155c0ad57b9fee516ea5298ac469349ade757af04b291664750e9",
+        "wrapper_current_sha256": "c3b5080ac0d155c0ad57b9fee516ea5298ac469349ade757af04b291664750e9",
+        "wrapper_immutable_sha256": "44f021e2fe3e89c16b3eaf82d26d44eba9c5a39b6bb8286ebde09f743954ab3c"
+      },
+      {
+        "arrival_content_sha256": "513516edfce05303303749754e2ae831472370fdf5c51c2807b8ccc926aa37f3",
+        "arrival_identity_sha256": "513516edfce05303303749754e2ae831472370fdf5c51c2807b8ccc926aa37f3",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "c728fcc19e9f8d2d7b6f302109e1bbd2c01c764a853dceeb57e362b73db111ec",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZHHH_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "20822ae1660d58eb82fe0a6b3c5b1aaff326105928ba7144f0da03c085590ccf",
+        "wrapper_current_sha256": "20822ae1660d58eb82fe0a6b3c5b1aaff326105928ba7144f0da03c085590ccf",
+        "wrapper_immutable_sha256": "bd67929421149909fd321bca2c7221b17ec447d22f8a01a8b782fb0775d87de7"
+      },
+      {
+        "arrival_content_sha256": "51cbc002853a2cf32ad82dc626d301c5e86792a211a12e377117f9ad1988a72f",
+        "arrival_identity_sha256": "51cbc002853a2cf32ad82dc626d301c5e86792a211a12e377117f9ad1988a72f",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "cc4f3d4d10e575a92cfb9f8e408863dbb9af62b9ea4f6f4f78b7bb4de74a05d5",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGSZ_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "139fc15e7393ea34f3a06d9e9ab46b9cff02d512a4d4f493e902265a9033db02",
+        "wrapper_current_sha256": "139fc15e7393ea34f3a06d9e9ab46b9cff02d512a4d4f493e902265a9033db02",
+        "wrapper_immutable_sha256": "88fe68fe73cb186a77e72732d048f90a4d01a3ebf4ff6518324898ffa9752781"
+      },
+      {
+        "arrival_content_sha256": "55999734a0dfa7a0fbfaa88e9509461975398e168b5a4bf10a68ef4797e5bdb7",
+        "arrival_identity_sha256": "55999734a0dfa7a0fbfaa88e9509461975398e168b5a4bf10a68ef4797e5bdb7",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "f72cc43077e0560ef69980a7b8fe5beb622061a8950d57b12319eb42a98a0143",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUUU_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "16e678bad6957cfe6fa1090d5da362abf8eb3705344a77ce694e63acebb83f71",
+        "wrapper_current_sha256": "16e678bad6957cfe6fa1090d5da362abf8eb3705344a77ce694e63acebb83f71",
+        "wrapper_immutable_sha256": "0bc5c4cdd21f3bac7977c944447768ac3d33ec88f860ac4612d4399fc7fa7414"
+      },
+      {
+        "arrival_content_sha256": "57548cc8f8dc899b99d342252d5edd6d0feb36f4a562d17913706fa628e1dffb",
+        "arrival_identity_sha256": "57548cc8f8dc899b99d342252d5edd6d0feb36f4a562d17913706fa628e1dffb",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "4e0a925a12a4da980bd4d5f3c88191325b337f509793af30f8411074986b7c72",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSQD_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "89d8b07e8ec2d6dab028d20b7e777b394ff2062ab500cdba8330fc781b5dfc03",
+        "wrapper_current_sha256": "89d8b07e8ec2d6dab028d20b7e777b394ff2062ab500cdba8330fc781b5dfc03",
+        "wrapper_immutable_sha256": "04fbf4da1e09f8fdedc92085b4903c54c9dbd6e11ddd479cb1060d797e8bf83f"
+      },
+      {
+        "arrival_content_sha256": "59a0fc2acae0f2c70a352b7c7c1eca8da180598e7ca3d31e6669c23820188639",
+        "arrival_identity_sha256": "59a0fc2acae0f2c70a352b7c7c1eca8da180598e7ca3d31e6669c23820188639",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "39766199cf219b1326d2e0e9011e365d4ccf3e3493d66c1484ee556e41140fbf",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGSZ_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "af4f6b1c24a121d0fb64ec5108ce6c51dbabd4013c10f41572341b5e16d2da70",
+        "wrapper_current_sha256": "af4f6b1c24a121d0fb64ec5108ce6c51dbabd4013c10f41572341b5e16d2da70",
+        "wrapper_immutable_sha256": "0cfba34486e664f8de890eefee99f471984f6c24281b543be93bd9f15afc5c04"
+      },
+      {
+        "arrival_content_sha256": "64f34dadecb99be87706b93715ff95e84a3604afa4e1d0f49392ae4480965a76",
+        "arrival_identity_sha256": "64f34dadecb99be87706b93715ff95e84a3604afa4e1d0f49392ae4480965a76",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "9fbfef0da25844af60a7ea053f512404c7b0f996d26006eb92d91447f3bc7de6",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/NZWN_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "93f07d7f9b1abb009fcc6a64c7cf6a9b4f16c64b9c344ed69aedf92045f1445b",
+        "wrapper_current_sha256": "93f07d7f9b1abb009fcc6a64c7cf6a9b4f16c64b9c344ed69aedf92045f1445b",
+        "wrapper_immutable_sha256": "775135bf2f4eb01e13e04171db159769d634bf2a664413c6ac9a6e12bb95b5ed"
+      },
+      {
+        "arrival_content_sha256": "6d18d2d0cbd5da0893b266414ff01c23f46b24cdfbc4a2813428d56db55e4b0e",
+        "arrival_identity_sha256": "6d18d2d0cbd5da0893b266414ff01c23f46b24cdfbc4a2813428d56db55e4b0e",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "881aa2dbf21d2a246bee498706884e2789b6b54f35a30aeb2e638273cfca7198",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "1fc2f51ff12dee2ea17764851685de6be3a856f07d62a036c22926384c9fc683",
+        "wrapper_current_sha256": "1fc2f51ff12dee2ea17764851685de6be3a856f07d62a036c22926384c9fc683",
+        "wrapper_immutable_sha256": "eb3397d3c8d7d7043575273eff743e43ab6e6fe459073f01025ebbce69f48018"
+      },
+      {
+        "arrival_content_sha256": "7d63f95a200fdf9643cb57a242c55dcc6a997a58d399792e6d67192a2261984e",
+        "arrival_identity_sha256": "7d63f95a200fdf9643cb57a242c55dcc6a997a58d399792e6d67192a2261984e",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "0c8aba8f2655cd67f986ea40a994971eeca14190af365a38ce2b85b468447041",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSPD_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "7e58f4d4da7861a642704931da8a801e36a7e8a3f62888caea0ea31df3c674bd",
+        "wrapper_current_sha256": "7e58f4d4da7861a642704931da8a801e36a7e8a3f62888caea0ea31df3c674bd",
+        "wrapper_immutable_sha256": "6062e847e4d2c661fc9648417fcf545aa0f9a2563972ca216a297f32aa3ef661"
+      },
+      {
+        "arrival_content_sha256": "7e0396641982bca51b08779b881599e68610f18f6a60d1ea8db547e54e53b182",
+        "arrival_identity_sha256": "7e0396641982bca51b08779b881599e68610f18f6a60d1ea8db547e54e53b182",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "2d90517107bd9b43aaf4e3fe66516949fb0041dffbe4c2d5a64e7f7fdd7ba0d7",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RPLL_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "bde73f669f8344724b60ac4e80f4397cd68fa39578f52b6f2a91d3d19ff55f4e",
+        "wrapper_current_sha256": "bde73f669f8344724b60ac4e80f4397cd68fa39578f52b6f2a91d3d19ff55f4e",
+        "wrapper_immutable_sha256": "79d80c7b2d2ac8e267e4c7f7042df98498049fbac05042ba3e29a8c933e06130"
+      },
+      {
+        "arrival_content_sha256": "842ec9c05fd2a4743ff2398770e2e074f198099d97583cba3a4e86ff3a8f050f",
+        "arrival_identity_sha256": "842ec9c05fd2a4743ff2398770e2e074f198099d97583cba3a4e86ff3a8f050f",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "f18681b22273a138f115617ea285de8d74873a7ed0cb0cc71637a6d7c6b8154b",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/WSSS_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "0bae24a85877c76e4a642d91bf8c5d5c8222ce12ffb001c8ef9f687f0a63b8ba",
+        "wrapper_current_sha256": "0bae24a85877c76e4a642d91bf8c5d5c8222ce12ffb001c8ef9f687f0a63b8ba",
+        "wrapper_immutable_sha256": "f8782fc8e0a26d7d91f576357f16ab59d7a5cafd036e926edbe612f77bb27d69"
+      },
+      {
+        "arrival_content_sha256": "85c5b7fbc26b9bf039c0696ff12ca31a5d1c1d0af646d02209e384bff3ddf017",
+        "arrival_identity_sha256": "85c5b7fbc26b9bf039c0696ff12ca31a5d1c1d0af646d02209e384bff3ddf017",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "f0165c44380e07e839568ba07bf07e3cc50086209cde86ad190f6c1c8e3f2cab",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/NZWN_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "a4435f2efe2cd392c7867cb6df3f5a3323ea078547474f78878334ce20f0e4fd",
+        "wrapper_current_sha256": "a4435f2efe2cd392c7867cb6df3f5a3323ea078547474f78878334ce20f0e4fd",
+        "wrapper_immutable_sha256": "c413a13d94218435151a9ae3acf79708afb55b0d2067873afa83f445e72c8a96"
+      },
+      {
+        "arrival_content_sha256": "8caa568135054fb9026dec54704546f8aa7b5bc3ec4e0f55391e143fe937600e",
+        "arrival_identity_sha256": "8caa568135054fb9026dec54704546f8aa7b5bc3ec4e0f55391e143fe937600e",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "e3b11f3ea4f98847e79d4dc4b8fbe5959e69559d325a80092f0b2c1c25533f9d",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUUU_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "8a0a22299797bb026f3bedf8620bc7a2055a989852e3d1eb93b2fc0191899357",
+        "wrapper_current_sha256": "8a0a22299797bb026f3bedf8620bc7a2055a989852e3d1eb93b2fc0191899357",
+        "wrapper_immutable_sha256": "d4bb91b6b0068a90ecae5d0c69d238172765b3ca5583bf136972895a2e17aa78"
+      },
+      {
+        "arrival_content_sha256": "9aa6e4c5daa71bcddc494a3df583b3f6596c7a48a96e91cb11f53651c5cbe9ca",
+        "arrival_identity_sha256": "9aa6e4c5daa71bcddc494a3df583b3f6596c7a48a96e91cb11f53651c5cbe9ca",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "d8646998b63407036ed97cf6e37a992c3e3d6b9510c2bb94aa2c1645df854da6",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGGG_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "608df1828b118a6cc458ef1eeaaefe67a1401e8bf24534c17f043d04314a49db",
+        "wrapper_current_sha256": "608df1828b118a6cc458ef1eeaaefe67a1401e8bf24534c17f043d04314a49db",
+        "wrapper_immutable_sha256": "f7906e1af7d91e070abde8c142ec429fdfbf43ed37ef3b9cca7e7a0c55ca5e26"
+      },
+      {
+        "arrival_content_sha256": "9c48ae462115c2d3a8dc4334b2644cd9f1c6fb3de539a6a6512e16379e8410a8",
+        "arrival_identity_sha256": "9c48ae462115c2d3a8dc4334b2644cd9f1c6fb3de539a6a6512e16379e8410a8",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "7149109aba76e40a8dfdec3b46ee2888711c53a49f7458fb2b5920154ad51020",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "8a7ebd0197d779edbf700a070cc10cc081867bb881056e22d821f889c0aba0e6",
+        "wrapper_current_sha256": "8a7ebd0197d779edbf700a070cc10cc081867bb881056e22d821f889c0aba0e6",
+        "wrapper_immutable_sha256": "b0d3b255edbdb9121b983ff3ec23477cef156b507c65de940d9cc1af063ffb05"
+      },
+      {
+        "arrival_content_sha256": "9eddb96358a989c735f242aba8ad43c55f71de338e8f6893aac4adcd2e20fb05",
+        "arrival_identity_sha256": "9eddb96358a989c735f242aba8ad43c55f71de338e8f6893aac4adcd2e20fb05",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "b0b1457e29e8dcc7c69306b0ce23788a410921e3d8dd22c7400d1b018c7de5f7",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "b97e93d0b3c84f63d289d99cb9193e7d4dd7f94d199304ff9924a2f7df178503",
+        "wrapper_current_sha256": "b97e93d0b3c84f63d289d99cb9193e7d4dd7f94d199304ff9924a2f7df178503",
+        "wrapper_immutable_sha256": "8f6a084ff78e7c533959cef6c36c2589837ce8996e973feb5c0c2c96c6506d59"
+      },
+      {
+        "arrival_content_sha256": "a651b5f298638c9b92fea312b875e33f016dc5548c4b7f1a146e7e993334e153",
+        "arrival_identity_sha256": "a651b5f298638c9b92fea312b875e33f016dc5548c4b7f1a146e7e993334e153",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "31c25c7392daf0d6be30550177e312a3c2c06c07ca3e2eb6ade937bddc0ae16f",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/OPKC_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "711ed769839873fd27b1c7628bc1a1356580c6b4fcbf0c2603c7b874e7dd37fa",
+        "wrapper_current_sha256": "711ed769839873fd27b1c7628bc1a1356580c6b4fcbf0c2603c7b874e7dd37fa",
+        "wrapper_immutable_sha256": "3ec295812448b9bc61394a315ba041a332ad3e15cd5dba2f56a45e6a0fe5fb2a"
+      },
+      {
+        "arrival_content_sha256": "a876dff8ff8f8cb27819c3a0a2e48bea86d3b347e84ffddd581f39ebaa128f1c",
+        "arrival_identity_sha256": "a876dff8ff8f8cb27819c3a0a2e48bea86d3b347e84ffddd581f39ebaa128f1c",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "06027b7659d402f38e2d197ba84f5c78c7c3ed1cc7ff4ca3696130c6b09c62bf",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZBAA_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "9cad431f23fb40a6eff90186cafe917510cdf3dcd4174299c154e24e256c74bd",
+        "wrapper_current_sha256": "9cad431f23fb40a6eff90186cafe917510cdf3dcd4174299c154e24e256c74bd",
+        "wrapper_immutable_sha256": "9103edac2a37b24f6c64240f9ba2b01966d0b4ac4e2eb95ad63fd6dd81283e47"
+      },
+      {
+        "arrival_content_sha256": "ac8986b978e8f0649e6452f5e595d155f6b964eda4f52be74cce30bd4b833f8f",
+        "arrival_identity_sha256": "ac8986b978e8f0649e6452f5e595d155f6b964eda4f52be74cce30bd4b833f8f",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "b9fb46444db48d075a7484dbfb7cfad9a6beb7228047c0a17b30b17ad9c26603",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGGG_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "b61759c04cbc229eaeba870ea04b49f9268e0ce314889dcd30284ee6ac6ac48c",
+        "wrapper_current_sha256": "b61759c04cbc229eaeba870ea04b49f9268e0ce314889dcd30284ee6ac6ac48c",
+        "wrapper_immutable_sha256": "2e68b6b7d654c03dab27acbec1c2e5282225d667e9d5c8452e6b604a720af6f3"
+      },
+      {
+        "arrival_content_sha256": "af6e8e6205c9de9f13e5b8adece426c1dd68f459997a6c18fe02f9df436963fd",
+        "arrival_identity_sha256": "af6e8e6205c9de9f13e5b8adece426c1dd68f459997a6c18fe02f9df436963fd",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "9857b53f7a06ee78ee49c031dc487cf72d94509fad80113a20968655147596c4",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSQD_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "976a29628740c266362b9dc2de2874281f76a3a1a5610cc9a8b74fbb64571249",
+        "wrapper_current_sha256": "976a29628740c266362b9dc2de2874281f76a3a1a5610cc9a8b74fbb64571249",
+        "wrapper_immutable_sha256": "e65ccc42d1a8671a538e313a60e21a266b89b2a07dca06562f51b9b9dd83ac6d"
+      },
+      {
+        "arrival_content_sha256": "b0d8f1ad6bc33f7b90e30825317ea408170cd0598a81906f89cc2fd6d06eff6a",
+        "arrival_identity_sha256": "b0d8f1ad6bc33f7b90e30825317ea408170cd0598a81906f89cc2fd6d06eff6a",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "0206c325c733fdf7cc62ec923970459cc76df0a2a5bf5dbc377b444ae961a271",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/NZWN_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "70d866ff0f1b9b95080946182483d4fbd6ffb9f46969461c0b23d4eb76d2ac7f",
+        "wrapper_current_sha256": "70d866ff0f1b9b95080946182483d4fbd6ffb9f46969461c0b23d4eb76d2ac7f",
+        "wrapper_immutable_sha256": "2762295cc6e99a42849453abd77b3612d803e44d22cfe8e084a5ab122466be3f"
+      },
+      {
+        "arrival_content_sha256": "b973cca5b5d7c49c43db18ad9d67be3fe9685f0e22c0b2ca7bd0daeb7f77fd52",
+        "arrival_identity_sha256": "b973cca5b5d7c49c43db18ad9d67be3fe9685f0e22c0b2ca7bd0daeb7f77fd52",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "d96789986f55caa2916cde1ae3ba8900355009626865e0b48cb82d1d37068288",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUCK_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "3bb878454e25fc9fde011aa6ca399858394044d74fd67388609bebbe6d8b7e0f",
+        "wrapper_current_sha256": "3bb878454e25fc9fde011aa6ca399858394044d74fd67388609bebbe6d8b7e0f",
+        "wrapper_immutable_sha256": "a8172a5aef874c7e0eee0d844be5dde108ed5e4b5af3b53e798623c7e626484e"
+      },
+      {
+        "arrival_content_sha256": "bb448961ad3580023177a2faddf91c7c7f5d15be1b42f5acfcc90a96bbeb615c",
+        "arrival_identity_sha256": "bb448961ad3580023177a2faddf91c7c7f5d15be1b42f5acfcc90a96bbeb615c",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "8612c087737d375982ed6176e94174f16ef647d37cf2dec07390e184ca335c24",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZBAA_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "9ad74a079c7dbfd5a24de1667de79286552518e792a877333528c0cf70cbdfca",
+        "wrapper_current_sha256": "9ad74a079c7dbfd5a24de1667de79286552518e792a877333528c0cf70cbdfca",
+        "wrapper_immutable_sha256": "8e30b867474dacae1c8050f9ebbdc3bff1e10cbebcb2121cd1e81c6c2920c022"
+      },
+      {
+        "arrival_content_sha256": "bcf532d1baf19f53f01c654c3e89c40f44bae7b8eb6aba7749a1d0019c33a218",
+        "arrival_identity_sha256": "bcf532d1baf19f53f01c654c3e89c40f44bae7b8eb6aba7749a1d0019c33a218",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "4f214ec8bbab41442d609496492700f875bbaa34ccf1d658b79661c4d8f0eb32",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RPLL_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "ac3669663be9a33802dccb0a3b131e746dab0eb768eec2250695272c816eafa6",
+        "wrapper_current_sha256": "ac3669663be9a33802dccb0a3b131e746dab0eb768eec2250695272c816eafa6",
+        "wrapper_immutable_sha256": "2123c6ea0e6d683cc39f88db4116483ebdd421e5baf7b3ff11f0d6d906cd9a51"
+      },
+      {
+        "arrival_content_sha256": "cea66b89ae2a4643876b3e1c178bd8fac0948db742ae9d1a0b2e646637869037",
+        "arrival_identity_sha256": "cea66b89ae2a4643876b3e1c178bd8fac0948db742ae9d1a0b2e646637869037",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "3f04b9c418e86df4e5c08a48271ebda2e9f7b4959d4c852f4bd76d4b3382be39",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZGGG_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "c9c648c3ec5bbea5f8deaf2ae2606b4d61f51e578c42d86a83c470dc2a321fcd",
+        "wrapper_current_sha256": "c9c648c3ec5bbea5f8deaf2ae2606b4d61f51e578c42d86a83c470dc2a321fcd",
+        "wrapper_immutable_sha256": "8c2c3d68b11ddc5fb05addcfeae5c391f90ceb67a931f3265804c1e83eb6f588"
+      },
+      {
+        "arrival_content_sha256": "cefbd03d655e333352fadc3d241cd2495b0eac5584e84ddc013346804875a39e",
+        "arrival_identity_sha256": "cefbd03d655e333352fadc3d241cd2495b0eac5584e84ddc013346804875a39e",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "913ea681186487e48ac71e33a43fa44a4638ed7cbe2d17d945f16653e3eb18fa",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RPLL_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "eb0898b31159b892ef09f13379cd3330204410f2e0cc3c70a85468b49c361b3e",
+        "wrapper_current_sha256": "eb0898b31159b892ef09f13379cd3330204410f2e0cc3c70a85468b49c361b3e",
+        "wrapper_immutable_sha256": "bc81fa1d39d995bc3dffa8cf870ba6b1f92349b7c5419e55e4015638c6e4dd8c"
+      },
+      {
+        "arrival_content_sha256": "d20464d220239f6081c1e5bd8e640a8961d5807ef12e66305667a5e22da16eaa",
+        "arrival_identity_sha256": "d20464d220239f6081c1e5bd8e640a8961d5807ef12e66305667a5e22da16eaa",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "8b6e425cbeb2a5975eff9e340b675aa5620b7d1e192aaec5b9fce71669ed9a1d",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "695acd3c7c728d13ebb5f98d1f60d7836af9e9716193925244e443684b58e0c2",
+        "wrapper_current_sha256": "695acd3c7c728d13ebb5f98d1f60d7836af9e9716193925244e443684b58e0c2",
+        "wrapper_immutable_sha256": "5e7d941215d9152ff6291d16984fa0f8d3416907eb2e7be51a71aa7b5693fca1"
+      },
+      {
+        "arrival_content_sha256": "da7d19bb0e39d8af31c09bd5ed28d738e04b5052ae2c72226b4353ddf8f5d604",
+        "arrival_identity_sha256": "da7d19bb0e39d8af31c09bd5ed28d738e04b5052ae2c72226b4353ddf8f5d604",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "f7a91ea5ad11783f8a6c121dc6abb95463f36ab54c499972f4e5f0d7b05ce821",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RCSS_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "4ea3dd620f741915224b0f21dd5a4a9f3eed96fae74db90dfd6bca98d0793335",
+        "wrapper_current_sha256": "4ea3dd620f741915224b0f21dd5a4a9f3eed96fae74db90dfd6bca98d0793335",
+        "wrapper_immutable_sha256": "90ebd35e9d7a3083784f9fea3dfbd8305d79318c929da77464c32258dcce2755"
+      },
+      {
+        "arrival_content_sha256": "e24fb4eae2dcef5e8189e29bac4bc1e7d3d23994d9041aec143ff36831c502ff",
+        "arrival_identity_sha256": "e24fb4eae2dcef5e8189e29bac4bc1e7d3d23994d9041aec143ff36831c502ff",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "6c1905a4776f393f947e29a4494d30eb3fc0ff13a7c282413de41487f815d685",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "0b65fef437a3d9e6f51dfa2a210147742c13ad08d77cec33c0214638d743baf4",
+        "wrapper_current_sha256": "0b65fef437a3d9e6f51dfa2a210147742c13ad08d77cec33c0214638d743baf4",
+        "wrapper_immutable_sha256": "0ee8f93ed66d145accc4a4f316e22b8c09d4c3b16a63474afc18b13ab0618cb2"
+      },
+      {
+        "arrival_content_sha256": "e2d59cf9745ebce2f18ccba2df5079f1b2c26830c4097aad3a490258aa6c0026",
+        "arrival_identity_sha256": "e2d59cf9745ebce2f18ccba2df5079f1b2c26830c4097aad3a490258aa6c0026",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "94f2aa2bcd450411b16fc99967f335e44448743afed6103d2f261d87cf91696b",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZBAA_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "7b901ffb002830fcfdd91c3256cbbc27905a05efbe39968939386c4ed3795838",
+        "wrapper_current_sha256": "7b901ffb002830fcfdd91c3256cbbc27905a05efbe39968939386c4ed3795838",
+        "wrapper_immutable_sha256": "6628569ded63103ce9f4abbe89f0866d533159ddf80e4fa42dbc5d084aff2278"
+      },
+      {
+        "arrival_content_sha256": "e87ea0ddc7c6fbc0f566d8ae39b6641915331f2cae4f5b1d30aec3f259578d3a",
+        "arrival_identity_sha256": "e87ea0ddc7c6fbc0f566d8ae39b6641915331f2cae4f5b1d30aec3f259578d3a",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "5f2609be49e2b85e905880dabad3e647045b0de4b424508d318758699135bc4f",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RCSS_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "a80249ba3ca15418d79de5b45f048a851883805441115e3770bc1e09301c95ae",
+        "wrapper_current_sha256": "a80249ba3ca15418d79de5b45f048a851883805441115e3770bc1e09301c95ae",
+        "wrapper_immutable_sha256": "cbacc1041b5bb3755f9a1b6f6abb2bbca9f7d2209245de4867cbf2a8618f786a"
+      },
+      {
+        "arrival_content_sha256": "e9fe47cab0b71ac7ef4de1d54fc66fc97094d46c14052c4466275410870abb76",
+        "arrival_identity_sha256": "e9fe47cab0b71ac7ef4de1d54fc66fc97094d46c14052c4466275410870abb76",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "e325ce15d1175b554545877429a95e0dea31a01217832f3e65bddb65deab0139",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZHHH_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "0b66433fea3dec5a1a823c04540499e10d869316271818a6b27ae46b671cb56d",
+        "wrapper_current_sha256": "0b66433fea3dec5a1a823c04540499e10d869316271818a6b27ae46b671cb56d",
+        "wrapper_immutable_sha256": "35541af8351ec0911f111baa5a03d2fa43702b4e7980136f3a0cb54650d39d9c"
+      },
+      {
+        "arrival_content_sha256": "ecf0cb897f9edafc76c02a803139c6dd4922434b2519e592e25711b6658dac41",
+        "arrival_identity_sha256": "ecf0cb897f9edafc76c02a803139c6dd4922434b2519e592e25711b6658dac41",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "e56fd83cb08e9167febc1bbf53e0c743e72857a9e6a352b83b9e6693bdf54044",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSPD_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "61cfee06370a560473888db3da292c707038acfe1a5f447b5b6726c32fd068cf",
+        "wrapper_current_sha256": "61cfee06370a560473888db3da292c707038acfe1a5f447b5b6726c32fd068cf",
+        "wrapper_immutable_sha256": "fd1ff00c486b06d0793955a56d86afc4c956b0c8c34567171efe61a0c3349f76"
+      },
+      {
+        "arrival_content_sha256": "ee6dc06f4c1bc64a14d9b300128949c8aaaa0efeed3ab669167c6ac9b09dcbaf",
+        "arrival_identity_sha256": "ee6dc06f4c1bc64a14d9b300128949c8aaaa0efeed3ab669167c6ac9b09dcbaf",
+        "arrival_raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+        ],
+        "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+        "arrival_timing_identity_sha256": "d1b8fa3faa4fb010b269f9c598a8ddce9a259c589d868ce71615e89024cfdf26",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260731T180000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/fe219514350717911d4a1cce2d6b18322c00ac20120365730997638d1cf2a23d.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea.grib2"
+        ],
+        "wrapper_capture_sha256": "645c451408b4b8a730354a116df68c33c8ba65914cfad525a61fbb489f29be78",
+        "wrapper_current_sha256": "645c451408b4b8a730354a116df68c33c8ba65914cfad525a61fbb489f29be78",
+        "wrapper_immutable_sha256": "36493bb60f9d9d2e6e1f4a100c628a101d04590540f5a76fcbeb5008b5989d37"
+      },
+      {
+        "arrival_content_sha256": "f699e69d3031df693c00bbc3d6bc47ee0c8fafbc844dabd16491f553f18ec1af",
+        "arrival_identity_sha256": "f699e69d3031df693c00bbc3d6bc47ee0c8fafbc844dabd16491f553f18ec1af",
+        "arrival_raw_payload_sha256s": [
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+        ],
+        "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+        "arrival_timing_identity_sha256": "87516edcfca642e6acdce59e4eba4c6c28e224d8d53c1834a0c6f73ab1db5817",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RCSS_20260801T060000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5.grib2"
+        ],
+        "wrapper_capture_sha256": "451c3049130a4429c2db35351ddcaf38ecf91cafea58baaffff236dcf08cfaa0",
+        "wrapper_current_sha256": "451c3049130a4429c2db35351ddcaf38ecf91cafea58baaffff236dcf08cfaa0",
+        "wrapper_immutable_sha256": "deef583b0254637768a5ec21226511d6c5f657456ec4f9d3c5a35d8faa44dbf5"
+      },
+      {
+        "arrival_content_sha256": "fbaac22563e8080eb124d3ac37d64cf082ef8a8f1270c03cbf0f65f3e2974d19",
+        "arrival_identity_sha256": "fbaac22563e8080eb124d3ac37d64cf082ef8a8f1270c03cbf0f65f3e2974d19",
+        "arrival_raw_payload_sha256s": [
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+        "arrival_timing_identity_sha256": "4e00877cfc16aa3c216ad919ae6037a60fa28751ca24e7dfb1f90674446ba1ce",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZUCK_20260801T000000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/raw/86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2.grib2"
+        ],
+        "wrapper_capture_sha256": "6713b8cbc2f0dd682cac1d4383d4c247046d164bd607e79126a4d3743ddd8c6a",
+        "wrapper_current_sha256": "6713b8cbc2f0dd682cac1d4383d4c247046d164bd607e79126a4d3743ddd8c6a",
+        "wrapper_immutable_sha256": "52d9d15b8f689372b6c91bc8becd2cf475f9e6a71165cc8271a25375385ce6b6"
+      },
+      {
+        "arrival_content_sha256": "fdcbd77dc119de54ab155b6be70c67462c92fd585900df8f90a03fc5c31e236c",
+        "arrival_identity_sha256": "fdcbd77dc119de54ab155b6be70c67462c92fd585900df8f90a03fc5c31e236c",
+        "arrival_raw_payload_sha256s": [
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+        "arrival_timing_identity_sha256": "bbb5ce1b6c84e0f8fac22703f8cd32aa9b9fcf884430d91cfe0b0bd0572ba8bf",
+        "formal_consumed_at_utc": "2026-08-01T07:44:42Z",
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/ZSQD_20260801T120000Z.json",
+        "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8.json",
+        "verified_retained_raw_paths": [
+          "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/raw/cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e.grib2"
+        ],
+        "wrapper_capture_sha256": "e2f7c340e5c1324015d1dbaaca1df3c9d4d0288a9f96ee3575dcdfedb7a4d8f3",
+        "wrapper_current_sha256": "e2f7c340e5c1324015d1dbaaca1df3c9d4d0288a9f96ee3575dcdfedb7a4d8f3",
+        "wrapper_immutable_sha256": "8afb275628fe40281d99cf658183f800a48b9e33466fe9c9c52364a81dcb4fe0"
+      }
+    ],
+    "eligible_closed_awc_truth_content_sha256s": [
+      "181ee4616e128b0a4e8945bf11f283885ed512a60618ccc1304872ca5f3471c8",
+      "1a36b57b598d8b483bbb3c68043397d8f975a5c1470d88e197eebab341525fb7",
+      "2b5d1ced65fc4c28081f1b4c5bd7b972b15a266d71b6b9b81e6cd02405763a9d",
+      "32a189cca9c39f62d561684b871b8b2e22d8245af142ff824b7fee50c536652e",
+      "42543cc90918940f9ec57e8f297bdf6533f15e78b0c93f675e4b010b11a9bf4e",
+      "5ec153dbddadebc9001c25ca17b5425b6c47d644e14d508d0ee13768d2deec53",
+      "83649ed311e76e75159b85a3c782b26371efad9fdb8153863aae7fbc4e106e74",
+      "95a786ba4773610db98f5d119baa3ab71d2585f08241e5cc4b08a783362413ad",
+      "9cd5ddff820b8ecfec9069ef82cbf0e5c52c63ec1a178a88bdbcdbd0e563e533",
+      "ac9db7211d777b20562eb6f3d0cd3a265755fa09358815d2cdc205158f043d63",
+      "c28e5da0f6c90ecfbb1004aaf201371150ce54b303563ceb9726c416317e2ad7",
+      "cdf701c733bca2b60eeaf697cc90ae62fc0598e3e59ffb0992ac92ccc2ac8a2e",
+      "d4b4cbfd7a332c38c16e3818736d0323d52cd88f94fe9fe0449caf9a7c38785e",
+      "e86b43adb6eb0c525143f276a545173fea4ec28934f1112a4612a999ab9b952a",
+      "e9b610a855b7b235d8a93908a3bde469f7bb6c3261fdb0d777867cd56dc5c381"
+    ],
+    "eligible_curve_sha256s": [
+      "0d735cc7a6ac12a94de26fa535f0aae7083e7c07c9b5e799606a94c2575fa3c3",
+      "17c4a4510480f7009b213b4729912e88df85313f995c98bcc98eae1520c5a171",
+      "1d31c895f33089ecfde4683ad42908f022f0012bf4116642ff5c91c05e353731",
+      "65bcdfb77658c4187fa0d3ad63811f61563d0f17fb22349cefe8de6bf7ff589e",
+      "682c3a026832e784dacedad9840ee61c595d8a732893c518422d51f5a12cef4a",
+      "7c3b60dafcf88de79f7f41eab1102b365928974ae323e08ff0fbe7c3e39b4366",
+      "7d6e7dd89d59add37f5267ecee0d4d8d5ec6d5850c5cac6c2e81a02ed60d0bbc",
+      "8c14517d423eea72272e15591f8fe3bdc08b152b7a4e0feafea2964fcfdcfa62",
+      "b26b99e7ad66525530abd31f3d549f1fe81e83bdd07c984e328d6cc2562fbfd4",
+      "b5b5036cd8930ee192957e17bae67fe2cf9c643a8dafe411cdd466fe235eb2b3",
+      "b8c1e86fce8e575142ea4733603e33cd4f2e8926b50aa4583daf2b2abd31bf43",
+      "c317cee5f22c8601e72a0f3f8c4d87d02dd8108d40f6fe16c4f925c7d7d86db9",
+      "cc9e2d32e3cce4a304ef8c57e370da557eb8d7b9afdb95b5cbb17168fd73bc56",
+      "e69fecd9e35885a8fe4cb2e9a2d36b46a787aa4eeadc749278d70c1d207b72ce",
+      "f1d1426e3331715845fbf3bb22ac213e060bfde1d52ec5ba312b9af7b7a79349"
+    ]
+  },
+  "readiness": {
+    "closed_curve_points_insufficient_station_count": 0,
+    "closed_curve_points_insufficient_station_ids": [],
+    "closed_truth_available_station_count": 15,
+    "closed_truth_missing_station_count": 6,
+    "closed_truth_missing_station_ids": [
+      "EFHK",
+      "LTAC",
+      "OEJN",
+      "RKPK",
+      "VILK",
+      "WMKK"
+    ],
+    "curve_count": 45,
+    "downloads_required": false,
+    "next_action": "WAIT_FOR_ACCEPTED_AWC_TRUTH",
+    "next_action_not_before_utc": "2026-08-01T21:03:52Z",
+    "next_settlement_close_station_ids": [
+      "EDDM",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "LEMD",
+      "LFPB",
+      "LIMC"
+    ],
+    "next_settlement_close_utc": "2026-08-01T22:00:00Z",
+    "open_station_count": 24,
+    "reuses_retained_official_aifs_raw": true
+  },
+  "schema": "aifs_deterministic_training_facts_runner_receipt_v1",
+  "skipped_reason_counts": {
+    "closed_awc_truth_missing": 6,
+    "station_local_day_not_closed": 24
+  },
+  "state": "ACCUMULATING_STRICT_OOS",
+  "station_id": null,
+  "station_inventory": [
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "CYYZ",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Toronto"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "EDDM",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Berlin"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "EFHK",
+      "station_local_day_state": "closed",
+      "target_timezone": "Europe/Helsinki"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "EGLC",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/London"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "EHAM",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Amsterdam"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "EPWA",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Warsaw"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "FACT",
+      "station_local_day_state": "open",
+      "target_timezone": "Africa/Johannesburg"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KATL",
+      "station_local_day_state": "open",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KAUS",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KBKF",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Denver"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KDAL",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KHOU",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KLAX",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KLGA",
+      "station_local_day_state": "open",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KMIA",
+      "station_local_day_state": "open",
+      "target_timezone": "America/New_York"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KORD",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Chicago"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KSEA",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "KSFO",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Los_Angeles"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "LEMD",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Madrid"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "LFPB",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Paris"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "LIMC",
+      "station_local_day_state": "open",
+      "target_timezone": "Europe/Rome"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "LTAC",
+      "station_local_day_state": "closed",
+      "target_timezone": "Europe/Istanbul"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "MMMX",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Mexico_City"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "MPMG",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Panama"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "95a786ba4773610db98f5d119baa3ab71d2585f08241e5cc4b08a783362413ad",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 3,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "NZWN",
+      "station_local_day_state": "closed",
+      "target_timezone": "Pacific/Auckland"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "OEJN",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Riyadh"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "1a36b57b598d8b483bbb3c68043397d8f975a5c1470d88e197eebab341525fb7",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "OPKC",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Karachi"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "9cd5ddff820b8ecfec9069ef82cbf0e5c52c63ec1a178a88bdbcdbd0e563e533",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "RCSS",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Taipei"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "ac9db7211d777b20562eb6f3d0cd3a265755fa09358815d2cdc205158f043d63",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "RJTT",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Tokyo"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "RKPK",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "e86b43adb6eb0c525143f276a545173fea4ec28934f1112a4612a999ab9b952a",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "RKSI",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Seoul"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "e9b610a855b7b235d8a93908a3bde469f7bb6c3261fdb0d777867cd56dc5c381",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "RPLL",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Manila"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "SAEZ",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Argentina/Buenos_Aires"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "STATION_LOCAL_DAY_OPEN",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "SBGR",
+      "station_local_day_state": "open",
+      "target_timezone": "America/Sao_Paulo"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "VILK",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Kolkata"
+    },
+    {
+      "accepted_awc_truth_available": false,
+      "accepted_awc_truth_content_sha256": null,
+      "closed_day_outcome": "CLOSED_AWC_TRUTH_MISSING",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "WMKK",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Kuala_Lumpur"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "181ee4616e128b0a4e8945bf11f283885ed512a60618ccc1304872ca5f3471c8",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "WSSS",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Singapore"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "32a189cca9c39f62d561684b871b8b2e22d8245af142ff824b7fee50c536652e",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZBAA",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "d4b4cbfd7a332c38c16e3818736d0323d52cd88f94fe9fe0449caf9a7c38785e",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZGGG",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "42543cc90918940f9ec57e8f297bdf6533f15e78b0c93f675e4b010b11a9bf4e",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZGSZ",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "cdf701c733bca2b60eeaf697cc90ae62fc0598e3e59ffb0992ac92ccc2ac8a2e",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZHHH",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "2b5d1ced65fc4c28081f1b4c5bd7b972b15a266d71b6b9b81e6cd02405763a9d",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZSPD",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "c28e5da0f6c90ecfbb1004aaf201371150ce54b303563ceb9726c416317e2ad7",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZSQD",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "5ec153dbddadebc9001c25ca17b5425b6c47d644e14d508d0ee13768d2deec53",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZUCK",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    },
+    {
+      "accepted_awc_truth_available": true,
+      "accepted_awc_truth_content_sha256": "83649ed311e76e75159b85a3c782b26371efad9fdb8153863aae7fbc4e106e74",
+      "closed_day_outcome": "CLOSED_AWC_FACT_ELIGIBLE",
+      "curve_point_count": 4,
+      "curve_state": "COMPLETE",
+      "event_date": "2026-08-01",
+      "minimum_curve_point_count": 3,
+      "station_id": "ZUUU",
+      "station_local_day_state": "closed",
+      "target_timezone": "Asia/Shanghai"
+    }
+  ],
+  "training_batch": {
+    "as_of_utc": "2026-08-01T21:03:52Z",
+    "boundary": {
+      "calls_order_gateway": false,
+      "creates_formal_provider_binding": false,
+      "formal_p0_eligible": false,
+      "places_orders": false,
+      "writes_native_ensemble_tables": false,
+      "writes_production_database": false
+    },
+    "content_sha256": "dc3cb34ca2d4f91e2cca52b5e1e7302900d28bc88e05636eeab59602404153d1",
+    "fact_count": 15,
+    "facts": [
+      {
+        "arrival_content_sha256s": [
+          "64f34dadecb99be87706b93715ff95e84a3604afa4e1d0f49392ae4480965a76",
+          "85c5b7fbc26b9bf039c0696ff12ca31a5d1c1d0af646d02209e384bff3ddf017",
+          "b0d8f1ad6bc33f7b90e30825317ea408170cd0598a81906f89cc2fd6d06eff6a"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "0adba7713b4e76bf0516e6362ca5910ccd4d4e165f8569dd685afe563d56d9f4",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "b26b99e7ad66525530abd31f3d549f1fe81e83bdd07c984e328d6cc2562fbfd4",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 8.654,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 11.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T12:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "NZWN",
+        "target_timezone": "Pacific/Auckland",
+        "training_fact_id": "aifs-det-0adba7713b4e76bf0516e6362ca5910c",
+        "truth_available_at_utc": "2026-08-01T12:04:26Z",
+        "truth_content_sha256": "95a786ba4773610db98f5d119baa3ab71d2585f08241e5cc4b08a783362413ad"
+      },
+      {
+        "arrival_content_sha256s": [
+          "26f9a344629ec2e67985f963d98d2929f31aec3a0d0e207c6740e149a9090dfe",
+          "a651b5f298638c9b92fea312b875e33f016dc5548c4b7f1a146e7e993334e153",
+          "300190337354ab6f28af2c18df9c92fe0c5dfb6295c22b6d66acfa00e7bacb24",
+          "1a328bb237f16a753505aa7ad45ad973f2277d121971ca54b007b841bf893e0f"
+        ],
+        "arrival_receipt_sha256s": [
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+          "38b9ac3ad6536269e53a5a1731db2a68ccb616bea161520f627555a2abfa4f80"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "3f33ac89c5aee957c7fd9b90a09c2c4d8cc47ecc0eca8d50650b3869d66461bb",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "cc9e2d32e3cce4a304ef8c57e370da557eb8d7b9afdb95b5cbb17168fd73bc56",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 32.433,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 35.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T19:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "OPKC",
+        "target_timezone": "Asia/Karachi",
+        "training_fact_id": "aifs-det-3f33ac89c5aee957c7fd9b90a09c2c4d",
+        "truth_available_at_utc": "2026-08-01T19:14:43Z",
+        "truth_content_sha256": "1a36b57b598d8b483bbb3c68043397d8f975a5c1470d88e197eebab341525fb7"
+      },
+      {
+        "arrival_content_sha256s": [
+          "e87ea0ddc7c6fbc0f566d8ae39b6641915331f2cae4f5b1d30aec3f259578d3a",
+          "06da33c311d21b2c5f093d28370d0ebe8ce44a21aeb8665ae43a7e0cf6255d11",
+          "f699e69d3031df693c00bbc3d6bc47ee0c8fafbc844dabd16491f553f18ec1af",
+          "da7d19bb0e39d8af31c09bd5ed28d738e04b5052ae2c72226b4353ddf8f5d604"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "8f21787fd962ee64d586a5f8e82893efb6c77e0c5f50b99bd2074ad923da1023",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "e69fecd9e35885a8fe4cb2e9a2d36b46a787aa4eeadc749278d70c1d207b72ce",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 30.464,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 36.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "RCSS",
+        "target_timezone": "Asia/Taipei",
+        "training_fact_id": "aifs-det-8f21787fd962ee64d586a5f8e82893ef",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "9cd5ddff820b8ecfec9069ef82cbf0e5c52c63ec1a178a88bdbcdbd0e563e533"
+      },
+      {
+        "arrival_content_sha256s": [
+          "9eddb96358a989c735f242aba8ad43c55f71de338e8f6893aac4adcd2e20fb05",
+          "9c48ae462115c2d3a8dc4334b2644cd9f1c6fb3de539a6a6512e16379e8410a8",
+          "e24fb4eae2dcef5e8189e29bac4bc1e7d3d23994d9041aec143ff36831c502ff",
+          "05044e2312f58c032359e60c9adb742f28478ac27e666d1678627bb15b0e38c0"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "4542279bef6ffa9ad8e59685893dc8eee614387f582c50336ee1f1dac41ab82f",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "b5b5036cd8930ee192957e17bae67fe2cf9c643a8dafe411cdd466fe235eb2b3",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 34.839,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 35.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T15:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "RJTT",
+        "target_timezone": "Asia/Tokyo",
+        "training_fact_id": "aifs-det-4542279bef6ffa9ad8e59685893dc8ee",
+        "truth_available_at_utc": "2026-08-01T15:00:15Z",
+        "truth_content_sha256": "ac9db7211d777b20562eb6f3d0cd3a265755fa09358815d2cdc205158f043d63"
+      },
+      {
+        "arrival_content_sha256s": [
+          "ee6dc06f4c1bc64a14d9b300128949c8aaaa0efeed3ab669167c6ac9b09dcbaf",
+          "6d18d2d0cbd5da0893b266414ff01c23f46b24cdfbc4a2813428d56db55e4b0e",
+          "4335f7125e8f6cc5156969581160b62631710e6c4c685a9601fe23e23188e4e8",
+          "d20464d220239f6081c1e5bd8e640a8961d5807ef12e66305667a5e22da16eaa"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "8179edcbf18b99417a9f69728f33e8f829711ab8d0e7c1f586e879da44a3d3d4",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "f1d1426e3331715845fbf3bb22ac213e060bfde1d52ec5ba312b9af7b7a79349",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 30.808,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 32.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T15:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "RKSI",
+        "target_timezone": "Asia/Seoul",
+        "training_fact_id": "aifs-det-8179edcbf18b99417a9f69728f33e8f8",
+        "truth_available_at_utc": "2026-08-01T15:00:15Z",
+        "truth_content_sha256": "e86b43adb6eb0c525143f276a545173fea4ec28934f1112a4612a999ab9b952a"
+      },
+      {
+        "arrival_content_sha256s": [
+          "41be9e6208769369e2c445d04e87d899cf6098187728514373c8a516d4549c82",
+          "cefbd03d655e333352fadc3d241cd2495b0eac5584e84ddc013346804875a39e",
+          "bcf532d1baf19f53f01c654c3e89c40f44bae7b8eb6aba7749a1d0019c33a218",
+          "7e0396641982bca51b08779b881599e68610f18f6a60d1ea8db547e54e53b182"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "b2ab5fa7d0121fdb3c043d41c008dc9fd7e89db0b9678e439ba7f52da756a9c9",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "b8c1e86fce8e575142ea4733603e33cd4f2e8926b50aa4583daf2b2abd31bf43",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 32.058,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 32.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "RPLL",
+        "target_timezone": "Asia/Manila",
+        "training_fact_id": "aifs-det-b2ab5fa7d0121fdb3c043d41c008dc9f",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "e9b610a855b7b235d8a93908a3bde469f7bb6c3261fdb0d777867cd56dc5c381"
+      },
+      {
+        "arrival_content_sha256s": [
+          "3485da160527831cb7b865238efea426673a58fe5986673a8b26551885dfb846",
+          "1ba2d05fa2b1698de9960271d00139130b1d05f38d98b215ee4d6a0d99eb48ac",
+          "842ec9c05fd2a4743ff2398770e2e074f198099d97583cba3a4e86ff3a8f050f",
+          "21b3f17fa9d6cfd38671f23e370cf048687b7c05df04374b5735463331544686"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "2a9b2fe3faf7acec6c074ae81d0a7e76a8a6249be79c096457cf020abbc607ba",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "7c3b60dafcf88de79f7f41eab1102b365928974ae323e08ff0fbe7c3e39b4366",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 29.589,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 33.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "WSSS",
+        "target_timezone": "Asia/Singapore",
+        "training_fact_id": "aifs-det-2a9b2fe3faf7acec6c074ae81d0a7e76",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "181ee4616e128b0a4e8945bf11f283885ed512a60618ccc1304872ca5f3471c8"
+      },
+      {
+        "arrival_content_sha256s": [
+          "bb448961ad3580023177a2faddf91c7c7f5d15be1b42f5acfcc90a96bbeb615c",
+          "e2d59cf9745ebce2f18ccba2df5079f1b2c26830c4097aad3a490258aa6c0026",
+          "a876dff8ff8f8cb27819c3a0a2e48bea86d3b347e84ffddd581f39ebaa128f1c",
+          "34af1035439234b5807f491971773380ee56a883c109e17c04d85262c1c9e96e"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "1a4f7ffbde27fa170e8095a21cf624d9df18767276cd8abdf25822cc302f950d",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "17c4a4510480f7009b213b4729912e88df85313f995c98bcc98eae1520c5a171",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 33.777,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 36.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZBAA",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-1a4f7ffbde27fa170e8095a21cf624d9",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "32a189cca9c39f62d561684b871b8b2e22d8245af142ff824b7fee50c536652e"
+      },
+      {
+        "arrival_content_sha256s": [
+          "ac8986b978e8f0649e6452f5e595d155f6b964eda4f52be74cce30bd4b833f8f",
+          "9aa6e4c5daa71bcddc494a3df583b3f6596c7a48a96e91cb11f53651c5cbe9ca",
+          "2b52cb5214d0288aae3f897cf75f6736d9a60f53d3979164e0ec841c3bbc332e",
+          "cea66b89ae2a4643876b3e1c178bd8fac0948db742ae9d1a0b2e646637869037"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "b1864edeca7b30f83ef1943cb34ce1111bee50e079f24e765e022d17bc7b2d84",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "682c3a026832e784dacedad9840ee61c595d8a732893c518422d51f5a12cef4a",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 27.964,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 31.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZGGG",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-b1864edeca7b30f83ef1943cb34ce111",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "d4b4cbfd7a332c38c16e3818736d0323d52cd88f94fe9fe0449caf9a7c38785e"
+      },
+      {
+        "arrival_content_sha256s": [
+          "51cbc002853a2cf32ad82dc626d301c5e86792a211a12e377117f9ad1988a72f",
+          "1ee8cd96572f6a11c89d9209334e50da88848c5d4fc6f84dc6e50dbd8cad8974",
+          "2d14b6f6237716c6c4e797a7ce71eed3a28da589fc8f197d1244b4b3a6384050",
+          "59a0fc2acae0f2c70a352b7c7c1eca8da180598e7ca3d31e6669c23820188639"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "7f690c88e7ea7269265b7e9d478f69544d29fc80f35135f949fbe7b889993633",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "8c14517d423eea72272e15591f8fe3bdc08b152b7a4e0feafea2964fcfdcfa62",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 27.371,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 30.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZGSZ",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-7f690c88e7ea7269265b7e9d478f6954",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "42543cc90918940f9ec57e8f297bdf6533f15e78b0c93f675e4b010b11a9bf4e"
+      },
+      {
+        "arrival_content_sha256s": [
+          "4ccd941175a79acdb019d35c7816ba185f14c4e380978dd714bddc2a3d475d89",
+          "513516edfce05303303749754e2ae831472370fdf5c51c2807b8ccc926aa37f3",
+          "3f7c08e0affa2414410cce9bdc090f97027eba62d3d1cdb4427f0c4f0ca0539c",
+          "e9fe47cab0b71ac7ef4de1d54fc66fc97094d46c14052c4466275410870abb76"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "1ae052f87bda044fe309e5d76b2ddbdba4b8ac9d6babc0361345022441f68bc7",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "0d735cc7a6ac12a94de26fa535f0aae7083e7c07c9b5e799606a94c2575fa3c3",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 34.902,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 36.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZHHH",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-1ae052f87bda044fe309e5d76b2ddbdb",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "cdf701c733bca2b60eeaf697cc90ae62fc0598e3e59ffb0992ac92ccc2ac8a2e"
+      },
+      {
+        "arrival_content_sha256s": [
+          "ecf0cb897f9edafc76c02a803139c6dd4922434b2519e592e25711b6658dac41",
+          "369727b6326525fafdca0bbdbb732c7ca3c1a8b2e665ed1beecf46db1f67ebc1",
+          "2b467658a5cae75313752ae6713ade8ee39b4355b7c58fa0a344eea0d5e0854c",
+          "7d63f95a200fdf9643cb57a242c55dcc6a997a58d399792e6d67192a2261984e"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "7787aef317f2b4b1bb74690265a7d83bde745e65130acf7f33fb6f021cdb5660",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "7d6e7dd89d59add37f5267ecee0d4d8d5ec6d5850c5cac6c2e81a02ed60d0bbc",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 33.527,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 36.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZSPD",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-7787aef317f2b4b1bb74690265a7d83b",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "2b5d1ced65fc4c28081f1b4c5bd7b972b15a266d71b6b9b81e6cd02405763a9d"
+      },
+      {
+        "arrival_content_sha256s": [
+          "493e8711c5509a9878b55980bd050013efc596334bc3e18d161a63fb6ac4dc7f",
+          "af6e8e6205c9de9f13e5b8adece426c1dd68f459997a6c18fe02f9df436963fd",
+          "57548cc8f8dc899b99d342252d5edd6d0feb36f4a562d17913706fa628e1dffb",
+          "fdcbd77dc119de54ab155b6be70c67462c92fd585900df8f90a03fc5c31e236c"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "dce8a1acde08daef86ce6b7378c1724ea9b5e88f6767df3f7701fbc7ae31477a",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "c317cee5f22c8601e72a0f3f8c4d87d02dd8108d40f6fe16c4f925c7d7d86db9",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 36.714,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 35.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZSQD",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-dce8a1acde08daef86ce6b7378c1724e",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "c28e5da0f6c90ecfbb1004aaf201371150ce54b303563ceb9726c416317e2ad7"
+      },
+      {
+        "arrival_content_sha256s": [
+          "13cfb0ede8263c20546ae83c8040eaced38519c8f0134bd9f0fdea58db7e006e",
+          "fbaac22563e8080eb124d3ac37d64cf082ef8a8f1270c03cbf0f65f3e2974d19",
+          "39ba386ff9199055b94d8e3662d47ce90d67673cdcec4997bfa6b2968e04c0dd",
+          "b973cca5b5d7c49c43db18ad9d67be3fe9685f0e22c0b2ca7bd0daeb7f77fd52"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "6083d4ae0284764250388e0519f89059eb801290bf32482822caa0f7df3a3668",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "65bcdfb77658c4187fa0d3ad63811f61563d0f17fb22349cefe8de6bf7ff589e",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 35.746,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 38.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZUCK",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-6083d4ae0284764250388e0519f89059",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "5ec153dbddadebc9001c25ca17b5425b6c47d644e14d508d0ee13768d2deec53"
+      },
+      {
+        "arrival_content_sha256s": [
+          "2dcc03000b8b6a5ce0f6d096f8a4058bb56b6bbb08ea48840c944cdb90a2b913",
+          "133c382ad68d2ef886d0ad85b9e1f6739c19ae0d8ca4e5ef2702266f7d8a0c28",
+          "8caa568135054fb9026dec54704546f8aa7b5bc3ec4e0f55391e143fe937600e",
+          "55999734a0dfa7a0fbfaa88e9509461975398e168b5a4bf10a68ef4797e5bdb7"
+        ],
+        "arrival_receipt_sha256s": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "boundary": {
+          "calls_order_gateway": false,
+          "creates_formal_provider_binding": false,
+          "formal_p0_eligible": false,
+          "places_orders": false,
+          "writes_native_ensemble_tables": false,
+          "writes_production_database": false
+        },
+        "content_sha256": "a3398a5fa42ba12cdc5b4564ab963db9cc5b1ab6c097aa23938d4636d000a932",
+        "curve_available_at_utc": "2026-08-01T07:31:49Z",
+        "curve_sha256": "1d31c895f33089ecfde4683ad42908f022f0012bf4116642ff5c91c05e353731",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 25.371,
+        "independence_family_id": "ECMWF",
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "official_tmax_c": 27.0,
+        "product_id": "ECMWF_AIFS_SINGLE_0P25",
+        "provider_id": "ecmwf_aifs025_official",
+        "raw_payload_sha256s": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "run_cycle": "18Z",
+        "schema": "ecmwf_aifs_single_official_deterministic_training_fact_v1",
+        "settlement_closed_at_utc": "2026-08-01T16:00:00Z",
+        "source_authority": {
+          "arrival_lineage_status": "NATIVE_PROVIDER_RECEIPT_INDEX_VERIFIED",
+          "counts_as_distinct_independence_family": false,
+          "forecast_source_role": "official_native",
+          "native_arrival_index_eligible": true,
+          "same_independence_family_as_ifs": true,
+          "truth_closed_day_required": true,
+          "truth_source_lane": "AWC"
+        },
+        "station_id": "ZUUU",
+        "target_timezone": "Asia/Shanghai",
+        "training_fact_id": "aifs-det-a3398a5fa42ba12cdc5b4564ab963db9",
+        "truth_available_at_utc": "2026-08-01T16:03:28Z",
+        "truth_content_sha256": "83649ed311e76e75159b85a3c782b26371efad9fdb8153863aae7fbc4e106e74"
+      }
+    ],
+    "independence_family_id": "ECMWF",
+    "model_id": "ECMWF",
+    "product_id": "ECMWF_AIFS_SINGLE_0P25",
+    "provider_id": "ecmwf_aifs025_official",
+    "schema": "ecmwf_aifs_single_official_deterministic_training_fact_batch_v1",
+    "state": "ACCUMULATING_STRICT_OOS"
+  },
+  "training_batch_content_sha256": "dc3cb34ca2d4f91e2cca52b5e1e7302900d28bc88e05636eeab59602404153d1"
+}

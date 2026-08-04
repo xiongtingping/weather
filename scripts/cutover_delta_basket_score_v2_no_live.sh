@@ -3,12 +3,12 @@ set -euo pipefail
 
 ROOT="/Users/xiong/weather"
 MANIFEST="$ROOT/config/trading/delta_basket_score_v2_rkpk_no_live_bootstrap_v2.json"
-LABEL="com.weather.reported_trajectory_no"
+LABEL="com.weather.weather_basket_yes"
 MARKET_LABEL="com.weather.market_ws"
 ORDER_LABEL="com.weather.clob_order_service"
 UID_VALUE="$(id -u)"
 DOMAIN="gui/${UID_VALUE}"
-INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.reported_trajectory_no.plist"
+INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.weather_basket_yes.plist"
 PAUSE="$ROOT/data/live_paused.flag"
 CONFIRM="${1:-}"
 
@@ -387,9 +387,11 @@ PY
 
 trap - ERR
 echo "delta_basket_score_v2_no_live_ok"
-echo "reported_trajectory_no_pid=$target_pid_before->$target_pid_after"
+echo "weather_basket_yes_pid=$target_pid_before->$target_pid_after"
 echo "market_ws_pid=$market_pid_after"
 echo "clob_order_service_pid=$order_pid_after"
-echo "forward_oos_blocks_production_no_live=false"
-echo "forward_oos_blocks_live_or_parameter_promotion=true"
+echo "future_data_counts_as_oos=false"
+echo "future_data_blocks_production_no_live=false"
+echo "future_data_blocks_live_or_parameter_promotion=false"
+echo "historical_strict_oos_required_for_live_or_parameter_promotion=true"
 echo "live_pause_retained=true"

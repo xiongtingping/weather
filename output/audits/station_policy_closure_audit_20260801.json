@@ -1,0 +1,167 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "production_mutation": false,
+    "read_only": true,
+    "writes_production_db": false
+  },
+  "candidate_bundle": {
+    "activation_count": 45,
+    "artifact_count": 135,
+    "bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+    "orders_submitted": 0,
+    "promotion_permitted": false,
+    "station_count": 45,
+    "writes_production_db": false
+  },
+  "current_readiness": {
+    "blockers": [
+      "target_execution_vector_lineage_incomplete",
+      "target_materialized_inputs_incomplete"
+    ],
+    "exact_scope_count": 45,
+    "exact_scope_ready": false,
+    "exact_scope_reason_counts": {
+      "ContractError:basket_official_ws_snapshot_missing": 5,
+      "ContractError:latest_stage_stale_fail_closed": 7,
+      "ContractError:materialized_probability_envelope_missing": 5,
+      "ContractError:production_quote_expired": 28
+    },
+    "exact_scope_status_counts": {
+      "EXPIRED": 35,
+      "MISSING": 10
+    },
+    "formal_promotion_blockers": [
+      "target_forward_scorecard_incomplete"
+    ],
+    "forward_scorecard_blockers": [
+      "cash_formal_scorecard_missing_or_invalid",
+      "exact_vector_coverage_incomplete",
+      "fact_content_sha256_unverifiable_feature",
+      "fact_content_sha_coverage_incomplete",
+      "feature_integrity_incomplete",
+      "feature_not_decoded",
+      "forward_scorecard_cash_not_ready",
+      "forward_scorecard_station_not_ready",
+      "forward_scorecard_station_samples_missing:KATL,KAUS,KBKF,KDAL,KHOU,KLAX,KLGA,KMIA,KORD,KSEA,KSFO,MMMX,MPMG",
+      "malformed_feature_json:json_oversized",
+      "station_allowlist_scope_incomplete",
+      "station_formal_scorecard_missing_or_invalid",
+      "unlabeled_training_facts"
+    ],
+    "forward_scorecard_missing_station_ids": [
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "MMMX",
+      "MPMG"
+    ],
+    "probability_stage_counts": {
+      "P0": 183,
+      "P0-M": 45,
+      "P1": 1412
+    },
+    "state": "blocked"
+  },
+  "diagnosis": {
+    "basket_policy_promotion_zero_is_formal_evidence_block": true,
+    "basket_policy_promotion_zero_is_resolver_bug": false,
+    "current_target_v2_exact_station_family_artifacts_present": false,
+    "current_target_v2_uses_explicit_global_fallback_for_target_reserve_cadence": true,
+    "formal_promoted_resolver_45station_healthy_in_memory": true,
+    "minimal_code_change_recommended": "Change only DEFAULT_MANIFEST in apply_bayes_basket_target_target_v2_station_policy_no_live.py from the RKPK v3 manifest to the existing 45-station global v4 manifest; do not alter resolver or bypass formal evidence gates.",
+    "no_live_candidate_resolver_45station_healthy": true,
+    "required_data_before_formal_promotion": "Produce target-v2, 45-station, family-specific target/reserve/cadence forward/OOS scorecard with 3/7/15/30 windows, cross-season joins, per-station baselines/intervals and forward PnL attribution; then use the formal promotion path."
+  },
+  "formal_promotion": {
+    "blockers": [
+      "family_specific_target_reserve_cadence_scorecards_missing",
+      "candidate_scope_45_stations_but_behavior_transfer_scope_8_stations",
+      "crossseason_policy_family_join_missing",
+      "3_7_15_30_policy_family_join_missing",
+      "per_station_random_market_baselines_and_intervals_missing",
+      "target_final_audit_fallback_triggered",
+      "forward_shadow_and_pnl_attribution_not_complete",
+      "strict_asof_input_missing_or_blocked",
+      "strict_asof_crossseason_lineage_incomplete",
+      "strict_asof_four_seasons_missing",
+      "strict_asof_3_7_15_30_windows_missing"
+    ],
+    "db_promotion_counts": {},
+    "evidence_gate_passed": false,
+    "transfer_gate_status": "BLOCKED_EVIDENCE"
+  },
+  "no_live_current": {
+    "activation_rows": [
+      {
+        "activations": 47,
+        "bound_cadence": 0,
+        "bound_reserve": 0,
+        "bound_target": 0,
+        "stage": "P0",
+        "station_count": 45,
+        "strategy_version": "target-v1"
+      },
+      {
+        "activations": 79,
+        "bound_cadence": 79,
+        "bound_reserve": 79,
+        "bound_target": 79,
+        "stage": "P0-M",
+        "station_count": 45,
+        "strategy_version": "target-v1"
+      },
+      {
+        "activations": 58,
+        "bound_cadence": 0,
+        "bound_reserve": 0,
+        "bound_target": 0,
+        "stage": "P1",
+        "station_count": 45,
+        "strategy_version": "target-v1"
+      },
+      {
+        "activations": 189,
+        "bound_cadence": 0,
+        "bound_reserve": 0,
+        "bound_target": 0,
+        "stage": "P0",
+        "station_count": 45,
+        "strategy_version": "target-v2"
+      },
+      {
+        "activations": 189,
+        "bound_cadence": 0,
+        "bound_reserve": 0,
+        "bound_target": 0,
+        "stage": "P1",
+        "station_count": 45,
+        "strategy_version": "target-v2"
+      }
+    ],
+    "global_v4_dryrun_policy_activation_count": 360,
+    "global_v4_dryrun_resolved_scope_count": 360,
+    "global_v4_dryrun_state": "VALIDATED_NO_WRITE",
+    "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "station_policy_authorized": true,
+    "station_policy_promoted": false
+  },
+  "receipt_sha256": "b3076227d69614dc1cad02ffd476805070a6b09e158fbefebe34223e7e5687b0",
+  "resolver": {
+    "all_45_candidate_default_off_pass": true,
+    "all_45_exact_promoted_simulation_pass": true,
+    "authority_scope_checked": "in_memory FORMAL_PROMOTED plus candidate default-off",
+    "fault_matrix_all_cases_passed": true,
+    "fault_matrix_case_count": 9
+  },
+  "schema": "station_policy_closure_audit_v1"
+}

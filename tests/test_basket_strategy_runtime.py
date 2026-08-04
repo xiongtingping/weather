@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from basket_strategy import (
-    build_basket_plus_hard_no_plan,
+    build_basket_yes_plan,
     build_plan_from_weather_snapshot,
     classify_regime_direction,
     extract_probability_projection,
@@ -27,7 +27,6 @@ def _request(*, center=35, anchor=34.0, price=0.10, regime="clear_dry"):
                 "no_token": f"n{degree}",
                 "yes_ask": price,
                 "yes_ask_size": 100.0,
-                "no_asks": [{"price": 0.10, "size": 100.0}],
             }
         )
     buckets.append(
@@ -61,7 +60,7 @@ def _request(*, center=35, anchor=34.0, price=0.10, regime="clear_dry"):
         "report": {
             "raw_text": "METAR ZUUU 180000Z 00000MPS CAVOK 32/20 Q1000=",
             "expected_station": "ZUUU",
-            "source_lane": "amsc",
+            "source_lane": "awc",
             "observation_id": "obs-1",
         },
         "buckets": buckets,
@@ -70,7 +69,7 @@ def _request(*, center=35, anchor=34.0, price=0.10, regime="clear_dry"):
 
 
 def test_pure_basket_is_single_shot_and_uses_up_bias():
-    plan = build_basket_plus_hard_no_plan(_request())
+    plan = build_basket_yes_plan(_request())
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["direction"] == "UP"
@@ -103,14 +102,13 @@ def test_dynamic_convergence_advances_widest_to_narrowest_and_allows_edge_center
         "convergence_target_2": 0.84,
         "bankroll_usdc": 30,
         "tranche_budget_usdc": 10,
-        "require_hard_no_for_basket": False,
     }
     # b2 is always the primary core.  The window moves to [34..37] so b2's
     # posterior is not silently demoted below b3's posterior.
     expected = [([ ], 4, ["34°C", "35°C", "36°C", "37°C"]), ([4], 3, ["34°C", "35°C", "36°C"]), ([4, 3], 2, ["34°C", "35°C"])]
     for completed, width, buckets in expected:
         request["completed_tranche_widths"] = completed
-        plan = build_basket_plus_hard_no_plan(request)
+        plan = build_basket_yes_plan(request)
         assert plan["status"] == "ready"
         assert plan["basket"]["tranche_width"] == width
         assert plan["basket"]["current_stage_width"] == width
@@ -122,7 +120,6 @@ def test_dynamic_convergence_advances_widest_to_narrowest_and_allows_edge_center
 def test_edge_centre_can_anchor_a_contiguous_basket():
     request = _request(center=31, anchor=34.0, regime="cloudy_stable")
     request["report"] = None
-    request["config"] = {"require_hard_no_for_basket": False}
     request["buckets"][0].update({"yes_ask": 0.10, "yes_ask_size": 100.0})
     request["probability_projection"]["p1"]["market_bucket_probabilities"] = {
         "30°C or below": 0.70,
@@ -133,7 +130,7 @@ def test_edge_centre_can_anchor_a_contiguous_basket():
         "35°C": 0.02,
     }
 
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["center_bucket"] == "30°C or below"
@@ -150,9 +147,8 @@ def test_dynamic_convergence_fails_closed_when_stage_coverage_is_below_target():
         "convergence_target_2": 0.99,
         "bankroll_usdc": 30,
         "tranche_budget_usdc": 10,
-        "require_hard_no_for_basket": False,
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
     assert plan["status"] == "blocked"
     assert "convergence_coverage_below_stage_target" in plan["basket"]["reason_codes"]
 
@@ -173,28 +169,26 @@ def test_dynamic_addition_reopens_only_narrowest_stage_after_all_stages():
         "convergence_target_2": 0.84,
         "bankroll_usdc": 30,
         "tranche_budget_usdc": 10,
-        "require_hard_no_for_basket": False,
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
     assert plan["status"] == "ready"
     assert plan["basket"]["tranche_width"] == 2
     assert plan["basket"]["execution"]["dynamic_additions"] is True
 
 
-def test_hard_report_selects_nearest_impossible_lower_bucket_and_excludes_it_from_basket():
-    plan = build_basket_plus_hard_no_plan(_request(center=33, anchor=34.0, regime="cloud_limited_or_rain_cooled"))
+def test_awc_report_floor_excludes_impossible_yes_buckets_without_creating_no_orders():
+    plan = build_basket_yes_plan(_request(center=33, anchor=34.0, regime="cloud_limited_or_rain_cooled"))
 
-    assert plan["hard_no"]["status"] == "ready"
-    assert plan["hard_no"]["hard_lower_bound_market_unit"] == 32
-    assert plan["hard_no"]["selected_bucket"] == "31°C"
+    assert plan["official_report_floor"]["status"] == "available"
+    assert plan["official_report_floor"]["reported_floor_market_unit"] == 32
     assert plan["basket"]["center_bucket"] == "33°C"
     assert all(int(label[:-2]) >= 32 for label in plan["basket"]["selected_buckets"])
-    assert plan["hard_no"]["orders"][0]["side"] == "NO"
-    assert plan["hard_no"]["orders"][0]["order_type"] == "FAK"
+    assert "hard_no" not in plan
+    assert all(order["side"] == "YES" and order["order_type"] == "FOK" for order in plan["basket"]["orders"])
 
 
 def test_neutral_direction_is_blocked_instead_of_guessing():
-    plan = build_basket_plus_hard_no_plan(_request(center=34, anchor=34.0))
+    plan = build_basket_yes_plan(_request(center=34, anchor=34.0))
 
     assert plan["direction_bias"]["direction"] == "BLOCKED"
     assert plan["basket"]["status"] == "blocked"
@@ -204,7 +198,7 @@ def test_neutral_direction_is_blocked_instead_of_guessing():
 def test_p1_is_preferred_and_p0_is_used_only_when_p1_is_absent():
     request = _request()
     del request["probability_projection"]["p1"]
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["posterior_stage"] == "P0"
@@ -220,7 +214,7 @@ def test_normalized_projection_with_lineage_uses_p0_without_recursive_fallback()
         "posterior_run_id": "normalized-p0-run",
     }
 
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["posterior_stage"] == "P0"
@@ -246,7 +240,7 @@ def test_p1_center_overrides_p0_and_no_mean_or_direction_shift_is_applied():
         "37°C": 0.15,
         "33°C": 0.10,
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["posterior_stage"] == "P1"
@@ -257,7 +251,7 @@ def test_p1_center_overrides_p0_and_no_mean_or_direction_shift_is_applied():
 def test_invalid_p1_does_not_silently_fallback_to_p0():
     request = _request()
     request["probability_projection"]["p1"]["market_bucket_probabilities"] = {"35°C": 0.4}
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert plan["direction_bias"]["posterior_stage"] == "P1"
@@ -274,7 +268,7 @@ def test_tail_mode_remains_the_probability_centre_without_silent_exact_fallback(
         "36°C": 0.10,
         "37°C": 0.10,
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert plan["direction_bias"]["center_bucket"] == "30°C or below"
@@ -294,7 +288,7 @@ def test_materialized_successor_checkpoint_is_read_as_p1_projection():
             },
         }
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["posterior_stage"] == "P1"
@@ -309,7 +303,7 @@ def test_materialized_checkpoint_json_distribution_is_read_without_rebuilding_po
         "posterior_run_id": "successor-p1-json",
         "market_bucket_distribution_json": json.dumps(p1["market_bucket_probabilities"]),
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["posterior_stage"] == "P1"
@@ -318,7 +312,7 @@ def test_materialized_checkpoint_json_distribution_is_read_without_rebuilding_po
 def test_missing_p0_and_p1_blocks_without_point_forecast_fallback():
     request = _request()
     request["probability_projection"] = {}
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert "p1_and_p0_market_bucket_projection_missing" in plan["direction_bias"]["reason_codes"]
@@ -327,7 +321,7 @@ def test_missing_p0_and_p1_blocks_without_point_forecast_fallback():
 def test_regime_agreement_keeps_tomorrow_up_direction():
     request = _request()
     request["regime"] = {"forecast_weather_regime": "clear_dry", "basin_regime": "weak_ventilation_heat_buildup"}
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["direction_state"] == "UP"
@@ -337,7 +331,7 @@ def test_regime_agreement_keeps_tomorrow_up_direction():
 def test_regime_conflict_blocks_instead_of_flipping_tomorrow_direction():
     request = _request()
     request["regime"] = {"forecast_weather_regime": "convection_or_showers"}
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert plan["direction_bias"]["center_bucket"] == "35°C"
@@ -350,7 +344,7 @@ def test_regime_gate_can_be_disabled_without_changing_probability_center_directi
     request["config"] = {"regime_gate_enabled": False}
     request["regime"] = {"forecast_weather_regime": "convection_or_showers"}
 
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["direction_state"] == "DOWN"
@@ -363,7 +357,7 @@ def test_regime_gate_disabled_still_blocks_neutral_probability_center():
     request = _request(center=34, anchor=34.0)
     request["config"] = {"regime_gate_enabled": False}
 
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert "probability_center_direction_neutral" in plan["direction_bias"]["reason_codes"]
@@ -375,7 +369,7 @@ def test_current_official_physical_regime_labels_can_gate_up_direction():
         "basin_regime": "moderate_ventilation",
         "cloud_regime": "forecast_partial_cloud_direct",
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
     assert plan["status"] == "blocked"
     assert plan["direction_bias"]["regime"]["state"] == "DOWN"
@@ -448,7 +442,7 @@ def test_snapshot_adapter_consumes_registry_and_quote_snapshots_without_live_sid
     assert plan["status"] == "ready"
     assert plan["direction_bias"]["direction_state"] == "UP"
     assert plan["basket"]["selected_buckets"] == ["34°C", "35°C", "36°C"]
-    assert plan["hard_no"]["selected_bucket"] == "31°C"
+    assert plan["official_report_floor"]["reported_floor_market_unit"] == 32
     assert plan["guards"]["writes_database"] is False
     assert plan["guards"]["submits_orders"] is False
 
@@ -486,20 +480,19 @@ def test_snapshot_adapter_reads_regime_from_existing_feature_surface():
 
 
 def test_sum_of_yes_asks_at_or_above_one_blocks_worst_case_basket():
-    plan = build_basket_plus_hard_no_plan(_request(price=0.34))
+    plan = build_basket_yes_plan(_request(price=0.34))
 
     assert plan["status"] == "blocked"
     assert plan["basket"]["status"] == "blocked"
     assert "basket_worst_case_floor_not_profitable" in plan["basket"]["reason_codes"]
 
 
-def test_hard_no_blocks_when_same_bucket_yes_is_held():
+def test_existing_yes_inventory_neither_creates_no_orders_nor_blocks_planning():
     request = _request()
-    request["held_yes_shares_by_token"] = {"y31": 1.0}
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
 
-    assert plan["hard_no"]["status"] == "blocked"
-    assert "same_bucket_yes_inventory_conflict" in plan["hard_no"]["reason_codes"]
+    assert plan["status"] == "ready"
+    assert "hard_no" not in plan
 
 
 def test_existing_feature_adapter_reads_three_models_and_taf():
@@ -554,7 +547,7 @@ def test_nested_registry_json_is_read_without_live_side_effects():
     # outcome string.
     plan = build_plan_from_weather_snapshot(snapshot)
     assert plan["basket"]["status"] == "blocked"
-    assert "insufficient_exact_buckets_after_hard_no_floor" in plan["basket"]["reason_codes"]
+    assert "insufficient_exact_buckets_after_reported_floor" in plan["basket"]["reason_codes"]
 
 
 def test_plan_package_has_no_live_or_persistence_imports():
@@ -564,7 +557,7 @@ def test_plan_package_has_no_live_or_persistence_imports():
     # The production adapter is intentionally the only live/persistence
     # boundary; the planner modules remain side-effect free.
     source_paths = [path for path in source_paths if path.name not in {"production.py", "schema.py"}]
-    source_paths.append(repo_root / "scripts" / "prepare_basket_plus_hard_no_plan.py")
+    source_paths.append(repo_root / "scripts" / "prepare_basket_yes_plan.py")
     for source_path in source_paths:
         tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
         for node in ast.walk(tree):
@@ -578,7 +571,7 @@ def test_plan_package_has_no_live_or_persistence_imports():
 
 
 def test_plan_contract_always_exposes_zero_live_guards():
-    plan = build_basket_plus_hard_no_plan(_request())
+    plan = build_basket_yes_plan(_request())
     assert plan["execution_mode"] == "plan_only"
     assert plan["live_submit_authorized"] is False
     assert plan["guards"]["writes_database"] is False

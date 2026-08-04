@@ -18,7 +18,28 @@ from .calibration_evidence import SCHEMA as CALIBRATION_EVIDENCE_SCHEMA, build_c
 from .calibration_ingress import (
     FORMAL_NATIVE as CALIBRATION_FORMAL_NATIVE,
     NO_LIVE_REPLAY as CALIBRATION_NO_LIVE_REPLAY,
-    ingest_calibration_base_facts,
+)
+from .canonical_contract import (
+    CanonicalActivationFact,
+    CanonicalContract,
+    CanonicalModelFact,
+    CanonicalResidualFact,
+    CanonicalTruthFact,
+)
+from .canonical_ingress import ingest_canonical_contract
+from .gap_ledger import (
+    GapLedger,
+    GapRecord,
+    build_gap_ledger,
+    gap_records_from_canonical_contract,
+)
+from .model_builders import (
+    BuilderSpec,
+    build_all_scopes,
+    build_scope,
+    builder_for,
+    ingest_built_scope,
+    registered_builders,
 )
 from .no_live_calibration_authority import build_no_live_calibration_artifact_packet
 from .et_history import (
@@ -50,6 +71,7 @@ from .native_ensemble_contract import (
     native_ensemble_family_set_hash,
     validate_cross_native_ensemble_gate,
     validate_cross_native_ensemble_weights,
+    validate_native_ensemble_transport_gate,
 )
 from .native_ensemble_oos import (
     build_native_ensemble_oos,
@@ -98,6 +120,18 @@ from .station_policy_candidate import (
     SCHEMA as STATION_POLICY_CANDIDATE_SCHEMA,
     assert_candidate_bundle_boundary,
     build_station_policy_candidate,
+)
+from .station_policy_forward_outcome_binding import (
+    UTILITY_CONTRACT_ARTIFACT_ID,
+    UTILITY_CONTRACT_POINTER_SCHEMA,
+    UTILITY_CONTRACT_SCHEMA,
+    UTILITY_CONTRACT_VERSION,
+    assert_station_policy_utility_binding,
+    assert_station_policy_utility_contract,
+    assert_station_policy_utility_contract_pointer,
+    build_station_policy_utility_contract,
+    build_station_policy_utility_contract_pointer,
+    validate_station_policy_utility_binding,
 )
 from .runtime import (
     DELTA_V2_OPTIMIZER_ID,
@@ -235,6 +269,7 @@ __all__ = [
     "native_ensemble_family_set_hash",
     "validate_cross_native_ensemble_gate",
     "validate_cross_native_ensemble_weights",
+    "validate_native_ensemble_transport_gate",
     "build_native_ensemble_oos",
     "persist_native_ensemble_oos",
     "compile_native_ensemble_p0",
@@ -273,6 +308,16 @@ __all__ = [
     "ResolvedStationBasketPolicy",
     "StationBasketPolicyActivation",
     "STATION_POLICY_CANDIDATE_SCHEMA",
+    "UTILITY_CONTRACT_ARTIFACT_ID",
+    "UTILITY_CONTRACT_POINTER_SCHEMA",
+    "UTILITY_CONTRACT_SCHEMA",
+    "UTILITY_CONTRACT_VERSION",
+    "assert_station_policy_utility_binding",
+    "assert_station_policy_utility_contract",
+    "assert_station_policy_utility_contract_pointer",
+    "build_station_policy_utility_contract",
+    "build_station_policy_utility_contract_pointer",
+    "validate_station_policy_utility_binding",
     "compile_target_plan",
     "DELTA_V2_OPTIMIZER_ID",
     "DELTA_V2_OPTIMIZER_SCHEMA",

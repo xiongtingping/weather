@@ -33,21 +33,21 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 )
 
 
-def _station_scopes(conn: sqlite3.Connection) -> list[dict[str, object]]:
+def _station_scopes(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str,
+) -> list[dict[str, object]]:
+    """Freeze scopes to one historical market date, never today's registry."""
+
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in load_active_registry_rows(conn):
+    for row in load_active_registry_rows(conn, event_date=event_date):
         station = str(row.get("station_id") or "").strip().upper()
         grouped[station].append(row)
     scopes = []
     for station, rows in sorted(grouped.items()):
-        reference_date = max(
-            str(row.get("event_date") or "") for row in rows
-        )
-        rows = [
-            row
-            for row in rows
-            if str(row.get("event_date") or "") == reference_date
-        ]
+        if any(str(row.get("event_date") or "") != event_date for row in rows):
+            raise RuntimeError("eccc_geps_archive_registry_event_date_mixed")
         timezones = {
             str(row.get("settlement_timezone") or "").strip()
             for row in rows
@@ -69,6 +69,52 @@ def _station_scopes(conn: sqlite3.Connection) -> list[dict[str, object]]:
     return scopes
 
 
+def _current_station_scopes(
+    conn: sqlite3.Connection,
+) -> list[dict[str, object]]:
+    """Reuse the latest complete 45-station contract for offline backfill.
+
+    This is a download-scope fallback only.  It never represents historical
+    market arrival and callers must keep the resulting archive train-only.
+    """
+
+    grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in load_active_registry_rows(conn):
+        station = str(row.get("station_id") or "").strip().upper()
+        grouped[station].append(row)
+    scopes = []
+    for station, rows in sorted(grouped.items()):
+        reference_date = max(
+            str(row.get("event_date") or "") for row in rows
+        )
+        rows = [
+            row
+            for row in rows
+            if str(row.get("event_date") or "") == reference_date
+        ]
+        timezones = {
+            str(row.get("settlement_timezone") or "").strip()
+            for row in rows
+        }
+        if len(timezones) != 1 or not next(iter(timezones)):
+            raise RuntimeError(
+                "eccc_geps_archive_current_registry_timezone_invalid"
+            )
+        coordinates = station_coordinates(station)
+        scopes.append({
+            "station_id": station,
+            "settlement_timezone": next(iter(timezones)),
+            "latitude": float(coordinates["latitude"]),
+            "longitude": float(coordinates["longitude"]),
+            "registry_rows": rows,
+        })
+    if len(scopes) != 45:
+        raise RuntimeError(
+            "eccc_geps_archive_current_45station_registry_required"
+        )
+    return scopes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
@@ -76,11 +122,32 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--commit", action="store_true")
+    parser.add_argument(
+        "--allow-current-registry-scope",
+        action="store_true",
+        help=(
+            "When the historical date has no complete 45-station registry, "
+            "reuse the latest complete 45-station contract strictly as an "
+            "offline train-only download scope."
+        ),
+    )
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
+    scope_authority = "HISTORICAL_EVENT_DATE_REGISTRY"
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
         conn.execute("PRAGMA query_only=ON")
-        scopes = _station_scopes(conn)
+        try:
+            scopes = _station_scopes(conn, event_date=args.event_date)
+        except RuntimeError as exc:
+            if (
+                str(exc) != "eccc_geps_archive_45station_registry_required"
+                or not args.allow_current_registry_scope
+            ):
+                raise
+            scopes = _current_station_scopes(conn)
+            scope_authority = (
+                "CURRENT_45_STATION_REGISTRY_OFFLINE_TRAIN_ONLY"
+            )
     if args.input is not None:
         archive = load_bounded_json(args.input.expanduser().resolve())
         if (
@@ -139,6 +206,8 @@ def main() -> int:
         "ingress": ingress,
         "authority_scope": "CALIBRATION_TRAIN_ONLY",
         "holdout_eligible": False,
+        "station_scope_authority": scope_authority,
+        "historical_arrival_claimed": False,
         "calls_order_gateway": False,
         "orders_submitted": 0,
     }, ensure_ascii=False, sort_keys=True))

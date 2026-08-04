@@ -1,4 +1,4 @@
-"""Deterministic pure basket + hard-report-NO planner.
+"""Deterministic pure-YES basket planner.
 
 The planner itself never imports an order gateway and never writes state.  The
 production adapter consumes its output and is the only code allowed to submit
@@ -15,12 +15,7 @@ import math
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
-from reported_trajectory_no_runtime import (
-    conservative_market_temperature,
-    parse_bucket_interval,
-    parse_metar_temperature,
-    select_nearest_impossible_lower_bucket,
-)
+from weather_basket_yes_runtime import conservative_market_temperature, parse_bucket_interval, parse_metar_temperature
 from .probability_adapter import extract_probability_projection
 from .policy import (
     POLICY_ID,
@@ -29,7 +24,7 @@ from .policy import (
 )
 
 
-BASKET_STRATEGY_SCHEMA_VERSION = "weather_basket_plus_hard_no_v2"
+BASKET_STRATEGY_SCHEMA_VERSION = "weather_basket_yes_v2"
 MODEL_IDS: tuple[str, ...] = ("gfs_seamless", "icon_seamless", "ecmwf_ifs025")
 TAF_IDS: tuple[str, ...] = ("zuuu_taf_forecast_amsc", "zuuu_taf_forecast_peak")
 LIVE_SUBMIT_AUTHORIZED = False
@@ -127,10 +122,6 @@ class BasketStrategyConfig:
     minimum_guaranteed_profit_usdc: float = 0.0
     fee_rate: float = 0.0
     minimum_order_shares: float = 1.0
-    hard_no_max_price: float = 0.99
-    hard_no_max_notional_usdc: float = 50.0
-    hard_no_minimum_shares: float = 1.0
-    require_hard_no_for_basket: bool = True
     live_submit_authorized: bool = False
     # Production can opt into progressive convergence without changing the
     # planner contract used by historical/offline callers.  The active lane
@@ -164,10 +155,6 @@ class BasketStrategyConfig:
             ),
             "fee_rate": raw.get("fee_rate", cls.fee_rate),
             "minimum_order_shares": raw.get("minimum_order_shares", cls.minimum_order_shares),
-            "hard_no_max_price": raw.get("hard_no_max_price", cls.hard_no_max_price),
-            "hard_no_max_notional_usdc": raw.get("hard_no_max_notional_usdc", cls.hard_no_max_notional_usdc),
-            "hard_no_minimum_shares": raw.get("hard_no_minimum_shares", cls.hard_no_minimum_shares),
-            "require_hard_no_for_basket": raw.get("require_hard_no_for_basket", cls.require_hard_no_for_basket),
             "live_submit_authorized": raw.get("live_submit_authorized", cls.live_submit_authorized),
             "dynamic_convergence_enabled": raw.get("dynamic_convergence_enabled", cls.dynamic_convergence_enabled),
             "convergence_widths": tuple(int(item) for item in (raw.get("convergence_widths") or cls.convergence_widths)),
@@ -199,12 +186,6 @@ class BasketStrategyConfig:
             issues.append("fee_rate_invalid")
         if self.minimum_order_shares <= 0:
             issues.append("minimum_order_shares_invalid")
-        if not 0 < self.hard_no_max_price < 1:
-            issues.append("hard_no_max_price_invalid")
-        if self.hard_no_max_notional_usdc <= 0 or self.hard_no_minimum_shares <= 0:
-            issues.append("hard_no_capital_policy_invalid")
-        if not isinstance(self.require_hard_no_for_basket, bool):
-            issues.append("require_hard_no_for_basket_invalid")
         if not isinstance(self.live_submit_authorized, bool):
             issues.append("live_submit_authorized_invalid")
         if not isinstance(self.dynamic_convergence_enabled, bool):
@@ -595,7 +576,7 @@ def _select_basket_quotes(
     *,
     center_bucket_c: int,
     config: BasketStrategyConfig,
-    hard_lower_bound: int | None,
+    reported_floor_c: int | None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     issues: list[str] = []
     exact = [row for row in quotes if str(row.get("kind") or "single") == "single"]
@@ -605,11 +586,11 @@ def _select_basket_quotes(
         and isinstance(row.get("bucket_c"), int)
         and int(row["bucket_c"]) == center_bucket_c
     ]
-    if hard_lower_bound is not None and center_bucket_c < hard_lower_bound:
-        return [], ["probability_center_hard_excluded"]
-    if hard_lower_bound is not None:
-        exact = [row for row in exact if int(row["bucket_c"]) >= hard_lower_bound]
-        edge_centres = [row for row in edge_centres if int(row["bucket_c"]) >= hard_lower_bound]
+    if reported_floor_c is not None and center_bucket_c < reported_floor_c:
+        return [], ["probability_center_reported_excluded"]
+    if reported_floor_c is not None:
+        exact = [row for row in exact if int(row["bucket_c"]) >= reported_floor_c]
+        edge_centres = [row for row in edge_centres if int(row["bucket_c"]) >= reported_floor_c]
     # An edge contract can be the posterior centre.  In that case it is the
     # first/last leg of the contiguous window; for an interior exact centre,
     # edge contracts remain excluded so the basket stays exact-temperature.
@@ -621,7 +602,7 @@ def _select_basket_quotes(
             exact = [*exact, edge]
     exact = sorted(exact, key=lambda row: row["bucket_c"])
     if len(exact) < config.basket_width:
-        return [], ["insufficient_exact_buckets_after_hard_no_floor"]
+        return [], ["insufficient_exact_buckets_after_reported_floor"]
     contiguous_groups: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
     for row in exact:
@@ -663,7 +644,7 @@ def _select_dynamic_basket_quotes(
     width: int,
     probabilities: Mapping[str, Any] | None,
     config: BasketStrategyConfig,
-    hard_lower_bound: int | None,
+    reported_floor_c: int | None,
 ) -> tuple[list[dict[str, Any]], list[str], float, float]:
     """Select the best contiguous window for the current convergence stage.
 
@@ -679,9 +660,9 @@ def _select_dynamic_basket_quotes(
         and isinstance(row.get("bucket_c"), int)
         and int(row["bucket_c"]) == center_bucket_c
     ]
-    if hard_lower_bound is not None:
-        exact = [row for row in exact if int(row["bucket_c"]) >= hard_lower_bound]
-        edge_centres = [row for row in edge_centres if int(row["bucket_c"]) >= hard_lower_bound]
+    if reported_floor_c is not None:
+        exact = [row for row in exact if int(row["bucket_c"]) >= reported_floor_c]
+        edge_centres = [row for row in edge_centres if int(row["bucket_c"]) >= reported_floor_c]
     if edge_centres:
         edge = edge_centres[0]
         if str(edge.get("kind") or "") == "lower_tail":
@@ -690,7 +671,7 @@ def _select_dynamic_basket_quotes(
             exact = [*exact, edge]
     exact = sorted(exact, key=lambda row: row["bucket_c"])
     if len(exact) < width:
-        return [], ["insufficient_exact_buckets_after_hard_no_floor"], 0.0, _dynamic_width_target(config, width)
+        return [], ["insufficient_exact_buckets_after_reported_floor"], 0.0, _dynamic_width_target(config, width)
     groups: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
     for row in exact:
@@ -736,7 +717,7 @@ def _build_basket_component(
     quotes: Sequence[Mapping[str, Any]],
     direction_bias: Mapping[str, Any],
     config: BasketStrategyConfig,
-    hard_lower_bound: int | None,
+    reported_floor_c: int | None,
     probability_projection: Mapping[str, Any] | None = None,
     completed_widths: Sequence[int] | None = None,
 ) -> dict[str, Any]:
@@ -773,7 +754,7 @@ def _build_basket_component(
                 width=width,
                 probabilities=(probability_projection or {}).get("probabilities"),
                 config=config,
-                hard_lower_bound=hard_lower_bound,
+                reported_floor_c=reported_floor_c,
             )
             candidate_results.append((width, selected_candidate, candidate_issues, mass, target))
             if not candidate_issues:
@@ -796,7 +777,7 @@ def _build_basket_component(
             quotes,
             center_bucket_c=center_bucket_c,
             config=config,
-            hard_lower_bound=hard_lower_bound,
+            reported_floor_c=reported_floor_c,
         )
     if issues:
         return {"status": "blocked", "reason_codes": issues}
@@ -913,7 +894,7 @@ def _build_basket_component(
         "center_bucket": direction_bias.get("center_bucket"),
         "center_bucket_c": center_bucket_c,
         "center_probability": direction_bias.get("center_probability"),
-        "hard_no_floor_c": hard_lower_bound,
+        "reported_floor_c": reported_floor_c,
         "tranche_width": tranche_width,
         # The live basket is a dynamic convergence stage, not a fixed
         # four-leg order.  Keep both the selected width and the actual leg
@@ -962,127 +943,48 @@ def _build_basket_component(
     }
 
 
-def _no_asks(row: Mapping[str, Any]) -> list[tuple[float, float]]:
-    raw = row.get("no_asks")
-    asks: list[tuple[float, float]] = []
-    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
-        for item in raw:
-            if isinstance(item, Mapping):
-                price, size = _finite(item.get("price")), _positive(item.get("size"))
-            elif isinstance(item, Sequence) and len(item) >= 2:
-                price, size = _finite(item[0]), _positive(item[1])
-            else:
-                continue
-            if price is not None and size is not None and 0 < price < 1:
-                asks.append((price, size))
-    if not asks:
-        price, size = _finite(row.get("no_ask")), _positive(row.get("no_ask_size"))
-        if price is not None and size is not None and 0 < price < 1:
-            asks.append((price, size))
-    return sorted(asks)
-
-
-def _build_hard_no_component(
+def _official_report_floor(
     *,
     event: Mapping[str, Any],
-    market_rows: Sequence[Mapping[str, Any]],
     report: Mapping[str, Any] | None,
-    config: BasketStrategyConfig,
-    held_yes_shares_by_token: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    """Return an AWC-proven temperature floor for filtering impossible YES.
+
+    The report is never an order component and its absence does not become a
+    synthetic probability gate.  The pure basket simply retains every bucket
+    when no formal, current report floor is available.
+    """
+
     report = report if isinstance(report, Mapping) else {}
     raw_text = str(report.get("raw_text") or report.get("raw") or "").strip()
     if not raw_text:
-        return {"status": "blocked", "reason_codes": ["hard_report_missing"]}
+        return {"status": "unavailable", "reason_codes": ["official_report_missing"]}
     if bool(report.get("correction_suspected")):
-        return {"status": "blocked", "reason_codes": ["hard_report_correction_suspected"]}
+        return {"status": "unavailable", "reason_codes": ["official_report_correction_suspected"]}
     source_lane = str(report.get("source_lane") or "").strip().lower()
-    if source_lane not in {"amsc", "awc"}:
-        return {"status": "blocked", "reason_codes": ["hard_report_source_lane_invalid"]}
+    if source_lane != "awc":
+        return {"status": "unavailable", "reason_codes": ["official_report_source_lane_not_awc"]}
     observation_id = str(report.get("observation_id") or "").strip()
     if not observation_id:
-        return {"status": "blocked", "reason_codes": ["hard_report_observation_id_missing"]}
+        return {"status": "unavailable", "reason_codes": ["official_report_observation_id_missing"]}
     try:
         parsed = parse_metar_temperature(raw_text, expected_station=str(report.get("expected_station") or ""))
         unit = str(event.get("market_unit") or "C").strip().upper()
-        hard_bound = conservative_market_temperature(parsed.reported_temperature_c, unit)
-        selected = select_nearest_impossible_lower_bucket(market_rows, hard_lower_bound=hard_bound)
+        floor = conservative_market_temperature(parsed.reported_temperature_c, unit)
     except (TypeError, ValueError) as exc:
-        return {"status": "blocked", "reason_codes": [f"hard_report_invalid:{exc}"]}
-    if selected is None:
-        return {
-            "status": "no_action",
-            "reason_codes": ["no_impossible_lower_bucket"],
-            "reported_temperature_c": parsed.reported_temperature_c,
-            "hard_lower_bound_market_unit": hard_bound,
-        }
-    yes_token = str(selected.get("yes_token") or "").strip()
-    no_token = str(selected.get("no_token") or "").strip()
-    if not yes_token or not no_token:
-        return {
-            "status": "blocked",
-            "reason_codes": ["hard_no_token_missing"],
-            "hard_lower_bound_market_unit": hard_bound,
-            "selected_bucket": selected.get("label"),
-        }
-    held = held_yes_shares_by_token if isinstance(held_yes_shares_by_token, Mapping) else {}
-    held_yes = _finite(held.get(yes_token)) or 0.0
-    if held_yes > EPS:
-        return {
-            "status": "blocked",
-            "reason_codes": ["same_bucket_yes_inventory_conflict"],
-            "selected_bucket": selected.get("label"),
-            "hard_lower_bound_market_unit": hard_bound,
-            "held_yes_shares": held_yes,
-        }
-    asks = [(price, size) for price, size in _no_asks(selected) if price <= config.hard_no_max_price + EPS]
-    if not asks:
-        return {
-            "status": "no_action",
-            "reason_codes": ["no_executable_hard_no_ask_at_or_below_cap"],
-            "selected_bucket": selected.get("label"),
-            "reported_temperature_c": parsed.reported_temperature_c,
-            "hard_lower_bound_market_unit": hard_bound,
-        }
-    depth = sum(size for _price, size in asks)
-    quantity = min(depth, config.hard_no_max_notional_usdc / config.hard_no_max_price)
-    if quantity < config.hard_no_minimum_shares - EPS:
-        return {
-            "status": "no_action",
-            "reason_codes": ["hard_no_depth_below_minimum_order"],
-            "hard_lower_bound_market_unit": hard_bound,
-            "selected_bucket": selected.get("label"),
-            "depth": depth,
-        }
+        return {"status": "unavailable", "reason_codes": [f"official_report_invalid:{exc}"]}
     return {
-        "status": "ready",
-        "mode": "reported_trajectory_hard_no",
+        "status": "available",
         "source_lane": source_lane,
         "observation_id": observation_id,
         "report_type": parsed.report_type,
         "station_id": parsed.station_id,
         "reported_temperature_c": parsed.reported_temperature_c,
-        "hard_lower_bound_market_unit": hard_bound,
-        "selected_bucket": selected.get("label"),
-        "selected_bucket_upper": selected.get("upper"),
-        "yes_token_conflict_checked": True,
-        "orders": [
-            {
-                "intent_id": _stable_id("hard_no_intent_", [event.get("event_id"), observation_id, no_token]),
-                "side": "NO",
-                "token": no_token,
-                "bucket": selected.get("label"),
-                "quantity": quantity,
-                "limit_price": config.hard_no_max_price,
-                "order_type": "FAK",
-                "fill_policy": "partial_fill_allowed_by_market_depth",
-            }
-        ],
-        "live_submit_authorized": LIVE_SUBMIT_AUTHORIZED,
+        "reported_floor_market_unit": floor,
     }
 
 
-def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]:
+def build_basket_yes_plan(request: Mapping[str, Any]) -> dict[str, Any]:
     """Build a deterministic plan without submitting anything."""
 
     request = request if isinstance(request, Mapping) else {}
@@ -1102,34 +1004,27 @@ def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]
         target_event_date=str(event.get("target_event_date") or event.get("event_date") or ""),
         regime=request.get("regime") if isinstance(request.get("regime"), Mapping) else None,
     )
-    hard_no = _build_hard_no_component(
+    official_report_floor = _official_report_floor(
         event=event,
-        market_rows=market_rows,
         report=request.get("report") if isinstance(request.get("report"), Mapping) else None,
-        config=config,
-        held_yes_shares_by_token=request.get("held_yes_shares_by_token"),
     )
-    hard_lower_bound = hard_no.get("hard_lower_bound_market_unit")
-    if hard_lower_bound is None and hard_no.get("status") == "ready":
-        hard_lower_bound = None
+    reported_floor_c = official_report_floor.get("reported_floor_market_unit")
     basket = _build_basket_component(
         event=event,
         quotes=quotes,
         direction_bias=direction,
         config=config,
-        hard_lower_bound=int(hard_lower_bound) if isinstance(hard_lower_bound, (int, float)) else None,
+        reported_floor_c=(
+            int(reported_floor_c)
+            if isinstance(reported_floor_c, (int, float))
+            else None
+        ),
         probability_projection=probability_projection,
         completed_widths=request.get("completed_tranche_widths"),
     )
     if config_issues:
         basket = {"status": "blocked", "reason_codes": config_issues}
-    hard_no_ok = hard_no.get("status") in {"ready", "no_action"}
-    if not config.require_hard_no_for_basket and hard_no.get("status") == "blocked":
-        # Hard NO is an independent trajectory lane.  A missing/stale report
-        # must not suppress a valid pre-entry basket; the hard-NO daemon will
-        # fail closed until its own official METAR/SPECI evidence is ready.
-        hard_no_ok = True
-    overall_status = "ready" if basket.get("status") == "ready" and hard_no_ok else "blocked"
+    overall_status = "ready" if basket.get("status") == "ready" else "blocked"
     if overall_status == "ready":
         plan_state = "BASKET_READY"
     elif direction.get("status") == "available":
@@ -1140,7 +1035,10 @@ def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]
         plan_state = "DRAFT"
     plan = {
         "schema": BASKET_STRATEGY_SCHEMA_VERSION,
-        "plan_id": _stable_id("basket_plan_", [event.get("event_id"), request.get("as_of"), direction, basket, hard_no]),
+        "plan_id": _stable_id(
+            "basket_plan_",
+            [event.get("event_id"), request.get("as_of"), direction, basket, official_report_floor],
+        ),
         "status": overall_status,
         "execution_mode": "live" if config.live_submit_authorized else "plan_only",
         "live_submit_authorized": config.live_submit_authorized,
@@ -1174,8 +1072,8 @@ def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]
             "selective_pairing": False,
             "merge_enabled": False,
             "model_taf_role": "upstream_regime_and_P0_weak_likelihood_only",
-            "hard_report_role": "exclude_impossible_lower_buckets_and_emit_hard_no",
-            "hard_observation_source": "METAR/SPECI_only",
+            "official_report_role": "filter_mathematically_impossible_yes_buckets_only",
+            "official_report_source": "AWC_METAR_SPECI_only",
             "selection_policy_id": config.policy_id,
             "selection_role_rule": {
                 "four": ["non_core_edge_left", "primary_core", "secondary_core", "non_core_edge_right"],
@@ -1198,23 +1096,23 @@ def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]
                 "parent_order_cap_usdc": 2.0,
             },
             "fact_semantics": {
-                "amsc_whole_hour_is_settlement_fact": True,
-                "amsc_half_hour_is_reference_only": True,
+                "awc_hourly_metar_is_settlement_fact": True,
+                "awc_speci_is_effective_fact": True,
             },
         },
         "config": asdict(config),
         "probability_projection": probability_projection,
         "direction_bias": direction,
         "basket": basket,
-        "hard_no": hard_no,
+        "official_report_floor": official_report_floor,
         "guards": {
             "writes_database": False,
             "reads_order_gateway": False,
             "submits_orders": config.live_submit_authorized,
             "reads_probability_runtime": False,
             "reads_materialized_posterior_projection": True,
-            "uses_taf_for_hard_exclusion": False,
-            "uses_model_for_hard_exclusion": False,
+            "uses_taf_for_reported_floor": False,
+            "uses_model_for_reported_floor": False,
         },
     }
     return plan
@@ -1223,7 +1121,7 @@ def build_basket_plus_hard_no_plan(request: Mapping[str, Any]) -> dict[str, Any]
 __all__ = [
     "BASKET_STRATEGY_SCHEMA_VERSION",
     "BasketStrategyConfig",
-    "build_basket_plus_hard_no_plan",
+    "build_basket_yes_plan",
     "build_direction_bias",
     "classify_regime_direction",
     "extract_model_taf_inputs",

@@ -20,6 +20,7 @@ EXPECTED_SCOPE = "canonical_45_station"
 EXPECTED_STATION_COUNT = 45
 EXPECTED_PROVIDERS = frozenset({
     "ecmwf_ifs025_official",
+    "ecmwf_aifs025_official",
     "gfs_0p25_official",
     "icon_global_official",
     "gem_gdps_official",

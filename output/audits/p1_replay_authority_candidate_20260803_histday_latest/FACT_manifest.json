@@ -1,0 +1,40 @@
+{
+  "archive_database": "/Users/xiong/weather/data/archive.db",
+  "boundary": {
+    "calls_network": false,
+    "candidate_only": true,
+    "formal_promoted_created": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "writes_archive_database": false,
+    "writes_target_database": false
+  },
+  "canonical_input": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_canonical_observation_evidence.json",
+  "content_sha256": "edae6f2148877d81257ad48d25a6b6ea172c25b55386a899487dc54df0e0b676",
+  "event_date": "2026-08-01",
+  "reports": [
+    {
+      "blockers": [],
+      "content_sha256": "47db74106514817240be3503727690d4494afcd32763d8b0a70f04c1224f8310",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 23,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_histday_latest/FACT/FACT_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "FACT",
+      "strict_asof_bindable_observation_count": 23
+    }
+  ],
+  "root_decision_at_utc": "2026-08-01T16:44:40.423Z",
+  "schema": "bayes_basket_target_p1_replay_authority_candidate_manifest_v1",
+  "state": "CANDIDATE_ONLY",
+  "station_count": 1,
+  "summary": {
+    "blocked_count": 0,
+    "candidate_ready_count": 1,
+    "formal_observations": 23,
+    "pointer_repairs": 0,
+    "strict_asof_bindings": 23
+  },
+  "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db"
+}

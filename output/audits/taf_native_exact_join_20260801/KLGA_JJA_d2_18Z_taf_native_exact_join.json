@@ -1,0 +1,8 @@
+{
+  "content_sha256": "0e42f32fa566d66fa650ffa7c23adeb191440e5c9eaf2a9caae1a10db492095f",
+  "nwp_crossfit_prediction_artifact_sha256": "b8835475c3fae27a153b2d2066954c04634f04cf350c004c290e377c002b7ff4",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join"
+}

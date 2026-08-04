@@ -29,6 +29,9 @@ from .execution_version_vector import (
     validate_no_execution_version_policy,
 )
 from .settlement_time import settlement_day_window
+from .station_policy_forward_outcome_binding import (
+    build_future_station_policy_outcome_materialization,
+)
 FACT_SCHEMA = "delta_basket_score_training_fact_v2"
 FACT_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_FORWARD"
 MAX_FEATURE_JSON_BYTES = 262_144
@@ -813,6 +816,19 @@ def build_validated_forward_fact_delta_v2(
             or key.endswith("_sha256")
         },
     }
+    station_policy_outcome_materialization = (
+        build_future_station_policy_outcome_materialization(
+            station_id=station_id,
+            event_date=event_date,
+            settlement_timezone=settlement_timezone,
+            stage=stage,
+            decision_at_utc=decision_at,
+            strategy_version=str(policy_vector["strategy_version"]),
+            season_bin=str(policy_vector["season_bin"]),
+            maturity_bin=str(policy_vector["maturity_bin"]),
+            liquidity_bin=str(policy_vector["liquidity_bin"]),
+        )
+    )
     feature = {
         "schema": "delta_basket_score_forward_feature_vector_v2",
         "basket_lifecycle": basket_lifecycle_projection(plan),
@@ -828,6 +844,13 @@ def build_validated_forward_fact_delta_v2(
         # retired posterior/quote/inventory/order version tuple.
         "execution_version_vectors": execution_vectors,
         "no_execution_policy": no_execution_policy,
+        # This future-only skeleton records the precise post-label contract
+        # gaps.  It cannot accept caller scores, probabilities, or proxy
+        # outputs; every family remains unavailable until its own approved
+        # frozen-output plus utility-metric contract exists.
+        "station_policy_outcome_materialization": (
+            station_policy_outcome_materialization
+        ),
         "bucket_intervals_c_json": lineage.get("bucket_intervals_c_json"),
         "no_live_boundary": {
             "execution_mode": "production_no_live",

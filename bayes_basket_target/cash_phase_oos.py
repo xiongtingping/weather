@@ -1,4 +1,4 @@
-"""Target-owned cash-phase forward/OOS scorecard.
+"""Target-owned cash-phase historical strict-as-of OOS scorecard.
 
 The module is deliberately pure and bounded: it consumes caller-provided
 evidence only, never opens a database, touches a service, or reads a source
@@ -317,8 +317,13 @@ def _normalize_row(
         if str(row.get("production_mode") or "").lower() != "production_no_live":
             blockers.append("production_mode_not_no_live")
         split = str(row.get("evaluation_split") or "").upper()
-        if split not in {"FORWARD", "OOS"}:
-            blockers.append("evaluation_split_not_forward_oos")
+        if split not in {"HISTORICAL", "OOS", "STRICT_HISTORICAL_OOS"}:
+            blockers.append("evaluation_split_not_historical_oos")
+        role = str(
+            row.get("evidence_role") or "historical_strict_oos"
+        ).strip().lower()
+        if role != "historical_strict_oos":
+            blockers.append("evidence_role_not_historical_strict_oos")
     semantics = str(row.get("label_semantics", row.get("semantics", "")) or "").strip().lower()
     live_fill = _bool_alias(row, "live_fill", "real_live_fill")
     if live_fill is True or semantics in {"actual_fills", "confirmed_fills", "live_fills", "filled_orders"}:
@@ -561,7 +566,8 @@ def build_cash_phase_oos_scorecard(
             for item in {
                 "evidence_owner_not_target",
                 "production_mode_not_no_live",
-                "evaluation_split_not_forward_oos",
+                "evaluation_split_not_historical_oos",
+                "evidence_role_not_historical_strict_oos",
             }
         )),
         "strict_asof": not any(item.startswith("future_") or "_violates_asof" in item for item in blockers),
@@ -606,6 +612,9 @@ def build_cash_phase_oos_scorecard(
     )
     artifact: dict[str, Any] = {
         "schema": SCHEMA,
+        "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+        "future_data_evidence_role": "observational_candidate_not_oos",
+        "future_data_counts_as_oos": False,
         "as_of_utc": as_of,
         "policy_version": version,
         "policy_promoted": bool(policy_promoted),

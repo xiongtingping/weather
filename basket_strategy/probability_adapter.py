@@ -12,7 +12,7 @@ import json
 import math
 from typing import Any, Mapping, Sequence
 
-from reported_trajectory_no_runtime import parse_bucket_interval
+from weather_basket_yes_runtime import parse_bucket_interval
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

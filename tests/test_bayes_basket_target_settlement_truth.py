@@ -13,6 +13,7 @@ from bayes_basket_target.delta_v2_settlement_label import (
     materialize_delta_v2_settled_training_labels,
 )
 from bayes_basket_target.settlement_truth import (
+    CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
     materialize_settled_station_truth,
     materialize_settled_training_truths,
 )
@@ -20,8 +21,8 @@ from bayes_basket_target.correction_review import (
     CLEAR_REFERENCE_ONLY,
     append_correction_review,
 )
-from reported_trajectory_no_schema import (
-    apply_reported_trajectory_no_schema,
+from weather_basket_yes_schema import (
+    apply_weather_basket_yes_schema,
 )
 
 
@@ -41,6 +42,7 @@ def _target() -> sqlite3.Connection:
           truth_id TEXT PRIMARY KEY,
           station_id TEXT NOT NULL,
           local_date TEXT NOT NULL,
+          settlement_timezone TEXT,
           official_tmax_c REAL NOT NULL,
           source_lane TEXT NOT NULL,
           settlement_definition TEXT NOT NULL,
@@ -56,6 +58,17 @@ def _target() -> sqlite3.Connection:
           authority_scope TEXT NOT NULL,
           content_sha256 TEXT NOT NULL,
           UNIQUE(station_id,local_date,settlement_definition,revision_no)
+        );
+        CREATE TABLE canonical_ssot_fact(
+          fact_id TEXT PRIMARY KEY,
+          fact_type TEXT NOT NULL,
+          scope_key TEXT NOT NULL,
+          content_sha256 TEXT NOT NULL,
+          fact_json TEXT NOT NULL,
+          lineage_json TEXT NOT NULL,
+          ingested_at_utc TEXT NOT NULL,
+          UNIQUE(fact_type,content_sha256),
+          UNIQUE(fact_type,scope_key)
         );
         CREATE TABLE basket_policy_training_fact(
           fact_id TEXT,station_id TEXT,event_date TEXT
@@ -292,6 +305,8 @@ def _label_truth(
     official_tmax_c: float,
     committed_at: str,
     qc_status: str = "ACCEPTED",
+    source_lane: str = "AWC",
+    source_role: str = CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
 ) -> None:
     conn.execute(
         "INSERT INTO calibration_station_daily_high_truth(" \
@@ -305,7 +320,7 @@ def _label_truth(
             station_id,
             event_date,
             official_tmax_c,
-            "AMSC",
+            source_lane,
             "official_daily_tmax_c",
             revision_no,
             "2026-07-29T10:00:00Z",
@@ -313,7 +328,7 @@ def _label_truth(
             committed_at,
             1,
             qc_status,
-            "formal_truth",
+            source_role,
             "a" * 64,
             "{}",
             "FORMAL_NATIVE_ELIGIBLE",
@@ -364,13 +379,14 @@ def _observation(
     committed_at: str | None = None,
     correction: int = 0,
     report_type: str = "METAR",
+    station_id: str = "RKPK",
 ) -> None:
     conn.execute(
         "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
         (
             observation_id,
             "awc",
-            "RKPK",
+            station_id,
             report_type,
             valid_at,
             temperature_c,
@@ -407,7 +423,28 @@ def test_open_registry_settlement_day_is_zero_write() -> None:
     ).fetchone()[0] == 0
 
 
-def test_closed_day_uses_registry_timezone_and_ignores_nonhourly_reference() -> None:
+def test_settlement_truth_rejects_future_asof_before_any_write() -> None:
+    target = _target()
+    source = _canonical()
+
+    with pytest.raises(
+        ContractError,
+        match="settlement_truth_as_of_utc_in_future",
+    ):
+        materialize_settled_station_truth(
+            target,
+            source,
+            station_id="RKPK",
+            event_date="2026-07-28",
+            as_of_utc="2999-01-01T00:00:00Z",
+        )
+
+    assert target.execute(
+        "SELECT COUNT(*) FROM calibration_station_daily_high_truth"
+    ).fetchone()[0] == 0
+
+
+def test_closed_day_uses_registry_timezone_and_filters_awc_routine_half_hour() -> None:
     target = _target()
     target.execute(
         "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
@@ -448,7 +485,7 @@ def test_closed_day_uses_registry_timezone_and_ignores_nonhourly_reference() -> 
         as_of_utc="2026-07-28T19:00:00Z",
     )
 
-    assert result["state"] == "committed"
+    assert result["state"] == "staged_in_caller_transaction"
     assert result["settlement_timezone"] == "Asia/Seoul"
     assert result["official_tmax_c"] == 35
     row = target.execute(
@@ -459,6 +496,112 @@ def test_closed_day_uses_registry_timezone_and_ignores_nonhourly_reference() -> 
     assert "b-half" not in row[1]
     assert '"settlement_timezone":"Asia/Seoul"' in row[1]
     assert f'"registry_snapshot_sha256":"{"f" * 64}"' in row[1]
+
+
+def test_truth_writer_excludes_amsc_and_legacy_role_revisions() -> None:
+    target = _target()
+    _label_truth(
+        target,
+        "truth-legacy-amsc",
+        station_id="RKPK",
+        event_date="2026-07-28",
+        revision_no=9,
+        official_tmax_c=39.0,
+        committed_at="2026-07-28T14:00:00Z",
+        source_lane="AMSC",
+        source_role=CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+    )
+    _label_truth(
+        target,
+        "truth-awc-legacy-role",
+        station_id="RKPK",
+        event_date="2026-07-28",
+        revision_no=8,
+        official_tmax_c=38.0,
+        committed_at="2026-07-28T14:00:00Z",
+        source_role="CANONICAL_AMSC_AWC_INGRESS",
+    )
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="a-awc-hourly",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=35.0,
+        committed_at="2026-07-28T03:01:00Z",
+    )
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-28T15:00:00Z",
+    )
+
+    assert result["state"] == "staged_in_caller_transaction"
+    assert result["revision_no"] == 0
+    assert target.execute(
+        "SELECT source_lane,source_role FROM "
+        "calibration_station_daily_high_truth WHERE truth_id=?",
+        (result["truth_id"],),
+    ).fetchone() == (
+        "AWC",
+        CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+    )
+
+
+def test_wsss_truth_excludes_half_hour_awc_metar_and_keeps_hourly_maximum() -> None:
+    target = _target()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "WSSS", "2026-07-30", "Asia/Singapore", "awc", 1,
+            "e" * 64, "2026-07-29T00:00:00Z",
+        ),
+    )
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="e-wsss-0200",
+        station_id="WSSS",
+        valid_at="2026-07-30T02:00:00Z",
+        temperature_c=30,
+        committed_at="2026-07-30T02:01:00Z",
+    )
+    _observation(
+        source,
+        observation_id="f-wsss-0500",
+        station_id="WSSS",
+        valid_at="2026-07-30T05:00:00Z",
+        temperature_c=30,
+        committed_at="2026-07-30T05:01:00Z",
+    )
+    _observation(
+        source,
+        observation_id="a-wsss-0530",
+        station_id="WSSS",
+        valid_at="2026-07-30T05:30:00Z",
+        temperature_c=31,
+        committed_at="2026-07-30T05:31:00Z",
+    )
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="WSSS",
+        event_date="2026-07-30",
+        as_of_utc="2026-07-30T17:00:00Z",
+    )
+
+    assert result["state"] == "staged_in_caller_transaction"
+    assert result["official_tmax_c"] == 30
+    lineage = json.loads(target.execute(
+        "SELECT observation_ids_json FROM calibration_station_daily_high_truth"
+    ).fetchone()[0])
+    assert [item["observation_id"] for item in lineage["observations"]] == [
+        "e-wsss-0200",
+        "f-wsss-0500",
+    ]
 
 
 def test_nonhourly_corrected_speci_blocks_entire_station_day() -> None:
@@ -827,7 +970,7 @@ def test_truth_batch_rejects_invalid_cursor() -> None:
 def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage() -> None:
     target = _target()
     source = sqlite3.connect(":memory:")
-    apply_reported_trajectory_no_schema(source)
+    apply_weather_basket_yes_schema(source)
     source.execute(
         """
         INSERT INTO reported_trajectory_market_registry(
@@ -896,7 +1039,7 @@ def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage()
         as_of_utc="2026-07-28T15:00:00Z",
     )
 
-    assert result["state"] == "committed"
+    assert result["state"] == "staged_in_caller_transaction"
     assert result["official_tmax_c"] == 35
     lineage = target.execute(
         "SELECT observation_ids_json "
@@ -907,6 +1050,138 @@ def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage()
         item["observation_id"]
         for item in json.loads(lineage)["observations"]
     ]
+
+
+def test_label_formal_truth_selection_requires_awc_and_new_ingress_role() -> None:
+    conn = _label_target()
+    _label_envelope(
+        conn,
+        envelope_id="env-rkpk",
+        station_id="RKPK",
+        event_date="2026-07-29",
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "RKPK", "2026-07-29", "Asia/Seoul", "awc", 1,
+            "f" * 64, "2026-07-28T14:00:00Z",
+        ),
+    )
+    _label_fact(
+        conn,
+        fact_id="d2fact_rkpk",
+        cycle_id="cycle-rkpk",
+        envelope_id="env-rkpk",
+    )
+    _label_intent(
+        conn,
+        cycle_id="cycle-rkpk",
+        bucket="35",
+        requested_size=1.0,
+        requested_notional_usdc=0.5,
+    )
+    _label_truth(
+        conn,
+        "truth-amsc-high-revision",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        revision_no=9,
+        official_tmax_c=36.0,
+        committed_at="2026-07-29T15:00:00Z",
+        source_lane="AMSC",
+    )
+    _label_truth(
+        conn,
+        "truth-awc-legacy-role",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        revision_no=8,
+        official_tmax_c=36.0,
+        committed_at="2026-07-29T15:00:00Z",
+        source_role="CANONICAL_AMSC_AWC_INGRESS",
+    )
+    _label_truth(
+        conn,
+        "truth-awc-canonical",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        revision_no=0,
+        official_tmax_c=35.0,
+        committed_at="2026-07-29T15:00:00Z",
+    )
+
+    result = materialize_delta_v2_settled_training_labels(
+        conn,
+        as_of_utc="2026-07-29T15:01:00Z",
+    )
+
+    assert result["state"] == "committed"
+    assert result["appended_count"] == 1
+    assert conn.execute(
+        "SELECT truth_id,truth_revision_no FROM "
+        "basket_policy_training_label"
+    ).fetchone() == ("truth-awc-canonical", 0)
+
+
+def test_label_formal_truth_selection_fails_closed_without_canonical_awc_truth() -> None:
+    conn = _label_target()
+    _label_envelope(
+        conn,
+        envelope_id="env-rkpk",
+        station_id="RKPK",
+        event_date="2026-07-29",
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "RKPK", "2026-07-29", "Asia/Seoul", "awc", 1,
+            "f" * 64, "2026-07-28T14:00:00Z",
+        ),
+    )
+    _label_fact(
+        conn,
+        fact_id="d2fact_rkpk",
+        cycle_id="cycle-rkpk",
+        envelope_id="env-rkpk",
+    )
+    _label_intent(
+        conn,
+        cycle_id="cycle-rkpk",
+        bucket="35",
+        requested_size=1.0,
+        requested_notional_usdc=0.5,
+    )
+    _label_truth(
+        conn,
+        "truth-amsc",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        revision_no=9,
+        official_tmax_c=36.0,
+        committed_at="2026-07-29T15:00:00Z",
+        source_lane="AMSC",
+    )
+    _label_truth(
+        conn,
+        "truth-awc-legacy-role",
+        station_id="RKPK",
+        event_date="2026-07-29",
+        revision_no=8,
+        official_tmax_c=36.0,
+        committed_at="2026-07-29T15:00:00Z",
+        source_role="CANONICAL_AMSC_AWC_INGRESS",
+    )
+
+    result = materialize_delta_v2_settled_training_labels(
+        conn,
+        as_of_utc="2026-07-29T15:01:00Z",
+    )
+
+    assert result["state"] == "no_new_final_labels"
+    assert result["appended_count"] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_policy_training_label"
+    ).fetchone()[0] == 0
 
 
 def test_label_keyset_pages_fixed_rkpk_and_day_cursor_wraps() -> None:

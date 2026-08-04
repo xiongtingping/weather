@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import errno
 from pathlib import Path
 import signal
 import ssl
@@ -10,6 +11,7 @@ import threading
 import time
 from contextlib import contextmanager
 from typing import Any
+from urllib.error import URLError
 from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
 
@@ -179,11 +181,55 @@ def open_official_https(
     # Keep TLS verification and hostname checking enabled while making the
     # proxy boundary explicit and bounded.  With no explicit proxy this is a
     # direct connection; ambient desktop proxy variables are never used.
+    selected_proxy = (
+        official_nwp_proxy_url()
+        if proxy_url is None
+        else str(proxy_url).strip()
+    )
     opener = build_opener(
-        official_nwp_proxy_handler(proxy_url),
+        official_nwp_proxy_handler(selected_proxy),
         HTTPSHandler(context=official_https_context()),
     )
-    return opener.open(request, timeout=max(1.0, float(timeout_sec)))
+    timeout = max(1.0, float(timeout_sec))
+    try:
+        return opener.open(request, timeout=timeout)
+    except URLError as exc:
+        # A stale local proxy configuration must not make an otherwise
+        # reachable official provider unavailable.  Retry direct only for an
+        # explicit TCP connection-refused failure at the proxy.  DNS, TLS,
+        # timeout, provider HTTP and payload failures stay fail closed.
+        reason: Any = exc.reason
+        connection_refused = isinstance(reason, ConnectionRefusedError)
+        while isinstance(reason, OSError) and not connection_refused:
+            connection_refused = getattr(reason, "errno", None) == errno.ECONNREFUSED
+            nested = getattr(reason, "reason", None)
+            if nested is None or nested is reason:
+                break
+            reason = nested
+        if not selected_proxy or not connection_refused:
+            raise
+        # ``ProxyHandler`` mutates the Request with the proxy host.  Reusing
+        # that object would make the nominal direct retry dial the refused
+        # local proxy a second time.  Rebuild the request from its original
+        # URL and public headers; never forward proxy authorization.
+        direct_headers = {
+            key: value
+            for key, value in request.header_items()
+            if key.lower() not in {"proxy-authorization", "proxy-connection"}
+        }
+        direct_request = Request(
+            request.full_url,
+            data=request.data,
+            headers=direct_headers,
+            origin_req_host=request.origin_req_host,
+            unverifiable=request.unverifiable,
+            method=request.get_method(),
+        )
+        direct = build_opener(
+            official_nwp_proxy_handler(""),
+            HTTPSHandler(context=official_https_context()),
+        )
+        return direct.open(direct_request, timeout=timeout)
 
 
 def read_official_response(response: Any, *, timeout_sec: float, chunk_size: int = 1024 * 1024) -> bytes:

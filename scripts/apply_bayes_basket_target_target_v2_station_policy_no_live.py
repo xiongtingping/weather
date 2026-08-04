@@ -45,13 +45,13 @@ MANIFEST_SCHEMA = (
 RECEIPT_SCHEMA = (
     "bayes_basket_target_target_v2_station_policy_no_live_receipt_v1"
 )
-SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 DEFAULT_MANIFEST = (
     ROOT
     / "config"
     / "trading"
-    / "bayes_basket_target_target_v2_station_policy_no_live_v3.json"
+    / "bayes_basket_target_target_v2_station_policy_no_live_global_v4.json"
 )
 CANONICAL_STATION_IDS = tuple(
     coordinate_registry_manifest()["station_ids"]
@@ -89,13 +89,11 @@ def load_manifest(path: Path) -> dict[str, Any]:
             or value.get("station_id") is not None
         ):
             raise ValueError("target_v2_station_policy_station_scope_invalid")
-        # P0-M deliberately resolves through its P0 policy family.  Creating
-        # a parallel explicit P0-M activation makes the resolver ambiguous.
-        expected_stages = ["P0", "P1"]
+        expected_stages = ["P0", "P0-M", "P1"]
         expected_maturities = ["d0", "d1", "d2", "d2_fallback"]
     else:
         station_ids = [value.get("station_id")]
-        expected_stages = ["P0", "P1"]
+        expected_stages = ["P0", "P0-M", "P1"]
         expected_maturities = ["d1", "d2", "d2_fallback"]
     expected_budget = 20.0 if generation >= 3 else 12.0
     if (

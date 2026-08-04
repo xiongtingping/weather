@@ -14,7 +14,7 @@ def test_live_service_launchers_share_bounded_log_policy() -> None:
     for launcher in (
         "scripts/market_ws_listener.sh",
         "scripts/clob_order_service.sh",
-        "scripts/reported_trajectory_no_daemon.sh",
+        "scripts/weather_basket_yes_daemon.sh",
     ):
         text = (ROOT / launcher).read_text(encoding="utf-8")
         assert 'bounded_service_logs.sh' in text

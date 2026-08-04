@@ -1,0 +1,759 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/ensemble-api",
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-08-02T02:35:25.066Z",
+  "bucket_contract_sha256": "abd37bcdc46aa5892dbd2e392760bc0afe18354a1018e8a19d149956756db7a6",
+  "bucket_intervals": {
+    "16°C or below": [
+      null,
+      16.5
+    ],
+    "17°C": [
+      16.5,
+      17.5
+    ],
+    "18°C": [
+      17.5,
+      18.5
+    ],
+    "19°C": [
+      18.5,
+      19.5
+    ],
+    "20°C": [
+      19.5,
+      20.5
+    ],
+    "21°C": [
+      20.5,
+      21.5
+    ],
+    "22°C": [
+      21.5,
+      22.5
+    ],
+    "23°C": [
+      22.5,
+      23.5
+    ],
+    "24°C": [
+      23.5,
+      24.5
+    ],
+    "25°C": [
+      24.5,
+      25.5
+    ],
+    "26°C or higher": [
+      25.5,
+      null
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "11a4084eab5e4122cc73d58c2249acfd9b48f87a8e1a7c6459ddb464922d059b",
+      "event_date": "2026-07-01",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "750699e12eca9c5ccaf54ac72065578f18b5fe928f61791ba0f131e9b6b689d1",
+      "event_date": "2026-07-02",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "34d8b35b291ad1644970efa37dbee1a16a61579671937da3b597ef09c4fdda50",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a8407cc31bc64816f63debd72e4dcf0fd9396fac7117a941b789c96831125e27",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6314eae14b4e4573bb0e9d803fbcb2b9402f1e55e62c74c1b68f2d50f1e394f4",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "60d24258c660ea2561c18856718850a5b6ec4d3649f88e343256a317ddd750fb",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "df62da6ee06d4c6de64fffc92de013a4bae9efc631700f8ebcfcc6cc0bfa8aad",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0edc26b93f6c9ecb594a2e6c95b3c0874be5ab38cbc745c39fec5c5e0ffab01d",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "668722f776888d558679efec1e86d33db39a985fca119b5da0546fe178391a8a",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9b8442f69f78940cd70ac8480c4d4df924842465acc55cc31a82ad2b9cee7af6",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "cb9eaba1c8a20ce1c2ce85386b354252b8621c56c0ca0591e5f545b5d6822864",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9e3221ffa1429d8efe5ff19d20f5c21d5fdabb55ba0379871af3cfcf5365901d",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f69e6e5cb19cf5baca8574d298fb7007dfc43c53c3e4e2fb31ac2887da1b37c6",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1662271ef81b4fd65ce6ad6e03cfc93a2c7838065e05aef0dbb6a38ef897f905",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ba33c2ad65ff8cf9c8e6fda01167569bd73c694257e00f21137bcb745fcf4e32",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6edcee04293b5ed438b775664a9666c837e072969e49e10592924d9b45880da4",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9b447d63d9b3e9b7fb5e63b7856e70bddc448a7a6be8825d22bd08f1a2896dbe",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "bd1b8b3cd09f0f13ec721ca037ac123690df9bc418929132fade137587bf68e8",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "4cbe1a1538dc9f4ee7b1696f8e1bb3c8c8ba4d44a9059d6899e51583141581ad",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "d672207f45790a70ed2f07265593bc9219896329e1a334ef5f68382efe0446f6",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a5a5390ce15c5303b412fe5f3ebf8829522ed90291b754f0ac550fe15c6d644b",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0c5c4e75b358e1fa24b5cfb09e7d05ff86da95edfde855c97b76f0dfc7840715",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "86e2cfeb0a226d00a3dad3d83de00ad9a0a39055e4da6d6bb12ced2df6908c07",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "11f509ae9ef3fcc7852880d2c3dbca6e23b31dc076c7ccad0886fb1ca07fd49d",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "2e171eded4fe9321b76230a893ee66a957c84c1dc04e2694046d6e3f78f6088b",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "16645d01de45c42cf34cd7adea11bad64ba07ab502fa6559c610d41fce433239",
+  "event_date_count": 25,
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25"
+  ],
+  "latitude": -33.965,
+  "live_submit_authorized": false,
+  "longitude": 18.602,
+  "orders_submitted": 0,
+  "request_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=-33.965&longitude=18.602&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble%2Cukmo_global_ensemble_20km&timezone=Africa%2FJohannesburg&start_date=2026-07-01&end_date=2026-07-25",
+  "response_sha256": "c938fcd2d6198a35130e0fab83cd9ee9aee5b541905bf32c1fdbcd1797baa161",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "selected_system_ids": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "UKMO_GLOBAL_ENS"
+  ],
+  "settlement_timezone": "Africa/Johannesburg",
+  "station_id": "FACT",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 25
+}

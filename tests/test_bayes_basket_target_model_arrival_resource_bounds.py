@@ -164,6 +164,29 @@ def test_stream_overflow_is_deleted_without_leaving_partial_raw(tmp_path: Path, 
     assert not [path for path in (tmp_path / "arrivals").rglob("*") if path.is_file()]
 
 
+def test_truncated_content_length_is_blocked_and_never_committed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    response = _Response([b"abc"], content_length=5)
+    monkeypatch.setattr(
+        capture_module,
+        "open_official_https",
+        lambda *_args, **_kwargs: response,
+    )
+
+    result = _capture(tmp_path)
+
+    assert result["status"] == "BLOCKED"
+    assert result["receipt"]["reason_codes"] == [
+        "model_arrival_content_length_mismatch"
+    ]
+    assert not [
+        path
+        for path in (tmp_path / "arrivals").rglob("*")
+        if path.is_file()
+    ]
+
+
 def test_successful_capture_hashes_and_persists_stream_without_body_buffer(tmp_path: Path, monkeypatch) -> None:
     body = b"abcde"
     response = _Response([body[:2], body[2:]], content_length=len(body))

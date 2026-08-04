@@ -46,7 +46,7 @@
   "stage_precedence_same_decision_only": ["P1", "P0-M", "P0"],
   "fallback_policy": "FAIL_CLOSED_NO_STATION_POLICY",
   "missing_model_policy": "FAIL_CLOSED_NO_P0",
-  "next_consumers": ["reported_trajectory_no_internal_target_worker"],
+  "next_consumers": ["weather_basket_yes_internal_target_worker"],
   "production_service_count_impact": 0,
-  "activation_contract_sha256": "10780f04761a435cfe9dc67a06d2ed62ec9f6a4abd5b7181ebe885db24355566"
+  "activation_contract_sha256": "c0d294d288b82d93fdb5857116e64913337778e5f7f4af4b77599c6887ed2e61"
 }

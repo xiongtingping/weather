@@ -1,0 +1,513 @@
+{
+  "calls_order_gateway": false,
+  "candidate_bundle": "/Users/xiong/weather/output/audits/station_policy_candidate_bundle_45station_20260801.json",
+  "candidate_bundle_sha256": "c709b49c4581bddad80f96d5b9650a1dfe3c3ebca73d028b27bdeec6253131b5",
+  "candidate_default_off": [
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "CYYZ",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "EDDM",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "EFHK",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "EGLC",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "EHAM",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "EPWA",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "FACT",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KATL",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KAUS",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KBKF",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KDAL",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KHOU",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KLAX",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KLGA",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KMIA",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KORD",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KSEA",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "KSFO",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "LEMD",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "LFPB",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "LIMC",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "LTAC",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "MMMX",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "MPMG",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "NZWN",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "OEJN",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "OPKC",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "RCSS",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "RJTT",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "RKPK",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "RKSI",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "RPLL",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "SAEZ",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "SBGR",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "VILK",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "WMKK",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "WSSS",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZBAA",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZGGG",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZGSZ",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZHHH",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZSPD",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZSQD",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZUCK",
+      "status": "PASS"
+    },
+    {
+      "reason": "FAIL_CLOSED_NO_STATION_POLICY",
+      "station_id": "ZUUU",
+      "status": "PASS"
+    }
+  ],
+  "candidate_default_off_all_pass": true,
+  "exact_promoted_all_pass": true,
+  "exact_promoted_simulation": [
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "dd36a498826fae25ee1254981a4015695f6be68a7ad6c9f2623cf817a56cd7d6",
+      "station_id": "CYYZ",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "b35c16277afd59045d2b43c7fabbee6ae2077db1ffc87d61ea589761f3c4e11a",
+      "station_id": "EDDM",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "9e1c7cbce0059834d53692ebce7dcbb6f94ece163c73f134952c5bc1d92fea59",
+      "station_id": "EFHK",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "040f44a0f8e65232bc0f14e782aff1b589f67432d71d3fde86a77d2a3eb29035",
+      "station_id": "EGLC",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "8040ad06aedb5b97304b1379e3b3b2046b6ed8135fe841950aee248bdb4b8d40",
+      "station_id": "EHAM",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "05efcffe2187fa8014629b86a7fce06c94de450e85ccf686f40dec81bd308fa4",
+      "station_id": "EPWA",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "58bd50acc9992fb611924330853da3db95f2f9a839643c9160e9279fb2cea1df",
+      "station_id": "FACT",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "ddb9633c1838d0d049cfc32e8eba4b6b245a9044eeb926e54ca3097b79c8d907",
+      "station_id": "KATL",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "ee8e93d95bca7c588ea13481278959224736189e38229d37fe0f0ffe9c85ac54",
+      "station_id": "KAUS",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "f4354caa3eaf91beb37241131b97ac4eed96da2daaf3da0f15aab02729f7ab56",
+      "station_id": "KBKF",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "42118887fbd0ffad7f03724446f3ed3f95e773d0d50ddbc2f2295ae9d33b3a31",
+      "station_id": "KDAL",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "10b48bfb1e738574cca30d19c0762290eb430897c671dda88211eba7ad35fbbf",
+      "station_id": "KHOU",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "e89f23d59c2d4f2c81c6d0498284bf6822e326113fa49fc36cbbe2c666825a50",
+      "station_id": "KLAX",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "125dd3b12e87ba97df33b9e537ade3e5bd6950754b92b15d6d50de09915596ba",
+      "station_id": "KLGA",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "8ecb315faa0ba73907f1a27d8ebfa5f5cf04aab817439a74aff388316ec79f53",
+      "station_id": "KMIA",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "7cb4f536510c811308de1a2d8bfe7131f2d0f492026b0d1b1755197261a01e08",
+      "station_id": "KORD",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "e88563ce3fe8026fbed345dee1a61010e0c55d891bcac9c46f320d9db911f1d1",
+      "station_id": "KSEA",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "99b416a16900743ec275d57b1dc1604a0a41412d7c5cd0191c1796b20c196351",
+      "station_id": "KSFO",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "b92dbaf0a02bf42c176527bbce0e3e2d22538afe1f307ab510a9da5f6c5d4fa0",
+      "station_id": "LEMD",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "fe8860348d829ee0a4f3d53f872927c13838da084baad8ce95c0222461e62ac7",
+      "station_id": "LFPB",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "3a2876f6695eb7f697cc0cfce560cc62ed8484d3acbae1e4818a10c9d7d3f677",
+      "station_id": "LIMC",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "8ba39c19484e74d8838d759bac797208ff5160611193ed2640b561c1a7f8bbea",
+      "station_id": "LTAC",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "667095cf730e72df68ad03fa710814fa104779cf86ab85e42a9deaf2641f9295",
+      "station_id": "MMMX",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "d8047a46aa75c43fd182dfcbe010b9b16af9799cbdf3aa1b6cf82d7f55bb96c8",
+      "station_id": "MPMG",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "8000e8bf03afc04bd3d0f3901903f3474fbbd5e56b41cc6a585cba1844542db5",
+      "station_id": "NZWN",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "71569537d5f5cc6dfa0ba6c0d1167a8d7c820fcc0123e9c6f24f2832af4339df",
+      "station_id": "OEJN",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "cf0ed6a1781e3e20fa904452584da5490a0c445215442bccbff18deb3d506fcc",
+      "station_id": "OPKC",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "885227f0a2de5d4bc9f3081b2a8baba545b3a9110f428ee9685fc2fe8feaadf1",
+      "station_id": "RCSS",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "6a1c4798aa0f80d250d83a5a16396a8ad3008e73bb5bbac63acd51ac69ea655a",
+      "station_id": "RJTT",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "ed748b4b84961b288f8528627de8556e138ca0467b5204c4c82fd13350ea20fa",
+      "station_id": "RKPK",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "7e1fde020586e96c7d54782fd7a42d7e16d4e1ded3807830c40c15d30367fce4",
+      "station_id": "RKSI",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "cd26f673a6f87725a80edbe0e18c0b74ebccb1b65bb76a931459765104742d41",
+      "station_id": "RPLL",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "8ad943bdec6e35b6a95b2269bcd2492200847c5ed36b0dad341edf71586a9d8c",
+      "station_id": "SAEZ",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "d59cdf2bbc1d09f0e910961b3dfc18036bc868179df2979f204f9155fe1634ed",
+      "station_id": "SBGR",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "cac926db9f6a0b8201763d8b0fdb32118bfec119fb32352008dbed7fac1289ef",
+      "station_id": "VILK",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "0829835d52fe10debe7a558e5bfa36db72bb6981eb401e460d80168ae99352ba",
+      "station_id": "WMKK",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "6f32077d6f90bcb86c05e528caea22ff2b5fd882f7907ad21a2c72cba54d285e",
+      "station_id": "WSSS",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "235b14944631a59b0eff05412a822baeb5523c7774d5b21bec48c31aa8e6e46a",
+      "station_id": "ZBAA",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "1d313cac2c3fec4d61b6d3b83944dbd9dfa1a20146cdf13e23f1a12397c64b40",
+      "station_id": "ZGGG",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "a9ae2a6c23347ce6d3a580ce04dcc7c33a53e7415885c79e4a194c7618d33239",
+      "station_id": "ZGSZ",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "cd0eb0c0dba9bac0ba47401448b08bd152176e983d1e736f6dd7e4505f572b30",
+      "station_id": "ZHHH",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "2c6ec5a573b7b63c4e497176bc380e578da65c06bc1f79c609e068f62c7ad9c4",
+      "station_id": "ZSPD",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "95ab07556a8597222c66b18ad398c526d37adb37cce6b1b973af52949226c82a",
+      "station_id": "ZSQD",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "89edfeed166f63c5fcac4afad83222464a3b4257d040c3380ea28b4540d515d2",
+      "station_id": "ZUCK",
+      "status": "PASS"
+    },
+    {
+      "fallback_reason": "exact_station_artifacts",
+      "policy_sha256": "7b8f094d45d8efbdc913937882f02c4c18d462663f18607fd6bf9a71fb68b40f",
+      "station_id": "ZUUU",
+      "status": "PASS"
+    }
+  ],
+  "orders_submitted": 0,
+  "production_mutation": false,
+  "promotion_simulation": "in_memory_only",
+  "receipt_sha256": "d58b6f110b8c4fc12f520b2eb804e5a16f64d02dd8d797f70fc3dec670773813",
+  "schema": "station_policy_resolver_45station_audit_v1",
+  "station_count": 45,
+  "writes_production_db": false
+}

@@ -31,7 +31,7 @@
     "NZWN": "awc",
     "OEJN": "awc",
     "OPKC": "awc",
-    "RCSS": "amsc",
+    "RCSS": "awc",
     "RJTT": "awc",
     "RKPK": "awc",
     "RKSI": "awc",
@@ -41,25 +41,25 @@
     "VILK": "awc",
     "WMKK": "awc",
     "WSSS": "awc",
-    "ZBAA": "amsc",
-    "ZGGG": "amsc",
-    "ZGSZ": "amsc",
-    "ZHHH": "amsc",
-    "ZSPD": "amsc",
-    "ZSQD": "amsc",
-    "ZUCK": "amsc",
-    "ZUUU": "amsc"
+    "ZBAA": "awc",
+    "ZGGG": "awc",
+    "ZGSZ": "awc",
+    "ZHHH": "awc",
+    "ZSPD": "awc",
+    "ZSQD": "awc",
+    "ZUCK": "awc",
+    "ZUUU": "awc"
   },
   "boundary": {
     "target_only": true,
     "allows_cross_lane_fallback": false,
     "reference_policy": {
-      "amsc_hourly_metar_for_amsc_station": "formal_truth_primary",
-      "amsc_half_hour_metar": "reference_only",
-      "awc_hourly_for_amsc_station": "reference_only",
-      "awc_hourly_precedence_over_amsc_hourly": false,
+      "awc_global_metar_speci": "formal_truth_primary_for_all_45_stations",
+      "amsc_production_lane": "retired_history_only",
+      "amsc_reference_evidence": "offline_audit_only",
       "reference_enters_formal_truth": false,
-      "reference_enters_calibration": false
+      "reference_enters_calibration": false,
+      "temporary_awc_calibration": "retired_history_only"
     },
     "writes_production_db": false,
     "calls_order_gateway": false

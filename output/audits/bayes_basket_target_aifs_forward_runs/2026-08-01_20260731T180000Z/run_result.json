@@ -1,0 +1,853 @@
+{
+  "authority": {
+    "counts_as_independent_family_from_ifs": false,
+    "formal_p0_eligible_without_strict_oos": false,
+    "native_arrival_index_eligible": true,
+    "source_role": "official_native"
+  },
+  "blocked_count": 0,
+  "boundary": {
+    "calls_order_gateway": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "prospective_only": true,
+    "target_only": true,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "capture_results": [
+    {
+      "forecast_hour": 12,
+      "index_sha256": "d3ecaa710086d19189774bda6e9b2b2931a4d6d5d2745fc4745d870e4f1cb16e",
+      "range_end": 83140726,
+      "range_start": 82576241,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/5765c9cccf6eb8819c15a5c17862c98a819f0bbf798d11aae264e20f02054010.json",
+      "valid_time_utc": "2026-08-01T06:00:00Z"
+    },
+    {
+      "forecast_hour": 18,
+      "index_sha256": "b61bc7dbc9618600a7e717ecd8f53c5a122bb2b1e8992473aaa4f2a0779538d4",
+      "range_end": 82843899,
+      "range_start": 82280126,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/a0c339ec436c65d6e07119b938cfc8c44dbeba9beb69bced2685e3b54c29ca46.json",
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    },
+    {
+      "forecast_hour": 24,
+      "index_sha256": "ec295986642dfe3803de8e82168cce0e9c9f64359208e3ca9b0260212cd26e25",
+      "range_end": 83048198,
+      "range_start": 82488586,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/b9b929a7097b2ca87edbdd54fde3b5dfdd585b3ecc96009bddbafbfcdeffd702.json",
+      "valid_time_utc": "2026-08-01T18:00:00Z"
+    },
+    {
+      "forecast_hour": 30,
+      "index_sha256": "021518548a209663b2f136d73078da6d612704db907e1ab1ca973b65d99af800",
+      "range_end": 82207246,
+      "range_start": 81654393,
+      "reason_codes": [],
+      "status": "CAPTURED",
+      "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/f277c4b45f466c4a60bdf7e3454506f883ee567396383989d6c4116f76d173ec.json",
+      "valid_time_utc": "2026-08-02T00:00:00Z"
+    }
+  ],
+  "captured_count": 4,
+  "content_sha256": "90cafcb6cb3d9972c6c49102a2b866528bc0e060df598ea3217d595f879e0011",
+  "execution_decision_at_utc": "2026-08-01T05:37:09.591Z",
+  "fanout": {
+    "blocked_count": 0,
+    "blockers": [],
+    "boundary": {
+      "calls_order_gateway": false,
+      "live_order_authorized": false,
+      "p0_station_lineage_only": true,
+      "p1_probability_input_authorized": false,
+      "raw_objects_copied": false,
+      "target_only": true,
+      "writes_target_database": false
+    },
+    "captured_count": 180,
+    "checks": {
+      "calls_order_gateway": false,
+      "duplicate_station_valid_keys": true,
+      "explicit_station_scope": true,
+      "global_provider_only": true,
+      "p0_station_lineage_may_precede_event_day": true,
+      "p1_authority_created": false,
+      "promotion_allowed": false,
+      "protected_production_line_touched": false,
+      "writes_production_db": false,
+      "writes_target_database": false
+    },
+    "decision_at_utc": "2026-08-01T05:37:09.591Z",
+    "expected_arrival_count": 180,
+    "outputs": [
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/CYYZ_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EDDM_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EFHK_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EGLC_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EHAM_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EPWA_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/FACT_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KATL_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KAUS_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KBKF_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KDAL_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KHOU_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLAX_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLGA_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KMIA_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KORD_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSEA_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSFO_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LEMD_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LFPB_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LIMC_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LTAC_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MMMX_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MPMG_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/NZWN_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OEJN_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OPKC_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RCSS_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RJTT_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKPK_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKSI_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RPLL_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SAEZ_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SBGR_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/VILK_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WMKK_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WSSS_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZBAA_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGGG_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGSZ_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZHHH_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSPD_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSQD_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUCK_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUUU_20260801T060000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/CYYZ_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EDDM_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EFHK_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EGLC_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EHAM_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EPWA_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/FACT_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KATL_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KAUS_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KBKF_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KDAL_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KHOU_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLAX_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLGA_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KMIA_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KORD_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSEA_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSFO_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LEMD_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LFPB_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LIMC_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LTAC_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MMMX_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MPMG_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/NZWN_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OEJN_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OPKC_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RCSS_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RJTT_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKPK_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKSI_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RPLL_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SAEZ_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SBGR_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/VILK_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WMKK_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WSSS_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZBAA_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGGG_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGSZ_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZHHH_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSPD_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSQD_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUCK_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUUU_20260801T120000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/CYYZ_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EDDM_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EFHK_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EGLC_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EHAM_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EPWA_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/FACT_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KATL_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KAUS_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KBKF_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KDAL_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KHOU_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLAX_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLGA_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KMIA_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KORD_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSEA_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSFO_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LEMD_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LFPB_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LIMC_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LTAC_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MMMX_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MPMG_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/NZWN_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OEJN_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OPKC_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RCSS_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RJTT_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKPK_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKSI_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RPLL_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SAEZ_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SBGR_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/VILK_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WMKK_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WSSS_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZBAA_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGGG_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGSZ_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZHHH_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSPD_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSQD_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUCK_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUUU_20260801T180000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/CYYZ_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EDDM_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EFHK_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EGLC_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EHAM_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/EPWA_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/FACT_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KATL_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KAUS_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KBKF_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KDAL_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KHOU_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLAX_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KLGA_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KMIA_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KORD_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSEA_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/KSFO_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LEMD_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LFPB_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LIMC_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/LTAC_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MMMX_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/MPMG_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/NZWN_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OEJN_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/OPKC_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RCSS_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RJTT_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKPK_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RKSI_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/RPLL_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SAEZ_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/SBGR_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/VILK_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WMKK_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/WSSS_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZBAA_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGGG_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZGSZ_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZHHH_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSPD_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZSQD_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUCK_20260802T000000Z.json",
+        "status": "CAPTURED"
+      },
+      {
+        "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z/station_arrivals/ZUUU_20260802T000000Z.json",
+        "status": "CAPTURED"
+      }
+    ],
+    "provider_id": "ecmwf_aifs025_official",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_global_model_fanout_v1",
+    "source_receipts": [
+      {
+        "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/5765c9cccf6eb8819c15a5c17862c98a819f0bbf798d11aae264e20f02054010.json",
+        "sha256": "d223147c7c6c38392856b8656d4ce3e8ddb1de77a80bfad71716e5c07552d8fe",
+        "valid_time_utc": "2026-08-01T06:00:00Z"
+      },
+      {
+        "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/a0c339ec436c65d6e07119b938cfc8c44dbeba9beb69bced2685e3b54c29ca46.json",
+        "sha256": "9988877f88db0ca5eaa68a2138799c28170d75ca7a479047172acb9baa9674e2",
+        "valid_time_utc": "2026-08-01T12:00:00Z"
+      },
+      {
+        "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/b9b929a7097b2ca87edbdd54fde3b5dfdd585b3ecc96009bddbafbfcdeffd702.json",
+        "sha256": "251a3f8a4e6b494e07bc7210422266f9a675774ec5c1a8857eddc184224136b8",
+        "valid_time_utc": "2026-08-01T18:00:00Z"
+      },
+      {
+        "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/f277c4b45f466c4a60bdf7e3454506f883ee567396383989d6c4116f76d173ec.json",
+        "sha256": "a48498bf78ca5442b5ce2100930f14a9fdffe9c70ad855b6bae8444ed3592d96",
+        "valid_time_utc": "2026-08-02T00:00:00Z"
+      }
+    ],
+    "source_valid_time_count": 4,
+    "station_count": 45,
+    "target_local_date": "2026-08-01",
+    "target_timezone": "America/New_York"
+  },
+  "independence_family_id": "ECMWF",
+  "plan_sha256": "2bc0317bd2a69a5ba2d50a023c4b121d230796f42a1a1799ce66e2c6dfb29755",
+  "product_id": "ECMWF_AIFS_SINGLE_0P25",
+  "provider_id": "ecmwf_aifs025_official",
+  "reused_count": 0,
+  "run_initialization_utc": "2026-07-31T18:00:00Z",
+  "schema": "bayes_basket_target_aifs_forward_capture_scheduler_v1",
+  "state": "CAPTURED_NATIVE_FORWARD_CANDIDATE",
+  "target_local_date": "2026-08-01"
+}

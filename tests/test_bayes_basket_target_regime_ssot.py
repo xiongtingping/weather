@@ -275,6 +275,14 @@ def test_all_public_basket_compilers_require_regime_by_default():
             evaluation_at_utc="2026-07-26T16:00:00Z", probability_direction="DOWN",
             probability_sha256="1" * 64, center_bucket="37",
         )
+    neutral_conflict = evaluate_regime_gate(
+        _artifact(), station_id="RKPK", event_date="2026-07-27", stage="P0-M",
+        checkpoint_id="p0m-checkpoint-1", settlement_timezone="Asia/Seoul",
+        evaluation_at_utc="2026-07-26T16:00:00Z", probability_direction="NEUTRAL",
+        probability_sha256="1" * 64, center_bucket="37",
+    )
+    assert neutral_conflict.direction_allowed is False
+    assert neutral_conflict.state == "NEUTRAL_REGIME_CONFLICT"
 
 
 def test_default_center_stability_matches_one_percent_direction_gate():

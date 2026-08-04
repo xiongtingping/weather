@@ -76,6 +76,41 @@ def _station_scopes(
     return scopes
 
 
+def _input_station_scopes(
+    archive: dict[str, object],
+    *,
+    selected_stations: set[str],
+) -> list[dict[str, object]]:
+    """Resolve a bounded historical input without requiring today's market.
+
+    A closed-day capture is often intentionally partial: only stations whose
+    settlement day has ended are downloaded.  Requiring that subset to equal
+    the latest active market snapshot makes a valid historical archive
+    impossible to ingest.  The archive itself owns the station scope here;
+    the GEFS ingress still performs the full content/hash/member validation.
+    """
+    captures = archive.get("captures")
+    if not isinstance(captures, list) or not captures:
+        raise RuntimeError("gefs_multistation_input_captures_invalid")
+    station_ids = {
+        str(row.get("station_id") or "").strip().upper()
+        for row in captures
+        if isinstance(row, dict)
+    }
+    if not station_ids or "" in station_ids:
+        raise RuntimeError("gefs_multistation_input_station_scope_invalid")
+    declared = {
+        str(value or "").strip().upper()
+        for value in (archive.get("station_ids") or [])
+        if str(value or "").strip()
+    }
+    if declared != station_ids:
+        raise RuntimeError("gefs_multistation_input_station_scope_mismatch")
+    if selected_stations and selected_stations != station_ids:
+        raise RuntimeError("gefs_multistation_input_station_selection_mismatch")
+    return [{"station_id": station} for station in sorted(station_ids)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
@@ -92,24 +127,23 @@ def main() -> int:
         for station in args.station_id
         if str(station).strip()
     }
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
-        conn.execute("PRAGMA query_only=ON")
-        scopes = _station_scopes(
-            conn,
-            selected_stations=selected,
-        )
     if args.input is not None:
         archive = load_bounded_json(args.input.expanduser().resolve())
-        if (
-            not isinstance(archive, dict)
-            or archive.get("event_date") != args.event_date
-            or set(archive.get("station_ids") or [])
-            != {str(scope["station_id"]) for scope in scopes}
-        ):
+        if not isinstance(archive, dict) or archive.get("event_date") != args.event_date:
             raise RuntimeError("gefs_multistation_input_scope_mismatch")
+        scopes = _input_station_scopes(
+            archive,
+            selected_stations=selected,
+        )
         output = args.input.expanduser().resolve()
         output_wrote = False
     else:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            scopes = _station_scopes(
+                conn,
+                selected_stations=selected,
+            )
         if args.output is None:
             raise RuntimeError("gefs_multistation_output_required")
         queried_at = (

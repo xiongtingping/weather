@@ -338,7 +338,7 @@ def normalize_et_model_rows(
             raw_sha = _sha_lineage("raw_message_sha256", raw.get("raw_message_sha256"))
             receipt_sha = _sha_lineage("receipt_sha256", raw.get("receipt_sha256"))
             temperature = _temperature("temperature_2m_c", raw.get("temperature_2m_c"))
-            accepted.append({
+            accepted_row = {
                 "station_id": station,
                 "event_date": event_day.isoformat(),
                 "target_timezone": expected_timezone,
@@ -372,7 +372,12 @@ def normalize_et_model_rows(
                 "prospective_strict_asof_eligible": prospective_strict_asof_eligible,
                 "source_url": str(raw.get("source_url") or "").strip(),
                 "raw_object_ref": str(raw.get("raw_object_ref") or "").strip(),
-            })
+            }
+            if raw.get("settlement_timezone_repaired_from_valid_time"):
+                accepted_row["settlement_timezone_repaired_from_valid_time"] = True
+                accepted_row["legacy_event_date"] = str(raw.get("legacy_event_date") or "")
+                accepted_row["legacy_target_timezone"] = str(raw.get("legacy_target_timezone") or "")
+            accepted.append(accepted_row)
         except (ContractError, TypeError, ValueError) as exc:
             blocked.append({"row_index": str(index), "reason": str(exc)})
     return accepted, blocked

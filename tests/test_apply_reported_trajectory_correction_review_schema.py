@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 
 from bayes_basket_target import ContractError
-from reported_trajectory_no_schema import apply_reported_trajectory_no_schema
+from weather_basket_yes_schema import apply_weather_basket_yes_schema
 import scripts.apply_reported_trajectory_correction_review_schema as migration
 
 
 def _legacy_database(tmp_path: Path) -> Path:
     path = tmp_path / "archive.db"
     with sqlite3.connect(path) as conn:
-        apply_reported_trajectory_no_schema(conn)
+        apply_weather_basket_yes_schema(conn)
         conn.execute(
             "DROP TRIGGER reported_trajectory_halt_reviews_no_update"
         )

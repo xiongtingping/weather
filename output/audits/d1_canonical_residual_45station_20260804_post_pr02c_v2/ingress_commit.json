@@ -1,0 +1,23 @@
+{
+  "after_count": 16041,
+  "before_count": 15101,
+  "calls_order_gateway": false,
+  "content_sha256": "12dea2fe1356988924538d3a05004c3bbf05acaa938898a57e97a14c0191b2ed",
+  "contract_content_sha256": "561ccda421279bc162bbda45fc46bd0badeb10efb5a2734d2097536d86214b39",
+  "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "ingress_receipt_sha256": "a8bc05e4f5fa017cc05b99b2a78d1c73daf3ded4d4c3bf480facce04f82ceb62",
+  "inserted_count": 940,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "replayed_count": 5319,
+  "schema": "bayes_basket_target_canonical_no_live_ingress_receipt_v1",
+  "state": "COMMITTED",
+  "validated_counts": {
+    "activation": 0,
+    "model": 2845,
+    "residual": 2845,
+    "truth": 569
+  },
+  "writes_production_database": false,
+  "writes_target_database": true
+}

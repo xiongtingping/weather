@@ -13,6 +13,7 @@ from bayes_basket_target.atomic_ledger import (
     arbitrate_capital_requests,
     build_target_atomic_bundle,
     close_target_cycle,
+    commit_stage_zero_execution_scope_decision,
     commit_blocked_scope_decision,
     commit_target_atomic_bundle,
     initialize_capital_pool,
@@ -33,7 +34,10 @@ from bayes_basket_target.execution_reconciliation import (
     validate_persisted_candidate_consumption_cas,
     VERSION_FIELDS,
 )
-from bayes_basket_target.ssot import apply_target_ssot_schema
+from bayes_basket_target.ssot import (
+    apply_production_ssot_schema,
+    apply_target_ssot_schema,
+)
 from bayes_basket_target.delta_v2_training import FACT_SCHEMA
 
 
@@ -60,14 +64,25 @@ def _complete_execution_vector(index: int = 0) -> dict[str, str]:
     }
 
 
-def _bundle(*, index: int = 0, blocked: bool = False, amount: float = 4.0, token_id: str | None = None):
+def _bundle(
+    *,
+    index: int = 0,
+    blocked: bool = False,
+    amount: float = 4.0,
+    token_id: str | None = None,
+    strategy_lane: str = "basket",
+    intent_side: str = "YES",
+    intent_order_action: str = "BUY",
+    source_lane: str = "AWC",
+):
     station = "ZUUU"
     event_date = "2026-07-23"
     observation = {
         "observation_id": f"obs-{index}",
         "station_id": station,
         "event_date": event_date,
-        "source_lane": "AMSC",
+        "settlement_timezone": SETTLEMENT_TIMEZONE,
+        "source_lane": source_lane,
         "report_type": "METAR",
         "raw_sha256": SHA_A,
         "canonical_committed_at": NOW,
@@ -81,7 +96,7 @@ def _bundle(*, index: int = 0, blocked: bool = False, amount: float = 4.0, token
         "bound_json": {"source": "official_metar", "excluded_buckets": ["37"]},
     }
     plan = {
-        "strategy_lane": "basket",
+        "strategy_lane": strategy_lane,
         "settlement_timezone": SETTLEMENT_TIMEZONE,
         "probability_checkpoint_id": f"p1-{index}",
         "quote_snapshot_id": f"quote-{index}",
@@ -92,15 +107,15 @@ def _bundle(*, index: int = 0, blocked: bool = False, amount: float = 4.0, token
             "canonical_observation_sha256": SHA_A,
             "canonical_observation_committed_at": NOW,
             "hard_bound_id": f"bound-{index}",
-            "source_lane": "AMSC",
+            "source_lane": source_lane,
             "report_type": "METAR",
         },
     }
     intents = [] if blocked else [{
         "bucket": "38",
         "token_id": token_id or f"token-{index}",
-        "side": "YES",
-        "order_action": "BUY",
+        "side": intent_side,
+        "order_action": intent_order_action,
         "limit_price": 0.40,
         "requested_size": amount / 0.40,
         "requested_notional_usdc": amount,
@@ -112,7 +127,7 @@ def _bundle(*, index: int = 0, blocked: bool = False, amount: float = 4.0, token
         },
     }]
     decision = {
-        "strategy_lane": "basket",
+        "strategy_lane": strategy_lane,
         "decided_state": "blocked" if blocked else "prepared",
         "will_order": False,
         "reason_codes": ["missing_quote"] if blocked else [],
@@ -418,6 +433,14 @@ def test_atomic_commit_writes_five_facts_and_never_submits() -> None:
             "SELECT live_submit_authorized,state FROM basket_target_order_intents"
         ).fetchone()
         assert intent == (0, "prepared")
+        observation = conn.execute(
+            "SELECT settlement_timezone,content_sha256 "
+            "FROM basket_target_observation_facts"
+        ).fetchone()
+        assert observation == (
+            SETTLEMENT_TIMEZONE,
+            bundle["observation"]["content_sha256"],
+        )
         assert conn.execute("SELECT reserved_usdc FROM basket_target_capital_pool").fetchone()[0] == pytest.approx(4.0)
         with pytest.raises(sqlite3.IntegrityError, match="append_only"):
             conn.execute("UPDATE auto_trade_decisions SET reason_codes_json='[\"tampered\"]'")
@@ -430,7 +453,6 @@ def test_atomic_commit_writes_five_facts_and_never_submits() -> None:
         ("canonical_observation_sha256", SHA_B),
         ("canonical_observation_committed_at", "2026-07-23T03:59:59Z"),
         ("hard_bound_id", "other-bound"),
-        ("source_lane", "AWC"),
         ("report_type", "SPECI"),
     ],
 )
@@ -445,6 +467,7 @@ def test_atomic_bundle_rejects_p1_lineage_observation_bound_mismatch(
             "observation_id",
             "station_id",
             "event_date",
+            "settlement_timezone",
             "source_lane",
             "report_type",
             "raw_sha256",
@@ -485,6 +508,157 @@ def test_atomic_bundle_rejects_p1_lineage_observation_bound_mismatch(
             execution_version_vectors=[],
             created_at_utc=NOW,
         )
+
+
+def test_atomic_observation_timezone_is_content_addressed_and_replays() -> None:
+    bundle = _bundle(index=612, source_lane="awc")
+    with _db() as conn:
+        first = commit_target_atomic_bundle(conn, bundle=bundle)
+        replay = commit_target_atomic_bundle(conn, bundle=bundle)
+
+        assert first["state"] == "committed"
+        assert replay["state"] == "already_committed"
+        assert bundle["observation"]["source_lane"] == "AWC"
+        assert bundle["plan"]["plan_json"]["lineage"]["source_lane"] == "AWC"
+        assert conn.execute(
+            "SELECT observation_fact_id,settlement_timezone,source_lane,content_sha256 "
+            "FROM basket_target_observation_facts"
+        ).fetchone() == (
+            bundle["observation"]["observation_fact_id"],
+            SETTLEMENT_TIMEZONE,
+            "AWC",
+            bundle["observation"]["content_sha256"],
+        )
+
+
+@pytest.mark.parametrize("source_lane", ["AMSC", "NOAA", "AWC/AMSC"])
+def test_atomic_bundle_rejects_non_awc_source_lane(source_lane: str) -> None:
+    with pytest.raises(
+        AtomicLedgerError,
+        match="observation_source_lane_must_be_awc",
+    ):
+        _bundle(index=615, source_lane=source_lane)
+
+
+@pytest.mark.parametrize(
+    ("target", "error"),
+    [
+        ("observation", "observation_source_lane_must_be_awc"),
+        ("lineage", "plan_lineage_source_lane_must_be_awc"),
+    ],
+)
+def test_atomic_commit_rejects_non_awc_source_lane_before_any_write(
+    target: str,
+    error: str,
+) -> None:
+    bundle = _bundle(index=616)
+    if target == "observation":
+        bundle["observation"]["source_lane"] = "AMSC"
+    else:
+        bundle["plan"]["plan_json"]["lineage"]["source_lane"] = "AMSC"
+    with _db() as conn:
+        before = _counts(conn)
+        with pytest.raises(
+            AtomicLedgerError,
+            match=error,
+        ):
+            commit_target_atomic_bundle(conn, bundle=bundle)
+        assert _counts(conn) == before
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("missing", "observation_settlement_timezone_missing"),
+        ("invalid", "observation_settlement_timezone_invalid"),
+        ("conflict", "atomic_settlement_timezone_mismatch"),
+    ],
+)
+def test_atomic_observation_timezone_missing_or_conflicting_fails_closed(
+    mutation: str,
+    error: str,
+) -> None:
+    bundle = _bundle(index=613)
+    observation = bundle["observation"]
+    if mutation == "missing":
+        observation.pop("settlement_timezone")
+    elif mutation == "invalid":
+        observation["settlement_timezone"] = "/invalid/timezone"
+    else:
+        observation["settlement_timezone"] = "Asia/Seoul"
+        observation_identity = {
+            key: value
+            for key, value in observation.items()
+            if key not in {"observation_fact_id", "content_sha256"}
+        }
+        observation["content_sha256"] = content_sha256({
+            "schema": "basket_target_observation_fact_v1",
+            **observation_identity,
+        })
+        observation["observation_fact_id"] = (
+            "obsfact_" + content_sha256(observation_identity)[:40]
+        )
+
+    with _db() as conn:
+        with pytest.raises(AtomicLedgerError, match=error):
+            commit_target_atomic_bundle(conn, bundle=bundle)
+        assert _counts(conn) == {
+            "basket_target_observation_facts": 0,
+            "basket_target_bound_facts": 0,
+            "basket_target_execution_cycles": 0,
+            "auto_trade_decisions": 0,
+            "basket_target_order_intents": 0,
+            "basket_target_capital_reservations": 0,
+        }
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0
+
+
+def test_atomic_rejects_existing_observation_timezone_drift_without_new_facts() -> None:
+    bundle = _bundle(index=614)
+    observation = bundle["observation"]
+    with _db() as conn:
+        conn.execute(
+            "INSERT INTO basket_target_observation_facts("
+            "observation_fact_id,observation_id,station_id,event_date,"
+            "settlement_timezone,source_lane,report_type,raw_sha256,"
+            "canonical_committed_at,content_sha256,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                observation["observation_fact_id"],
+                observation["observation_id"],
+                observation["station_id"],
+                observation["event_date"],
+                "Asia/Seoul",
+                observation["source_lane"],
+                observation["report_type"],
+                observation["raw_sha256"],
+                observation["canonical_committed_at"],
+                observation["content_sha256"],
+                NOW,
+            ),
+        )
+
+        with pytest.raises(
+            AtomicLedgerError,
+            match="basket_target_observation_facts_content_address_drift",
+        ):
+            commit_target_atomic_bundle(conn, bundle=bundle)
+        assert _counts(conn) == {
+            "basket_target_observation_facts": 1,
+            "basket_target_bound_facts": 0,
+            "basket_target_execution_cycles": 0,
+            "auto_trade_decisions": 0,
+            "basket_target_order_intents": 0,
+            "basket_target_capital_reservations": 0,
+        }
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0
 
 
 @pytest.mark.parametrize(
@@ -1397,7 +1571,7 @@ def test_shared_pool_concurrent_decisions_never_oversell(tmp_path: Path) -> None
 def test_arbitration_is_deterministic_and_aging_prevents_starvation() -> None:
     requests = [
         {"request_id": "basket-new", "strategy_lane": "basket", "amount_usdc": 4, "priority": 100, "starvation_count": 0, "requested_at": NOW},
-        {"request_id": "hard-no", "strategy_lane": "hard_no", "amount_usdc": 4, "priority": 90, "starvation_count": 0, "requested_at": "2026-07-23T00:00:01Z"},
+        {"request_id": "basket-mid", "strategy_lane": "basket", "amount_usdc": 4, "priority": 90, "starvation_count": 0, "requested_at": "2026-07-23T00:00:01Z"},
         {"request_id": "basket-old", "strategy_lane": "basket", "amount_usdc": 4, "priority": 20, "starvation_count": 10, "requested_at": "2026-07-22T00:00:00Z"},
     ]
     first = arbitrate_capital_requests(requests, available_usdc=8)
@@ -1458,7 +1632,7 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
                 "canonical_observation_sha256": SHA_A,
                 "canonical_observation_committed_at": NOW,
                 "hard_bound_id": "bound-10",
-                "source_lane": "AMSC",
+                "source_lane": "AWC",
                 "report_type": "METAR",
             },
         },
@@ -1528,7 +1702,7 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
                 "canonical_observation_sha256": SHA_A,
                 "canonical_observation_committed_at": NOW,
                 "hard_bound_id": "bound-101",
-                "source_lane": "AMSC",
+                "source_lane": "AWC",
                 "report_type": "METAR",
             },
         },
@@ -1597,7 +1771,8 @@ def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
                 "observation_id": "obs-p0",
                 "station_id": "ZUUU",
                 "event_date": "2026-07-23",
-                "source_lane": "AMSC",
+                "settlement_timezone": SETTLEMENT_TIMEZONE,
+                "source_lane": "AWC",
                 "report_type": "METAR",
                 "raw_sha256": SHA_A,
                 "canonical_committed_at": NOW,
@@ -1616,6 +1791,7 @@ def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
                 "lineage": {
                     "probability_stage": "P0-M",
                     "settlement_timezone": SETTLEMENT_TIMEZONE,
+                    "source_lane": "AWC",
                 },
             },
             decision={
@@ -1629,72 +1805,347 @@ def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
         )
 
 
-def _hard_no_blocked_bundle(*, include_probability: bool = False):
-    lineage = {
-        "settlement_timezone": SETTLEMENT_TIMEZONE,
-        "canonical_observation_event_id": "obs-hard-no",
-        "canonical_observation_sha256": SHA_A,
-        "canonical_observation_committed_at": NOW,
-        "hard_bound_id": "bound-hard-no",
-        "source_lane": "AMSC",
-        "report_type": "METAR",
-    }
-    if include_probability:
-        lineage["probability_stage"] = "P1"
-    return build_target_atomic_bundle(
-        observation={
-            "observation_id": "obs-hard-no",
-            "station_id": "ZUUU",
-            "event_date": "2026-07-23",
-            "source_lane": "AMSC",
-            "report_type": "METAR",
-            "raw_sha256": SHA_A,
-            "canonical_committed_at": NOW,
-        },
-        bound={
-            "bound_id": "bound-hard-no",
-            "station_id": "ZUUU",
-            "event_date": "2026-07-23",
-            "bound_generation": 1,
-            "hard_lower_bound": 38,
-            "bound_json": {
-                "source": "official_metar",
-                "excluded_buckets": ["37"],
-            },
-        },
-        plan={
-            "strategy_lane": "hard_no",
-            "settlement_timezone": SETTLEMENT_TIMEZONE,
-            "quote_snapshot_id": "hard-no-quote",
-            "lineage": lineage,
-        },
-        decision={
-            "strategy_lane": "hard_no",
-            "decided_state": "blocked",
-            "will_order": False,
-            "reason_codes": ["production_no_live"],
-            "details": {"candidate_will_order": False, "no_live": True},
-        },
-        intents=[],
-        reserved_amount_usdc=0.0,
-        created_at_utc=NOW,
+def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
+    apply_production_ssot_schema(conn)
+    checkpoint = "p0-stage-zero"
+    probability_sha = "1" * 64
+    regime_sha = "2" * 64
+    ws_sha = "3" * 64
+    inventory_sha = "4" * 64
+    order_sha = "5" * 64
+    conn.execute(
+        "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            checkpoint, "P0", checkpoint, "ZUUU", "2026-07-23",
+            SETTLEMENT_TIMEZONE, "2026-07-23T03:00:00Z",
+            "2026-07-23T05:00:00Z", '{"38":0}', '{"38":1.0}',
+            "posterior-v1", "6" * 64, "7" * 64, "{}",
+            probability_sha, "COMMITTED", "2026-07-23T03:00:00Z",
+        ),
     )
+    conn.execute(
+        "INSERT INTO basket_regime_artifact VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "regime-zero", "ZUUU", "2026-07-23", "P0", checkpoint,
+            SETTLEMENT_TIMEZONE, probability_sha, "2026-07-23T03:00:00Z",
+            "2026-07-23T03:00:00Z", "2026-07-23T05:00:00Z", "{}",
+            regime_sha, "COMMITTED", "2026-07-23T03:00:00Z",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "ws-zero", "market-zero", "ZUUU", "2026-07-23",
+            SETTLEMENT_TIMEZONE, 1, "2026-07-23T03:59:00Z", "quote-v1",
+            "2026-07-23T03:59:00Z", "2026-07-23T04:01:00Z", "8" * 64,
+            "OFFICIAL_CLOB_WS", "inventory-v1", "order-v1", 20.0,
+            "[]", "{}", ws_sha, "COMMITTED", "2026-07-23T03:59:00Z",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_confirmed_inventory_snapshot VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "inventory-zero", "ZUUU", "2026-07-23", "inventory-v1",
+            "2026-07-23T03:59:00Z", 1, "{}", inventory_sha,
+            "COMMITTED", "2026-07-23T03:59:00Z",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_order_state_snapshot VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "order-zero", "ZUUU", "2026-07-23", "order-v1",
+            "2026-07-23T03:59:00Z", 1, "{}", order_sha,
+            "COMMITTED", "2026-07-23T03:59:00Z",
+        ),
+    )
+    anchor: dict[str, object] = {
+        "schema": "basket_target_stage_zero_execution_anchor_v1",
+        "station_id": "ZUUU",
+        "event_date": "2026-07-23",
+        "settlement_timezone": SETTLEMENT_TIMEZONE,
+        "evaluation_at_utc": NOW,
+        "probability_envelope": {
+            "stage": "P0", "checkpoint_id": checkpoint,
+            "envelope_id": checkpoint, "decision_at_utc": "2026-07-23T03:00:00Z",
+            "fresh_until_utc": "2026-07-23T05:00:00Z",
+            "content_sha256": probability_sha,
+        },
+        "regime_artifact_sha256": regime_sha,
+        "official_ws_snapshot": {
+            "snapshot_id": "ws-zero", "content_sha256": ws_sha,
+            "quote_observed_at": "2026-07-23T03:59:00Z",
+            "quote_expires_at": "2026-07-23T04:01:00Z",
+        },
+        "inventory_snapshot": {
+            "inventory_snapshot_id": "inventory-zero",
+            "content_sha256": inventory_sha,
+            "observed_at": "2026-07-23T03:59:00Z",
+        },
+        "order_state_snapshot": {
+            "order_state_snapshot_id": "order-zero",
+            "content_sha256": order_sha,
+            "observed_at": "2026-07-23T03:59:00Z",
+        },
+        "station_policy_sha256": "9" * 64,
+        "cash_policy_decision_sha256": "a" * 64,
+        "cash_phase": {"phase": "STANDARD"},
+        "delta_v2_artifact_sha256": "b" * 64,
+        "delta_v2_evaluation_sha256": "c" * 64,
+        "compiled_plan": {"schema": "test-complete-plan"},
+        "compiled_plan_sha256": content_sha256({"schema": "test-complete-plan"}),
+        "final_authority": "P1",
+        "capital_authorized": False,
+        "intents_written": 0,
+        "reservations_written": 0,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    anchor["content_sha256"] = content_sha256(
+        {key: value for key, value in anchor.items() if key != "content_sha256"}
+    )
+    return anchor
 
 
-def test_hard_no_atomic_lane_is_probability_independent() -> None:
-    bundle = _hard_no_blocked_bundle()
-    assert "probability_stage" not in bundle["plan"]["plan_json"]["lineage"]
-    with _db() as conn:
-        receipt = commit_target_atomic_bundle(conn, bundle=bundle)
-        assert receipt["state"] == "committed"
+def _stage_zero_anchor_with_timestamp_precision(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    persisted_fraction: str,
+    anchor_fraction: str,
+) -> tuple[dict[str, object], str]:
+    """Seed a stage row and render its immutable anchor at another precision."""
+
+    anchor = _stage_zero_anchor(conn)
+    checkpoint = f"{stage.lower()}-precision-zero"
+    probability_sha = "d" * 64
+    regime_sha = "e" * 64
+    persisted_decision_at = f"2026-07-23T03:00:00{persisted_fraction}Z"
+    persisted_fresh_until = f"2026-07-23T05:00:00{persisted_fraction}Z"
+    conn.execute(
+        "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            checkpoint, stage, checkpoint, "ZUUU", "2026-07-23",
+            SETTLEMENT_TIMEZONE, persisted_decision_at, persisted_fresh_until,
+            '{"38":0}', '{"38":1.0}', "posterior-v1", "f" * 64,
+            "0" * 64, "{}", probability_sha, "COMMITTED",
+            persisted_decision_at,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_regime_artifact VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"regime-{stage.lower()}-precision-zero", "ZUUU", "2026-07-23",
+            stage, checkpoint,
+            SETTLEMENT_TIMEZONE, probability_sha, persisted_decision_at,
+            persisted_decision_at, persisted_fresh_until, "{}", regime_sha,
+            "COMMITTED", persisted_decision_at,
+        ),
+    )
+    probability = anchor["probability_envelope"]
+    assert isinstance(probability, dict)
+    probability.update(
+        {
+            "stage": stage,
+            "checkpoint_id": checkpoint,
+            "envelope_id": checkpoint,
+            "decision_at_utc": (
+                f"2026-07-23T03:00:00{anchor_fraction}Z"
+            ),
+            "fresh_until_utc": (
+                f"2026-07-23T05:00:00{anchor_fraction}Z"
+            ),
+            "content_sha256": probability_sha,
+        }
+    )
+    created_at = f"2026-07-23T04:00:00{anchor_fraction}Z"
+    anchor["evaluation_at_utc"] = created_at
+    anchor["regime_artifact_sha256"] = regime_sha
+    anchor["content_sha256"] = content_sha256(
+        {key: value for key, value in anchor.items() if key != "content_sha256"}
+    )
+    return anchor, created_at
 
 
-def test_hard_no_atomic_lane_rejects_probability_inputs() -> None:
+def test_stage_zero_execution_is_atomic_idempotent_and_has_no_side_effects() -> None:
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn)
+        before = _counts(conn)
+        first = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=NOW,
+        )
+        second = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=NOW,
+        )
+        after = _counts(conn)
+        assert first["state"] == "committed"
+        assert second["state"] == "already_committed"
+        assert after["basket_target_observation_facts"] == before["basket_target_observation_facts"]
+        assert after["basket_target_bound_facts"] == before["basket_target_bound_facts"]
+        assert after["basket_target_order_intents"] == before["basket_target_order_intents"]
+        assert after["basket_target_capital_reservations"] == before["basket_target_capital_reservations"]
+        assert after["basket_target_execution_cycles"] == before["basket_target_execution_cycles"] + 1
+        assert after["auto_trade_decisions"] == before["auto_trade_decisions"] + 1
+
+
+@pytest.mark.parametrize(
+    ("stage", "persisted_fraction", "anchor_fraction"),
+    (
+        ("P0", ".123", ".123000"),
+        ("P0", ".123000", ".123"),
+        ("P0-M", ".123", ".123000"),
+        ("P0-M", ".123000", ".123"),
+    ),
+)
+def test_stage_zero_execution_accepts_equivalent_p0_p0m_timestamp_precision_and_replays(
+    stage: str,
+    persisted_fraction: str,
+    anchor_fraction: str,
+) -> None:
+    """P0/P0-M CAS binds UTC instants in both precision directions."""
+
+    with _db(with_training_fact=True) as conn:
+        anchor, created_at = _stage_zero_anchor_with_timestamp_precision(
+            conn,
+            stage=stage,
+            persisted_fraction=persisted_fraction,
+            anchor_fraction=anchor_fraction,
+        )
+
+        first = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=created_at,
+        )
+        replay = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=created_at,
+        )
+
+        assert first["state"] == "committed"
+        assert replay["state"] == "already_committed"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM auto_trade_decisions"
+        ).fetchone()[0] == 1
+
+
+def test_stage_zero_execution_detects_p0m_visible_at_equivalent_precision() -> None:
+    """A P0 anchor cannot miss a P0-M committed at the same UTC instant."""
+
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn)
+        created_at = "2026-07-23T04:00:00.000000Z"
+        anchor["evaluation_at_utc"] = created_at
+        anchor["content_sha256"] = content_sha256(
+            {
+                key: value
+                for key, value in anchor.items()
+                if key != "content_sha256"
+            }
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "p0m-visible", "P0-M", "p0m-visible", "ZUUU",
+                "2026-07-23", SETTLEMENT_TIMEZONE,
+                "2026-07-23T04:00:00.000Z", "2026-07-23T05:00:00.000Z",
+                '{"38":0}', '{"38":1.0}', "posterior-v1", "d" * 64,
+                "e" * 64, "{}", "f" * 64, "COMMITTED",
+                "2026-07-23T04:00:00.000Z",
+            ),
+        )
+
+        with pytest.raises(
+            AtomicLedgerError, match="stage_zero_execution_higher_stage_visible"
+        ):
+            commit_stage_zero_execution_scope_decision(
+                conn, anchor=anchor, created_at_utc=created_at,
+            )
+        assert conn.execute(
+            "SELECT COUNT(*) FROM auto_trade_decisions"
+        ).fetchone()[0] == 0
+
+
+def test_stage_zero_execution_accepts_equivalent_ws_timestamp_precision() -> None:
+    """A publisher millisecond timestamp and compiler microseconds are one CAS instant."""
+
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn)
+        ws = anchor["official_ws_snapshot"]
+        assert isinstance(ws, dict)
+        # The persisted row is ``...03:59:00Z``.  This is the same instant
+        # rendered by the production compiler after datetime normalization.
+        ws["quote_observed_at"] = "2026-07-23T03:59:00.000000Z"
+        ws["quote_expires_at"] = "2026-07-23T04:01:00.000000Z"
+        anchor["content_sha256"] = content_sha256({
+            key: value for key, value in anchor.items()
+            if key != "content_sha256"
+        })
+
+        result = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=NOW,
+        )
+
+        assert result["state"] == "committed"
+        decision = conn.execute(
+            "SELECT will_order,details_json FROM auto_trade_decisions"
+        ).fetchone()
+        assert decision[0] == 0
+        assert '"orders_submitted":0' in str(decision[1])
+
+
+def test_stage_zero_execution_rejects_distinct_ws_timestamp_instant() -> None:
+    """Instant equivalence does not permit an anchor to bind a different quote."""
+
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn)
+        ws = anchor["official_ws_snapshot"]
+        assert isinstance(ws, dict)
+        ws["quote_observed_at"] = "2026-07-23T03:59:00.001Z"
+        anchor["content_sha256"] = content_sha256({
+            key: value for key, value in anchor.items()
+            if key != "content_sha256"
+        })
+
+        with pytest.raises(
+            AtomicLedgerError, match="stage_zero_execution_official_ws_drift"
+        ):
+            commit_stage_zero_execution_scope_decision(
+                conn, anchor=anchor, created_at_utc=NOW,
+            )
+
+
+def test_stage_zero_execution_rejects_p1_visible_in_same_transaction() -> None:
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn)
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "p1-visible", "P1", "p1-visible", "ZUUU", "2026-07-23",
+                SETTLEMENT_TIMEZONE, "2026-07-23T03:30:00Z",
+                "2026-07-23T05:00:00Z", '{"38":0}', '{"38":1.0}',
+                "posterior-v1", "d" * 64, "e" * 64, "{}", "f" * 64,
+                "COMMITTED", "2026-07-23T03:30:00Z",
+            ),
+        )
+        before = _counts(conn)
+        with pytest.raises(
+            AtomicLedgerError, match="higher_stage_visible"
+        ):
+            commit_stage_zero_execution_scope_decision(
+                conn, anchor=anchor, created_at_utc=NOW,
+            )
+        assert _counts(conn) == before
+
+
+def test_atomic_ledger_rejects_retired_hard_no_lane_before_any_write() -> None:
     with pytest.raises(
         AtomicLedgerError,
-        match="hard_no_plan_forbidden_probability_input",
+        match="strategy_lane_hard_no_retired",
     ):
-        _hard_no_blocked_bundle(include_probability=True)
+        _bundle(strategy_lane="hard_no")
+
+
+def test_atomic_ledger_rejects_no_order_intent() -> None:
+    with pytest.raises(AtomicLedgerError, match="basket_intent_must_be_yes_buy"):
+        _bundle(intent_side="NO")
 
 
 def test_final_atomic_commit_rechecks_p1_after_bundle_mutation() -> None:

@@ -1,0 +1,927 @@
+{
+  "artifact_count": 43,
+  "artifact_station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "artifacts": [
+    {
+      "content_sha256": "0c3d7235cc21beb7c3d87f8ee6b696af4559159a83288b6d9801196ec5ecffa7",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "9ed5c761ac568506811e4c853b02622890f64d46659d7f4056f6d9bd20dff978",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/CYYZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Toronto"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "CYYZ"
+    },
+    {
+      "content_sha256": "2fc9e6bad562ef52e997334e6618048bc071c6c90386b686dd8474befd642d71",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "713d0a4e773c033118addf2f44f7c039807aa807aa9e6a4ce2eb306f629adfbb",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/EDDM_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Berlin"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "EDDM"
+    },
+    {
+      "content_sha256": "cb6a1435e6df70dcafc96e7ce81e9951927efe5db9c2b355f39c0327b812f058",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "df1c899ee484b14ce7d3e85203b6a37679d577cd405e108cf7418c5295c67aec",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/EFHK_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Helsinki"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "EFHK"
+    },
+    {
+      "content_sha256": "7d7a00321cf20aafeca5d90d7392532ae29bfec1af81803c2575bb4a3408882b",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "b102d0ea3f74727559a9538425293daec0bb941ff2c64c00675bdbd0b390fbb0",
+      "observational_forward_event_count": 3,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/EGLC_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/London"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "EGLC"
+    },
+    {
+      "content_sha256": "1dbfeb051fffeaf538bad9f763b077f8cabfed9b16894eba3ada1e4fa345441d",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "29606332a3ae1139d1f895e6c86e6501af39e4fdd88f2a7d5a1c959e170a0fda",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/EHAM_JJA_d2_MIXED-NATIVE-CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Amsterdam"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "EHAM"
+    },
+    {
+      "content_sha256": "4235054846c0ebc35d4870a605bce058d033e6ed35b0cd07e218ef2c3c26ebee",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "fa9204b9f0fdb374453e90ccd099b34189f5cca19a14b7e7a3341dbcef7a08ab",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/EPWA_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Warsaw"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "EPWA"
+    },
+    {
+      "content_sha256": "90dc3d19309f12a7f555ce69956f2409e08f373052b92e93903c3380cedc2ad7",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "e28f8ede90ea1d458c49d1df1afcde5b19cb9dd251d9a957bba6629b374fb47e",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/FACT_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Africa/Johannesburg"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "FACT"
+    },
+    {
+      "content_sha256": "af5dee9557e73dcf928ca5af2f0a49c6a4e8a86da885bb61b9f4fc75f9bd291c",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "e760f960e2842ebab04793ddf81117be3cff9ca2ac453daf6d0a586983de53e4",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KATL_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KATL"
+    },
+    {
+      "content_sha256": "8beb5d412010fa43b001e036497e01abaa094e80fdd00ecf12524598ea1f9136",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "8980c8d628722f70ba2b4204007a0550baa0fea8e77863ff5cdbc0f6afe28a4f",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KAUS_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KAUS"
+    },
+    {
+      "content_sha256": "4cf4ceab0471e4db158099a05c28b11022339ebaba94f5a5cacfa871092ad323",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "417433330b416b265cbd11a370a665ac5769cdb035e657f9ccb3a78010660f3a",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KBKF_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 7,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Denver"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KBKF"
+    },
+    {
+      "content_sha256": "3fd23acadbca523567aa9165b9afd0bec20a207366ade725d868fc887a3ed8b6",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "9f3b72b0625cd621134dcf81881026b046b6ee5dead454abcdd68fca220b462c",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KLAX_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KLAX"
+    },
+    {
+      "content_sha256": "345bacb61145fe7318a114e7c27d0ebbea1064f5b66a3f9c6df3d51a42892590",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "7222fbb1e7bffe84fd2d8063b66b57e9ab00d78333e4f95845978793a78ee636",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KLGA_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KLGA"
+    },
+    {
+      "content_sha256": "8596e405fc058d34126190f62ca6bd7abfc1eed6b90bf758278a10ee74489904",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "3b035166c1a2204eb284ad51814fdd5a6d6e7bee9bdd8a2ba0d590b7b6a9feb5",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KMIA_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KMIA"
+    },
+    {
+      "content_sha256": "4e5bfcbce25f2bdfad6b6ea9d048c34a28eac1522bc468249e69724c433440e4",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "26cf9f35a378eb1e557ce3c4428dc2fa00ad5c713eca3e5e5febccad73773101",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KORD_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KORD"
+    },
+    {
+      "content_sha256": "e0372ea2769e2ffe1c363645de7b262c76aaf20ea06b949a5a27d87598a325ed",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "47a4382c6a198e46350a67361e059698d0908f9d03fdb11c4058b08596bb568f",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KSEA_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KSEA"
+    },
+    {
+      "content_sha256": "91b9f13beb7b851fb67473e778d602f11fa3611c6e4a8d47c3df6c94ea709894",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "dc5db15802ceff65c8587b40f96475be5d9ba1eabcf24a0b6a3b0174fff30b99",
+      "observational_forward_event_count": 5,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/KSFO_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "KSFO"
+    },
+    {
+      "content_sha256": "264aaac0b18286d28d195331399884e119c1f24b4391e9cac49f75457a0db708",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "ad5ad76f6b56ee836b99490a5c9305242ccffd5bcbb80136594f44d82aee9c54",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/LEMD_JJA_d2_MIXED-NATIVE-CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Madrid"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "LEMD"
+    },
+    {
+      "content_sha256": "639c283532eb1bee7203d1191904c38f1c3acbbfe2c08bd0df32f7e37b2f3503",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "15d1b9ba16523097a4943d470aeb090e7341846a390e842f625fbbd4f624356e",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/LFPB_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Paris"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "LFPB"
+    },
+    {
+      "content_sha256": "876fab6a9aff981b5087a556d1479f07a13b2985b1605a634cd0c0f6c4a38215",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "fe0119d739243c481400fe5a9f414832e91b371f61283fe11409c6a033706ecd",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/LIMC_JJA_d2_MIXED-NATIVE-CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Rome"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "LIMC"
+    },
+    {
+      "content_sha256": "d78f53a40edb5aec1f25f29e9813669b523d6a2d15da4949f30fd7573fdf9424",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "7e260534d0d70fe0361c72413dae39897faef8e0df16eb7109e0b0c417073f81",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/LTAC_JJA_d2_MIXED-NATIVE-CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Istanbul"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "LTAC"
+    },
+    {
+      "content_sha256": "0aca7881e3a5482131a4bb783b5e1fb56db33c84697347fc3e7e8ae805813160",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "6d16b41a5de7c13d81c4fdffeaa772ade51b0a6a2404356ff971c8c194417e4c",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/MMMX_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 5,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Mexico_City"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "MMMX"
+    },
+    {
+      "content_sha256": "bf29bfe88fcb57517b16db74046250cf02950009f5b4f32cee3c9fe7f99b9199",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "5014bbc06c7b3bbb8a658f71c8405c0aa593dfe857b266fbf318df6b9b9a2e68",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/MPMG_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Panama"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "MPMG"
+    },
+    {
+      "content_sha256": "c9a12e9015c39aac34ad02c3b59b22f60f6f0a94fbb74b1125d5843a91b36942",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "7915c652972d93d1e6c8a47d7225474500b5032499b4c3d162d45d42636e28a1",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/NZWN_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Pacific/Auckland"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "NZWN"
+    },
+    {
+      "content_sha256": "dd8b38a2fb90ac46346d77433a720749f822d9b0aa3ae6b7b7e2af89d5ac17f1",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "720ec0e2b51f2c0daffb0223e198ab8dc49647260b0b53db75768ff51371d860",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/OEJN_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Riyadh"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "OEJN"
+    },
+    {
+      "content_sha256": "5dcfaee05059d39465cfc3437e33a62e17ec6b125b9fcd023231d65d98eb2ebb",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "edf95469df2944d6e02251f1868da9218892132d205d6a07be296ffa09bafad9",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/OPKC_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Karachi"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "OPKC"
+    },
+    {
+      "content_sha256": "d5d2d22eb27d342017e06a1bf922f9fb2a778dc5a125014a91e019db1dae8c0a",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "13323394317c89b89ef4dedea11a1bdc01c5f9b380abb178db11ca928dca1b81",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/RCSS_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Taipei"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "RCSS"
+    },
+    {
+      "content_sha256": "872632a2ae2869ab0ee2168dfadf211dc6daf0987499959ee8d5bbe2f65aac9a",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "d661272af9e28d1b9e7ab3bbfe262b79ce6bc093ffd009e1628588a70c46272f",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/RJTT_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Tokyo"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "RJTT"
+    },
+    {
+      "content_sha256": "651771711410283a7e05ce7fefac1c3f94d3f462dfe40e32e943056b9fcf58fb",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "8a53b8be97556c46fb9e928a97e6a7a48d65d3e2ef3cab816f15a5ce30554e96",
+      "observational_forward_event_count": 7,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/RKPK_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 10,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Seoul"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "RKPK"
+    },
+    {
+      "content_sha256": "ce659b5169fca616448a6cf756b73f37a6ec9ca929b8c733185f55c1df2967d1",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "7a386fc0181f614160262947d89693444be63d06c1b392545fef5fbd43f42711",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/RKSI_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 10,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Seoul"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "RKSI"
+    },
+    {
+      "content_sha256": "5919b7e8e3918c5ea79fabff1a9ef0e5baf050007986ca859c9d0fda385376bc",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "0c1a028061720cd045094b4102721d2764f37c53da88185f4ba6219fffd55931",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/RPLL_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Manila"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "RPLL"
+    },
+    {
+      "content_sha256": "cd769621b31c779d376e525bb24471abed9f3d5af30656b7eb22113f47c1c047",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "1e0097684fc13b426a87c3d2e7d7dcd6d13ef0a1a4da0e88440294e76e14fc30",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/SAEZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 7,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Argentina/Buenos_Aires"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "SAEZ"
+    },
+    {
+      "content_sha256": "924f417d332abfc6580e97113d50ae324322b9824793d3c182d4952fe3f4e832",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "d3c943ee153bd18c3d1865f8a82fc432382885358485ab219fa3d63e56ffa7e0",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/SBGR_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 8,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Sao_Paulo"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "SBGR"
+    },
+    {
+      "content_sha256": "5bd7fbf1b231aad18eb4a00a43bc545a2e189e726c014ce7ffe15353e9734fdf",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "bae63651f19aff9b0120e82f2eda7cd4e6d0b5323a254b17571f14fcc9bb6d7e",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/VILK_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Kolkata"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "VILK"
+    },
+    {
+      "content_sha256": "b33d0d9063840946f98f94857ffe1aff293dd728365d303f2dc0cca04e3e629f",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "0c2b968f1c9cdb111a940cd25eae89bbf9c8f88b61d019a7775ba5d8419ef1da",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/WMKK_JJA_d2_MIXED-NATIVE-CYCLES_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Kuala_Lumpur"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "WMKK"
+    },
+    {
+      "content_sha256": "d48ae091827a16c2b7a7b377106df01c13867b3fefc324dd042f8b8569dcd06e",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "d7f32434be34765080b512e139937774892a1ed2a9a378a2f5051f6579172259",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/WSSS_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 0,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Singapore"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "WSSS"
+    },
+    {
+      "content_sha256": "210bc3b352b9df84b453e6822def9b27fc8b9c138854ace20e747dff53870bc2",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "2c24eec4ba793ae240e617605fd4b910ece638ae5ab71e568d1471547d820bdf",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZBAA_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZBAA"
+    },
+    {
+      "content_sha256": "a1e260aa64a476cd258f5af7b1ead86716e044fdb5ba34b43833d3181d95f4f9",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "7681d48396bac7d7a4cdfdd2038f6ee847973305d29a17f5dc4991f56c0a425d",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZGGG_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZGGG"
+    },
+    {
+      "content_sha256": "40d24d18f6ab3b4b8a79f2192fa8f286828d3188abcf36bcb969b4ea5c01437a",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "9dc4a355f69b5408eb4b3a7d22660e23415535aa33f056e2e6afab8f6eeaf4c7",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZGSZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZGSZ"
+    },
+    {
+      "content_sha256": "c5ed6e98d4874c44f1edc00d0ae699b0f5a519eb46412263c8fee3f6ee75c81b",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "5a2cf6a1741f2c43eb227234c430062ce2e84e1f91470078dfda89bf6e504f7e",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZHHH_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZHHH"
+    },
+    {
+      "content_sha256": "7b5fbba5db3d983c3309267d486cceb2671985553dc0e9a675fc5f54329b5264",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "55da5661487452617167cf209f614a901624d2e11c55fdc69938701b12809e60",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZSPD_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZSPD"
+    },
+    {
+      "content_sha256": "c5c89e8879922ba98f6196f2b9782fb1b6806fc46c3c7c28f7236a0ee0d24497",
+      "excluded_correction_sample_count": 0,
+      "file_sha256": "2a706c877bfcace82e3017fd8349303d52499eb83a9e16e5375cf7fdcb8b5a25",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZSQD_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZSQD"
+    },
+    {
+      "content_sha256": "e139a767b3dbd5efaf2937387795749eda4adf1f6e65ed89019531303ec8d96a",
+      "excluded_correction_sample_count": 1,
+      "file_sha256": "3f8c0f39778da101d1e8bc5da4ad88bccbceb55923850aabc039ccd33d2b6504",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZUCK_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 9,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZUCK"
+    },
+    {
+      "content_sha256": "31c34f3cb9568ffe7a5b90646341cdda21707ce9760d809e0ca56215f2a9e71c",
+      "excluded_correction_sample_count": 2,
+      "file_sha256": "baaadce980237a4a057e8eb2625f42774a25c96617b8500c30ee2f9b912e648e",
+      "observational_forward_event_count": 4,
+      "path": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine/ZUUU_JJA_d2_18Z_taf_native_exact_join.json",
+      "sample_count": 8,
+      "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+      "station_id": "ZUUU"
+    }
+  ],
+  "base_dir": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine",
+  "boundary": {
+    "calls_order_gateway": false,
+    "future_data_counted_as_oos": false,
+    "native_arrival_index_written": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "p1_authority_written": false,
+    "read_only": true,
+    "writes_database": false,
+    "writes_production_p0m": false
+  },
+  "canonical_station_count": 45,
+  "canonical_station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "content_sha256": "a10673f8bccecfc8ab9d0f97f70855682decb847b44202e7155cf8096eda4bba",
+  "error_count": 0,
+  "exact_join_artifact_count": 43,
+  "missing_entries": [
+    {
+      "audit_blockers": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "current_p0_scope": null,
+      "data_fetch_performed": false,
+      "minimum_sample_n": 24,
+      "native_oos_sample_count": 0,
+      "reason": "exact_join_artifact_missing",
+      "station_id": "KDAL",
+      "synthetic_artifact_created": false
+    },
+    {
+      "audit_blockers": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "current_p0_scope": null,
+      "data_fetch_performed": false,
+      "minimum_sample_n": 24,
+      "native_oos_sample_count": 0,
+      "reason": "exact_join_artifact_missing",
+      "station_id": "KHOU",
+      "synthetic_artifact_created": false
+    }
+  ],
+  "missing_exact_join_station_ids": [
+    "KDAL",
+    "KHOU"
+  ],
+  "output_dir": "output/audits/taf_native_exact_join_merged_rebuild_20260802_all_quarantine",
+  "schema": "taf_native_exact_join_quarantine_manifest_v2",
+  "source_audit": {
+    "content_sha256": "411634a06c57b2da2534cef1f27f1027e7dd613d061560f031aaa6a894f31448",
+    "file_sha256": "13eeb1bc8e1030aaba8039dd0533becc00980ef18b1019e779d5c090904e8472",
+    "path": "output/audits/taf_p0m_exact_join_45station_20260802_all_quarantine_latest.json"
+  },
+  "version": 2
+}

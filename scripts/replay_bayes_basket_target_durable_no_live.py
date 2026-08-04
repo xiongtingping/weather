@@ -62,9 +62,12 @@ def main() -> int:
         "label_required": result["label_status"][
             "required_for_production_no_live_replay"
         ],
-        "forward_oos_blocks_production_no_live": result["forward_oos"][
-            "blocks_production_no_live"
+        "future_data_counts_as_oos": result["historical_oos"][
+            "future_data_counts_as_oos"
         ],
+        "historical_oos_blocks_production_no_live": result[
+            "historical_oos"
+        ]["blocks_production_no_live"],
         "content_sha256": result["content_sha256"],
     }, sort_keys=True))
     return 0

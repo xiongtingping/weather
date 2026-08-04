@@ -44,7 +44,7 @@ Polymarket official CLOB WebSocket
         -> clob_order_service
 ```
 
-- `com.weather.reported_trajectory_no`：AMSC/AWC 分泳道轮询、解析、最高温下界、决策、资金预留和订单提交。
+- `com.weather.weather_basket_yes`：当前 AWC 正式 truth、P1 与纯 YES 篮子唯一驻留服务；旧 `com.weather.reported_trajectory_no` label 仅为本历史方案中的退役名称，禁止加载。
 - `com.weather.market_ws`：只订阅注册表内可交易 NO token；不写历史 tick。
 - `com.weather.clob_order_service`：唯一网络下单权、余额预取、最终盘口验证和幂等。
 

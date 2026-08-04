@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
-    ingest_historical_taf_calibration,
+    ingest_historical_taf_calibration_with_quarantine,
 )
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_connection_target_capacity,
@@ -58,7 +58,7 @@ def main() -> int:
         conn.execute("BEGIN IMMEDIATE")
         try:
             receipts = [
-                ingest_historical_taf_calibration(conn, artifact)
+                ingest_historical_taf_calibration_with_quarantine(conn, artifact)
                 for artifact in archives
             ]
             conn.commit()

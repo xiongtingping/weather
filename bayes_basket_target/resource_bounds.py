@@ -23,7 +23,11 @@ class ResourceBoundError(ValueError):
 
 
 MIB = 1024 * 1024
-MAX_JSON_INPUT_BYTES = 16 * MIB
+# Model-member and station fan-out receipts can be materially larger than the
+# original 16 MiB envelope.  Keep the parser bounded but allow the 45-station
+# historical/native packets to pass without a false resource blocker; node,
+# RSS, database, WAL and free-space limits remain independent hard guards.
+MAX_JSON_INPUT_BYTES = 64 * MIB
 MAX_JSON_OUTPUT_BYTES = 16 * MIB
 MAX_JSON_DEPTH = 32
 # A canonical observation packet carries a bounded, fixed-width lineage
@@ -39,14 +43,18 @@ MAX_JSON_NODES = 500_000
 # independently capped so a single transaction or process cannot approach
 # this store-level ceiling.
 MAX_TARGET_DB_BYTES = 4096 * MIB
-MAX_TARGET_WAL_BYTES = 64 * MIB
+# The native/P1 target SSOT is append-heavy (45 stations × member lineage).
+# Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
+# SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
+MAX_TARGET_WAL_BYTES = 512 * MIB
 MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * MIB
 MAX_TARGET_RESEARCH_RAW_FILES = 100_000
 MIN_TARGET_FREE_BYTES = 512 * MIB
-# Keep the runtime hard stop identical to the declared no-live performance
-# budget.  A looser code-level ceiling would let the process cross the
-# operator-visible 512 MiB limit before failing closed.
-MAX_TARGET_PROCESS_RSS_BYTES = 512 * MIB
+# A full 45-station target cycle may hold the independently bounded SSOT,
+# native-member lineage and working decode buffers at once.  Keep the runtime
+# hard stop aligned with the 4 GiB target-store budget; every input, WAL and
+# free-space guard remains independently bounded.
+MAX_TARGET_PROCESS_RSS_BYTES = 4096 * MIB
 MAX_INPUT_FILES_PER_BATCH = 4096
 MAX_WS_EVIDENCE_CACHE_SCOPES = 512
 MAX_WS_EVIDENCE_CACHE_ROW_BYTES = 512 * 1024

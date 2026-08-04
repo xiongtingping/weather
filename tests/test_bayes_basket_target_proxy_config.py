@@ -13,14 +13,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_PROXY_URL = "http://127.0.0.1:7897"
-EXPECTED_PROXY_HOST_PORT = "127.0.0.1:7897"
+EXPECTED_PROXY_URL = "http://127.0.0.1:1082"
+EXPECTED_PROXY_HOST_PORT = "127.0.0.1:1082"
 EXPECTED_PROVIDER = "Clash Verge"
 MAX_ARTIFACT_BYTES = 512 * 1024
 
 ENV_PATH = ROOT / ".env"
 RESEARCH_CONFIG_PATH = ROOT / "config" / "trading" / "bayes_basket_target_research_network_v1.json"
-LAUNCHD_PATH = ROOT / "launchd" / "com.weather.reported_trajectory_no.plist"
+LAUNCHD_PATH = ROOT / "launchd" / "com.weather.weather_basket_yes.plist"
 LAUNCHD_ENV_LOADER_PATH = ROOT / "scripts" / "lib" / "load_launchctl_env.sh"
 CLOB_ORDER_SERVICE_PATH = ROOT / "scripts" / "clob_order_service.mjs"
 SETTLEMENT_FLOOR_EXECUTE_PATH = ROOT / "scripts" / "settlement_floor_execute.py"
@@ -49,7 +49,7 @@ TARGET_CORE_SCRIPT_PATHS = (
     CLOB_ORDER_SERVICE_PATH,
     SETTLEMENT_FLOOR_EXECUTE_PATH,
 )
-FORBIDDEN_RESIDUES = ("1082", "shadowrocket")
+FORBIDDEN_RESIDUES = ("7897", "shadowrocket")
 
 
 def _read_bounded(path: Path, *, limit: int = MAX_ARTIFACT_BYTES) -> str:
@@ -96,7 +96,7 @@ def test_dotenv_proxy_values_are_unique_and_unified() -> None:
     for key in PROXY_URL_KEYS:
         assert values.get(key) == [EXPECTED_PROXY_URL], f"inconsistent .env proxy: {key}"
     for key in PROXY_PORT_KEYS:
-        assert values.get(key) == ["7897"], f"inconsistent .env proxy port: {key}"
+        assert values.get(key) == ["1082"], f"inconsistent .env proxy port: {key}"
 
 
 def test_research_config_uses_clash_verge_and_same_proxy() -> None:
@@ -126,13 +126,13 @@ def test_target_core_scripts_have_no_old_proxy_residue() -> None:
             assert residue not in text, f"old proxy residue {residue!r} remains in {path}"
 
 
-def test_target_core_scripts_keep_7897_proxy_candidate() -> None:
+def test_target_core_scripts_keep_1082_proxy_candidate() -> None:
     loader = _read_bounded(LAUNCHD_ENV_LOADER_PATH)
     clob = _read_bounded(CLOB_ORDER_SERVICE_PATH)
     settlement_floor = _read_bounded(SETTLEMENT_FLOOR_EXECUTE_PATH)
 
-    assert "PM_PROXY_LOCAL_FALLBACK_PORTS:-7897" in loader
-    assert 'env("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897")' in clob
-    assert 'os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897")' in settlement_floor
+    assert "PM_PROXY_LOCAL_FALLBACK_PORTS:-1082" in loader
+    assert 'env("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")' in clob
+    assert 'os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")' in settlement_floor
     assert "127.0.0.1:$candidate" in loader
     assert "http://127.0.0.1:${port}" in clob

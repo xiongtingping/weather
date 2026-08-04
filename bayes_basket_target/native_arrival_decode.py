@@ -25,6 +25,7 @@ from bayes_basket_target.market_registry import load_market_registry_snapshot  #
 from bayes_basket_target.native_model_decode import (  # noqa: E402
     decode_native_temperature_points,
     materialize_native_daily_curves,
+    materialize_native_daily_curves_by_station_timezone,
     prepare_native_temperature_payload,
 )
 from bayes_basket_target.station_registry import coordinate_registry_manifest  # noqa: E402
@@ -40,6 +41,11 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_native_model_arrival_decode_evidence_v1"
 MAX_ICON_PREPARED_CACHE_BYTES = 256 * 1024 * 1024
+# A station-arrival wrapper may receive the formal-consumption timestamp after
+# its prospective capture was decoded.  That operational lifecycle field is
+# deliberately not part of the immutable arrival evidence.  Every other
+# wrapper field remains content-addressed and any change fails closed.
+ARRIVAL_WRAPPER_LIFECYCLE_FIELDS = ("formal_consumed_at_utc",)
 
 
 def _now() -> str:
@@ -52,6 +58,97 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def arrival_identity_sha256(arrival: Mapping[str, Any]) -> str:
+    """Hash the immutable, validated prospective arrival identity."""
+
+    return content_sha256({
+        key: value
+        for key, value in arrival.items()
+        if key != "content_sha256"
+    })
+
+
+def arrival_timing_identity_sha256(arrival: Mapping[str, Any]) -> str:
+    """Hash the arrival timing/key tuple separately from raw content."""
+
+    return content_sha256({
+        "schema": "native_model_arrival_timing_identity_v1",
+        "arrival_id": str(arrival.get("arrival_id") or ""),
+        "provider_id": str(arrival.get("provider_id") or ""),
+        "model_id": str(arrival.get("model_id") or ""),
+        "station_id": str(arrival.get("station_id") or ""),
+        "target_local_date": str(arrival.get("target_local_date") or ""),
+        "target_timezone": str(arrival.get("target_timezone") or ""),
+        "run_initialization_utc": str(
+            arrival.get("run_initialization_utc") or ""
+        ),
+        "valid_time_utc": str(arrival.get("valid_time_utc") or ""),
+        "published_at_utc": str(arrival.get("published_at_utc") or ""),
+        "received_at_utc": str(arrival.get("received_at_utc") or ""),
+        "decision_at_utc": str(arrival.get("decision_at_utc") or ""),
+        "source_url": str(arrival.get("source_url") or ""),
+        "capture_mode": str(arrival.get("capture_mode") or ""),
+    })
+
+
+def arrival_wrapper_immutable_sha256(capture: Mapping[str, Any]) -> str:
+    """Hash a wrapper after removing only approved lifecycle fields."""
+
+    return content_sha256({
+        key: value
+        for key, value in capture.items()
+        if key not in ARRIVAL_WRAPPER_LIFECYCLE_FIELDS
+    })
+
+
+def arrival_wrapper_lineage(
+    capture: Mapping[str, Any],
+    *,
+    wrapper_sha256: str,
+    arrival: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Freeze wrapper and immutable-arrival anchors for later closed-day use."""
+
+    supplied_content_sha = str(arrival.get("content_sha256") or "").lower()
+    identity_sha = arrival_identity_sha256(arrival)
+    if supplied_content_sha != identity_sha:
+        raise ContractError("native_decode_arrival_content_sha_mismatch")
+    raw_payload_sha256s = sorted({
+        str(value).lower()
+        for value in arrival.get("raw_payload_sha256s") or []
+    })
+    if not raw_payload_sha256s or any(
+        len(value) != 64 for value in raw_payload_sha256s
+    ):
+        raise ContractError("native_decode_arrival_raw_lineage_invalid")
+    receipt_sha = str(arrival.get("receipt_sha256") or "").lower()
+    if len(receipt_sha) != 64:
+        raise ContractError("native_decode_arrival_receipt_lineage_invalid")
+    wrapper_sha = str(wrapper_sha256 or "").lower()
+    if len(wrapper_sha) != 64:
+        raise ContractError("native_decode_arrival_wrapper_sha_invalid")
+    return {
+        # ``sha256`` remains for readers of older decode evidence, but new
+        # consumers must use the explicit capture/current fields below.
+        "sha256": wrapper_sha,
+        "wrapper_capture_sha256": wrapper_sha,
+        "wrapper_current_sha256": wrapper_sha,
+        "wrapper_immutable_sha256": arrival_wrapper_immutable_sha256(
+            capture
+        ),
+        "arrival_content_sha256": supplied_content_sha,
+        "arrival_identity_sha256": identity_sha,
+        "arrival_raw_payload_sha256s": raw_payload_sha256s,
+        "arrival_receipt_sha256": receipt_sha,
+        "arrival_timing_identity_sha256": arrival_timing_identity_sha256(
+            arrival
+        ),
+        "allowed_wrapper_lifecycle_fields": list(
+            ARRIVAL_WRAPPER_LIFECYCLE_FIELDS
+        ),
+    }
 
 
 def _blocked(path: str, reason: str) -> dict[str, Any]:
@@ -81,8 +178,9 @@ def build(
     registry_rows = registry["rows"]
     points: list[dict[str, Any]] = []
     observed_timezones: set[str] = set()
+    station_timezones: dict[str, str] = {}
     blocked: list[dict[str, Any]] = []
-    input_artifacts: list[dict[str, str]] = []
+    input_artifacts: list[dict[str, Any]] = []
     icon_prepared_cache: dict[str, Path] = {}
     icon_prepared_cache_bytes = 0
     with ExitStack() as prepared_stack:
@@ -93,7 +191,12 @@ def build(
                 capture = load_bounded_json(path)
                 if not isinstance(capture, Mapping):
                     raise ContractError("native_decode_capture_mapping_required")
-                input_artifacts.append({"path": path_text, "sha256": _sha256(path)})
+                wrapper_sha = _sha256(path)
+                input_artifact: dict[str, Any] = {
+                    "path": path_text,
+                    "sha256": wrapper_sha,
+                }
+                input_artifacts.append(input_artifact)
                 if capture.get("status") != "CAPTURED" or not isinstance(capture.get("arrival"), Mapping):
                     blocked.append(_blocked(path_text, "native_decode_capture_not_captured"))
                     continue
@@ -101,6 +204,11 @@ def build(
                 # run before the target ET day opens. It never creates truth,
                 # P1, production authority, or an order.
                 arrival = validate_model_arrival_capture(dict(capture["arrival"]))
+                input_artifact.update(arrival_wrapper_lineage(
+                    capture,
+                    wrapper_sha256=wrapper_sha,
+                    arrival=arrival,
+                ))
                 provider_id = str(arrival.get("provider_id") or "").strip().lower()
                 if provider_id not in ALLOWED_PROVIDERS:
                     raise ContractError("native_decode_provider_not_allowed")
@@ -114,6 +222,14 @@ def build(
                     market_timezone=market_timezone,
                 )
                 observed_timezones.add(market_timezone)
+                station_id = str(arrival["station_id"]).strip().upper()
+                existing_timezone = station_timezones.get(station_id)
+                if (
+                    existing_timezone is not None
+                    and existing_timezone != market_timezone
+                ):
+                    raise ContractError("native_decode_station_timezone_ambiguous")
+                station_timezones[station_id] = market_timezone
                 received_at = datetime.fromisoformat(str(arrival["received_at_utc"]).replace("Z", "+00:00"))
                 if received_at > as_of:
                     raise ContractError("native_decode_received_after_as_of")
@@ -195,22 +311,21 @@ def build(
                 reason = str(exc) if isinstance(exc, ContractError) else f"{type(exc).__name__}:{exc}"
                 blocked.append(_blocked(path_text, reason))
 
-    artifact_timezones = observed_timezones | {
-        registry_settlement_timezone(
-            registry_rows,
-            station_id=str(point["station_id"]),
-            event_date=str(point["event_date"]),
-        )
-        for point in points
-    }
-    if len(artifact_timezones) != 1:
-        raise ContractError("native_decode_registry_timezone_not_unique")
-    target_timezone = next(iter(artifact_timezones))
-    curves = materialize_native_daily_curves(points, target_timezone=target_timezone)
+    if not observed_timezones or not station_timezones:
+        raise ContractError("native_decode_registry_timezone_missing")
+    # A global-model raw payload fans out to markets in different local days.
+    # Preserve strict registry equality per arrival, then materialize each
+    # station in that exact local timezone.  One global ET fallback would
+    # mislabel Asian and Pacific daily maxima.
+    curves = materialize_native_daily_curves_by_station_timezone(
+        points,
+        station_timezones=station_timezones,
+    )
     identity = {
         "schema": SCHEMA,
         "as_of_utc": str(as_of.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")),
-        "target_timezone": target_timezone,
+        "target_timezone": "REGISTRY_BOUND_PER_STATION",
+        "station_timezones": dict(sorted(station_timezones.items())),
         "market_registry_snapshot_sha256": registry["snapshot_sha256"],
         "station_coordinate_registry": coordinate_registry_manifest(),
         "input_artifacts": input_artifacts,

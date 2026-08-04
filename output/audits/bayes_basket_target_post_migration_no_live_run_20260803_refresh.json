@@ -1,0 +1,2401 @@
+{
+  "atomic_stage_receipt": {
+    "calls_order_gateway": false,
+    "content_sha256": "0a32e83da2259514cd6bac11ab4863b76efbcb13d4a41fbdc53aa90479cc30f9",
+    "facts": {
+      "station_scope": {
+        "max_station_count": 45,
+        "mode": "allowlist",
+        "station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ]
+      }
+    },
+    "forward_oos_boundary": {
+      "blocks_formal_promotion_or_live": false,
+      "blocks_production_no_live": false,
+      "future_data_blocks_formal_promotion_or_live": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_counts_as_oos": false,
+      "historical_strict_oos_required_for_formal_promotion_or_live": true
+    },
+    "historical_oos_boundary": {
+      "blocks_formal_promotion_or_live": false,
+      "blocks_production_no_live": false,
+      "future_data_blocks_formal_promotion_or_live": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_counts_as_oos": false,
+      "historical_strict_oos_required_for_formal_promotion_or_live": true
+    },
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "payload_content_sha256": "1a162eb6df2ce448b7914912350be4e81ea1916066d0052de678cd5b22a82ef2",
+    "payload_schema": "bayes_basket_target_post_migration_no_live_run_v1",
+    "payload_state": "COMPLETED_PRODUCTION_NO_LIVE",
+    "production_no_live": true,
+    "schema": "bayes_basket_target_m9_06_stage_receipt_v1",
+    "stage": "resident_restart",
+    "state": "COMPLETED_PRODUCTION_NO_LIVE"
+  },
+  "boundary_blockers": [],
+  "calls_order_gateway": false,
+  "completed_at_utc": "2026-08-02T20:33:44.397Z",
+  "execution_mode": "production_no_live",
+  "historical_oos_boundary": {
+    "blocks_formal_promotion_or_live": false,
+    "blocks_production_no_live": false,
+    "future_data_blocks_formal_promotion_or_live": false,
+    "future_data_blocks_production_no_live": false,
+    "future_data_counts_as_oos": false,
+    "historical_strict_oos_required_for_formal_promotion_or_live": true
+  },
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "preflight": {
+    "activation": {
+      "execution_mode": "production_no_live",
+      "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45"
+    },
+    "blockers": [],
+    "cash_phase_authority": {
+      "as_of_utc": "2026-08-02T20:32:30.341Z",
+      "blockers": [],
+      "calls_order_gateway": false,
+      "content_sha256": "8dda4bf5f8321aef2ad552b90426fd84d552b297134565b75e3e03b038b3bdbf",
+      "live_submit_authorized": false,
+      "orders_submitted": 0,
+      "ready_station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KDAL",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ],
+      "required_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "schema": "cash_phase_preflight_authority_v1",
+      "state": "PASS",
+      "station_authority": {
+        "CYYZ": {
+          "artifact_sha256": "692bf2e2b8aa1bcb0e53ce9803e840d0743db0a30ea6853576e5908187a10720",
+          "manifest_sha256": "1e41f4c8bebe215e1ff2e8c394c291cfcf49b3a5af8489c42e21360ce6b09473",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-CYYZ",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "EDDM": {
+          "artifact_sha256": "5f629db1aefbc00a802d0cf1fec48d0a15434f73ded93e641fc6af969c09dc74",
+          "manifest_sha256": "787fb2b80cafb25b809d1991e876d930397614a3651efef42ff11306b3e2a62b",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-EDDM",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "EFHK": {
+          "artifact_sha256": "9247f14a6d425698e796e7fbcb8ade5abb3f6200351d9c66a79dff764ac03474",
+          "manifest_sha256": "eb499e317c7a5a6c3243b23803989c8ac6425758512c29ec0fedfe4c5507398a",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-EFHK",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "EGLC": {
+          "artifact_sha256": "137884a113add4bdac42d27300c2fa051a781a8b284216ad6259440c216067fa",
+          "manifest_sha256": "ae515886ca06d43aa2c404296c0f9c1671ac3060c566c039e91ead9d35d680d7",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-EGLC",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "EHAM": {
+          "artifact_sha256": "be21cf7633309bcc3691df2470bac8bf266541f8addfd528264821e2d071f53d",
+          "manifest_sha256": "101b359b133ab0e044f7b893d1716172a6574586572af4cc13f22ae20c71c530",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-EHAM",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "EPWA": {
+          "artifact_sha256": "deabc95acfc4278a566f5a1f35f8dee18cb27bb96e1bc31ecf42f641a6cbc70a",
+          "manifest_sha256": "8ac726379f5d846354dea96bc2ac14dd3aee32c161598e6de3270a78adc06b87",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-EPWA",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "FACT": {
+          "artifact_sha256": "a339498b24aa14b7df6f6eb6ece01fd8fa0394463595e81df631f5c56f49498f",
+          "manifest_sha256": "0f7127e11a4920449c6941ff373889eb917902036df11f2d0b134c4c10e8bc31",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-FACT",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KATL": {
+          "artifact_sha256": "a8abc08df58140945c625837bbaac9186947ce85abf7b6bf8fd766a077b67295",
+          "manifest_sha256": "c1a98d4270afa845dc1111ea0125ec79cc407ed9146a274cd42c5194ad46b553",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KATL",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KAUS": {
+          "artifact_sha256": "469cb6cfb5e25c7ae9b4f6810747de4f863d183a9b905beaa9c97ea401868e2a",
+          "manifest_sha256": "b366d060e57aff196c5898631747d9bed7028a944d170353b631446acd52e36b",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KAUS",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KBKF": {
+          "artifact_sha256": "c3b6b01f1ff58cd96c26959ab83e3e03f26b1ee75c2dd7a6a88437e2b4cd2d3e",
+          "manifest_sha256": "a785252a36692370296e77b6e1a0b4ba2a0a2e5bae8e8fd781d3055506691875",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KBKF",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KDAL": {
+          "artifact_sha256": "747da40977cbf728b2ad6b952cb21d02cb1d05a306bcc27982bc8e4abf51ceb3",
+          "manifest_sha256": "670b31a59889f25389117f1c3f4dbbc41325347367ad5f9e7db373c82fd17ee1",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KDAL",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KHOU": {
+          "artifact_sha256": "3134468023246472231b6d166692e59df3e0cdd76b303058bb5bfe4c044d1c81",
+          "manifest_sha256": "3d480321dce239b015dcec92c5a371075b251c7b3690860804be31be404d2b3f",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KHOU",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KLAX": {
+          "artifact_sha256": "4741a5ad0e99487c71bc5903e4f16a58f6ca2eed6fc82ff68ad5380034d20004",
+          "manifest_sha256": "4d43310342d512c3de8b7cf1dac7bccf0f3672e9e1ceabec6dd317533998feae",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KLAX",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KLGA": {
+          "artifact_sha256": "83061f8d853e9a274bd8bacbcadb5cc1a8c663c52e34ca231e5db48661f91f5a",
+          "manifest_sha256": "2cc7f8090b902387f8a60b2206f24f195eae8426dc9efa197625679f4db8ed7e",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KLGA",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KMIA": {
+          "artifact_sha256": "b645bcb9142d7032c9e9aa93333160f2e3c9a54a50b26c7d53e13441d40a008f",
+          "manifest_sha256": "ac45c0a12888326712ae118530cfadbc10ecf2fd784da4d958789442f689a5b0",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KMIA",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KORD": {
+          "artifact_sha256": "5880c0b490685b16f3e6034bdab31147012f9965bd843b799f9a5d05d9802efa",
+          "manifest_sha256": "7c15a7e9d75559f289660b877dd500fbc5ff2baba97f384c7d412a93b076b501",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KORD",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KSEA": {
+          "artifact_sha256": "ad2442662a9487ae3582369c384763f0b37f3ae42d5064f3ef1ce564e7725171",
+          "manifest_sha256": "da90f14295ce2ceb7817a840f5b50f5f2b81c056c484848eff3df67368f020eb",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KSEA",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "KSFO": {
+          "artifact_sha256": "5664ddaf423452682cafca9e8e17ef0f47ccc4c1d7595f935473b4f871c1164c",
+          "manifest_sha256": "b22351000d5de4420bcf339089beac28a69f94a4af176ced69830caebe0ff64d",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-KSFO",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "LEMD": {
+          "artifact_sha256": "97a13bd9474e2ea622020109d56466c1b5a2001185f78bc087c4f74d52435349",
+          "manifest_sha256": "f3d60babc4ea9acab4ff2ad65a7c2c4b2e0319a6acd8192696d7cc3047f4a0fa",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-LEMD",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "LFPB": {
+          "artifact_sha256": "d92ae4c791df44ec420ba361040ac094fb2121c33da08b481267e9e8d98b172d",
+          "manifest_sha256": "809a047ce8a1ab1a468b53c9ba45c9251d0ed960d1bc1260298cb35503be6b58",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-LFPB",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "LIMC": {
+          "artifact_sha256": "ca2b7d5e1be41a7297d4f88235f24eb59f13e9df348251958c0a0f7e341ab91f",
+          "manifest_sha256": "997bd9fe0ba1be2e81b6434d71a4ea3872894f5521273b23e71cff09d060d679",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-LIMC",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "LTAC": {
+          "artifact_sha256": "98ac3e16a4426be6a72e61ec18448daac7ca32c16d0db430dec6e54c798237f9",
+          "manifest_sha256": "6797e29038baf81f94fb3537fb702d749b753947cf713d340378eaef4e5cb81f",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-LTAC",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "MMMX": {
+          "artifact_sha256": "13c67efb87d74d9666bf91f541ea9d9948af09bb06e6e9e13acc50265935eb31",
+          "manifest_sha256": "0e2b3fe863f1daed576cd30473ecfa3177d0d9abbd9ca57810e1e501d85d3784",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-MMMX",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "MPMG": {
+          "artifact_sha256": "24381f250d20d57575d3e02be7e7adbc255efc77b83079683c10714a11d3c3b4",
+          "manifest_sha256": "55fa11e32c4432f901ddd0e65011f29d67dcfcdf30c4f5f5c5ba4b694ce4ba2c",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-MPMG",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "NZWN": {
+          "artifact_sha256": "b6b0d0f17cbe37e0bc3f7b826bfc17ae570416afabd33649856e955d5d389b9d",
+          "manifest_sha256": "f9be56d9df3c9efeabbd261de4ddc2116c1c11bff8e8f2b9f00250846fb56fe2",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-NZWN",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "OEJN": {
+          "artifact_sha256": "d94e902ecd265aa91838f97f5a06c4de8e35707c2b3ebf589743edb4e0263dc9",
+          "manifest_sha256": "c60ac29a7b2d1a41dc74c9083a7a8552621b9c43e695e30f0f5957e5b432a6ed",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-OEJN",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "OPKC": {
+          "artifact_sha256": "b75dcf61e1921e8b0ae2d023250f79a2e4d797e4045d40093fdd141a73c49831",
+          "manifest_sha256": "a836101ddc068889c7098a8dd3b672f0d2e379c1a59f3fc3e4e7d852801ac7f6",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-OPKC",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "RCSS": {
+          "artifact_sha256": "8c91bbbe7630e5a2c50b5ebf6cd2143777fa3fae9ac11a01368209a54c68af58",
+          "manifest_sha256": "5e1ff1a99f5316e3fe1e7ac3dec64b9cf199e10d5d9d8826acfaf872662fb2c9",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RCSS",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "RJTT": {
+          "artifact_sha256": "ad7f7bd5be9db123dbf7d03a9991b88a57245b74b786d0f13aba1e6de221b7cf",
+          "manifest_sha256": "39583a41c605da4921eee83de8d1094328d53248d2d3f56b7eea8a7b7395ac62",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RJTT",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "RKPK": {
+          "artifact_sha256": "b1b41ca2b25d8593fc35a5e6d7f43e96c3f97f92f63f002fa3e33456b6c09775",
+          "manifest_sha256": "4e885141f9a1eef76e27bff7e8eec4bf34038a8d6924d67e3c41d033a2259829",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKPK",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "RKSI": {
+          "artifact_sha256": "49033fd1abeac2442ab2858e9957104e0fb612153012c2121e923bffca0d5abb",
+          "manifest_sha256": "09910b40af3a8eb3db8fd23fb00f3cf8c95ca75cbeab286cbc37f7bc414023d2",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RKSI",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "RPLL": {
+          "artifact_sha256": "0969d454d174f33d9c8c9e3b4b1f82efe9d51dac66785f2fd6057f9203c310a5",
+          "manifest_sha256": "a5112148f41c2fa8fb007bcf6640b8f8dada00b91a9d3bf99b73f716f101a12e",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-RPLL",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "SAEZ": {
+          "artifact_sha256": "045d627f4807e400d91e4fb0ca50314791742e103eb832dd83480dd6ddf6213c",
+          "manifest_sha256": "993b9c86f3f6d24a5dd8a1743d2996e6e08a2e62b600b34ccb8bc75791e92ed7",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-SAEZ",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "SBGR": {
+          "artifact_sha256": "c4e5fb0e818563ca4ef9b5b4b44599945eb65b91e5298e433c85b4e4df7b2199",
+          "manifest_sha256": "66aa165e526f1591164e60b2ed6dd0173a2fe0222942aeb24ff3e739ea6f7a3f",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-SBGR",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "VILK": {
+          "artifact_sha256": "14faf089a49f2e83e9f008f2c4e6a7c764dc79828756684f8332adc6daf1a5ec",
+          "manifest_sha256": "55829f3e1f90b92744353bcc9ea14af74d4307f9be91064799f7eb2294fd34b8",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-VILK",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "WMKK": {
+          "artifact_sha256": "3805cf2f1187b721526dad53a4d81221d3e387e5bfe317635636543a04efcf9f",
+          "manifest_sha256": "e922dbd5073b048cb28b38a97953f26b7e7bebed376ba4147cb93afe0abb25e9",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-WMKK",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "WSSS": {
+          "artifact_sha256": "5852c975ad870babe5828b61f7feda25ae4cbf993d5baa722bc46d962df4966d",
+          "manifest_sha256": "62809704c7c104d68c4c254e4b06b60066677190110d4288a9a7531f2665ce99",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-WSSS",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZBAA": {
+          "artifact_sha256": "c0471871673b91748660e211a324ccf3f774fe3f61c7e6e64141237c5f50d540",
+          "manifest_sha256": "56bf81178c210ee238055a1bf35ce45ec4d997941a5692f4316e6df1e1bc1770",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZBAA",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZGGG": {
+          "artifact_sha256": "edcf625104e69ee677f10486e605b0df9ef007e8beb68437059a329f8451613a",
+          "manifest_sha256": "93f3fd4df9b978733ee1f33ac537c1825324d6c409a56c7837ff6f401fe501e2",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZGGG",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZGSZ": {
+          "artifact_sha256": "741541829a0f54a97943ea142327b8d2a757d700252b8376d826ba0a4a114a09",
+          "manifest_sha256": "fc6278c66a5532da075e8ef15b515d5a7e2cdb24d6d7b0163f94ba8513dd209d",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZGSZ",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZHHH": {
+          "artifact_sha256": "728b5cabf27e0bc6cfd27bf4fbbc990d9d98d40b09ee4a305ef7fe4be07d61bb",
+          "manifest_sha256": "cac6ba24eb62733c8fcc6052e63f2f0abcdb8f13710b2257fbb3dd866fe21185",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZHHH",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZSPD": {
+          "artifact_sha256": "d1d854d131d5c6664864aee59d75983c7f854f69da21fed9a91bc19dac875480",
+          "manifest_sha256": "87321d6ffb23ac7f149e52ab44baca7e2d5d884043c53fdedcae786e16ebd7d9",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZSPD",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZSQD": {
+          "artifact_sha256": "46cdd736155127682a08a3d4363420e6735ee30c022469998f289c5f898355f5",
+          "manifest_sha256": "c16103a95d653cad22a785e8b84bb942c5bcc3ccd02c4729cf89df4acd1ffb36",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZSQD",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZUCK": {
+          "artifact_sha256": "40bb0c0551fa2aa2bac7204d102e8772eee5dadd0a6499c8a60769a94565fc99",
+          "manifest_sha256": "7a53795e62d5b7d2a32304c59e7ee50bd9eb82b023d56972fe508d9d5e4058e4",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZUCK",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        },
+        "ZUUU": {
+          "artifact_sha256": "2ddd8edca42e4bf278f9bac0948909a861866967162c9703b195e6e5f09164f3",
+          "manifest_sha256": "293d3dd483fc04505343caa035b4c62f54b8c4529c2a399bb10a9154b4fa5452",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-ZUUU",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        }
+      },
+      "station_scope": {
+        "mode": "allowlist",
+        "station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ]
+      },
+      "unready_station_ids": []
+    },
+    "historical_oos_boundary": {
+      "blocks_formal_promotion_or_live": false,
+      "blocks_production_no_live": false,
+      "future_data_blocks_formal_promotion_or_live": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_counts_as_oos": false,
+      "historical_strict_oos_required_for_formal_promotion_or_live": true
+    },
+    "legacy_fallback_used": false,
+    "market_manifest": {
+      "event_dates": [
+        "2026-08-03"
+      ],
+      "path": "/Users/xiong/weather/data/bayes_basket_target_official_ws_manifest.json",
+      "sha256": "3da639a95a907026c35e5df5aeea1cd94a85f366e31d8666a8e04741688aa0fa",
+      "station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ]
+    },
+    "native_ensemble_authority": {
+      "accepted_authority_scopes": [
+        "FORMAL_PROMOTED",
+        "PRODUCTION_NO_LIVE_ONLY"
+      ],
+      "as_of_utc": "2026-08-02T20:32:30.341Z",
+      "blockers": [
+        "native_strict_oos_not_ready:KDAL",
+        "native_strict_oos_not_ready:KMIA",
+        "native_strict_oos_not_ready:MMMX",
+        "native_strict_oos_not_ready:RPLL"
+      ],
+      "calls_order_gateway": false,
+      "content_sha256": "5f8cb156c5ea77c1db1eef434a391334126f6da6c717ae6407cb98832ab3087e",
+      "live_submit_authorized": false,
+      "native_oos_snapshot": {
+        "content_sha256": "93cfdbbf30825a65d247d06c9f799690eac8c223b8ebe665d532b36669d0335a",
+        "path": "/Users/xiong/weather/output/audits/oos_atomic_snapshot_manifest_45station_20260803_stable.json",
+        "schema": "bayes_basket_target_oos_atomic_snapshot_manifest_v1",
+        "station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ]
+      },
+      "native_schema_status": {
+        "missing_historical_taf_columns": [],
+        "missing_member_columns": [],
+        "missing_run_cycle_mapping_columns": {},
+        "missing_tables": [],
+        "ok": true,
+        "tables": [
+          "calibration_native_ensemble_system",
+          "calibration_native_ensemble_member_run",
+          "calibration_native_ensemble_member_bucket",
+          "calibration_native_ensemble_historical_member_run",
+          "calibration_native_ensemble_historical_member_bucket",
+          "calibration_native_ensemble_system_artifact",
+          "calibration_cross_native_ensemble_selection_evidence",
+          "calibration_cross_native_ensemble_artifact",
+          "calibration_cross_native_ensemble_oos_evaluation",
+          "calibration_cross_native_ensemble_oos_prediction",
+          "calibration_forward_taf_capture",
+          "calibration_native_ensemble_promotion",
+          "calibration_native_ensemble_activation"
+        ]
+      },
+      "observed_cross_activation_count": 48,
+      "official_native_transports": [
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3"
+      ],
+      "orders_submitted": 0,
+      "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+      "production_no_live_soft_blockers": [
+        "native_strict_oos_not_ready:KDAL",
+        "native_strict_oos_not_ready:KMIA",
+        "native_strict_oos_not_ready:MMMX",
+        "native_strict_oos_not_ready:RPLL"
+      ],
+      "ready_station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ],
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "schema": "native_ensemble_preflight_authority_v1",
+      "state": "BLOCKED_FAIL_CLOSED",
+      "station_authority": {
+        "CYYZ": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-3ea33886442c832aa01bc045",
+            "activation_sha256": "3ea33886442c832aa01bc0459552752f299d2e84fe14b408d5bf9235c8a24541",
+            "cross_artifact_sha256": "74c528b5983bcbb54e8556a21c5f3f80bc838ce89a379a2d7bd9bd6f2dc6ae39",
+            "cross_ensemble_artifact_id": "native-cross-artifact-74c528b5983bcbb54e8556a2",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "640e2711828b11f94620e03ae61b92fc7aa20a5088926b3fb23a7283c8e6f125",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "EDDM": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-f85145b614d4231838aaa954",
+            "activation_sha256": "f85145b614d4231838aaa9542956a575e60f0af92c51fbce2d6761630f1c817f",
+            "cross_artifact_sha256": "39ae1b188f8dd0c568dd6dd626f1c6c07e06294e0fccd68998bc3ac6de7c4943",
+            "cross_ensemble_artifact_id": "native-cross-artifact-39ae1b188f8dd0c568dd6dd6",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "3bb62ed346e5b980cbbca098acb607eaafdc1e83d17e309cd8426407b336c73a",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "EFHK": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-7c704a1bfbb1533bc6974776",
+            "activation_sha256": "7c704a1bfbb1533bc697477676de5fd6717bf73f49ae0b1f1fa9f8a5f6de1f03",
+            "cross_artifact_sha256": "a104c26610887fe04114e6983c6cbc7fee5ecfed4be382d14d3783ae359b95bf",
+            "cross_ensemble_artifact_id": "native-cross-artifact-a104c26610887fe04114e698",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "af9eed01b68e5183b578198d3ac55d40c71a1df96cf8ae38271d60a954413989",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "EGLC": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-e770d53e6773cce504068007",
+            "activation_sha256": "e770d53e6773cce5040680076cc46da514e9457f2737b2ca881dbc12cb81bdad",
+            "cross_artifact_sha256": "06819abfb042c23f2be70be841ab388e7ff432318571acf3b53266eb3284fd13",
+            "cross_ensemble_artifact_id": "native-cross-artifact-06819abfb042c23f2be70be8",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "cdcb87af2b793f50d1fb924a5a48b19b7536d89d407d5e55a26be2e1c8ec0bcb",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "EHAM": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-659fa11a3e1b746e87827fa4",
+            "activation_sha256": "659fa11a3e1b746e87827fa452926e24108db27a894dd51cce1e695cdcea5d21",
+            "cross_artifact_sha256": "5e12acb3d3c863da8428bd127cc9682536b9a0abed71687c065db4bdde906e3d",
+            "cross_ensemble_artifact_id": "native-cross-artifact-5e12acb3d3c863da8428bd12",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "4f6607a6699d648dae4b8633368996419be3dddbed7be14a1051b97928970818",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "EPWA": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-199f6dda22beea50331cce60",
+            "activation_sha256": "199f6dda22beea50331cce6073923cd9c9b1e3d274ed9308d0a9152e8912ee2d",
+            "cross_artifact_sha256": "f647884c69a087658525ab0bc1b9d4ba451be4f31e7ecbb508072dff8e9b2a1b",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f647884c69a087658525ab0b",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "ecd1e523b403b6f58496d96a85b5fc84a28af55edbc5f83d7500f037bc341907",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "FACT": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-a8b59d329764707635269fb4",
+            "activation_sha256": "a8b59d329764707635269fb4a9617b4e47aee35cd8d624713216457e1cec7b7e",
+            "cross_artifact_sha256": "fb96c1b4535a20c28f937f11282fb913097db0eb447f48084d3cd03d957cb7d3",
+            "cross_ensemble_artifact_id": "native-cross-artifact-fb96c1b4535a20c28f937f11",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "610494efd825087b03b2ca83bd9ee544834595e7312f821eaa25302bc2326423",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KATL": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-d321e0fcdb3857f83f1aa16d",
+            "activation_sha256": "d321e0fcdb3857f83f1aa16dcba20998d4e66ba71557f81313d43f0445085a13",
+            "cross_artifact_sha256": "f960211310303650f4970e946a607559beabbbc79ab494c11551c5d6c4854450",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f960211310303650f4970e94",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "570104f36e9101926658c24386eb97b4bcfa45edee17485aa2a29af76b51aedc",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KAUS": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-d9696a92d24326a05c417081",
+            "activation_sha256": "d9696a92d24326a05c417081117579d097c5ce292816ebe7298533f214d70094",
+            "cross_artifact_sha256": "d5663fa21e1981ba72124dd8067732a5d808e6e4dc482ca40221b1fcdbbaf2dd",
+            "cross_ensemble_artifact_id": "native-cross-artifact-d5663fa21e1981ba72124dd8",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "4b2da109c2e61d1b693b4661bcac81e22935c0aa7e6a17f536a82c6eb93a0a92",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KBKF": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-9cb0869beea4f230f981678f",
+            "activation_sha256": "9cb0869beea4f230f981678fe71dae22df9a1435b89e50cd3f3ff5ed242ab08c",
+            "cross_artifact_sha256": "5d52571eda547e86e97ef013c6f632ffe10bc156eca31ba3380ba5ce6b40b0cb",
+            "cross_ensemble_artifact_id": "native-cross-artifact-5d52571eda547e86e97ef013",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "390394aac78f13a64dac23b7d8bc5dae2589183dd6889bc908ec483577d696eb",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KDAL": {
+          "failures": [],
+          "observed_cross_activation_count": 0,
+          "state": "ACCUMULATING_STRICT_OOS"
+        },
+        "KHOU": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-b988a7f25b9251d4acbc14bc",
+            "activation_sha256": "b988a7f25b9251d4acbc14bce9a7ddb31836568b4d09c874525989cbaa6a4570",
+            "cross_artifact_sha256": "56a8eca763008ff18a7be1bf23ac0fcded52a6c9c78f45997707c58a3726cdd6",
+            "cross_ensemble_artifact_id": "native-cross-artifact-56a8eca763008ff18a7be1bf",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 1,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "8133ee7cae27795cd2883167417d0357cbd99680fc342280397a9492fd13eb1c",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KLAX": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-63c461bf15a38051da1029a9",
+            "activation_sha256": "63c461bf15a38051da1029a962400bb5777565aec87f8292cc4793bec63656d3",
+            "cross_artifact_sha256": "63898d583219f08d2ef4f86440b706133644337fc664d47c264f01227479662f",
+            "cross_ensemble_artifact_id": "native-cross-artifact-63898d583219f08d2ef4f864",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "6cefe3252e061b639487f0a2649ffcf84ebf9694075cc135bd2eee04c49d5bb5",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KLGA": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-8ef075f9a390796a1ba4cc48",
+            "activation_sha256": "8ef075f9a390796a1ba4cc48e1ddbfa481635ed75069af9a4719ae2c05a20775",
+            "cross_artifact_sha256": "f3d84ad70869afc840211fab023984b50456ce3efc37a98963117df302a568e0",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f3d84ad70869afc840211fab",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "3f731be5f1006f51f37801b776230ddb9a603660546009c128e415bfbbc6ec27",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KMIA": {
+          "failures": [
+            "native_current_pointer_binding_missing"
+          ],
+          "observed_cross_activation_count": 1,
+          "state": "ACCUMULATING_STRICT_OOS"
+        },
+        "KORD": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-ee974f6d4a81697a2b379574",
+            "activation_sha256": "ee974f6d4a81697a2b379574b27856659cfe291545b880581c7fc7298b9360c5",
+            "cross_artifact_sha256": "b6b940e58f6b8ce8845374f39590d619207f66da83dad8267236a1781bc6296a",
+            "cross_ensemble_artifact_id": "native-cross-artifact-b6b940e58f6b8ce8845374f3",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "5082102c16a5c531163cd0072b4ebc4f1ee756c57436f1480a56fdbf688d4d2b",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KSEA": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-4b91bee452e4d6562b213525",
+            "activation_sha256": "4b91bee452e4d6562b21352522fc8506e72caa37c858e431fa2611bd6c386eb8",
+            "cross_artifact_sha256": "f330539669e4fb3fe6e33221d26c02a3edec830d18cea7211b48df30b7a6ee6d",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f330539669e4fb3fe6e33221",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "3e471b0a8c5a7cb73bd0764fa92640e08360d39526405971531e35d7ba64cd91",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "KSFO": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-e6a46358c3f2f69483c72c6f",
+            "activation_sha256": "e6a46358c3f2f69483c72c6f8553cfb0bd60a5cb8df3afdae030f96e5590ca25",
+            "cross_artifact_sha256": "c9c77daba215b7f4368a036c4f57e5297386a76475edbce161e901b51ee980c5",
+            "cross_ensemble_artifact_id": "native-cross-artifact-c9c77daba215b7f4368a036c",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "375c35ef1155ac0a51c86e56dbef6334cf4078439edd02fd7b3658884c2d594f",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "LEMD": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-c3075693dd3c78c50539a418",
+            "activation_sha256": "c3075693dd3c78c50539a418105d062cb1a5db8e4a98b0409d449018e1558161",
+            "cross_artifact_sha256": "5420eeaeddf471962dcb7b28f53fc09376d484c722891911225610c2fddfbcbf",
+            "cross_ensemble_artifact_id": "native-cross-artifact-5420eeaeddf471962dcb7b28",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "bb4167b6a2ce971fb2529c4d75dfca8db9470740d509693454690e015453852b",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "LFPB": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-9d06ce8c82225fcd40112e3c",
+            "activation_sha256": "9d06ce8c82225fcd40112e3caa10057d2b14ccc2acc5b8ce707f6c02ac461d79",
+            "cross_artifact_sha256": "5ddce0a1d347f6b28a4ff99832db1898ce1841d5a499741b6b717c961457155f",
+            "cross_ensemble_artifact_id": "native-cross-artifact-5ddce0a1d347f6b28a4ff998",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "1604e74703ece83b9ecf0be4f631d9a146f3a18b757109ce3498aa2ddfaee2f1",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "LIMC": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-74f5e094d47a3860a66cd1e2",
+            "activation_sha256": "74f5e094d47a3860a66cd1e23e5997c1cdafcf98eb55926ca989f90945d87a8a",
+            "cross_artifact_sha256": "85f2ea0508980fca3b492b428e3537d4019aed6ee747793b92351057ec2bd6f7",
+            "cross_ensemble_artifact_id": "native-cross-artifact-85f2ea0508980fca3b492b42",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "39807baddec63d605d639bdab3ccabb9f040023fbbf0d4e9991fad5b2a51b004",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "LTAC": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-8ea69e2b7a26de38a197e902",
+            "activation_sha256": "8ea69e2b7a26de38a197e902565669a979b4e4edc73bae3e9e30f70ad516a227",
+            "cross_artifact_sha256": "13f119bce66a16bdbbf4a99106a8aa7f391b3f0c2f8752b2599c81d8218a4d33",
+            "cross_ensemble_artifact_id": "native-cross-artifact-13f119bce66a16bdbbf4a991",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "a7cb2d7365163050ac3461b760389f3ff597c6252f4bba59d99fd73fb6df186a",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "MMMX": {
+          "failures": [
+            "native_current_pointer_binding_missing"
+          ],
+          "observed_cross_activation_count": 4,
+          "state": "ACCUMULATING_STRICT_OOS"
+        },
+        "MPMG": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-843720deed22261e23455871",
+            "activation_sha256": "843720deed22261e234558712a6bdfa4591df50e1055587bd0c0b637b7e09a54",
+            "cross_artifact_sha256": "f1e5402f9c003e5463efe66db25a725d31e6987e80fa554f76bac4c8ca60a613",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f1e5402f9c003e5463efe66d",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "4d68a59219707a1ee3e1681af2dfd91a3f33049f6558f2b5f9407482dfaf9adf",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "NZWN": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-86a9dc9dc41ef30995890114",
+            "activation_sha256": "86a9dc9dc41ef30995890114f00bcab399397b841bee730555b00d0df64d5f01",
+            "cross_artifact_sha256": "3f241b172526aa42cda3081aeb1ad6b8f1d833f92a95ec8ffac97ead453dfd6a",
+            "cross_ensemble_artifact_id": "native-cross-artifact-3f241b172526aa42cda3081a",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "3a524626aada2b8ca2c557769ab520e6d17357249ed92b68fa888f952dd917ff",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "OEJN": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-02a4f51aa9f9370e3e10b264",
+            "activation_sha256": "02a4f51aa9f9370e3e10b264b02c3bf0401d3adb4b8183bc4b2f96f614b10976",
+            "cross_artifact_sha256": "6b75baefc38f693c4ab0bd6191677c887da1226ecf608c94ac1be4ea2915fa9c",
+            "cross_ensemble_artifact_id": "native-cross-artifact-6b75baefc38f693c4ab0bd61",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "f2913fbac273bae806e940f660399fdad2db3051cba6c57766536ff259a7a7ef",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "OPKC": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-9865da6ee77e15f0d0defa45",
+            "activation_sha256": "9865da6ee77e15f0d0defa457350b815bd6b8be812970db029728affe9a56a92",
+            "cross_artifact_sha256": "ba1b9f604612f7e10d4d6dce05b63150d7af3fc091ca9994b1350a78930f542d",
+            "cross_ensemble_artifact_id": "native-cross-artifact-ba1b9f604612f7e10d4d6dce",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "8c1da62911673d8ca67d6f48f33cc2ace68aa6a35ecb171d26616d81c15b00e4",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "RCSS": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-4f9c21c9600a9e9abb391ef7",
+            "activation_sha256": "4f9c21c9600a9e9abb391ef78d1bab552fcbf9dc40cb388df095524b4c8712e7",
+            "cross_artifact_sha256": "00b727b2278bf9af3e4de00aec8cb196b6da86ecaba32225ad7fcc90d1558f48",
+            "cross_ensemble_artifact_id": "native-cross-artifact-00b727b2278bf9af3e4de00a",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "162a6b952ed1dcdfa78d73ac171956c17645c8040fe35485f7c2ea76d8543370",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "RJTT": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-92782c39024fb002958d19e4",
+            "activation_sha256": "92782c39024fb002958d19e44d742b76b345baaa46e5da51ad8985eecb21708b",
+            "cross_artifact_sha256": "0abff401e902d4e4c141ce8bd6d0be5b19715a9822cfbae9bb10150c4c5ad6e3",
+            "cross_ensemble_artifact_id": "native-cross-artifact-0abff401e902d4e4c141ce8b",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "7a3dd884c2ec0391f6ac4da295038e715e999027e9c1ad292a585af97b1b6620",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "RKPK": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-11918916d03ecb7740296daf",
+            "activation_sha256": "11918916d03ecb7740296daf0ee2d96aa2eb5022345b3c4ef08039671c167f8f",
+            "cross_artifact_sha256": "dc46268e33de573065eeb97ab58733262eb6519ba0c688e180fe889aa5b19073",
+            "cross_ensemble_artifact_id": "native-cross-artifact-dc46268e33de573065eeb97a",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "8e380b7e48b4d28c6f0465dafb759f32fb7a962e12b0e7ed1915666b59dc475f",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "RKSI": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-4ef620f8e388d4d26f12cb0e",
+            "activation_sha256": "4ef620f8e388d4d26f12cb0eb481ba8676dda8ffca6791a135ab5fb1a296ac5f",
+            "cross_artifact_sha256": "393d46fa060aca909b08b4a45320f818c5eca938dae55d8a4c02e732767d594e",
+            "cross_ensemble_artifact_id": "native-cross-artifact-393d46fa060aca909b08b4a4",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 4,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "09f197884e8b5fc74687ef4a3558e2d9f4679363713fadcc0cf00b4a7c82d8dd",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "RPLL": {
+          "failures": [
+            "native_current_pointer_binding_missing"
+          ],
+          "observed_cross_activation_count": 2,
+          "state": "ACCUMULATING_STRICT_OOS"
+        },
+        "SAEZ": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-607978fa5ab9f88ce3304ee9",
+            "activation_sha256": "607978fa5ab9f88ce3304ee939ea9369f6a40a8772ee0debc45e50a37dc29efa",
+            "cross_artifact_sha256": "eaaee13e1e584392e5f69d55c41d705577156ff4dbc3cc342778f5f855cc410c",
+            "cross_ensemble_artifact_id": "native-cross-artifact-eaaee13e1e584392e5f69d55",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 2,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "f96ac90af1a2fe651abd3e5297dbda13c6ad8451d02b5d8b2ec15f460f84dc9b",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "SBGR": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-f8b549dcf85cfa8745985343",
+            "activation_sha256": "f8b549dcf85cfa87459853431107438ecbbd4d7bdaf27124ccd79de91482276b",
+            "cross_artifact_sha256": "f3a94841a94be573c18065e885bf183dcf5da41350e536f6b6de199541251681",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f3a94841a94be573c18065e8",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "a32e4e1ead4f87901c98baf9eab3cb233f5bcd286b94cd4a674982ab5c2a2487",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "VILK": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-bed0dfdfe6a29066e4e87eb4",
+            "activation_sha256": "bed0dfdfe6a29066e4e87eb4db8637799b457de9139fefb12134ecb59f26de57",
+            "cross_artifact_sha256": "dd18272929f6f5d035cfca2ef47b7dcb1696954781c411c730944f7354df20c7",
+            "cross_ensemble_artifact_id": "native-cross-artifact-dd18272929f6f5d035cfca2e",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "fdd059638b1c313e850950c1eba8d83983469cdf5f70c114eeb1402b486ffd4c",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "WMKK": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-f4e51ea2617aeca61e48ab50",
+            "activation_sha256": "f4e51ea2617aeca61e48ab50ada8425dabd3642b5d1300cb4b6f31657a3074c1",
+            "cross_artifact_sha256": "aee5da42cc01dc36fa9d271173dd229e68f89c5300a391d2cfb40200aec76ad0",
+            "cross_ensemble_artifact_id": "native-cross-artifact-aee5da42cc01dc36fa9d2711",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "378aa5e18409966eafb9450273f08155489e6cde0ece6213b0d58dca4cc7f719",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "WSSS": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-b0231f8e80d3e2ee119d0b69",
+            "activation_sha256": "b0231f8e80d3e2ee119d0b69bf47a6477367a91da6141cfc26fff31755cb067e",
+            "cross_artifact_sha256": "289d19ea09f5619a5df5641f34c979a47bca058327742329fa3f2da65a092e21",
+            "cross_ensemble_artifact_id": "native-cross-artifact-289d19ea09f5619a5df5641f",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 2,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "a2bd9170724724342cc9d11260c9052ab33542305eb13f8baf18f055a52f247f",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZBAA": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-c18b4422eaf250b33690782d",
+            "activation_sha256": "c18b4422eaf250b33690782dc7ddf4454bcc697156b621a21dd7826327cea533",
+            "cross_artifact_sha256": "e316aa8e3a221ab3bddc13b645fd157eac779fb25f8eb6719487afc71b2c15e2",
+            "cross_ensemble_artifact_id": "native-cross-artifact-e316aa8e3a221ab3bddc13b6",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "41d540f2a9ef3cfc0cdbb2e700e9c217657e2e70c62d1d248e7c2096c8d4d12d",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZGGG": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-07207e2cb36d55e3a1dd30fc",
+            "activation_sha256": "07207e2cb36d55e3a1dd30fc86af148a75b6f0b3e56ad7ac3a18e977337aa7d2",
+            "cross_artifact_sha256": "f6a5c8750f6b8f75ff5a1e7489ef2bb8d3fcffd589cfcea6bec99b9142ce2f84",
+            "cross_ensemble_artifact_id": "native-cross-artifact-f6a5c8750f6b8f75ff5a1e74",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "c6cd2a7483b7ba4a7ddff482b1a140f89d6d7ab3f0534333d42fde8932264be5",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZGSZ": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-e1663c592cdc401ac85e4221",
+            "activation_sha256": "e1663c592cdc401ac85e4221c5649181224b8682531a8f6043b379862ea99902",
+            "cross_artifact_sha256": "65bbc26fb6bf6d412af638cddf742760a43c8eec170699ba865d317c970601bc",
+            "cross_ensemble_artifact_id": "native-cross-artifact-65bbc26fb6bf6d412af638cd",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "d1304a3c4ccd850ed35bf737e047febc81388e38e65a9ca43f53870ba4f50ead",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZHHH": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-c3ff2722c5d3417521621fef",
+            "activation_sha256": "c3ff2722c5d3417521621fef0b74ef6e5653939e057e62985b700783c275a315",
+            "cross_artifact_sha256": "3077a5b63064380061f8d78683c4b8374cc67d9810705ba90a74cb5a6e3c72a9",
+            "cross_ensemble_artifact_id": "native-cross-artifact-3077a5b63064380061f8d786",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "1cd34c45c5c5644e7b79d44bf7b511b769ee02b829bb5930fc4fc9b58722afbd",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZSPD": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-49ea7195ee366fd41ee07909",
+            "activation_sha256": "49ea7195ee366fd41ee079092fa41fdb9fbe3c2cc86927f2dc650ce4b4e9b4a0",
+            "cross_artifact_sha256": "a4a01ae2d0b3495639c57ca57db86a7f2aa53450de18b133b6e16d16f0c9a2d4",
+            "cross_ensemble_artifact_id": "native-cross-artifact-a4a01ae2d0b3495639c57ca5",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "b2c0a0acd04ca846c2e687c0f52c8810be9901f5a6b98779a6254a75da7ee9e8",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZSQD": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-bf2ab40c73b3cf22f84116a1",
+            "activation_sha256": "bf2ab40c73b3cf22f84116a15494f22fb73435869a5d1873ce5f5a1402420d31",
+            "cross_artifact_sha256": "046d0e89d93971111c9bc0adaf22ce45b7b968f88e3aa916d331dd67af41a884",
+            "cross_ensemble_artifact_id": "native-cross-artifact-046d0e89d93971111c9bc0ad",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "3366dbee08c590dd7de2dd589f9f5cfdff76d6033b944097073c020136f4ede1",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZUCK": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-39690ea19bb64d33f38fd2da",
+            "activation_sha256": "39690ea19bb64d33f38fd2dabd2c3ade6c7a9846acf5a6ea768d2bfcfa8ac231",
+            "cross_artifact_sha256": "4acc1f9b389a62157aecbe37d93ea8e4517a0ef85b794481a581afa74e006b0f",
+            "cross_ensemble_artifact_id": "native-cross-artifact-4acc1f9b389a62157aecbe37",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "1bc7f1e3b5e6510ed4fbe0ac979246abe6c4ff35f84dd8648dbb57f592cc8c1e",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        },
+        "ZUUU": {
+          "candidate_count": 1,
+          "selected": {
+            "activation_id": "native-activation-c042970f9b3ec4f840c62134",
+            "activation_sha256": "c042970f9b3ec4f840c62134f0e9e1da6f5820dc659a3a183971e4fce334f59c",
+            "cross_artifact_sha256": "e02cdb3477444c2b22e6ee659ba0a9e3bffa8d4ebfe33024c4457ab9d81d4661",
+            "cross_ensemble_artifact_id": "native-cross-artifact-e02cdb3477444c2b22e6ee65",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 5,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "7e9593b88f176abc7a2a6c33621a2597396c05f7f6411db24b09d50eaafbda27",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-09-01T16:19:44.680000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        }
+      },
+      "station_scope": {
+        "mode": "allowlist",
+        "station_ids": [
+          "CYYZ",
+          "EDDM",
+          "EFHK",
+          "EGLC",
+          "EHAM",
+          "EPWA",
+          "FACT",
+          "KATL",
+          "KAUS",
+          "KBKF",
+          "KDAL",
+          "KHOU",
+          "KLAX",
+          "KLGA",
+          "KMIA",
+          "KORD",
+          "KSEA",
+          "KSFO",
+          "LEMD",
+          "LFPB",
+          "LIMC",
+          "LTAC",
+          "MMMX",
+          "MPMG",
+          "NZWN",
+          "OEJN",
+          "OPKC",
+          "RCSS",
+          "RJTT",
+          "RKPK",
+          "RKSI",
+          "RPLL",
+          "SAEZ",
+          "SBGR",
+          "VILK",
+          "WMKK",
+          "WSSS",
+          "ZBAA",
+          "ZGGG",
+          "ZGSZ",
+          "ZHHH",
+          "ZSPD",
+          "ZSQD",
+          "ZUCK",
+          "ZUUU"
+        ]
+      },
+      "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+      "unready_station_ids": [
+        "KDAL",
+        "KMIA",
+        "MMMX",
+        "RPLL"
+      ]
+    },
+    "native_oos_snapshot": {
+      "content_sha256": "93cfdbbf30825a65d247d06c9f799690eac8c223b8ebe665d532b36669d0335a",
+      "error": null,
+      "path": "/Users/xiong/weather/output/audits/oos_atomic_snapshot_manifest_45station_20260803_stable.json",
+      "state": "PASS",
+      "station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ]
+    },
+    "protected_processes": {
+      "clob_order_service": 93445,
+      "market_ws": 95156,
+      "weather_basket_yes": 93259
+    },
+    "release": {
+      "activation_sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45",
+      "artifact_role": "native_ensemble_ssot_authority",
+      "artifact_sha256": "db24ac6ff14cd612932ca5f8c12d474ae182a001f4f8649e6462f6c804b54f48",
+      "execution_mode": "production_no_live",
+      "legacy_fallback_used": false,
+      "release_sha256": "f9371f39f4d3b8b6c9a51311f8e00f1d29fea715696e8def7d8f7d6f3a572799",
+      "schema": "bayes_basket_target_m9_06_release_identity_v1",
+      "schema_sha256": "4368be4596c43dff19c93ff960df1a2f299aed1050809f7903c0581bd189b69d",
+      "station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KDAL",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ],
+      "station_scope_mode": "canonical_allowlist"
+    },
+    "resources": {
+      "blockers": [],
+      "free_bytes": 31178199040,
+      "limits": {
+        "max_input_bytes": 16777216,
+        "max_output_bytes": 16777216,
+        "max_rss_bytes": 4294967296,
+        "max_target_db_bytes": 4294967296,
+        "max_target_wal_bytes": 536870912,
+        "minimum_free_bytes": 2147483648
+      },
+      "rss_bytes": 44449792,
+      "state": "PASS",
+      "target_db_bytes": 2394279936,
+      "target_wal_bytes": 244320152
+    },
+    "schema_status": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": [],
+        "calibration_station_source_authority": []
+      },
+      "calibration_model_pool_schema": {
+        "candidate_models": [
+          "ECMWF",
+          "GFS",
+          "ICON",
+          "GEM",
+          "CMA"
+        ],
+        "missing_or_legacy_tables": [],
+        "ok": true,
+        "tables": {
+          "calibration_historical_asof_model_run": {
+            "five_model_check": true,
+            "present": true
+          },
+          "calibration_model_artifact": {
+            "five_model_check": true,
+            "present": true
+          },
+          "calibration_model_station_residual": {
+            "five_model_check": true,
+            "present": true
+          }
+        }
+      },
+      "calibration_model_pool_schema_ok": true,
+      "ledger_missing_columns": {
+        "auto_trade_decisions": [],
+        "basket_target_order_intents": []
+      },
+      "ledger_schema_ok": true,
+      "maker_grid_oos_missing_tables": [],
+      "maker_grid_oos_schema_ok": true,
+      "missing_tables": [],
+      "ok": true,
+      "policy_training_constraint_ok": true,
+      "policy_training_missing_columns": {
+        "basket_policy_training_fact": [],
+        "basket_policy_training_label": []
+      },
+      "policy_training_schema_ok": true,
+      "probability_evidence_schema": {
+        "calls_order_gateway": false,
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "schema": "bayes_basket_probability_evidence_authority_v1",
+        "tables": [
+          "basket_probability_evidence_artifact",
+          "basket_probability_evidence_promotion",
+          "basket_probability_evidence_activation",
+          "basket_probability_update_proof"
+        ]
+      },
+      "probability_stage_contract_ok": true,
+      "quote_freshness_missing_columns": [],
+      "regime_missing_columns": [],
+      "regime_schema_ok": true,
+      "regime_superseded_schema": {
+        "columns_exact": true,
+        "committed_partial_unique_ok": true,
+        "controlled_update_trigger_ok": true,
+        "legacy_no_update_absent": true,
+        "missing_columns": [],
+        "no_delete_trigger_ok": true,
+        "ok": true,
+        "supports_superseded": true,
+        "table_present": true
+      },
+      "schema": "bayes_basket_target_ssot_v7_native_ensemble_market_timezone_binding",
+      "settlement_timezone_missing_columns": {},
+      "strict_delta_candidate_contract_ok": true,
+      "target_tables_present": true
+    },
+    "state": "PASS",
+    "station_scope": {
+      "max_station_count": 45,
+      "mode": "allowlist",
+      "station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KDAL",
+        "KHOU",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "NZWN",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ]
+    },
+    "table_counts": {
+      "auto_trade_decisions": 12807,
+      "basket_confirmed_inventory_snapshot": 3274,
+      "basket_official_ws_snapshot": 4660,
+      "basket_order_state_snapshot": 3270,
+      "basket_policy_training_fact": 1490,
+      "basket_policy_training_label": 1083,
+      "basket_probability_envelope": 2469,
+      "basket_target_capital_reservations": 1463,
+      "basket_target_execution_cycles": 12807,
+      "basket_target_execution_version_vectors": 13148,
+      "basket_target_order_events": 0,
+      "basket_target_order_intents": 685
+    }
+  },
+  "protected_processes_after": {
+    "clob_order_service": 93445,
+    "market_ws": 95156,
+    "weather_basket_yes": 93259
+  },
+  "receipt_sha256": "7883e37f4dddfedd84f08c02bf77c41aae78cb241f586fe6ca3ef26fb4c6d619",
+  "schema": "bayes_basket_target_post_migration_no_live_run_v1",
+  "stage": "worker_complete",
+  "started_at_utc": "2026-08-02T20:32:30.282Z",
+  "state": "COMPLETED_PRODUCTION_NO_LIVE",
+  "station_scope": {
+    "max_station_count": 45,
+    "mode": "allowlist",
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ]
+  },
+  "stderr_excerpt": "",
+  "table_counts_after": {
+    "auto_trade_decisions": 12834,
+    "basket_confirmed_inventory_snapshot": 3275,
+    "basket_official_ws_snapshot": 4661,
+    "basket_order_state_snapshot": 3271,
+    "basket_policy_training_fact": 1491,
+    "basket_policy_training_label": 1083,
+    "basket_probability_envelope": 2469,
+    "basket_target_capital_reservations": 1463,
+    "basket_target_execution_cycles": 12834,
+    "basket_target_execution_version_vectors": 13175,
+    "basket_target_order_events": 0,
+    "basket_target_order_intents": 685
+  },
+  "table_counts_before": {
+    "auto_trade_decisions": 12807,
+    "basket_confirmed_inventory_snapshot": 3274,
+    "basket_official_ws_snapshot": 4660,
+    "basket_order_state_snapshot": 3270,
+    "basket_policy_training_fact": 1490,
+    "basket_policy_training_label": 1083,
+    "basket_probability_envelope": 2469,
+    "basket_target_capital_reservations": 1463,
+    "basket_target_execution_cycles": 12807,
+    "basket_target_execution_version_vectors": 13148,
+    "basket_target_order_events": 0,
+    "basket_target_order_intents": 685
+  },
+  "target_db_fingerprint_after": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785702824341974946,
+    "size": 2397581312
+  },
+  "target_db_fingerprint_before": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785702695241774843,
+    "size": 2394279936
+  },
+  "worker_invoked": true,
+  "worker_returncode": 0,
+  "worker_state": "compiled_no_live",
+  "worker_status_path": "/Users/xiong/weather/output/audits/bayes_basket_target_post_migration_worker_status_20260803_refresh.json",
+  "worker_status_sha256": "57bcbfb5f5c2083218a04b86a4a13942c46a0d83ddf77c935982d31fba35266e"
+}

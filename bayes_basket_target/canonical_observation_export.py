@@ -1,4 +1,4 @@
-"""Read-only export of canonical AMSC/AWC observations for the target lane.
+"""Read-only export of canonical AWC observations for the target lane.
 
 The resident ``archive.db`` is an owner-controlled live database.  This
 module is the only target-side boundary that may read it: it opens SQLite in
@@ -60,11 +60,9 @@ def _reference_only_reason(
 ) -> str:
     """Return the source-policy reason for a non-formal observation.
 
-    AMSC's regular half-hour METAR is a reference node only.  It remains in
-    the exported observation evidence for audit/lineage, but it must never
-    contribute to the formal daily truth label.  AWC whole-hour METARs
-    queried for an AMSC-owned station are also reference-only; reports on an
-    AWC-owned station retain their normal lane semantics.
+    AWC is the formal global lane after the 2026-08-01 SSOT revision.  Its
+    native valid-time cadence is preserved; retired AMSC rows remain audit
+    evidence and cannot be mixed into a live station scope.
     """
 
     reason = source_policy_reason(
@@ -405,13 +403,9 @@ def export_canonical_observation_evidence(
         "source": source_meta,
         "source_policy": {
             "station_lane_map_bound": bool(lane_map),
-            "amsc_hourly_metar_for_amsc_station": "FORMAL_PRIMARY",
-            "amsc_half_hour_metar": "REFERENCE_ONLY",
-            "awc_hourly_for_amsc_station": "REFERENCE_ONLY",
-            "amsc_metar_other_minutes": "FAIL_CLOSED",
-            "amsc_speci_any_minute": "FORMAL_PRIMARY",
-            "awc_owned_station_official_reports": "FORMAL_PRIMARY_AT_SOURCE_MINUTE",
-            "awc_precedence_over_amsc": False,
+            "awc_global_primary": "FORMAL_PRIMARY_AT_SOURCE_MINUTE",
+            "amsc_production_lane": "RETIRED_HISTORY_ONLY",
+            "awc_precedence_over_amsc": True,
         },
         "observations": observations,
         "truth_rows": truth_rows,

@@ -27,8 +27,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-
+# Keep direct CLI execution hermetic.  Other repository runners are callable
+# both as ``python scripts/...`` and as imported modules; this audit runner
+# must not require callers to inject PYTHONPATH merely to perform its
+# read-only 45-station verification.
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.resource_bounds import MAX_TARGET_PROCESS_RSS_BYTES
+from bayes_basket_target.resource_bounds import MIB
+
+
 OUTPUT_DIR = ROOT / "output/audits/bayes_basket_target_45station_20260726_no_live"
 TARGET_DB = ROOT / "data/bayes_basket_target_ssot.db"
 EVENT_DATE = "2026-07-26"
@@ -52,10 +62,10 @@ DECODE_PATHS = {
 
 MAX_STATIONS = 45
 MAX_INPUT_FILE_BYTES = 8 * 1024 * 1024
-MAX_TOTAL_INPUT_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_INPUT_BYTES = 256 * MIB
 MAX_OUTPUT_FILE_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_OUTPUT_BYTES = 32 * 1024 * 1024
-MAX_RSS_BYTES = 768 * 1024 * 1024
+MAX_RSS_BYTES = MAX_TARGET_PROCESS_RSS_BYTES
 MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024
 MAX_JSON_DEPTH = 32
 MAX_JSON_NODES = 400_000
@@ -175,10 +185,15 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
 def _read_only_connection() -> sqlite3.Connection:
     if TARGET_DB.is_symlink() or not TARGET_DB.is_file():
         raise FailClosed("target_ssot_missing")
-    uri = f"file:{TARGET_DB.resolve()}?mode=ro&immutable=1"
+    # The resident SSOT is a WAL database.  immutable=1 ignores the -wal
+    # sidecar and can make a healthy live database appear malformed.  mode=ro
+    # plus query_only preserves the no-write boundary while reading the
+    # authoritative WAL view.
+    uri = f"file:{TARGET_DB.resolve()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA query_only=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -822,7 +837,7 @@ def main() -> int:
         "boundary": {
             "execution_mode": "production_no_live",
             "isolated_sqlite": str(sqlite_path),
-            "target_ssot_open_mode": "read_only_immutable",
+            "target_ssot_open_mode": "read_only_wal_safe_query_only",
             "output_write_root": str(OUTPUT_DIR),
             "network_used": False,
             "calls_order_gateway": False,

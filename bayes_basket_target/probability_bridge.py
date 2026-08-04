@@ -525,7 +525,9 @@ def materialize_probability_bridge(
 
     conn.execute(f"SAVEPOINT {savepoint}")
     try:
-        checkpoint_receipt = insert_probability_envelope(conn, resolved, created_at_utc=created)
+        checkpoint_receipt = insert_probability_envelope(
+            conn, resolved, created_at_utc=created
+        )
         fault("checkpoint")
         existing = conn.execute(
             "SELECT content_sha256 FROM basket_probability_bridge_history WHERE history_id=?",

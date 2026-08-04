@@ -7,6 +7,7 @@ import json
 import pytest
 
 import scripts.run_bayes_basket_target_icon_forward_capture as icon_forward
+from bayes_basket_target.resource_bounds import MAX_TARGET_PROCESS_RSS_BYTES
 from scripts.run_bayes_basket_target_icon_forward_capture import (
     ContractError,
     build_plan,
@@ -60,9 +61,9 @@ def test_plan_uses_current_open_et_day_and_hourly_icon_urls() -> None:
     assert plan["capture_config_enabled"] is True
     assert plan["capture_config"]["enabled"] is True
     assert plan["capture_config"]["target_only"] is True
-    assert plan["capture_config"]["providers"][-1] == "icon_global_official"
+    assert "icon_global_official" in plan["capture_config"]["providers"]
     assert plan["resource_budget"]["max_process_rss_bytes"] == 512 * 1024 * 1024
-    assert plan["resource_budget"]["max_response_bytes"] == 64 * 1024 * 1024
+    assert plan["resource_budget"]["max_response_bytes"] == 128 * 1024 * 1024
     assert plan["resource_budget"]["max_capture_bytes"] == 256 * 1024 * 1024
 
 
@@ -73,7 +74,12 @@ def test_plan_fails_closed_when_target_capture_switch_is_disabled(tmp_path) -> N
         "target_only": True,
         "scope": "canonical_45_station",
         "station_count": 45,
-        "providers": ["ecmwf_ifs025_official", "gfs_0p25_official", "icon_global_official"],
+        "providers": [
+            "ecmwf_ifs025_official",
+            "ecmwf_aifs025_official",
+            "gfs_0p25_official",
+            "icon_global_official",
+        ],
         "boundary": {
             "writes_target_database": False,
             "writes_production_database": False,
@@ -102,7 +108,7 @@ def test_plan_fails_closed_when_configured_rss_exceeds_hard_limit(tmp_path) -> N
             encoding="utf-8",
         ).read()
     )
-    config["resource_budget"]["max_process_rss_bytes"] = 512 * 1024 * 1024 + 1
+    config["resource_budget"]["max_process_rss_bytes"] = MAX_TARGET_PROCESS_RSS_BYTES + 1
     path = tmp_path / "model_arrival_capture.json"
     path.write_text(json.dumps(config), encoding="utf-8")
 
@@ -309,6 +315,10 @@ def test_existing_exact_key_capture_is_reused_only_with_verified_raw(tmp_path) -
         "raw_receipts": [{
             "raw_object_ref": str(actual),
             "raw_sha256": digest,
+            "response_bytes": len(b"native-icon"),
+            "response_headers": {
+                "content-length": str(len(b"native-icon")),
+            },
             "response_completed_at": "2026-07-24T04:01:00Z",
         }],
     }

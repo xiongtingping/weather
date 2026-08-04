@@ -58,12 +58,23 @@ PROVIDERS = (
     "ncep_hrrr_conus_open_meteo",
     "ncep_nbm_conus_open_meteo",
     "ncep_nam_conus_open_meteo",
+    "icon_eu_open_meteo",
     "icon_d2_open_meteo",
     "meteofrance_arome_france0025_open_meteo",
     "ukmo_uk_deterministic_2km_open_meteo",
     "knmi_harmonie_arome_netherlands_open_meteo",
     "knmi_harmonie_arome_europe_open_meteo",
     "jma_msm_open_meteo",
+)
+# One calibrated ECMWF role has two official-native transport products.  This
+# is capture redundancy for the same independence family, not a third model
+# role, a second ensemble weight, or permission to use Open-Meteo AIFS.
+ECMWF_OFFICIAL_CAPTURE_FALLBACKS = (
+    "ecmwf_ifs025_official",
+    "ecmwf_aifs025_official",
+)
+AIFS_PROVIDER_OOS_BINDING_SCHEMA = (
+    "ecmwf_aifs_official_provider_strict_oos_binding_v1"
 )
 MODEL_PROVIDER_IDS = {
     "ECMWF": "ecmwf_ifs025_official",
@@ -74,6 +85,7 @@ MODEL_PROVIDER_IDS = {
     "HRRR": "ncep_hrrr_conus_open_meteo",
     "NBM": "ncep_nbm_conus_open_meteo",
     "NAM": "ncep_nam_conus_open_meteo",
+    "ICON-EU": "icon_eu_open_meteo",
     "ICON-D2": "icon_d2_open_meteo",
     "AROME-FR": "meteofrance_arome_france0025_open_meteo",
     "UKMO-2KM": "ukmo_uk_deterministic_2km_open_meteo",
@@ -90,6 +102,7 @@ MODEL_RUN_HOURS = {
     "HRRR": (12,),
     "NBM": (12,),
     "NAM": (12,),
+    "ICON-EU": (12,),
     "ICON-D2": (12,),
     "AROME-FR": (12,),
     "UKMO-2KM": (12,),
@@ -916,6 +929,33 @@ def _default_provider_runner(
             contract_path=contract_path,
         )
         return execute_plan(plan, output_root=output_dir)
+    if provider_id == "ecmwf_aifs025_official":
+        try:
+            from scripts.run_bayes_basket_target_aifs_forward_capture import (
+                build_plan,
+                execute_plan,
+            )
+        except ImportError as exc:  # explicit; never silently skip AIFS
+            raise ContractError(
+                "official_nwp_scheduler_aifs_adapter_unavailable"
+            ) from exc
+
+        plan = build_plan(
+            event_date=event_date,
+            run_initialization_utc=run_initialization_utc,
+            as_of_utc=as_of_utc,
+            station_ids=list(station_ids),
+            source_station_id=str(station_ids[0]),
+            target_timezone=settlement_timezone,
+            market_registry_snapshot_sha256=registry_snapshot_sha256,
+        )
+        # The AIFS adapter fans out its own official-native capture receipt.
+        # Keep source and fanout output under this exact run/provider scope.
+        return execute_plan(
+            plan,
+            source_root=output_dir,
+            output_root=output_dir,
+        )
     if provider_id == "gfs_0p25_official":
         from scripts.capture_bayes_basket_target_gfs_same_run import capture_run
 
@@ -999,6 +1039,136 @@ def _default_provider_runner(
             "blocked_count": 0,
         }
     raise ContractError("official_nwp_scheduler_provider_invalid")
+
+
+def _capture_model_role(
+    *,
+    role_provider_id: str,
+    model_id: str,
+    provider_runner: Callable[..., dict[str, Any]],
+    event_date: str,
+    run_initialization_utc: str,
+    as_of_utc: str,
+    settlement_timezone: str,
+    station_ids: Sequence[str],
+    registry_snapshot_sha256: str,
+    contract_path: Path,
+    run_dir: Path,
+) -> dict[str, Any]:
+    """Capture exactly the provider signed by the activation binding.
+
+    AIFS must never be selected because an IFS request happened to fail.  A
+    binding may name AIFS explicitly after its own strict OOS/activation; a
+    legacy binding without provider selection remains pinned to IFS.
+    """
+
+    providers = (role_provider_id,)
+    attempts: list[dict[str, Any]] = []
+    for provider_id in providers:
+        try:
+            result = provider_runner(
+                provider_id=provider_id,
+                event_date=event_date,
+                run_initialization_utc=run_initialization_utc,
+                as_of_utc=as_of_utc,
+                settlement_timezone=settlement_timezone,
+                station_ids=station_ids,
+                registry_snapshot_sha256=registry_snapshot_sha256,
+                contract_path=contract_path,
+                output_dir=run_dir / provider_id,
+            )
+            if not isinstance(result, Mapping):
+                raise ContractError("official_nwp_scheduler_provider_result_invalid")
+            paths = _capture_paths(result)
+            complete = _provider_complete(result, paths)
+            attempts.append({
+                "provider_id": provider_id,
+                "state": "COMPLETE" if complete else "BLOCKED_OR_PARTIAL",
+                "capture_path_count": len(paths),
+                "blocked_count": int(result.get("blocked_count") or 0),
+            })
+            if complete:
+                return {
+                    "model_id": model_id,
+                    "role_provider_id": role_provider_id,
+                    "selected_provider_id": provider_id,
+                    "complete": True,
+                    "paths": paths,
+                    "attempts": attempts,
+                }
+        except Exception as exc:
+            attempts.append({
+                "provider_id": provider_id,
+                "state": "BLOCKED_FAIL_CLOSED",
+                "capture_path_count": 0,
+                "blocked_count": 1,
+                "reason": f"{type(exc).__name__}:{exc}",
+            })
+        finally:
+            assert_process_memory_budget()
+    return {
+        "model_id": model_id,
+        "role_provider_id": role_provider_id,
+        "selected_provider_id": "",
+        "complete": False,
+        "paths": [],
+        "attempts": attempts,
+    }
+
+
+def _require_aifs_provider_oos_binding(
+    binding: Mapping[str, Any],
+    *,
+    activation: CalibrationActivation,
+    ensemble: ModelEnsembleArtifact,
+) -> None:
+    """Require AIFS's own signed strict-OOS/provider-lineage authority.
+
+    AIFS and IFS share the ECMWF independence family.  Choosing the former
+    for the one ECMWF role is therefore permitted only when its own native
+    strict-OOS result is bound to this exact ensemble activation.  A generic
+    ECMWF ensemble activation, or a legacy binding that only names AIFS, is
+    not sufficient evidence and must never enable a capture substitution.
+    """
+
+    raw_by_model = binding.get("provider_strict_oos_binding_by_model")
+    if not isinstance(raw_by_model, Mapping):
+        raise ContractError("official_nwp_scheduler_aifs_oos_binding_missing")
+    raw = raw_by_model.get("ECMWF")
+    if not isinstance(raw, Mapping):
+        raise ContractError("official_nwp_scheduler_aifs_oos_binding_missing")
+    identity = {
+        str(key): value
+        for key, value in raw.items()
+        if key != "content_sha256"
+    }
+    if str(raw.get("content_sha256") or "") != content_sha256(identity):
+        raise ContractError("official_nwp_scheduler_aifs_oos_binding_sha_mismatch")
+    lineage = raw.get("provider_lineage")
+    expected_lineage = {
+        "publication_authority": "official_native",
+        "independence_family_id": "ECMWF",
+        "same_independence_family_as_ifs": True,
+        "counts_as_distinct_independence_family": False,
+    }
+    if (
+        raw.get("schema") != AIFS_PROVIDER_OOS_BINDING_SCHEMA
+        or raw.get("provider_id") != "ecmwf_aifs025_official"
+        or raw.get("model_id") != "ECMWF"
+        or raw.get("independence_family_id") != "ECMWF"
+        or raw.get("strict_oos_state") != "FORMAL_P0_READY"
+        or raw.get("formal_p0_eligible") is not True
+        or raw.get("native_arrival_index_eligible") is not True
+        or not isinstance(raw.get("strict_oos_artifact_sha256"), str)
+        or len(str(raw["strict_oos_artifact_sha256"])) != 64
+        or not isinstance(lineage, Mapping)
+        or dict(lineage) != expected_lineage
+        or raw.get("activation_id") != activation.activation_id
+        or raw.get("activation_sha256") != activation.content_sha256
+        or raw.get("ensemble_artifact_id") != ensemble.ensemble_artifact_id
+        or raw.get("ensemble_artifact_sha256") != ensemble.content_sha256
+    ):
+        raise ContractError("official_nwp_scheduler_aifs_oos_binding_invalid")
 
 
 def capture_scope(
@@ -1166,8 +1336,48 @@ def capture_scope(
             raise ContractError(
                 "official_nwp_scheduler_activation_scope_mismatch"
             )
+        raw_selected_provider_by_model = binding.get(
+            "selected_provider_by_model"
+        )
+        if raw_selected_provider_by_model is None:
+            selected_provider_by_model = {
+                model: MODEL_PROVIDER_IDS[model]
+                for model in models
+            }
+        elif isinstance(raw_selected_provider_by_model, Mapping):
+            selected_provider_by_model = {
+                str(model).strip().upper(): str(provider).strip().lower()
+                for model, provider in raw_selected_provider_by_model.items()
+            }
+            if set(selected_provider_by_model) != set(models):
+                raise ContractError(
+                    "official_nwp_scheduler_selected_provider_scope_mismatch"
+                )
+        else:
+            raise ContractError(
+                "official_nwp_scheduler_selected_provider_scope_mismatch"
+            )
+        for model, provider in selected_provider_by_model.items():
+            allowed = (
+                set(ECMWF_OFFICIAL_CAPTURE_FALLBACKS)
+                if model == "ECMWF"
+                else {MODEL_PROVIDER_IDS[model]}
+            )
+            if provider not in allowed:
+                raise ContractError(
+                    "official_nwp_scheduler_selected_provider_not_authorized"
+                )
+        if (
+            selected_provider_by_model.get("ECMWF")
+            == "ecmwf_aifs025_official"
+        ):
+            _require_aifs_provider_oos_binding(
+                binding,
+                activation=activation,
+                ensemble=ensemble,
+            )
         selected_providers = tuple(
-            MODEL_PROVIDER_IDS[model] for model in models
+            selected_provider_by_model[model] for model in models
         )
         run_dir = destination / run.replace("-", "").replace(":", "")
         contract = build_model_run_contract(
@@ -1182,42 +1392,36 @@ def capture_scope(
         provider_rows: list[dict[str, Any]] = []
         complete_count = 0
         complete_providers: set[str] = set()
-        for provider in selected_providers:
-            try:
-                result = provider_runner(
-                    provider_id=provider,
-                    event_date=event_date,
-                    run_initialization_utc=run,
-                    as_of_utc=as_of_utc,
-                    settlement_timezone=timezone_name,
-                    station_ids=station_ids,
-                    registry_snapshot_sha256=str(registry["snapshot_sha256"]),
-                    contract_path=contract_path,
-                    output_dir=run_dir / provider,
-                )
-                if not isinstance(result, Mapping):
-                    raise ContractError("official_nwp_scheduler_provider_result_invalid")
-                paths = _capture_paths(result)
-                complete = _provider_complete(result, paths)
-                complete_count += int(complete)
-                if complete:
-                    complete_providers.add(provider)
-                all_paths.extend(paths)
-                provider_rows.append({
-                    "provider_id": provider,
-                    "state": "COMPLETE" if complete else "BLOCKED_OR_PARTIAL",
-                    "capture_path_count": len(paths),
-                    "blocked_count": int(result.get("blocked_count") or 0),
-                })
-            except Exception as exc:
-                provider_rows.append({
-                    "provider_id": provider,
-                    "state": "BLOCKED_FAIL_CLOSED",
-                    "capture_path_count": 0,
-                    "blocked_count": 1,
-                    "reason": f"{type(exc).__name__}:{exc}",
-                })
-            assert_process_memory_budget()
+        for model in models:
+            provider = selected_provider_by_model[model]
+            role_capture = _capture_model_role(
+                role_provider_id=provider,
+                model_id=model,
+                provider_runner=provider_runner,
+                event_date=event_date,
+                run_initialization_utc=run,
+                as_of_utc=as_of_utc,
+                settlement_timezone=timezone_name,
+                station_ids=station_ids,
+                registry_snapshot_sha256=str(registry["snapshot_sha256"]),
+                contract_path=contract_path,
+                run_dir=run_dir,
+            )
+            complete = bool(role_capture["complete"])
+            complete_count += int(complete)
+            if complete:
+                complete_providers.add(provider)
+                # Exactly one binding-selected provider owns each model role.
+                all_paths.extend(role_capture["paths"])
+            provider_rows.append({
+                "model_id": model,
+                "provider_id": provider,
+                "state": "COMPLETE" if complete else "BLOCKED_FAIL_CLOSED",
+                "capture_path_count": len(role_capture["paths"]),
+                "blocked_count": 0 if complete else 1,
+                "selected_provider_id": role_capture["selected_provider_id"],
+                "attempts": role_capture["attempts"],
+            })
         selected_ready = set(selected_providers) <= complete_providers
         attempts.append({
             "run_initialization_utc": run,
@@ -1229,6 +1433,11 @@ def capture_scope(
                 ensemble.selection_evidence_sha256
             ),
             "selected_mask_ready": selected_ready,
+            "selected_provider_by_model": {
+                row["model_id"]: row["selected_provider_id"]
+                for row in provider_rows
+                if row["selected_provider_id"]
+            },
             "providers": provider_rows,
         })
         if selected_ready:

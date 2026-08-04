@@ -35,18 +35,17 @@ SCHEMA = "bayes_basket_target_production_closure_audit_v1"
 CLOSURE_VERSION = "target-production-entry-closure-v1"
 
 TARGET_SERVICE_LABELS = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
 TARGET_SERVICE_DOMAINS = {label: "user" for label in TARGET_SERVICE_LABELS}
 
-# The legacy trajectory engine is deliberately scanned as an authority input,
-# but is not part of the target source-closure manifest.  It owns the
-# reported-observation hard-NO writer and must remain bound to the resident
-# archive database.  Keeping this as a separate scope prevents the target
-# isolation manifest from accidentally making the legacy writer a target
-# consumer.
+# The old trajectory engine is retained as an optional compatibility audit
+# scope only.  The pure-YES target removed that writer, so a current checkout
+# is expected to have no such file.  When an older fixture/worktree still has
+# it, we continue to verify that it is archive-bound and isolated; absence is
+# the desired retired state, not a scan failure.
 HARD_NO_AUTHORITY_SOURCE = "reported_trajectory_no_engine.py"
 AUTHORITY_SOURCE_SCOPE: tuple[str, ...] = (HARD_NO_AUTHORITY_SOURCE,)
 ARCHIVE_DB_PATH = "data/archive.db"
@@ -56,8 +55,8 @@ TARGET_DB_PATH = "data/bayes_basket_target_ssot.db"
 # broad repository is deliberately not scanned: docs, tests, historical
 # output and old source-account lanes must not create semantic false positives.
 DEFAULT_SOURCE_SCOPE: tuple[str, ...] = (
-    "scripts/reported_trajectory_no_daemon.py",
-    "scripts/reported_trajectory_no_daemon.sh",
+    "scripts/weather_basket_yes_daemon.py",
+    "scripts/weather_basket_yes_daemon.sh",
     "scripts/market_ws_listener.py",
     "scripts/market_ws_listener.sh",
     "scripts/clob_order_service.mjs",
@@ -90,7 +89,7 @@ DEFAULT_SOURCE_SCOPE: tuple[str, ...] = (
 
 RUNTIME_ISOLATION_MANIFEST = "config/bayes_basket_target/runtime_config_isolation_v1.json"
 TARGET_ACTIVATION = "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
-PROTECTED_LEGACY_CONFIG = "config/trading/basket_plus_hard_no_v1.json"
+PROTECTED_LEGACY_CONFIG = "config/trading/basket_yes_v1.json"
 TARGET_RUNTIME_OWNER = "bayes_basket_target"
 PROTECTED_LEGACY_OWNER = "protected_l0_legacy"
 TARGET_RUNTIME_CONSUMER = "target_runtime"
@@ -575,7 +574,7 @@ def _launchd_contract(manifests: Sequence[Mapping[str, Any]], service_snapshot: 
             _append_hit(hits, code="target_service_manifest_missing", evidence=label)
             continue
         args_blob = " ".join(str(x) for x in item.get("program_arguments", ()))
-        if label == "com.weather.reported_trajectory_no" and "reported_trajectory_no_daemon.sh" not in args_blob:
+        if label == "com.weather.weather_basket_yes" and "weather_basket_yes_daemon.sh" not in args_blob:
             _append_hit(hits, code="target_service_program_mismatch", evidence={"label": label, "args": args_blob})
         if label == "com.weather.market_ws" and "market_ws_listener.sh" not in args_blob:
             _append_hit(hits, code="target_service_program_mismatch", evidence={"label": label, "args": args_blob})
@@ -1100,7 +1099,7 @@ def _data_lane_contract(semantic: Mapping[str, str]) -> tuple[dict[str, bool], l
     hits: list[dict[str, Any]] = []
     basket_items = {name: text for name, text in semantic.items() if "basket_kernel/" in name or name.endswith("/runtime.py")}
     basket_blob = "\n".join(basket_items.values()).lower()
-    hard_blob = "\n".join(text for name, text in semantic.items() if any(token in name for token in ("atomic_ledger", "production.py", "reported_trajectory_no_daemon"))).lower()
+    hard_blob = "\n".join(text for name, text in semantic.items() if any(token in name for token in ("atomic_ledger", "production.py", "weather_basket_yes_daemon"))).lower()
     forbidden_basket = (
         "taf",
         "nwp",
@@ -1148,7 +1147,7 @@ def _data_lane_contract(semantic: Mapping[str, str]) -> tuple[dict[str, bool], l
         "basket_forbidden_tokens_observed": sorted(
             forbidden_basket_hits
         ),
-        "hard_no_scope": "atomic_ledger+production+reported_trajectory_no_daemon",
+        "hard_no_scope": "atomic_ledger+production+weather_basket_yes_daemon",
     }
 
 
@@ -1184,7 +1183,7 @@ def _writer_authority_contract(
 
     hits: list[dict[str, Any]] = []
     engine = authority_semantic.get(HARD_NO_AUTHORITY_SOURCE, "")
-    daemon = semantic.get("scripts/reported_trajectory_no_daemon.py", "")
+    daemon = semantic.get("scripts/weather_basket_yes_daemon.py", "")
     atomic = semantic.get("bayes_basket_target/atomic_ledger.py", "")
     target_worker = semantic.get("bayes_basket_target/production_worker.py", "")
     target_production = semantic.get("bayes_basket_target/production.py", "")
@@ -1223,7 +1222,7 @@ def _writer_authority_contract(
         _append_hit(
             hits,
             code="target_runtime_calls_hard_no_engine_with_target_database",
-            file="scripts/reported_trajectory_no_daemon.py",
+            file="scripts/weather_basket_yes_daemon.py",
             evidence={"first_argument": hard_no_call_argument},
         )
     if hard_no_writer_detected and not archive_binding:
@@ -1231,7 +1230,7 @@ def _writer_authority_contract(
             hits,
             code="hard_no_writer_archive_database_binding_missing",
             file=HARD_NO_AUTHORITY_SOURCE,
-            evidence={"expected": ARCHIVE_DB_PATH, "orchestrator": "scripts/reported_trajectory_no_daemon.py"},
+            evidence={"expected": ARCHIVE_DB_PATH, "orchestrator": "scripts/weather_basket_yes_daemon.py"},
         )
 
     target_atomic_writer_detected = _contains_any(
@@ -1270,7 +1269,7 @@ def _writer_authority_contract(
         _append_hit(
             hits,
             code="basket_writer_archive_database_reference",
-            file="scripts/reported_trajectory_no_daemon.py" if target_writer_archive_argument else "bayes_basket_target",
+            file="scripts/weather_basket_yes_daemon.py" if target_writer_archive_argument else "bayes_basket_target",
             evidence={
                 "target_writer_first_argument": target_binding_call_argument,
                 "target_source_archive_marker": target_source_archive_markers,
@@ -1287,7 +1286,7 @@ def _writer_authority_contract(
             hits,
             code="basket_atomic_ledger_target_database_binding_missing",
             file="bayes_basket_target/atomic_ledger.py",
-            evidence={"expected": TARGET_DB_PATH, "orchestrator": "scripts/reported_trajectory_no_daemon.py"},
+            evidence={"expected": TARGET_DB_PATH, "orchestrator": "scripts/weather_basket_yes_daemon.py"},
         )
     if target_production and target_atomic_writer_detected and not _contains_any(
         target_production, ("commit_target_atomic_bundle", "strategy_lane", "basket")
@@ -1299,12 +1298,23 @@ def _writer_authority_contract(
             evidence="production.py does not expose the basket atomic commit route",
         )
 
-    hard_no_ok = hard_no_writer_detected and archive_binding and not any(
-        item["code"] in {
-            "hard_no_writer_target_database_reference",
-            "target_runtime_calls_hard_no_engine_with_target_database",
-        }
-        for item in hits
+    # Once the legacy engine is removed, there is no hard-NO writer to bind
+    # to archive.db.  Treat the absent file as the retired, compliant state;
+    # preserve the stricter archive-only check for compatibility fixtures that
+    # still provide the old engine source.
+    hard_no_ok = (
+        not engine
+        or (
+            hard_no_writer_detected
+            and archive_binding
+            and not any(
+                item["code"] in {
+                    "hard_no_writer_target_database_reference",
+                    "target_runtime_calls_hard_no_engine_with_target_database",
+                }
+                for item in hits
+            )
+        )
     )
     basket_ok = target_atomic_writer_detected and target_binding_is_target and not any(
         item["code"] in {
@@ -1316,7 +1326,9 @@ def _writer_authority_contract(
         for item in hits
     )
     checks = {
-        "authority_hard_no_engine_scanned": bool(engine),
+        # True means the optional compatibility scope was either scanned or
+        # positively confirmed absent (the pure-YES retirement case).
+        "authority_hard_no_engine_scanned": True,
         "hard_no_writer_archive_database_only": hard_no_ok,
         "basket_atomic_ledger_target_database_only": basket_ok,
         "cross_lane_writer_isolation": not hits,
@@ -1329,6 +1341,7 @@ def _writer_authority_contract(
                 "database": ARCHIVE_DB_PATH,
                 "binding": "daemon archive connection (DEFAULT_DB/args.db)",
                 "writer_detected": hard_no_writer_detected,
+                "state": "ACTIVE_ARCHIVE_ONLY" if engine else "RETIRED_ABSENT",
             },
             "basket": {
                 "source": "bayes_basket_target/atomic_ledger.py",
@@ -1338,12 +1351,12 @@ def _writer_authority_contract(
             },
         },
         "orchestrator": {
-            "source": "scripts/reported_trajectory_no_daemon.py",
+            "source": "scripts/weather_basket_yes_daemon.py",
             "hard_no_first_argument": hard_no_call_argument,
             "hard_no_call_arguments": hard_no_call_arguments,
             "target_writer_first_argument": target_binding_call_argument,
             "target_writer_call_arguments": target_binding_call_arguments,
-            "hard_no_archive_binding": archive_binding,
+            "hard_no_archive_binding": archive_binding if engine else False,
             "target_database_binding": target_binding_is_target,
         },
         "allowed_databases": {
@@ -1465,13 +1478,17 @@ def audit(
         max_file_bytes=max_file_bytes,
         max_total_bytes=max_total_bytes,
     )
-    # Authority sources are scanned under the same byte/file budget but are
-    # intentionally kept outside the target isolation-manifest scope.  This
-    # is what lets the audit inspect the archive hard-NO writer without
-    # declaring that legacy writer to be a target consumer.
+    # The old hard-NO engine is an optional compatibility scope.  It is
+    # deliberately outside the target isolation manifest when present, but a
+    # pure-YES checkout removes it entirely.  Do not turn that intended
+    # retirement into a bounded-scan failure by trying to read a missing file.
+    authority_requested = tuple(
+        name for name in AUTHORITY_SOURCE_SCOPE
+        if (root / name).is_file()
+    )
     authority_semantic, _authority_parsed, authority_scope_hits, authority_bytes = _parse_source_scope(
         root=root,
-        source_files=AUTHORITY_SOURCE_SCOPE,
+        source_files=authority_requested,
         max_files=max_files,
         max_file_bytes=max_file_bytes,
         max_total_bytes=max(0, max_total_bytes - source_bytes),
@@ -1545,7 +1562,7 @@ def audit(
     if missing_required:
         _append_hit(violations, code="target_runtime_scope_incomplete", evidence=missing_required)
 
-    target_entry_names = [name for name in semantic if name.endswith("reported_trajectory_no_daemon.py")]
+    target_entry_names = [name for name in semantic if name.endswith("weather_basket_yes_daemon.py")]
     target_consumer_count = len(target_entry_names)
     target_consumer_check = target_consumer_count == 1 and not any(
         any(marker in name.lower() for marker in LEGACY_RUNTIME_MARKERS) for name in target_entry_names
@@ -1613,7 +1630,11 @@ def audit(
             "project_root": str(root),
             "source_files_requested": list(requested),
             "source_files_included": sorted(semantic),
-            "authority_source_files_requested": list(AUTHORITY_SOURCE_SCOPE),
+            "authority_source_files_requested": list(authority_requested),
+            "authority_source_files_retired": [
+                name for name in AUTHORITY_SOURCE_SCOPE
+                if name not in authority_requested
+            ],
             "authority_source_files_included": sorted(authority_semantic),
             "launchd_dir": _relative(root, (root / launchd_dir) if not Path(launchd_dir).is_absolute() else Path(launchd_dir)),
             "source_bytes": source_bytes,

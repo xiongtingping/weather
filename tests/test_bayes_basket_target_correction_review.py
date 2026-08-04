@@ -11,9 +11,9 @@ from bayes_basket_target.correction_review import (
     append_correction_review,
     assert_station_day_corrections_resolved,
 )
-from reported_trajectory_no_schema import (
+from weather_basket_yes_schema import (
     apply_reported_trajectory_correction_review_schema,
-    apply_reported_trajectory_no_schema,
+    apply_weather_basket_yes_schema,
 )
 
 
@@ -24,7 +24,7 @@ AS_OF = "2026-07-28T05:00:00Z"
 
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.execute(
         """
         INSERT INTO reported_trajectory_market_registry(

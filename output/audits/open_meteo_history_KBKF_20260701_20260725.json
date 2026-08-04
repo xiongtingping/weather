@@ -1,0 +1,759 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/ensemble-api",
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-08-02T02:35:33.229Z",
+  "bucket_contract_sha256": "be0c90e239bcdbf399db2a191c24fd87417d4a4a4b649d80e31af83302afe46c",
+  "bucket_intervals": {
+    "100-101°F": [
+      37.5,
+      38.611111111111114
+    ],
+    "102-103°F": [
+      38.611111111111114,
+      39.72222222222222
+    ],
+    "104-105°F": [
+      39.72222222222222,
+      40.833333333333336
+    ],
+    "106-107°F": [
+      40.833333333333336,
+      41.94444444444444
+    ],
+    "108-109°F": [
+      41.94444444444444,
+      43.05555555555556
+    ],
+    "110°F or higher": [
+      43.05555555555556,
+      null
+    ],
+    "91°F or below": [
+      null,
+      33.05555555555556
+    ],
+    "92-93°F": [
+      33.05555555555556,
+      34.166666666666664
+    ],
+    "94-95°F": [
+      34.166666666666664,
+      35.27777777777778
+    ],
+    "96-97°F": [
+      35.27777777777778,
+      36.388888888888886
+    ],
+    "98-99°F": [
+      36.388888888888886,
+      37.5
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "284442c394802325a1bdf2bf43e2d6148922d6fe43de0c43d87fbd51b3823ff2",
+      "event_date": "2026-07-01",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "716eb85e5e2255ea8e415e19e3cccb1133d509b3b14d104f035d94734bbe8200",
+      "event_date": "2026-07-02",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "60682a83e0ad226fbef59d7eba4b144ffce2eec01ead7ab78fa01854f824ab23",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0fd3e2da56d04d167d04d9f7f4aa567d8a9ea434a7a29934df651c43c4784185",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9da6e411f6421615678974d5f95afcfb5e1e27b22ce316af9c3c3d7045b616f2",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "748e79a592f437a4e9c5d2d1c55f14ce96d60185bd3e736f46d8fe8e9f573539",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1620c788a496736d8ff654490aac7c16400989cfa0c77ab7f0e4a69dbf864211",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "40956c6515c74f01357b49261267a47cb442977f70db52973f10f25e4ff0aa80",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "49e7903e0965d12b028922b43eeffcec6abe27a365b18398699e21c97ce83457",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "716bf43258041d705cff947e6996f27123474c95bf8f2667d327f6f2c11a3026",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "e2cf45f08f13107a130139b2937b94269f5741fac0fb94db762df47624dafe54",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0b13a514ee25cd0f6b39d737a1cf926bd8a9d2e5de6e2847d2016fe9edfcc5bc",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a060b5f4b293d8c910d3a106e69753172b6decc130d8aaba5495c9fa57c22900",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "eee1876821f2b5228b079e37c7732e86ec8797ce4ee5f044662cbd1deca4d1be",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0d3c25c5be30d329f89a8ab887518860b6361cda56b2434e3281d671d644d4a2",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "697d0c1f6e0ffe17d4f76eb89678c723024feca52a97b54d336f10eddbabbfc6",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "24d6d926b1d9bfe8686e24ce770f008ef4ce915de62bb01a48076afff49e5e1a",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "609be78a54eacb0a0bd608e3326618736caae64c53bf090ef4c8cfcee498bdc5",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "926c38bc1732f314d8ace43b5552f3514fd2bc305ee555e0a839e2787b82a1e1",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "39d07ccdbc62aba307742f32315f46afa488bc6fcb33f3224c40bed02ca97209",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "30be6be048be2fbb270517f3ba4c6f8338b98c4b0a48acd7b9e14d756ec234cc",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ae9e0957de3f13222b1374d148a01547aecc8c4973bbb2e8bf103687150a2b4d",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "fcbb99b782cabbbcb4f2baf9f549379f3ee2599e24ac8d0d360448efb3c20d66",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "39b510ea4db8ab52015db7c3125a97bfeb1fcdb5293558107589b5db93a4c821",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "7dfc94e561e40cba85fb004df66eae7d4d0ba5de13ff21c3ba159e77b1fbd878",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "97e5ae5cbe20aa266ec56d0dd1cba8eacf298c4a77c0c50c33a7a2275a7eb7ef",
+  "event_date_count": 25,
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25"
+  ],
+  "latitude": 39.713,
+  "live_submit_authorized": false,
+  "longitude": -104.758,
+  "orders_submitted": 0,
+  "request_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=39.713&longitude=-104.758&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble%2Cukmo_global_ensemble_20km&timezone=America%2FDenver&start_date=2026-07-01&end_date=2026-07-25",
+  "response_sha256": "4bb5c04d048216e5d861caf65fbe48028957c4ab7844c70208fb12efac98b45f",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "selected_system_ids": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "UKMO_GLOBAL_ENS"
+  ],
+  "settlement_timezone": "America/Denver",
+  "station_id": "KBKF",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 25
+}

@@ -23,7 +23,7 @@ from copy_follow_strategy import (
     extract_four_bucket_candidates_from_positions,
     fetch_positions,
 )
-from reported_trajectory_no_schema import apply_reported_trajectory_no_schema
+from weather_basket_yes_schema import apply_weather_basket_yes_schema
 from scripts.market_ws_listener import LatestQuoteSnapshot
 
 
@@ -521,7 +521,7 @@ def test_copy_follow_persists_plan_submits_four_legs_and_writes_codex_event(tmp_
           yes_token TEXT,source_eligible INTEGER,market_active INTEGER,market_accepting_orders INTEGER)"""
     )
     apply_copy_follow_schema(conn)
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     event_date = (datetime.now() + timedelta(days=1)).date().isoformat()
     month, day = datetime.fromisoformat(event_date).strftime("%B %d").split()
     event_slug = f"highest-temperature-in-test-city-on-{month.lower()}-{int(day)}-{event_date[:4]}"

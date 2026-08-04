@@ -1,0 +1,294 @@
+{
+  "all_cases_passed": false,
+  "as_of_utc": "2026-08-01T10:06:21Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "in_memory_only": true,
+    "loads_order_gateway": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "writes_external_database": false,
+    "writes_production_db": false
+  },
+  "content_sha256": "116d19a1a03418405060db922835162484fb2c6fad177cf25789abc9b1310a0f",
+  "evidence_class": "FAULT_CASE_CANDIDATE",
+  "evidence_owner": "bayes_basket_target",
+  "fault_case_count": 10,
+  "fault_cases": [
+    {
+      "calls_order_gateway": false,
+      "description": "An expired official CLOB WS snapshot must make v2 hold.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "ac9107e1d348022806b7011668fc29ade3ff0bea34fa8f731c2c1a93ab704bb9",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "stale_official_ws_holds",
+      "orders_submitted": 0,
+      "passed": false,
+      "result": {
+        "basket_state": "HOLD",
+        "calls_order_gateway": false,
+        "content_sha256": "fc1c9825db76f6d045dc28001b959b90bb1ddb6ecbdc4a0c3ed7b4827bb880da",
+        "execution_gap_support": [
+          "36"
+        ],
+        "fok_cancel_acknowledged": false,
+        "orders_submitted": 0,
+        "reason_codes": [
+          "complete_basket_delta_not_positive",
+          "delta_v2_complete_basket_hold_selected"
+        ],
+        "selected_buckets": [],
+        "selection_blockers": [
+          "complete_basket_delta_not_positive"
+        ],
+        "state": "HOLD"
+      },
+      "status": "FAIL",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "A missing selected YES Maker leg must reject the whole basket.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "703c68daaa7e443beaeffa3dd5a6dece90da2c7401a8f064ef56ae3b18781b4a",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "missing_complete_basket_leg_holds",
+      "orders_submitted": 0,
+      "passed": false,
+      "result": {
+        "basket_state": "HOLD",
+        "calls_order_gateway": false,
+        "content_sha256": "adc76cf57d5adc5aa281306257163815ab581b56d4ec894197f4f1e882fbeb5c",
+        "execution_gap_support": [],
+        "fok_cancel_acknowledged": false,
+        "orders_submitted": 0,
+        "reason_codes": [
+          "complete_basket_target_not_activated",
+          "official_ws_ask_unavailable:35",
+          "delta_v2_complete_basket_hold_selected",
+          "center_probability_lead_unstable"
+        ],
+        "selected_buckets": [],
+        "selection_blockers": [
+          "complete_basket_target_not_activated"
+        ],
+        "state": "HOLD"
+      },
+      "status": "FAIL",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "Urgent FOK cannot be evaluated before the Maker cancel is confirmed.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "e24a0c9ba0b0df903477393179ed04f90a783266d2538fcfdbd210d0f45e062b",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "unconfirmed_cancel_blocks_fok",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "basket_state": "SEED",
+        "calls_order_gateway": false,
+        "content_sha256": "d54f9e1880c8dbf20c7e65b12f11b4ddbe4f8644ea2c43343ee0cfb109b56604",
+        "evaluated_order_modes": [
+          "MAKER"
+        ],
+        "execution_gap_support": [
+          "36"
+        ],
+        "fok_cancel_acknowledged": false,
+        "orders_submitted": 0,
+        "reason_codes": [],
+        "selected_buckets": [
+          "36"
+        ],
+        "selection_blockers": [],
+        "state": "TRADE"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "An in-memory partial fill blocks a replacement order pending reconciliation.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "9525ba476aa1fb30157ba20e69dfb6b10d50b12e95e3ee23125534781af24357",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "partial_fill_requires_reconciliation",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "next_order_allowed": false,
+        "next_order_reason": "same_bucket_unknown_or_pending",
+        "receipt_state": "reconcile_required",
+        "reconciliation_state": "pending"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "A post-only price cap with no valid tick holds the full selected basket.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "0c1f382d3b7726934793e863335b075c709b907d1c529d3b5a946610fc6f798c",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "price_cap_holds_at_min_tick",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "basket_state": "HOLD",
+        "calls_order_gateway": false,
+        "content_sha256": "2b9f404012bbeb67402e434fbd5db5322a44edaf92bbbcfafa4fd67adc5700da",
+        "execution_gap_support": [
+          "35",
+          "36"
+        ],
+        "fok_cancel_acknowledged": false,
+        "maker_candidate_diagnostic": "maker_post_only_price_unavailable_at_min_tick",
+        "orders_submitted": 0,
+        "reason_codes": [
+          "complete_basket_candidate_missing",
+          "missing_maker_candidate:35",
+          "maker_post_only_price_unavailable_at_min_tick:35",
+          "delta_v2_complete_basket_hold_selected",
+          "center_probability_lead_unstable"
+        ],
+        "selected_buckets": [],
+        "selection_blockers": [
+          "complete_basket_candidate_missing",
+          "missing_maker_candidate:35"
+        ],
+        "state": "HOLD"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "Zero available capital cannot activate an inventory target.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "c14b27508432442788e0cffd2b9b66d6b7ae9a2883f8a9dc87b48d44bd5e485f",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "budget_exhaustion_holds",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "basket_state": "HOLD",
+        "calls_order_gateway": false,
+        "content_sha256": "32603796b51056e5e5e8db56a02c86783ae7437cc7a0856bb36e671fc0351acf",
+        "execution_gap_support": [],
+        "fok_cancel_acknowledged": false,
+        "orders_submitted": 0,
+        "reason_codes": [
+          "complete_basket_target_not_activated",
+          "delta_v2_complete_basket_hold_selected"
+        ],
+        "selected_buckets": [],
+        "selection_blockers": [
+          "complete_basket_target_not_activated"
+        ],
+        "state": "HOLD",
+        "total_delta_notional_usdc": 0.0
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "A current WS quote hash different from the persisted vector fails CAS.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "850c45f719f7fc289715392ba3705458ab52c7da279822ccaddc5d007b0607b3",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "execution_lineage_drift_holds",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "error": "execution_version_drift:official_ws_quote_sha256",
+        "order_intent_id": "intent_922b656e2c3121e6a5d949e9aea47e3c7e5bf132"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "A corrected AWC report halts later same-station-day events for review.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "f9b82613df8b28e893d1a29e4e2398523b083acdfc7b3c57a90d102593eb7275",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "awc_correction_halts_station_day",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "error": "canonical_event_after_correction_halted",
+        "source_lane": "AWC"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "An unknown post result must block another same-token YES action.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "abf51e54305b7c83e21f126d466010f277e9e2324c61fb8d836a3705451d6470",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "unknown_post_requires_reconciliation",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "next_order_allowed": false,
+        "receipt_state": "reconcile_required",
+        "reconciliation_state": "unknown"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "description": "An unavailable resource probe is a hard runtime fail-closed boundary.",
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "829a3699c37564e616db0c33a2c63436b39a59790927b4e61b0603e61aa2034b",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "resource_probe_failure_holds",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "error": "delta_v2_resource_probe_failed"
+      },
+      "status": "PASS",
+      "writes_production_db": false
+    }
+  ],
+  "formal_promotion_allowed": false,
+  "live_activation_allowed": false,
+  "schema": "delta_basket_score_v2_fault_case_candidate_v1",
+  "scope": {
+    "heavy_phase_observation": false,
+    "market_oos_evidence": false,
+    "promotion_evidence": false,
+    "quote_lineage": "OFFICIAL_CLOB_WS",
+    "station_id": "RKPK",
+    "synthetic_in_memory_contract_matrix": true,
+    "weather_truth_lineage": "AWC"
+  },
+  "state": "FAIL"
+}

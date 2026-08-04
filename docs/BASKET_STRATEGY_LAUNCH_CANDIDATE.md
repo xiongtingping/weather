@@ -1,5 +1,5 @@
 ---
-status: research
+status: superseded
 authority: L2
 owner: weather-system
 effective_from: 2026-07-19
@@ -10,17 +10,17 @@ effective_from: 2026-07-19
 ## 边界（已由生产适配器接入）
 
 本文件保留确定性 planner 的输入与数学边界。实盘提交由
-`basket_strategy/production.py` 在 `com.weather.reported_trajectory_no` 内负责，planner
+`basket_strategy/production.py` 在 `com.weather.weather_basket_yes` 内负责，planner
 本身仍不连接 gateway、不写库。
 
 - planner 默认 `live_submit_authorized=false`；生产激活文件单独授权 adapter 提交 YES FOK。
 - 不导入订单 gateway；
 - 不写 SQLite、facts、决策或资本账本；
-- 不改变 hard-NO 的 METAR/SPECI 证据边界；生产 adapter 与 hard-NO 共用唯一 service。
+- 官方 AWC METAR/SPECI 硬事实只用于排除不可能 YES 桶，不存在 hard-NO 下单腿。
 - 不使用分层建仓、选择性配平或 MERGE；
 - 不把模型/TAF当作硬排除证据。
 
-当前生产 `reported_trajectory_no` 同时承载篮子 adapter 与 hard-NO；本 planner 仍是只读计划层。
+当前生产 `weather_basket_yes` 承载纯 YES 篮子 adapter；本 planner 仍是只读计划层。本文档的旧启动候选口径已退役，当前以 trading operating system doctrine 为准。
 
 生产候选入口位于 `basket_strategy/runtime.py`，由调用方传入一次完整快照。
 
@@ -102,7 +102,7 @@ guaranteed_profit = q × (1 - sum(all_in_ask))
 
 - `parse_metar_temperature`；
 - `conservative_market_temperature`；
-- `select_nearest_impossible_lower_bucket`。
+- 已退役的 hard-NO 不可能桶选择器。
 
 报文硬下界排除所有更低桶，篮子不能再买这些已数学不可能桶。硬 NO 只选择最近一个严格低于硬下界的桶，输出 `FAK BUY NO @ 0.99` 计划；当前不提交。
 

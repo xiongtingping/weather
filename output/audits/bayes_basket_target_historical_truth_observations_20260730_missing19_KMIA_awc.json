@@ -1,0 +1,43 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "de50e732520ae021308905c32ea10ee0335e704b6c0d5e5d582062291060a1c3",
+  "generated_at_utc": "2026-08-01T02:35:19Z",
+  "historical_only": true,
+  "observation_count": 2,
+  "observations": [
+    {
+      "canonical_committed_at_utc": "2026-08-01T02:35:19Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-08-01T02:35:19Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "a4a52072fdb6fadaa0fd07468ae4c31325f2dce41aec2f9cbc4273c004cdf308",
+      "report_type": "SPECI",
+      "reported_temperature_c": 27.2,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-c01d33015ce79e0c98f2023c5889430d4b52a3d66b07c48043c73e6c6b6476d6",
+      "station_id": "KMIA",
+      "valid_at_utc": "2026-07-30T08:46:00Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T02:35:19Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-08-01T02:35:19Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "d0f658b3a11cc5a502ea1c2a7ffbc0945cdfc5f254a0dbe0e2da26401859e396",
+      "report_type": "SPECI",
+      "reported_temperature_c": 27.2,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-c01d33015ce79e0c98f2023c5889430d4b52a3d66b07c48043c73e6c6b6476d6",
+      "station_id": "KMIA",
+      "valid_at_utc": "2026-07-30T09:26:00Z"
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "America/New_York"
+}

@@ -143,6 +143,8 @@ def _run(
     archives: list[Path],
     *,
     eccc: list[Path] | None = None,
+    eccc_stations: tuple[str, ...] = (),
+    station_ids: tuple[str, ...] = ("ZUUU",),
     registry: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
     output = tmp_path / "official_native_ensemble_forward_inbox.json"
@@ -151,9 +153,13 @@ def _run(
         command.extend(["--archive", str(archive)])
     for archive in eccc or []:
         command.extend(["--eccc-geps-archive", str(archive)])
+    for station_id in eccc_stations:
+        command.extend(["--eccc-station-id", station_id])
     if registry is not None:
         command.extend(["--market-registry", str(registry)])
-    command.extend(["--station-id", "ZUUU", "--output", str(output)])
+    for station_id in station_ids:
+        command.extend(["--station-id", station_id])
+    command.extend(["--output", str(output)])
     result = subprocess.run(
         command,
         cwd=ROOT,
@@ -165,7 +171,12 @@ def _run(
     return result, payload
 
 
-def _base_archives(tmp_path: Path, *, mismatched: bool = False) -> list[Path]:
+def _base_archives(
+    tmp_path: Path,
+    *,
+    mismatched: bool = False,
+    station_ids: tuple[str, ...] = ("ZUUU",),
+) -> list[Path]:
     gefs_intervals = {
         "29°C or below": [None, 29.5],
         "30°C or higher": [29.5, None],
@@ -186,6 +197,7 @@ def _base_archives(tmp_path: Path, *, mismatched: bool = False) -> list[Path]:
             system_id="NOAA_GEFS_05",
             family_id="NOAA_GEFS",
             intervals=gefs_intervals,
+            station_ids=station_ids,
         ),
         _archive(
             tmp_path / "ecmwf.json",
@@ -193,6 +205,7 @@ def _base_archives(tmp_path: Path, *, mismatched: bool = False) -> list[Path]:
             system_id="ECMWF_IFS_ENS_OPEN_PF50",
             family_id="ECMWF",
             intervals=ecmwf_intervals,
+            station_ids=station_ids,
         ),
     ]
 
@@ -200,7 +213,10 @@ def _base_archives(tmp_path: Path, *, mismatched: bool = False) -> list[Path]:
 def test_optional_eccc_archive_joins_three_independent_families(
     tmp_path: Path,
 ) -> None:
-    archives = _base_archives(tmp_path)
+    archives = _base_archives(
+        tmp_path,
+        station_ids=("ZUUU", "CYYZ"),
+    )
     eccc = _archive(
         tmp_path / "eccc.json",
         schema=ECCC_GEPS_MULTISTATION_SCHEMA,
@@ -292,6 +308,51 @@ def test_station_without_eccc_capture_falls_back_to_two_families(
     assert {
         row["independence_family_id"] for row in packet["source_archives"]
     } == {"NOAA_GEFS", "ECMWF"}
+
+
+def test_optional_eccc_station_scope_keeps_other_stations_pair_only(
+    tmp_path: Path,
+) -> None:
+    archives = _base_archives(
+        tmp_path,
+        station_ids=("ZUUU", "CYYZ"),
+    )
+    eccc = _archive(
+        tmp_path / "eccc-scoped.json",
+        schema=ECCC_GEPS_MULTISTATION_SCHEMA,
+        system_id="ECCC_GEM_GLOBAL_ENS",
+        family_id="ECCC_GEM",
+        intervals={
+            "29°C or below": [None, 29.5],
+            "30°C or higher": [29.5, None],
+        },
+        station_ids=("ZUUU", "CYYZ"),
+    )
+    result, inbox = _run(
+        tmp_path,
+        archives,
+        eccc=[eccc],
+        eccc_stations=("ZUUU",),
+        station_ids=("ZUUU", "CYYZ"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    systems_by_station = {
+        packet["station_id"]: {
+            system["ensemble_system_id"]
+            for system in packet["systems"]
+        }
+        for packet in inbox["packets"]
+    }
+    assert systems_by_station["ZUUU"] == {
+        "NOAA_GEFS_05",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "ECCC_GEM_GLOBAL_ENS",
+    }
+    assert systems_by_station["CYYZ"] == {
+        "NOAA_GEFS_05",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+    }
 
 
 def test_three_system_packet_uses_authoritative_registry_contract(

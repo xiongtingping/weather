@@ -8,9 +8,15 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
 from .metar_trajectory import (
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
     METAR_TRAJECTORY_METHOD_VERSION,
     build_metar_trajectory_likelihood_artifact,
+)
+from .metar_path_state import (
+    ConditionalMetarPathState,
+    condition_remaining_warming_distribution,
 )
 
 
@@ -331,6 +337,18 @@ def train_metar_trajectory_artifact(
         "metar_trajectory_training_baseline_distribution",
         artifact_parameters.get("hard_exclusion_baseline_distribution"),
     )
+    method_version = str(
+        artifact_parameters.get("method_version")
+        or METAR_TRAJECTORY_METHOD_VERSION
+    )
+    conditional_path_model = method_version in {
+        METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+        METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    }
+    hourly_curve_model = (
+        method_version
+        == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
     parsed: list[dict[str, Any]] = []
     seen_dates: set[str] = set()
     for raw in raw_folds:
@@ -498,6 +516,18 @@ def train_metar_trajectory_artifact(
                     raw.get("running_high_c"),
                 ),
             }
+        path_state_payload: dict[str, Any] = {}
+        if raw.get("conditional_path_state") is not None:
+            path_state = ConditionalMetarPathState.from_mapping(
+                raw.get("conditional_path_state")
+            )
+            if datetime.fromisoformat(
+                path_state.as_of_utc.replace("Z", "+00:00")
+            ) != training_cutoff:
+                raise ContractError(
+                    "metar_trajectory_training_path_state_cutoff_mismatch"
+                )
+            path_state_payload = {"conditional_path_state": path_state}
         parsed.append({
             "fold_id": str(raw.get("fold_id") or "").strip(),
             "target_local_date": target_date,
@@ -515,6 +545,7 @@ def train_metar_trajectory_artifact(
                 positive=True,
             ),
             **probability_payload,
+            **path_state_payload,
         })
     parsed.sort(key=lambda row: (row["target_local_date"], row["fold_id"]))
     if any(not row["fold_id"] for row in parsed):
@@ -530,6 +561,37 @@ def train_metar_trajectory_artifact(
         raise ContractError(
             "metar_trajectory_training_observation_lineage_invalid"
         )
+    incomplete_path_fold_count = 0
+    incomplete_future_curve_fold_count = 0
+    if conditional_path_model:
+        incomplete_path_fold_count = sum(
+            not isinstance(row.get("conditional_path_state"), ConditionalMetarPathState)
+            or not row["conditional_path_state"].complete
+            for row in parsed
+        )
+        complete_path_rows = [
+            row
+            for row in parsed
+            if isinstance(row.get("conditional_path_state"), ConditionalMetarPathState)
+            and row["conditional_path_state"].complete
+        ]
+        if hourly_curve_model:
+            incomplete_future_curve_fold_count = sum(
+                not row["conditional_path_state"].future_curve_complete
+                for row in complete_path_rows
+            )
+            complete_path_rows = [
+                row
+                for row in complete_path_rows
+                if row["conditional_path_state"].future_curve_complete
+            ]
+        parsed = complete_path_rows
+        if not parsed:
+            raise ContractError(
+                "metar_trajectory_training_complete_hourly_curve_folds_missing"
+                if hourly_curve_model
+                else "metar_trajectory_training_complete_path_folds_missing"
+            )
     trained_through = datetime.fromisoformat(
         str(artifact_parameters.get("trained_through_utc") or "").replace(
             "Z", "+00:00"
@@ -637,6 +699,20 @@ def train_metar_trajectory_artifact(
                 for row in parsed
             ],
         )
+        probability_predictions = predictions
+        if conditional_path_model:
+            probability_predictions = [
+                condition_remaining_warming_distribution(
+                    prediction,
+                    row["conditional_path_state"],
+                    coefficients=(
+                        artifact_parameters.get("path_model_coefficients")
+                        or {}
+                    ),
+                    sigma_c=artifact_parameters.get("path_model_sigma_c"),
+                )
+                for row, prediction in zip(parsed, predictions)
+            ]
         probability_candidate_metrics = _bucket_metrics(
             parsed,
             [
@@ -646,7 +722,7 @@ def train_metar_trajectory_artifact(
                     baseline_distribution=baseline,
                     strength=strength,
                 )
-                for row, prediction in zip(parsed, predictions)
+                for row, prediction in zip(parsed, probability_predictions)
             ],
         )
         stable_oos_gain = all(
@@ -682,12 +758,17 @@ def train_metar_trajectory_artifact(
         ),
         "authority_scope": METAR_TRAJECTORY_AUTHORITY_SCOPE,
         "activated": gate_passed,
-        "method_version": METAR_TRAJECTORY_METHOD_VERSION,
+        "method_version": method_version,
     })
     artifact = build_metar_trajectory_likelihood_artifact(payload)
     evidence = {
         "schema": SCHEMA,
         "fold_count": len(parsed),
+        "input_fold_count": len(raw_folds),
+        "incomplete_path_fold_count": incomplete_path_fold_count,
+        "incomplete_future_curve_fold_count": (
+            incomplete_future_curve_fold_count
+        ),
         "minimum_training_folds": minimum_training_folds,
         "minimum_effective_sample_n": minimum_effective_n,
         "smoothing_candidates": candidates,

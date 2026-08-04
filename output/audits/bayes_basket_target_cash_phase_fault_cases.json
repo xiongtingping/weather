@@ -1,0 +1,151 @@
+{
+  "as_of_utc": "2026-08-01T10:06:21Z",
+  "calls_order_gateway": false,
+  "content_sha256": "51e0ffa67957152a41731a844541edc26ba9a5ed923f302722950350d3680f88",
+  "evidence_class": "FAULT_CASE_CANDIDATE",
+  "fault_case_count": 6,
+  "fault_cases": [
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "78c27b8ac79c91058c60abfbad9374751fc5ec775ec5e2d93bb0ea1b298a7ef5",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "duplicate_conflict_rejected",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "blockers": [
+          "duplicate_event_content_conflict",
+          "required_fault_cases_missing"
+        ],
+        "promotion_eligible": false
+      },
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "2ce15f92de8b86918449687de7719b0945d574fdbc2c180352f7a210436e373c",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "future_label_excluded",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "as_of_utc": "2026-08-01T10:06:21Z",
+        "blockers": [
+          "future_label_excluded",
+          "phase_heavy_sample_size_insufficient",
+          "phase_heavy_unobserved",
+          "required_fault_cases_missing",
+          "settlement_label_missing"
+        ],
+        "promotion_eligible": false
+      },
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "c2fa80e3236cfdb61947a69db3e9a81a7643ad18211998b5264750319c973c76",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "half_open_end_excluded",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "blockers": [
+          "required_fault_cases_missing"
+        ],
+        "decision_count": 3,
+        "end_utc": "2026-08-01T00:00:00Z",
+        "tail_observation_count": 1
+      },
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "4f811562df8382ef7b2dbc58bbbf9305448fb083eb2ccdb762a600b0a90f62fd",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "half_open_start_included",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "blockers": [
+          "required_fault_cases_missing"
+        ],
+        "decision_count": 3,
+        "heavy_observation_count": 1,
+        "start_utc": "2026-07-28T00:00:00Z"
+      },
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "ca32b4df3625b99cf48bce6c70bb31a4e89ceae8be3e3d27b40224fda337a8c0",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "phase_rewind_rejected",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "blockers": [
+          "phase_nonmonotonic",
+          "required_fault_cases_missing"
+        ],
+        "promotion_eligible": false
+      },
+      "writes_production_db": false
+    },
+    {
+      "calls_order_gateway": false,
+      "evidence_class": "FAULT_CASE_CANDIDATE",
+      "evidence_owner": "bayes_basket_target",
+      "evidence_sha256": "b00a51d2bad85cc0524541070a00b571e217a3062445d7d6f467e8dd0d455b0e",
+      "heavy_phase_observation": false,
+      "market_oos_evidence": false,
+      "name": "timezone_mismatch_rejected",
+      "orders_submitted": 0,
+      "passed": true,
+      "result": {
+        "blockers": [
+          "required_fault_cases_missing",
+          "station_timezone_mismatch"
+        ],
+        "expected_timezone": "UTC",
+        "observed_timezone": "Asia/Seoul",
+        "promotion_eligible": false
+      },
+      "writes_production_db": false
+    }
+  ],
+  "formal_promotion_allowed": false,
+  "live_activation_allowed": false,
+  "orders_submitted": 0,
+  "required_fault_cases": [
+    "duplicate_conflict_rejected",
+    "future_label_excluded",
+    "half_open_end_excluded",
+    "half_open_start_included",
+    "phase_rewind_rejected",
+    "timezone_mismatch_rejected"
+  ],
+  "schema": "bayes_basket_target_cash_phase_fault_cases_v1",
+  "scope": {
+    "deterministic_evaluator_only": true,
+    "heavy_phase_observation": false,
+    "market_oos_evidence": false,
+    "promotion_evidence": false
+  },
+  "status": "PASS",
+  "writes_production_db": false
+}

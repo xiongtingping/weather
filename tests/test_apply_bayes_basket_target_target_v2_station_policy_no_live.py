@@ -9,6 +9,7 @@ import pytest
 from bayes_basket_target import (
     ContractError,
     GlobalBasketPriorArtifact,
+    PolicyArtifact,
     StationBasketPolicyActivation,
     resolve_station_policy,
 )
@@ -16,7 +17,10 @@ from bayes_basket_target.ssot import apply_production_ssot_schema
 import scripts.apply_bayes_basket_target_target_v2_station_policy_no_live as station_policy
 
 
-MANIFEST = station_policy.DEFAULT_MANIFEST
+MANIFEST = (
+    Path(__file__).resolve().parents[1]
+    / "config/trading/bayes_basket_target_target_v2_station_policy_no_live_v3.json"
+)
 DECISION = "2026-07-28T23:32:23Z"
 MATURITIES = ("d1", "d2", "d2_fallback")
 
@@ -26,6 +30,16 @@ def _database(tmp_path: Path) -> Path:
     with sqlite3.connect(path) as conn:
         apply_production_ssot_schema(conn)
     return path
+
+
+def test_default_manifest_is_the_45_station_global_v4_scope() -> None:
+    manifest = json.loads(
+        station_policy.DEFAULT_MANIFEST.read_text(encoding="utf-8")
+    )
+    assert station_policy.DEFAULT_MANIFEST.name.endswith("global_v4.json")
+    assert manifest["generation"] == 4
+    assert len(manifest["station_ids"]) == 45
+    assert manifest["stages"] == ["P0", "P0-M", "P1"]
 
 
 def _manifest_copy(tmp_path: Path, **changes: object) -> Path:
@@ -43,7 +57,7 @@ def _manifest_copy(tmp_path: Path, **changes: object) -> Path:
     ("field", "value", "error"),
     [
         ("strategy_version", "target-v1", "boundary_invalid"),
-        ("stages", ["P0", "P0-M"], "boundary_invalid"),
+        ("stages", ["P0", "P1"], "boundary_invalid"),
         ("execution_mode", "live", "boundary_invalid"),
         ("live_submit_authorized", True, "boundary_invalid"),
         ("calls_order_gateway", True, "boundary_invalid"),
@@ -82,7 +96,7 @@ def test_manifest_missing_native_d2_fails_closed(tmp_path: Path) -> None:
         station_policy.load_manifest(path)
 
 
-def test_dry_run_resolves_p0_p1_across_all_six_maturity_scopes(
+def test_dry_run_resolves_each_probability_stage_across_all_maturity_scopes(
     tmp_path: Path,
 ) -> None:
     db = _database(tmp_path)
@@ -94,13 +108,13 @@ def test_dry_run_resolves_p0_p1_across_all_six_maturity_scopes(
     )
 
     assert result["state"] == "VALIDATED_NO_WRITE"
-    assert result["resolved_scope_count"] == 6
+    assert result["resolved_scope_count"] == 9
     assert {
         (row["stage"], row["maturity_bin"])
         for row in result["resolved_scopes"]
     } == {
         (stage, maturity)
-        for stage in ("P0", "P1")
+        for stage in ("P0", "P0-M", "P1")
         for maturity in MATURITIES
     }
     assert result["execution_mode"] == "production_no_live"
@@ -182,9 +196,9 @@ def test_apply_is_no_live_idempotent_and_second_apply_writes_zero(
     )
 
     assert first["state"] == "COMMITTED"
-    assert first["rows_written"] == 7
+    assert first["rows_written"] == 10
     assert first["counts"]["counts"]["global_priors"] == 1
-    assert first["counts"]["counts"]["policy_activations"] == 6
+    assert first["counts"]["counts"]["policy_activations"] == 9
     assert second["state"] == "UNCHANGED_ZERO_WRITE"
     assert second["rows_written"] == 0
     assert second["counts"]["counts"]["global_priors"] == 0
@@ -201,7 +215,7 @@ def test_apply_is_no_live_idempotent_and_second_apply_writes_zero(
         ).fetchone()[0] == 1
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_policy_activation"
-        ).fetchone()[0] == 6
+        ).fetchone()[0] == 9
         assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
 
 
@@ -234,7 +248,7 @@ def test_nonproduction_copy_can_be_materialized_while_writer_is_running(
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_policy_activation"
-        ).fetchone()[0] == 6
+        ).fetchone()[0] == 9
 
 
 def test_generation_two_replaces_fixed_one_usdc_floor(
@@ -268,7 +282,7 @@ def test_generation_two_replaces_fixed_one_usdc_floor(
     )
 
     assert upgraded["state"] == "COMMITTED"
-    assert upgraded["rows_written"] == 7
+    assert upgraded["rows_written"] == 10
     assert replay["state"] == "UNCHANGED_ZERO_WRITE"
     assert replay["rows_written"] == 0
     with sqlite3.connect(db) as conn:
@@ -298,7 +312,7 @@ def test_generation_two_replaces_fixed_one_usdc_floor(
         assert policy["clip_max_notional_usdc"] == pytest.approx(2.0)
 
 
-def test_generation_three_reuses_p0_policy_for_p0m_and_matches_twenty_usdc_epoch(
+def test_generation_three_uses_explicit_p0m_policy_and_matches_twenty_usdc_epoch(
     tmp_path: Path,
 ) -> None:
     db = _database(tmp_path)
@@ -310,8 +324,8 @@ def test_generation_three_reuses_p0_policy_for_p0m_and_matches_twenty_usdc_epoch
     )
 
     assert applied["state"] == "COMMITTED"
-    assert applied["rows_written"] == 7
-    assert applied["resolved_scope_count"] == 6
+    assert applied["rows_written"] == 10
+    assert applied["resolved_scope_count"] == 9
     with sqlite3.connect(db) as conn:
         bundle = station_policy.load_production_artifacts(
             conn,
@@ -334,5 +348,105 @@ def test_generation_three_reuses_p0_policy_for_p0m_and_matches_twenty_usdc_epoch
             required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
         )
         policy = resolved.to_adaptive_policy_overrides()
-        assert resolved.activation_id == "target-v2-rkpk-no-live-p0-d2-g3"
+        assert resolved.activation_id == "target-v2-rkpk-no-live-p0-m-d2-g3"
         assert policy["total_budget_usdc"] == pytest.approx(20.0)
+
+
+def test_p0m_missing_exact_activation_fails_closed(tmp_path: Path) -> None:
+    db = _database(tmp_path)
+    station_policy.apply(
+        database=db,
+        manifest_path=MANIFEST,
+        commit=True,
+    )
+
+    with sqlite3.connect(db) as conn:
+        bundle = station_policy.load_production_artifacts(
+            conn,
+            station_id="RKPK",
+            evaluation_at_utc="2026-07-29T09:56:00Z",
+            require_calibration=False,
+            require_policy=False,
+        )
+    p0_only = [
+        activation
+        for activation in bundle.policy_activations
+        if activation.stage != "P0-M"
+    ]
+    with pytest.raises(ContractError, match="FAIL_CLOSED_NO_STATION_POLICY"):
+        resolve_station_policy(
+            activations=p0_only,
+            global_priors=bundle.global_priors,
+            artifacts=bundle.policy_artifacts,
+            station_id="RKPK",
+            stage="P0-M",
+            season_bin="summer",
+            maturity_bin="d2",
+            liquidity_bin="liquid",
+            strategy_version="target-v2",
+            decision_at_utc="2026-07-29T09:56:00Z",
+            required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        )
+
+
+def test_p0m_rejects_a_p0_artifact_even_with_exact_p0m_activation() -> None:
+    prior = GlobalBasketPriorArtifact.create(
+        global_prior_id="stage-isolation-prior",
+        strategy_version="target-v2",
+        family_parameters={"target": {}, "reserve": {}, "cadence": {}},
+        default_policy={"total_budget_usdc": 20.0},
+        valid_from_utc="2026-07-28T00:00:00Z",
+        valid_until_utc="2026-08-31T00:00:00Z",
+        promoted=False,
+    )
+    p0_target = PolicyArtifact.create(
+        artifact_id="stage-isolation-p0-target",
+        family="target",
+        station_id="RKPK",
+        stage="P0",
+        season_bin="summer",
+        maturity_bin="d2",
+        liquidity_bin="liquid",
+        strategy_version="target-v2",
+        theta_local={},
+        effective_sample_n=1.0,
+        kappa=1.0,
+        trained_through_utc="2026-07-28T00:00:00Z",
+        valid_from_utc="2026-07-28T00:00:00Z",
+        valid_until_utc="2026-08-31T00:00:00Z",
+        promoted=False,
+    )
+    p0m_activation = StationBasketPolicyActivation.create(
+        activation_id="stage-isolation-p0m",
+        station_id="RKPK",
+        stage="P0-M",
+        season_bin="summer",
+        maturity_bin="d2",
+        liquidity_bin="liquid",
+        strategy_version="target-v2",
+        global_prior_id=prior.global_prior_id,
+        target_artifact_id=p0_target.artifact_id,
+        reserve_artifact_id=None,
+        cadence_artifact_id=None,
+        fallback_families=["reserve", "cadence"],
+        generation=1,
+        valid_from_utc="2026-07-28T00:00:00Z",
+        valid_until_utc="2026-08-31T00:00:00Z",
+        activated_at_utc="2026-07-28T00:00:00Z",
+        promoted=False,
+    )
+
+    with pytest.raises(ContractError, match="FAIL_CLOSED_NO_STATION_POLICY"):
+        resolve_station_policy(
+            activations=[p0m_activation],
+            global_priors={prior.global_prior_id: prior},
+            artifacts={p0_target.artifact_id: p0_target},
+            station_id="RKPK",
+            stage="P0-M",
+            season_bin="summer",
+            maturity_bin="d2",
+            liquidity_bin="liquid",
+            strategy_version="target-v2",
+            decision_at_utc="2026-07-29T09:56:00Z",
+            required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        )

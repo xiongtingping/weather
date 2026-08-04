@@ -1,0 +1,18 @@
+{
+  "schema": "taf_multistation_historical_commit_v1",
+  "state": "COMMITTED",
+  "event_date": "2026-07-31",
+  "station_count": 45,
+  "archive_count": 29,
+  "capture_count": 11,
+  "wrote_count": 8,
+  "replay_count": 3,
+  "skipped_after_anchor_count": 0,
+  "source_lane": "AWC",
+  "source_class": "official_date_addressed_historical_replay",
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+  "output_dir": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260731_closed_full_20260801",
+  "calls_order_gateway": false,
+  "orders_submitted": 0,
+  "production_no_live": true
+}

@@ -1,0 +1,16 @@
+{
+  "content_sha256": "7c0d02c80670efd9e1c308eba0db740e5ff42fc5357a5f1495617280a93cab50",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "6974d729b3eaab6b4827702b2102c685a60a9e44f4244231f40fdf741d7411fa",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/New_York",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KATL"
+}

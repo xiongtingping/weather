@@ -1,0 +1,451 @@
+{
+  "content_sha256": "11f950600e614333732ec9e1616347ac53809191f298b76fa15b9ce6b276311f",
+  "excluded_correction_sample_count": 3,
+  "excluded_correction_samples": [
+    {
+      "corrections": [
+        {
+          "content_sha256": "b4f7a96b658415fbcea6432a1e076893fc89e030aa25c1d31831a074dce92541",
+          "correction_source": "HISTORICAL_AWC_RAW_BULLETIN",
+          "provider_available_at_utc": "",
+          "revision_id": "historical-taf-correction-b4f7a96b658415fbcea6432a1e076893",
+          "revision_kind": "AMD",
+          "revision_sequence": 0
+        }
+      ],
+      "event_date": "2026-07-22",
+      "reason": "taf_correction_requires_manual_review",
+      "station_id": "KBKF"
+    },
+    {
+      "corrections": [
+        {
+          "content_sha256": "d8cf371981be7f8208c8b0564713bb671fa1612f2954ea131b2a69e874e9f405",
+          "correction_source": "HISTORICAL_AWC_RAW_BULLETIN",
+          "provider_available_at_utc": "",
+          "revision_id": "historical-taf-correction-d8cf371981be7f8208c8b0564713bb67",
+          "revision_kind": "AMD",
+          "revision_sequence": 0
+        }
+      ],
+      "event_date": "2026-07-24",
+      "reason": "taf_correction_requires_manual_review",
+      "station_id": "KBKF"
+    },
+    {
+      "corrections": [
+        {
+          "content_sha256": "e9742d9310568f58040761d9a8a10bba44ffba8ec119b3062a50f88f1d30b3ad",
+          "correction_source": "HISTORICAL_AWC_RAW_BULLETIN",
+          "provider_available_at_utc": "",
+          "revision_id": "historical-taf-correction-e9742d9310568f58040761d9a8a10bba",
+          "revision_kind": "AMD",
+          "revision_sequence": 0
+        }
+      ],
+      "event_date": "2026-07-25",
+      "reason": "taf_correction_requires_manual_review",
+      "station_id": "KBKF"
+    }
+  ],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "99ccf16b87e5d7a4c3887ed15f0a84c5b67e436319afbf7e84a7f7245d8dcf72",
+  "observational_forward_event_count": 5,
+  "observational_forward_event_dates": [
+    "2026-07-30",
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 4,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-23",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "100-101°F": 38.05555555555556,
+          "102-103°F": 39.16666666666667,
+          "104-105°F": 40.27777777777778,
+          "106-107°F": 41.388888888888886,
+          "108-109°F": 42.5,
+          "110°F or higher": 43.55555555555556,
+          "91°F or below": 32.55555555555556,
+          "92-93°F": 33.611111111111114,
+          "94-95°F": 34.72222222222222,
+          "96-97°F": 35.83333333333333,
+          "98-99°F": 36.94444444444444
+        },
+        "decision_at_utc": "2026-07-21T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "c10fc8916685ba05d66ff30fb862551e8daff58f9aa6eb43295854d413c08c76",
+        "prediction_oos": true,
+        "probabilities": {
+          "100-101°F": 0.014204545454545452,
+          "102-103°F": 0.0,
+          "104-105°F": 0.0,
+          "106-107°F": 0.0,
+          "108-109°F": 0.0,
+          "110°F or higher": 0.0,
+          "91°F or below": 0.6567615469208211,
+          "92-93°F": 0.08740084310850439,
+          "94-95°F": 0.10962243401759528,
+          "96-97°F": 0.09341092375366569,
+          "98-99°F": 0.03859970674486803
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Denver",
+      "settlement_window": {
+        "end_utc": "2026-07-24T06:00:00Z"
+      },
+      "station_id": "KBKF",
+      "taf": {
+        "available_at_utc": "2026-07-23T01:07:40Z",
+        "capture_content_sha256": "12e458e8617353e075751f97e3d56ceaf43f024ece75d6c8b5caf9ac8f0dd6ff",
+        "cloud_cover_fraction": 0.5138888888888888,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 30.0,
+        "wind_speed_mps": 3.5439475555555555
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "12e458e8617353e075751f97e3d56ceaf43f024ece75d6c8b5caf9ac8f0dd6ff",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-KBKF-2026-07-23-r1-eda051914a3e",
+        "source_lane": "AWC",
+        "tmax_c": 29.5
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "100-101°F": 38.05555555555556,
+          "102-103°F": 39.16666666666667,
+          "104-105°F": 40.27777777777778,
+          "106-107°F": 41.388888888888886,
+          "108-109°F": 42.5,
+          "110°F or higher": 43.55555555555556,
+          "91°F or below": 32.55555555555556,
+          "92-93°F": 33.611111111111114,
+          "94-95°F": 34.72222222222222,
+          "96-97°F": 35.83333333333333,
+          "98-99°F": 36.94444444444444
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "d611b844626a377a8593ad05fb44c9519e620355f0566901c3904c78ba022645",
+        "prediction_oos": true,
+        "probabilities": {
+          "100-101°F": 0.1984101906158358,
+          "102-103°F": 0.11667540322580645,
+          "104-105°F": 0.06735282258064516,
+          "106-107°F": 0.0,
+          "108-109°F": 0.0,
+          "110°F or higher": 0.0,
+          "91°F or below": 0.09742485337243403,
+          "92-93°F": 0.05681818181818182,
+          "94-95°F": 0.1341950146627566,
+          "96-97°F": 0.1858685850439883,
+          "98-99°F": 0.14325494868035193
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Denver",
+      "settlement_window": {
+        "end_utc": "2026-07-27T06:00:00Z"
+      },
+      "station_id": "KBKF",
+      "taf": {
+        "available_at_utc": "2026-07-26T01:07:14Z",
+        "capture_content_sha256": "47b039cf9c2c6afd9256cc86793feb89e22539f9d4cf4ed0d932ac5be02216ae",
+        "cloud_cover_fraction": 0.75,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 36.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "47b039cf9c2c6afd9256cc86793feb89e22539f9d4cf4ed0d932ac5be02216ae",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-KBKF-2026-07-26-r0-f4be32e642f5",
+        "source_lane": "AWC",
+        "tmax_c": 38.2
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-28",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "100-101°F": 38.05555555555556,
+          "102-103°F": 39.16666666666667,
+          "104-105°F": 40.27777777777778,
+          "106-107°F": 41.388888888888886,
+          "108-109°F": 42.5,
+          "110°F or higher": 43.55555555555556,
+          "91°F or below": 32.55555555555556,
+          "92-93°F": 33.611111111111114,
+          "94-95°F": 34.72222222222222,
+          "96-97°F": 35.83333333333333,
+          "98-99°F": 36.94444444444444
+        },
+        "decision_at_utc": "2026-07-26T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "bc923694380e9fc0117bbd2127a04436b2ff11fe4da2124fc3e3afddd750137e",
+        "prediction_oos": true,
+        "probabilities": {
+          "100-101°F": 0.06299486803519062,
+          "102-103°F": 0.012197580645161292,
+          "104-105°F": 0.0,
+          "106-107°F": 0.0,
+          "108-109°F": 0.0,
+          "110°F or higher": 0.0,
+          "91°F or below": 0.497838159824047,
+          "92-93°F": 0.11179600439882699,
+          "94-95°F": 0.1465700146627566,
+          "96-97°F": 0.13000366568914956,
+          "98-99°F": 0.03859970674486804
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Denver",
+      "settlement_window": {
+        "end_utc": "2026-07-29T06:00:00Z"
+      },
+      "station_id": "KBKF",
+      "taf": {
+        "available_at_utc": "2026-07-28T00:58:47Z",
+        "capture_content_sha256": "ad92c8216bf665bb4aad4b403c56d39a6e3138a04e04f8931188b86eb4795829",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 33.0,
+        "wind_speed_mps": 1.543332
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "ad92c8216bf665bb4aad4b403c56d39a6e3138a04e04f8931188b86eb4795829",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-KBKF-2026-07-28-r0-d09db1fd5708",
+        "source_lane": "AWC",
+        "tmax_c": 33.5
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "100-101°F": 38.05555555555556,
+          "102-103°F": 39.16666666666667,
+          "104-105°F": 40.27777777777778,
+          "106-107°F": 41.388888888888886,
+          "108-109°F": 42.5,
+          "110°F or higher": 43.55555555555556,
+          "91°F or below": 32.55555555555556,
+          "92-93°F": 33.611111111111114,
+          "94-95°F": 34.72222222222222,
+          "96-97°F": 35.83333333333333,
+          "98-99°F": 36.94444444444444
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "679a83bc861bdfc8f19220f3a8eb597d679726510d8ac7979d3fd3e534935603",
+        "prediction_oos": true,
+        "probabilities": {
+          "100-101°F": 0.03859970674486804,
+          "102-103°F": 0.024395161290322584,
+          "104-105°F": 0.012197580645161292,
+          "106-107°F": 0.0,
+          "108-109°F": 0.0,
+          "110°F or higher": 0.0,
+          "91°F or below": 0.49819299853372434,
+          "92-93°F": 0.13000366568914956,
+          "94-95°F": 0.15841275659824047,
+          "96-97°F": 0.0995984237536657,
+          "98-99°F": 0.03859970674486804
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Denver",
+      "settlement_window": {
+        "end_utc": "2026-07-30T06:00:00Z"
+      },
+      "station_id": "KBKF",
+      "taf": {
+        "available_at_utc": "2026-07-29T01:08:31Z",
+        "capture_content_sha256": "58ccaa6def61afe56e5126f96f33016074da3e2b770f7cab37488d14268b1f41",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 31.0,
+        "wind_speed_mps": 5.14444
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "58ccaa6def61afe56e5126f96f33016074da3e2b770f7cab37488d14268b1f41",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-KBKF-2026-07-29-r0-8212e4274af9",
+        "source_lane": "AWC",
+        "tmax_c": 32.2
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Denver",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KBKF"
+}

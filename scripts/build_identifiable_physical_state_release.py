@@ -240,7 +240,7 @@ def build_release(
         "places_orders": False,
         "authorizes_clob": False,
         "activation_requires_atomic_install": True,
-        "resident_service": "com.weather.reported_trajectory_no",
+        "resident_service": "com.weather.weather_basket_yes",
         "release_readiness_sha256": readiness_sha,
         "nll_crps_activation_role": "non_blocking_diagnostic_only",
         "strict_asof_activation_role": "non_blocking_diagnostic_only",
@@ -280,7 +280,7 @@ def build_release(
             name: {"sha256": _sha_bytes(value), "size_bytes": len(value)}
             for name, value in sorted(file_bytes.items())
         },
-        "resident_service": "com.weather.reported_trajectory_no",
+        "resident_service": "com.weather.weather_basket_yes",
         "adds_fourth_service": False,
         "places_orders": False,
         "activates_production": False,

@@ -96,7 +96,7 @@ _launchd_proxy_candidate_ports() {
   local host_port=""
   local port=""
   {
-    printf '%s\n' "${PM_PROXY_PORTS:-}" "${PM_PROXY_LOCAL_FALLBACK_PORTS:-7897}"
+    printf '%s\n' "${PM_PROXY_PORTS:-}" "${PM_PROXY_LOCAL_FALLBACK_PORTS:-1082}"
     for key in HTTPS_PROXY HTTP_PROXY ALL_PROXY https_proxy http_proxy all_proxy GLOBAL_AGENT_HTTP_PROXY PM_MARKET_WS_HTTP_PROXY; do
       proxy="${!key:-}"
       if [ -z "$proxy" ]; then
@@ -121,6 +121,17 @@ _launchd_export_http_proxy() {
   export http_proxy="$proxy_url"
   export https_proxy="$proxy_url"
   export GLOBAL_AGENT_HTTP_PROXY="$proxy_url"
+  # Keep service-specific proxy knobs aligned with the repaired local port.
+  # Otherwise market_ws/official NWP can retain a stale PM_* URL while the
+  # generic HTTP(S)_PROXY variables have already moved to a reachable port.
+  export PM_MARKET_WS_PROXY="$proxy_url"
+  export PM_OFFICIAL_NWP_PROXY="$proxy_url"
+  local proxy_port=""
+  proxy_port="${proxy_url##*:}"
+  if [[ "$proxy_port" =~ ^[0-9]+$ ]]; then
+    export PM_PROXY_PORTS="$proxy_port"
+    export PM_PROXY_LOCAL_FALLBACK_PORTS="$proxy_port"
+  fi
 }
 
 ensure_launchd_proxy_env_reachable() {

@@ -183,9 +183,31 @@ class DeltaV2PolicyArtifact:
             else _nonnegative_int("delta_v2_holdout_n", raw.get("holdout_n"))
         )
         windows = _nonnegative_int(
-            "delta_v2_consecutive_forward_windows",
-            raw.get("consecutive_forward_windows"),
+            "delta_v2_consecutive_historical_windows",
+            raw.get(
+                "consecutive_historical_windows",
+                raw.get("consecutive_forward_windows"),
+            ),
         )
+        oos_data_policy = str(
+            raw.get("oos_data_policy") or "HISTORICAL_CLOSED_DAY_ONLY"
+        ).strip().upper()
+        future_data_policy = str(
+            raw.get("future_data_policy")
+            or "OBSERVATIONAL_CANDIDATE_NOT_OOS"
+        ).strip().upper()
+        try:
+            future_event_count = int(raw.get("future_event_count", 0))
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "delta_v2_future_event_count_invalid"
+            ) from exc
+        if oos_data_policy != "HISTORICAL_CLOSED_DAY_ONLY":
+            raise ContractError("delta_v2_oos_data_policy_not_historical")
+        if future_data_policy != "OBSERVATIONAL_CANDIDATE_NOT_OOS":
+            raise ContractError("delta_v2_future_data_policy_invalid")
+        if future_event_count != 0:
+            raise ContractError("delta_v2_future_event_count_nonzero")
         baselines_raw = raw.get("compared_baselines")
         if not isinstance(baselines_raw, Sequence) or isinstance(
             baselines_raw, (str, bytes, bytearray)
@@ -222,6 +244,8 @@ class DeltaV2PolicyArtifact:
         trained_through = _timestamp(
             "delta_v2_trained_through_utc", raw.get("trained_through_utc")
         )
+        if oos_passed and holdout_end > trained_through[:10]:
+            raise ContractError("delta_v2_oos_holdout_not_closed_asof")
         valid_from = _timestamp(
             "delta_v2_valid_from_utc", raw.get("valid_from_utc")
         )

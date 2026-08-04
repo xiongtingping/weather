@@ -51,15 +51,28 @@ def capture_forward_awc_taf(
         url, timeout_sec=timeout_sec
     )
     received_at = datetime.now(timezone.utc)
-    taf, raw = _taf_row(
-        rows,
-        station_id=station,
-        start=start,
-        end=end,
-        event_date=event_date,
-        timezone_name=settlement_timezone,
-        require_tx=False,
-    )
+    try:
+        taf, raw = _taf_row(
+            rows,
+            station_id=station,
+            start=start,
+            end=end,
+            event_date=event_date,
+            timezone_name=settlement_timezone,
+            require_tx=False,
+        )
+    except ContractError as exc:
+        # ``_taf_row`` is also the historical replay parser, where this
+        # condition is intentionally named for historical availability.  The
+        # forward capture has a distinct public contract: callers need one
+        # stable reason code for any provider clock that cannot establish a
+        # native forward arrival.  Do the mapping only at this boundary so the
+        # historical parser's diagnostic remains precise.
+        if str(exc) == "awc_taf_historical_available_before_issue":
+            raise ContractError(
+                "awc_forward_taf_provider_timestamp_order_invalid"
+            ) from exc
+        raise
     issued_at = _parse_utc(taf["issue_time_utc"])
     if issued_at > received_at:
         raise ContractError("awc_forward_taf_issue_after_local_receipt")
@@ -93,6 +106,7 @@ def capture_forward_awc_taf(
     identity = {
         "schema": FORWARD_SCHEMA,
         "source_class": "official_forward_native_receipt",
+        "evidence_role": "observational_candidate_not_oos",
         "provider": "NOAA Aviation Weather Center",
         "station_id": station,
         "event_date": event_date,
@@ -296,6 +310,7 @@ def refresh_forward_taf_inbox(
         "schema": INBOX_SCHEMA,
         "capture_count": len(retained),
         "captures": retained,
+        "evidence_role": "observational_candidate_not_oos",
         "boundary": {
             "forward_only": True,
             "max_captures": 256,

@@ -15,9 +15,9 @@ import json
 
 from external_forecast_snapshot_runtime import validate_external_forecast_raw_envelope
 from scripts.strict_asof_forecast_capture_readiness import _normalized_forecast
-from scripts.append_strict_asof_forecast_p1_ingress import (
+from strict_asof_forecast_candidate_scan import (
     DEFAULT_ROOT,
-    collect_tier_a_forecast_p1_proposals,
+    collect_strict_asof_forecast_candidates,
 )
 from source_observation_runtime import build_source_observation
 
@@ -132,7 +132,7 @@ def load_live_independent_weak_source_observations(
             "source_observations": [],
             "read_only": True,
         }
-    scan = collect_tier_a_forecast_p1_proposals(
+    scan = collect_strict_asof_forecast_candidates(
         root=Path(root),
         station_id=_text(station_id).upper(),
     )
@@ -176,7 +176,7 @@ def load_live_independent_weak_source_observations(
         "quarantined": list(scan.get("blocked") or []),
         "read_only": True,
         "boundary": {
-            "same_contract_as_strict_p1_ingress": True,
+            "same_contract_as_strict_candidate_scan": True,
             "p1_materialization_not_required_for_live_scoring": True,
             "strict_asof_oos_not_live_gate": True,
             "writes_archive_db": False,

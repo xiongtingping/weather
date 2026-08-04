@@ -16,6 +16,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, _finite, _sha, _text, _timestamp, content_sha256
+from .settlement_time import settlement_day_window
 from .station_policy_artifact import (
     POLICY_FAMILIES,
     WINDOW_DAYS,
@@ -82,7 +83,12 @@ def _row_id(row: Mapping[str, Any]) -> str:
     return f"derived:{content_sha256(dict(row))}"
 
 
-def _normalize_rows(rows: Iterable[Mapping[str, Any]], *, max_rows: int) -> list[dict[str, Any]]:
+def _normalize_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    max_rows: int,
+    evaluation_as_of: datetime,
+) -> list[dict[str, Any]]:
     if isinstance(rows, (str, bytes, bytearray)):
         raise ContractError("station_policy_rows_invalid")
     dedup: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -105,6 +111,12 @@ def _normalize_rows(rows: Iterable[Mapping[str, Any]], *, max_rows: int) -> list
         raw["station_id"] = station
         raw["settlement_timezone"] = _timezone("station_policy_settlement_timezone", raw.get("settlement_timezone"))
         raw["decision_at_utc"] = _timestamp("station_policy_decision_at_utc", raw.get("decision_at_utc"))
+        decision_at = _utc(raw["decision_at_utc"], "station_policy_decision_at_utc")
+        # A policy row is an OOS decision fact, not a forward observation.  A
+        # future decision can otherwise be smuggled into a historical split
+        # by supplying an already-frozen truth timestamp.
+        if decision_at > evaluation_as_of:
+            raise ContractError("station_policy_future_decision_not_oos")
         raw["event_date"] = str(raw.get("event_date") or raw.get("target_local_date") or "").strip()
         if not raw["event_date"]:
             raise ContractError("station_policy_event_date_missing")
@@ -119,8 +131,50 @@ def _normalize_rows(rows: Iterable[Mapping[str, Any]], *, max_rows: int) -> list
         frozen = raw.get("truth_frozen")
         if frozen is not True:
             raise ContractError("station_policy_truth_not_frozen")
-        if raw.get("truth_frozen_at_utc") is not None:
-            _timestamp("station_policy_truth_frozen_at_utc", raw["truth_frozen_at_utc"])
+        if raw.get("truth_frozen_at_utc") is None:
+            raise ContractError("station_policy_truth_frozen_at_missing")
+        truth_frozen_at = _utc(
+            raw["truth_frozen_at_utc"],
+            "station_policy_truth_frozen_at_utc",
+        )
+        if truth_frozen_at > evaluation_as_of:
+            raise ContractError("station_policy_truth_after_evaluation_asof")
+        settlement_closed_at = _utc(
+            settlement_day_window(
+                raw["event_date"], raw["settlement_timezone"]
+            )["target_day_end_utc"],
+            "station_policy_settlement_closed_at_utc",
+        )
+        # The evaluator is historical-only.  Forward/observational rows must
+        # be materialized by the separate outcome-contract path and can never
+        # become OOS merely because a caller marks their truth as frozen.
+        if settlement_closed_at > evaluation_as_of:
+            raise ContractError("station_policy_future_event_not_oos")
+        if truth_frozen_at < settlement_closed_at:
+            raise ContractError(
+                "station_policy_truth_before_settlement_close"
+            )
+        evidence_role = str(
+            raw.get("evidence_role") or "historical_strict_oos"
+        ).strip().lower()
+        if evidence_role != "historical_strict_oos":
+            raise ContractError("station_policy_forward_evidence_not_oos")
+        raw["evidence_role"] = evidence_role
+        # If a caller supplies truth lineage, it must be the official AWC
+        # lane.  Missing optional lineage remains a gap owned by the caller;
+        # an explicit non-AWC lane is never accepted as formal truth.
+        for lineage_key in (
+            "truth_source_lane",
+            "official_truth_lane",
+            "awc_truth_source_lane",
+        ):
+            if raw.get(lineage_key) is None:
+                continue
+            if str(raw[lineage_key]).strip().upper() not in {
+                "AWC",
+                "OFFICIAL_AWC",
+            }:
+                raise ContractError("station_policy_truth_source_lane_not_awc")
         raw["season_bin"] = _text("station_policy_season_bin", raw.get("season_bin"))
         raw["lead_bucket"] = _text("station_policy_lead_bucket", raw.get("lead_bucket"))
         raw["issuance_cycle"] = _text("station_policy_issuance_cycle", raw.get("issuance_cycle"))
@@ -422,7 +476,12 @@ def evaluate_station_policy_oos(
     cfg.update(dict(limits or {}))
     cfg["strategy_version"] = strategy_version
     cfg["artifact_version"] = artifact_version
-    normalized = _normalize_rows(rows, max_rows=int(cfg["max_rows"]))
+    evaluation_as_of = _utc(decided_at_utc, "decided_at_utc")
+    normalized = _normalize_rows(
+        rows,
+        max_rows=int(cfg["max_rows"]),
+        evaluation_as_of=evaluation_as_of,
+    )
     if not normalized:
         raise ContractError("station_policy_rows_empty")
     input_station_count = len({row["station_id"] for row in normalized})

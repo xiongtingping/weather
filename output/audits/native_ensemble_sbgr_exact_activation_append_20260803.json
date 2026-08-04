@@ -1,0 +1,101 @@
+{
+  "activated_at_utc": "2026-08-01T02:45:45.230Z",
+  "after_counts": {
+    "calibration_cross_native_ensemble_artifact": 141,
+    "calibration_cross_native_ensemble_oos_evaluation": 829,
+    "calibration_native_ensemble_activation": 542
+  },
+  "before_counts": {
+    "calibration_cross_native_ensemble_artifact": 140,
+    "calibration_cross_native_ensemble_oos_evaluation": 827,
+    "calibration_native_ensemble_activation": 539
+  },
+  "boundary": {
+    "append_only": true,
+    "calls_order_gateway": false,
+    "creates_new_activation": false,
+    "deletes_rows": false,
+    "live_submit_authorized": false,
+    "mutates_existing_rows": false,
+    "network_requests": false,
+    "orders_submitted": 0,
+    "raw_refetch": false,
+    "writes_target_database": true
+  },
+  "content_sha256": "907ec4da50f8c7604dbe4f6f9e76f6b690effcd123ed68a99c038a3bf0a74fd0",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "delta_counts": {
+    "calibration_cross_native_ensemble_artifact": 1,
+    "calibration_cross_native_ensemble_oos_evaluation": 2,
+    "calibration_native_ensemble_activation": 3
+  },
+  "evaluated_at_utc": "2026-08-01T02:45:45.230Z",
+  "manifest": "/Users/xiong/weather/output/audits/native_ensemble_forward_oos_readonly_20260801.json",
+  "manifest_content_sha256": "4b83067a636bca2a21a7fbe2cb71ee41f0af4374deefe84c24eace46400e8880",
+  "persist_result": {
+    "calls_order_gateway": false,
+    "counts": {
+      "activations": 3,
+      "cross_artifacts": 1,
+      "oos_evaluations": 2,
+      "oos_predictions": 8,
+      "selection_evidence": 0,
+      "system_artifacts": 2
+    },
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "receipts": [
+      {
+        "activation_id": "native-activation-0eefc95a1723f120acd7ac3a",
+        "cross_ensemble_artifact_id": "native-cross-artifact-042bbbaa276b79b199f910cb",
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "run_cycle_by_system": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+          "NOAA_GEFS_05": "18Z"
+        },
+        "run_cycle_by_system_sha256": "680d865d8c05355c4248953db920108cceb7dff46f28b8af1189a81c0349a506",
+        "season_bin": "JJA",
+        "selection_evidence_id": "native-selection-00127d919343b77c370a4875",
+        "station_id": "SBGR",
+        "system_activation_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "native-activation-15b52b914c696f174a5e884b",
+          "NOAA_GEFS_05": "native-activation-23765cc1cd92bd860fa29efc"
+        },
+        "system_artifact_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "native-system-artifact-4cb8e9472e74c6a5743087b1",
+          "NOAA_GEFS_05": "native-system-artifact-f803875c6fc448630b577ab6"
+        }
+      },
+      {
+        "activation_id": "native-activation-aeb2aa34577ab27edeeb95a5",
+        "cross_ensemble_artifact_id": "native-cross-artifact-cf0da8788c45e1b63fd0976d",
+        "lead_bucket": "d2",
+        "reused_existing": true,
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "run_cycle_by_system": {
+          "ECCC_GEM_GLOBAL_ENS": "00Z",
+          "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+          "NOAA_GEFS_05": "18Z"
+        },
+        "run_cycle_by_system_sha256": "ffc8d52401995e18b726fb9e0dd061546d27adb3bf79b894a826a654896ec01c",
+        "season_bin": "JJA",
+        "selection_evidence_id": "native-selection-f5e6a262fd91f08c2f69834b",
+        "station_id": "SBGR",
+        "system_activation_ids": {},
+        "system_artifact_ids": {}
+      }
+    ],
+    "schema": "native_ensemble_oos_persist_v1",
+    "state": "COMMITTED"
+  },
+  "policy": {
+    "future_data_used_as_oos": false,
+    "republisher_used": false,
+    "scope": "PRODUCTION_NO_LIVE_ONLY",
+    "source": "closed historical native archive"
+  },
+  "report_content_sha256": "513f5a4706c5fbaf36984451e7e39eb6d729b9d300fbd954fec14c36d98c4d71",
+  "schema": "native_ensemble_sbgr_exact_activation_append_receipt_v1",
+  "station_id": "SBGR"
+}

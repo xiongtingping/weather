@@ -1,0 +1,25 @@
+{
+  "archive_count": 1,
+  "calls_order_gateway": false,
+  "correction_count": 2,
+  "orders_submitted": 0,
+  "receipts": [
+    {
+      "authority_scope": "CALIBRATION_TRAIN_ONLY",
+      "calls_order_gateway": false,
+      "correction_count": 2,
+      "live_submit_authorized": false,
+      "orders_submitted": 0,
+      "replay_count": 0,
+      "schema": "historical_taf_correction_quarantine_ingress_v1",
+      "source_artifact_sha256": "0d40beca8632a03c89bc5705e3ba5149b1da3967e2b01e7d3ea012884617d601",
+      "source_lane": "AWC",
+      "station_id": "SAEZ",
+      "wrote_count": 2
+    }
+  ],
+  "replay_count": 0,
+  "schema": "historical_taf_correction_quarantine_run_v1",
+  "state": "COMMITTED",
+  "wrote_count": 2
+}

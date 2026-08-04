@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "97831fdb3513f04ee73af806382148c1b6a632f9c8e20834a91c0608c8dddc38",
+  "content_sha256": "21c4f9fc229743110205ab87cf55783cdd1d6b69a78a3e7f84c4495a15f4b47a",
   "end_date": "2026-07-29",
   "excluded_sample_count": 0,
   "excluded_samples": [],
@@ -32,12 +37,14 @@
         "taf_response_sha256": "8dea94d69be089758761b0b2cdd96129efe3756cb653ed641c11c3b4a2df056d",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-21T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-2c2a7cceeefaef580f19244634ed27f2",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-22T22:00:00Z",
         "start_utc": "2026-07-21T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-21T22:10:13Z",
@@ -223,8 +230,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 16.0
-      }
+        "tmax_c": 16.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-22T23:00:00Z",
@@ -235,12 +254,14 @@
         "taf_response_sha256": "7f271120de5ddfb6e881dee8821bd0efc23cdb253653229eb5623522ec768f56",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-22T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-8a6b491956f71f83693be0ca1b802d21",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-23T22:00:00Z",
         "start_utc": "2026-07-22T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-22T22:11:33Z",
@@ -503,8 +524,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 15.0
-      }
+        "tmax_c": 15.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T23:00:00Z",
@@ -515,12 +548,14 @@
         "taf_response_sha256": "51b0b69d9d22b7b24d5dc3afa5fb3d413237522f1dd5313c94e62fda46cb441c",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-23T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-1ade9a20613cfb148de03765be33b4c7",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-24T22:00:00Z",
         "start_utc": "2026-07-23T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-23T22:10:12Z",
@@ -727,8 +762,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 18.0
-      }
+        "tmax_c": 18.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T23:00:00Z",
@@ -739,12 +786,14 @@
         "taf_response_sha256": "2c7e9e5ee20e4bc82579c4a701c8c722708a6142516bb310e4b3f36e3b9dba35",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-24T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-ed6f78fd54233cfc9c75f3214f431052",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-25T22:00:00Z",
         "start_utc": "2026-07-24T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-24T22:10:13Z",
@@ -937,8 +986,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 21.0
-      }
+        "tmax_c": 21.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-25T23:00:00Z",
@@ -949,12 +1010,14 @@
         "taf_response_sha256": "61137d031b1e087cbbe842f302b1e9af0aa74d6937ca604fc12fed51994b1365",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-25T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-781de51aa6da731d05b8f7d6096efee6",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-26T22:00:00Z",
         "start_utc": "2026-07-25T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-25T22:13:38Z",
@@ -1210,8 +1273,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 24.0
-      }
+        "tmax_c": 24.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T23:00:00Z",
@@ -1222,12 +1297,14 @@
         "taf_response_sha256": "48273f65c2c27912e9df1693a8df422cc869bb93e4869bb82288da032bf8931d",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-26T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-79381458f82ba9838674ebba23581b15",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-27T22:00:00Z",
         "start_utc": "2026-07-26T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-26T22:10:18Z",
@@ -1441,8 +1518,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 17.0
-      }
+        "tmax_c": 17.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-27T23:00:00Z",
@@ -1453,12 +1542,14 @@
         "taf_response_sha256": "3d2fd1f6aa91f16ee2966adad1fed60e2222512e85c0e87d7c830845133735b2",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-27T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-66df870030c0645133da551d28985831",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-28T22:00:00Z",
         "start_utc": "2026-07-27T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-27T22:10:16Z",
@@ -1651,8 +1742,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 20.0
-      }
+        "tmax_c": 20.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-28T23:00:00Z",
@@ -1663,12 +1766,14 @@
         "taf_response_sha256": "a2baf0a5a7620430dbb9bf5bbb921d9c7fa799005cd655094127cbff02cd7d48",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-28T23%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-4c9d6e04df968a26ddcf020a044afdb5",
       "settlement_timezone": "Africa/Johannesburg",
       "settlement_window": {
         "end_utc": "2026-07-29T22:00:00Z",
         "start_utc": "2026-07-28T22:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "FACT",
       "taf": {
         "available_time_utc": "2026-07-28T22:20:10Z",
@@ -1896,13 +2001,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 21.0
-      }
+        "tmax_c": 21.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "Africa/Johannesburg",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "FACT"
+  "station_id": "FACT",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

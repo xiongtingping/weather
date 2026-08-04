@@ -1,0 +1,48 @@
+{
+  "as_of_utc": "2026-08-02T00:00:00.000Z",
+  "authority": {
+    "formal_p0_eligible_without_strict_oos": false,
+    "member_decode_required": true,
+    "native_arrival_index_eligible_before_decode": false,
+    "source_role": "official_native",
+    "transport_provider_id": "DWD"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "single_lead_only": true,
+    "writes_target_database": false
+  },
+  "content_sha256": "71971e3b5310100001f87e4e375a60c04d533d6c200e8f56556b3f40e026e544",
+  "expected_member_count": 40,
+  "forecast_hour": 15,
+  "formal_p0_eligible": false,
+  "independence_family_id": "DWD_ICON_EPS",
+  "member_decode_state": "PENDING_FAIL_CLOSED",
+  "native_arrival_index_eligible": false,
+  "plan_sha256": "d7ec01d4225ef1cd184ab0338d06370ed9868a019344f3d89e9ca4d0d7a01c37",
+  "product_id": "DWD_ICON_GLOBAL_EPS",
+  "provider_id": "icon_global_eps_official",
+  "provider_published_at_utc": "2026-08-01T02:46:05.000Z",
+  "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_eps_official/raw/08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab.grib2.bz2",
+  "raw_sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_response_bytes": 134217728,
+    "min_free_bytes": 2147483648
+  },
+  "response_bytes": 33017132,
+  "response_completed_at_utc": "2026-08-01T19:03:16.524Z",
+  "response_headers": {
+    "content-length": "33017132",
+    "date": "Sat, 01 Aug 2026 19:03:10 GMT",
+    "etag": "\"6a6d5ded-1f7cd2c\"",
+    "last-modified": "Sat, 01 Aug 2026 02:46:05 GMT"
+  },
+  "run_initialization_utc": "2026-08-01T00:00:00.000Z",
+  "schema": "bayes_basket_target_icon_global_eps_forward_capture_v1",
+  "source_url": "https://opendata.dwd.de/weather/nwp/icon-eps/grib/00/t_2m/icon-eps_global_icosahedral_single-level_2026080100_015_t_2m.grib2.bz2",
+  "state": "OFFICIAL_RAW_CAPTURED_MEMBER_DECODE_PENDING",
+  "valid_time_utc": "2026-08-01T15:00:00.000Z"
+}

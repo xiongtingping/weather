@@ -1,0 +1,14 @@
+{
+  "blocker_count": 0,
+  "calls_order_gateway": false,
+  "completed_station_count": 1,
+  "excluded_sample_count": 26,
+  "failed_station_count": 0,
+  "failures": [],
+  "orders_submitted": 0,
+  "outputs": [
+    "/Users/xiong/weather/output/audits/awc_taf_historical_KDAL_KHOU_20260704_20260729_proxy_20260803/AWC_TAF_KHOU_20260704_20260729.json"
+  ],
+  "sample_count": 0,
+  "station_count": 1
+}

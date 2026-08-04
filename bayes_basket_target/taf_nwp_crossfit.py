@@ -20,6 +20,8 @@ from .contracts import (
 )
 from .model_sources import model_id_for_provider
 from .taf_exact_join import NWP_CROSSFIT_SCHEMA
+from .taf_oos_contract import assert_historical_taf_oos
+from .settlement_time import settlement_day_window
 
 
 MIN_TRAIN_DAYS = 3
@@ -182,6 +184,45 @@ def build_nwp_crossfit_predictions(
     for sample in ordered:
         event_date = str(sample["event_date"])
         pair = {model: model_rows.get((event_date, model)) for model in models}
+        window = sample.get("settlement_window")
+        # Older immutable historical TAF packets carry the settlement
+        # timezone but not a duplicated window object.  Derive the same
+        # station-local day-end from that explicit timezone; never infer it
+        # from the host clock or from a forward receipt.
+        if not isinstance(window, Mapping):
+            timezone_name = str(sample.get("settlement_timezone") or "").strip()
+            if not timezone_name:
+                raise ContractError("taf_crossfit_settlement_window_missing")
+            try:
+                window = settlement_day_window(event_date, timezone_name)
+            except (TypeError, ValueError, KeyError) as exc:
+                raise ContractError("taf_crossfit_settlement_window_missing") from exc
+        try:
+            closed_at = datetime.fromisoformat(
+                str(
+                    window.get("end_utc")
+                    or settlement_day_window(
+                        event_date, str(sample.get("settlement_timezone") or "")
+                    )["target_day_end_utc"]
+                ).replace("Z", "+00:00")
+            )
+        except (TypeError, ValueError) as exc:
+            raise ContractError("taf_crossfit_truth_close_invalid") from exc
+        if closed_at.tzinfo is None or closed_at.utcoffset() is None:
+            raise ContractError("taf_crossfit_truth_close_timezone_required")
+        assert_historical_taf_oos(
+            sample,
+            event_date=event_date,
+            truth_closed_at=closed_at,
+            transport_values=tuple(
+                str(pair[model].get("provider_id") or "")
+                for model in models
+                if pair.get(model) is not None
+            ),
+            name="taf_crossfit",
+        )
+        if str((sample.get("taf") or {}).get("source_class") or "") == "official_forward_native_receipt":
+            raise ContractError("taf_crossfit_forward_taf_not_oos")
         if any(pair[model] is None for model in models):
             continue
         truth = float(sample["truth"]["tmax_c"])

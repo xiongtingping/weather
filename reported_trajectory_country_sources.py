@@ -678,6 +678,7 @@ def fetch_country_routed_temperature_reports(
     providers = config["providers"]
     routes = config["station_routes"]
     registry_sha = _canonical_sha(config)
+
     grouped: dict[str, list[str]] = {}
     fallback_reasons: dict[str, str] = {}
     awc_authoritative: set[str] = set()

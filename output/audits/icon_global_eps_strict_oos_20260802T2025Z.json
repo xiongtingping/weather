@@ -1,0 +1,1071 @@
+{
+  "as_of_utc": "2026-08-01T20:25:00Z",
+  "boundary": {
+    "activates_p0": false,
+    "calls_order_gateway": false,
+    "creates_formal_provider_binding": false,
+    "orders_submitted": 0,
+    "writes_production_database": false
+  },
+  "candidate_count": 0,
+  "candidates": [],
+  "content_sha256": "36d6d9a186eef3ab1261af63fd73584e6a63f6f05e60e6450312310236328012",
+  "fact_count": 0,
+  "formal_p0_eligible": false,
+  "independence_family_id": "DWD_ICON_EPS",
+  "model_id": "ICON",
+  "product_id": "DWD_ICON_GLOBAL_EPS",
+  "promotion_authority_generated": false,
+  "provider_id": "icon_global_eps_official",
+  "readiness": [
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "CYYZ",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "EDDM",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "EFHK",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "EGLC",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "EHAM",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "EPWA",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "FACT",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KATL",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KAUS",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KBKF",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KDAL",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KHOU",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KLAX",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KLGA",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KMIA",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KORD",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KSEA",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "KSFO",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "LEMD",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "LFPB",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "LIMC",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "LTAC",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "MMMX",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "MPMG",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "NZWN",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "OEJN",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "OPKC",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "RCSS",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "RJTT",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "RKPK",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "RKSI",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "RPLL",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "SAEZ",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "SBGR",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "VILK",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "WMKK",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "WSSS",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZBAA",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZGGG",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZGSZ",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZHHH",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZSPD",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZSQD",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZUCK",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    },
+    {
+      "arrival_lineage_case_count": 0,
+      "blockers": [
+        "arrival lineage 缺失",
+        "数据缺失",
+        "样本不足"
+      ],
+      "case_count": 0,
+      "lead_bucket": "*",
+      "missing_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "run_cycle": "*",
+      "season_bin": "*",
+      "state": "PENDING_CLOSED_AWC_TRUTH",
+      "station_id": "ZUUU",
+      "strict_holdout_case_count": 0,
+      "training_case_count": 0,
+      "unresolved_reasons": [
+        "settlement_day_open_as_of"
+      ]
+    }
+  ],
+  "schema": "dwd_icon_global_eps_official_strict_oos_v1",
+  "source_authority": {
+    "forecast_source_role": "official_native",
+    "forecast_transport_provider_id": "DWD",
+    "native_arrival_index_required": true,
+    "native_arrival_index_used": false,
+    "open_meteo_fallback_used": false,
+    "truth_source_lane": "AWC"
+  },
+  "state": "STRICT_OOS_CANDIDATES_NOT_BINDING",
+  "strict_oos_state": "PENDING_ARRIVAL_TRUTH_AND_SAMPLES",
+  "training_batch_content_sha256s": [
+    "f18b69677884550a07d4be0a7be6780a23a5e1dc07221b616c3d33b077c3829c"
+  ]
+}

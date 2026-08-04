@@ -10,8 +10,55 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
-from .open_meteo_ensemble import ENSEMBLE_SYSTEMS, SCHEMA
-from .ssot import native_ensemble_foundation_schema_status
+from .open_meteo_ensemble import (
+    ENSEMBLE_SYSTEMS,
+    FORWARD_OOS_TEMPORAL_SCOPE,
+    OBSERVATIONAL_EVIDENCE_ROLE,
+    SCHEMA,
+)
+from .ssot import republisher_ensemble_schema_status
+
+
+_LEGACY_REPUBLISHER_PRODUCT_CONTRACTS = frozenset(
+    {
+        # Rows written by the pre-split republisher migration are immutable.
+        # Their negative native/formal flags and explicit republisher role are
+        # still valid; only the publication-contract label was refined later.
+        "native_timestamps_required_for_formal_v1",
+    }
+)
+
+
+def _legacy_republisher_product_compatible(
+    existing: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> bool:
+    """Accept an immutable pre-contract-version product row.
+
+    The target database is append-only, so an old product row cannot be
+    rewritten merely because the republisher contract received a more precise
+    name.  We only reuse it when every semantic field is identical apart from
+    that label and the row still carries the explicit non-native boundary.
+    Any other mismatch remains a hard content conflict.
+    """
+
+    if (
+        str(existing.get("publication_contract_version") or "")
+        not in _LEGACY_REPUBLISHER_PRODUCT_CONTRACTS
+        or str(existing.get("source_role") or "")
+        != "aggregator_republisher"
+        or str(existing.get("transport_provider_id") or "")
+        != "OPEN_METEO"
+        or int(existing.get("native_arrival_index_eligible") or 0) != 0
+        or int(existing.get("formal_p0_eligible") or 0) != 0
+    ):
+        return False
+    for key, value in candidate.items():
+        if key in {"content_sha256", "publication_contract_version"}:
+            continue
+        if str(existing.get(key)) != str(value):
+            return False
+    return True
 
 
 def _insert_content_addressed(
@@ -22,15 +69,26 @@ def _insert_content_addressed(
     row: Mapping[str, Any],
 ) -> int:
     identifier = str(row[primary_key])
-    existing = conn.execute(
-        f"SELECT content_sha256 FROM {table} WHERE {primary_key}=?",
+    existing_cursor = conn.execute(
+        f"SELECT * FROM {table} WHERE {primary_key}=?",
         (identifier,),
-    ).fetchone()
-    if existing is not None:
-        if str(existing[0]) != str(row["content_sha256"]):
-            raise ContractError(
-                f"native_ensemble_{table}_content_conflict"
-            )
+    )
+    existing_raw = existing_cursor.fetchone()
+    if existing_raw is not None:
+        columns = tuple(column[0] for column in existing_cursor.description or ())
+        existing = dict(zip(columns, existing_raw))
+        if str(existing.get("content_sha256")) != str(row["content_sha256"]):
+            if table != "calibration_republisher_ensemble_product" or not _legacy_republisher_product_compatible(
+                existing,
+                row,
+            ):
+                raise ContractError(
+                    f"native_ensemble_{table}_content_conflict"
+                )
+            # This is an immutable, semantically identical legacy product
+            # row.  Treat it as an idempotent replay and preserve its original
+            # content hash rather than attempting an UPDATE.
+            return 0
         return 0
     columns = tuple(row)
     conn.execute(
@@ -57,14 +115,77 @@ def _lead_bucket(
     return f"d{delta}" if delta >= 0 else f"d_minus_{abs(delta)}"
 
 
+def republisher_product_identity(
+    system_id: str,
+) -> dict[str, Any]:
+    """Return product metadata without claiming native transport authority."""
+
+    config = ENSEMBLE_SYSTEMS.get(system_id)
+    if config is None:
+        raise ContractError("republisher_ensemble_system_unregistered")
+    return {
+        "ensemble_system_id": system_id,
+        "canonical_name": str(config["canonical_name"]),
+        "independence_family_id": str(
+            config["independence_family_id"]
+        ),
+        "upstream_provider_id": str(config["provider_id"]),
+        "transport_provider_id": "OPEN_METEO",
+        "source_role": "aggregator_republisher",
+        "expected_member_count": int(config["expected_member_count"]),
+        "member_identity_contract_version": (
+            "open_meteo_control_plus_perturbed_v1"
+        ),
+        "publication_contract_version": (
+            "aggregator_receipt_without_native_timestamps_v1"
+        ),
+        "native_arrival_index_eligible": 0,
+        "formal_p0_eligible": 0,
+        "valid_from_utc": "2026-07-31T00:00:00Z",
+        "valid_until_utc": "9999-12-31T23:59:59Z",
+    }
+
+
+def _require_forward_observational_scope(
+    packet: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Keep a forward Open-Meteo receipt out of historical OOS authority.
+
+    Open-Meteo is useful when a native object is unavailable, but the forward
+    capture itself is only an arrival/interface observation.  A separate,
+    append-only historical contract tied to closed AWC truth is required
+    before any republisher data can support a no-live P0 fallback.
+    """
+
+    if (
+        packet.get("evidence_role") != OBSERVATIONAL_EVIDENCE_ROLE
+        or packet.get("oos_event_temporal_scope")
+        != FORWARD_OOS_TEMPORAL_SCOPE
+        or packet.get("strict_oos_sample_eligible") is not False
+        or packet.get("can_substitute_for_formal_promotion") is not False
+        or authority.get("evidence_role")
+        != OBSERVATIONAL_EVIDENCE_ROLE
+        or authority.get("oos_event_temporal_scope")
+        != FORWARD_OOS_TEMPORAL_SCOPE
+        or authority.get("counts_as_strict_oos") is not False
+        or authority.get("historical_oos_contract_bound") is not False
+        or authority.get("can_substitute_for_formal_promotion")
+        is not False
+    ):
+        raise ContractError(
+            "native_ensemble_packet_observational_scope_invalid"
+        )
+
+
 def ingest_forward_packet(
     conn: sqlite3.Connection,
     packet: Mapping[str, Any],
 ) -> dict[str, Any]:
-    status = native_ensemble_foundation_schema_status(conn)
+    status = republisher_ensemble_schema_status(conn)
     if status["ok"] is not True:
         raise ContractError(
-            "native_ensemble_foundation_schema_required"
+            "republisher_ensemble_schema_required"
         )
     if packet.get("schema") != SCHEMA:
         raise ContractError("native_ensemble_packet_schema_invalid")
@@ -84,11 +205,17 @@ def ingest_forward_packet(
         not isinstance(authority, Mapping)
         or authority.get("source_role")
         != "aggregator_republisher"
+        or authority.get("native_run_init_known") is not False
+        or authority.get("native_publication_at_known") is not False
+        or authority.get("native_arrival_index_eligible") is not False
         or authority.get("formal_p0_eligible") is not False
+        or authority.get("production_no_live_calibration_candidate")
+        is not True
         or not isinstance(systems, list)
         or not systems
     ):
         raise ContractError("native_ensemble_packet_authority_invalid")
+    _require_forward_observational_scope(packet, authority)
     station_id = str(packet.get("station_id") or "").strip().upper()
     event_date = str(packet.get("event_date") or "")
     settlement_timezone = str(
@@ -147,30 +274,34 @@ def ingest_forward_packet(
                 raise ContractError(
                     "native_ensemble_system_identity_mismatch"
                 )
-            system_identity = {
-                "ensemble_system_id": system_id,
-                "canonical_name": config["canonical_name"],
-                "independence_family_id": config[
-                    "independence_family_id"
-                ],
-                "provider_id": config["provider_id"],
-                # This row identifies the upstream forecast system.  The
-                # Open-Meteo transport authority is recorded on every member
-                # run and bucket below, where formal eligibility is decided.
-                "source_class": "NATIVE_ENSEMBLE_PROVIDER",
-                "aggregator_or_republisher": 0,
-                "expected_member_count": config[
-                    "expected_member_count"
-                ],
-                "member_identity_contract_version": (
-                    "open_meteo_control_plus_perturbed_v1"
-                ),
-                "publication_contract_version": (
-                    "native_timestamps_required_for_formal_v1"
-                ),
-                "valid_from_utc": "2026-07-31T00:00:00Z",
-                "valid_until_utc": "9999-12-31T23:59:59Z",
-            }
+            # AIFS is currently observed only through Open-Meteo.  Require
+            # the per-system negative authority on every new AIFS packet so
+            # an envelope-wide republisher label cannot conceal a forged
+            # native arrival / formal-P0 upgrade.
+            if config.get("candidate_only"):
+                candidate_authority = raw_system.get("candidate_authority")
+                if (
+                    not isinstance(candidate_authority, Mapping)
+                    or candidate_authority.get("source_role")
+                    != "aggregator_republisher"
+                    or candidate_authority.get("candidate_only") is not True
+                    or candidate_authority.get("formal_p0_eligible")
+                    is not False
+                    or candidate_authority.get(
+                        "native_arrival_index_eligible"
+                    ) is not False
+                    or candidate_authority.get(
+                        "official_native_arrival_status"
+                    ) != "MISSING_FAIL_CLOSED"
+                ):
+                    raise ContractError(
+                        "native_ensemble_aifs_candidate_authority_invalid"
+                    )
+            # Product identity is useful for model/family calibration, but
+            # Open-Meteo cannot populate the native-only registry.  Its
+            # transport authority is explicit in this dedicated candidate
+            # lane and cannot satisfy a native arrival/P0 lookup.
+            system_identity = republisher_product_identity(system_id)
             system_row = {
                 **system_identity,
                 "content_sha256": content_sha256(
@@ -179,7 +310,7 @@ def ingest_forward_packet(
             }
             counts["systems"] += _insert_content_addressed(
                 conn,
-                table="calibration_native_ensemble_system",
+                table="calibration_republisher_ensemble_product",
                 primary_key="ensemble_system_id",
                 row=system_row,
             )
@@ -205,7 +336,7 @@ def ingest_forward_packet(
             existing_bucket = conn.execute(
                 "SELECT bucket_intervals_json,"
                 "raw_bucket_probabilities_json,source_role,authority_scope "
-                "FROM calibration_native_ensemble_member_bucket "
+                "FROM calibration_republisher_ensemble_member_bucket "
                 "WHERE ensemble_system_id=? AND station_id=? "
                 "AND target_local_date=? AND member_set_sha256=? "
                 "AND bucket_contract_sha256=?",
@@ -237,15 +368,10 @@ def ingest_forward_packet(
                     "ensemble_system_id": system_id,
                     "station_id": station_id,
                     "target_local_date": event_date,
-                    "run_init_utc": None,
                     "member_id": str(member["member_id"]),
                     "member_role": str(member["member_role"]),
-                    "published_at_utc": None,
                     "received_at_utc": captured_at,
                     "lead_bucket": lead_bucket,
-                    "run_cycle": (
-                        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
-                    ),
                     "raw_tmax_c": float(member["raw_tmax_c"]),
                     "settlement_definition": (
                         "official_daily_tmax_c"
@@ -253,9 +379,8 @@ def ingest_forward_packet(
                     "extraction_version": (
                         "open_meteo_daily_tmax_member_v1"
                     ),
-                    "provider_id": config["provider_id"],
+                    "upstream_provider_id": config["provider_id"],
                     "transport_provider_id": "OPEN_METEO",
-                    "native_timestamps_complete": 0,
                     "aggregator_snapshot_at_utc": captured_at,
                     "source_url": str(packet["request_url"]),
                     "raw_object_ref": (
@@ -272,16 +397,18 @@ def ingest_forward_packet(
                 }
                 member_sha = content_sha256(member_identity)
                 member_row = {
-                    "member_run_id": "native-member-" + member_sha[:32],
+                    "republisher_member_run_id": (
+                        "republisher-member-" + member_sha[:32]
+                    ),
                     **member_identity,
                     "content_sha256": member_sha,
                 }
                 counts["member_runs"] += _insert_content_addressed(
                     conn,
                     table=(
-                        "calibration_native_ensemble_member_run"
+                        "calibration_republisher_ensemble_member_run"
                     ),
-                    primary_key="member_run_id",
+                    primary_key="republisher_member_run_id",
                     row=member_row,
                 )
             bucket_identity = {
@@ -303,27 +430,37 @@ def ingest_forward_packet(
             }
             bucket_sha = content_sha256(bucket_identity)
             bucket_row = {
-                "member_bucket_id": (
-                    "native-bucket-" + bucket_sha[:32]
-                ),
+                    "republisher_member_bucket_id": (
+                    "republisher-bucket-" + bucket_sha[:32]
+                    ),
                 **bucket_identity,
                 "content_sha256": bucket_sha,
             }
             counts["member_buckets"] += _insert_content_addressed(
                 conn,
                 table=(
-                    "calibration_native_ensemble_member_bucket"
+                    "calibration_republisher_ensemble_member_bucket"
                 ),
-                primary_key="member_bucket_id",
+                primary_key="republisher_member_bucket_id",
                 row=bucket_row,
             )
     except Exception:
-        conn.execute(
-            "ROLLBACK TO native_ensemble_forward_ingress"
-        )
-        conn.execute(
-            "RELEASE native_ensemble_forward_ingress"
-        )
+        # SQLite may abort the transaction on I/O failure and remove the
+        # savepoint before control reaches this handler.  Cleanup must never
+        # mask the original error with ``no such savepoint``; the resident
+        # worker needs the original ``disk I/O error`` to reopen its handle.
+        try:
+            conn.execute(
+                "ROLLBACK TO native_ensemble_forward_ingress"
+            )
+        except sqlite3.Error:
+            pass
+        try:
+            conn.execute(
+                "RELEASE native_ensemble_forward_ingress"
+            )
+        except sqlite3.Error:
+            pass
         raise
     conn.execute("RELEASE native_ensemble_forward_ingress")
     return {
@@ -341,4 +478,4 @@ def ingest_forward_packet(
     }
 
 
-__all__ = ["ingest_forward_packet"]
+__all__ = ["ingest_forward_packet", "republisher_product_identity"]

@@ -39,8 +39,8 @@ class RuntimeEnvHealthTests(unittest.TestCase):
 
     def test_proxy_status_marks_replacement_without_secret_leak(self) -> None:
         values = {
-            "HTTPS_PROXY": "http://user:pass@127.0.0.1:7897",
-            "PM_PROXY_PORTS": "7897,7890",
+            "HTTPS_PROXY": "http://user:pass@127.0.0.1:1082",
+            "PM_PROXY_PORTS": "1082,7890",
         }
         with mock.patch.object(
             health,
@@ -51,7 +51,7 @@ class RuntimeEnvHealthTests(unittest.TestCase):
 
         self.assertFalse(payload["current_reachable"])
         self.assertEqual(payload["replacement_available"]["port"], 7890)
-        self.assertEqual(payload["current"]["safe_url"], "http://127.0.0.1:7897")
+        self.assertEqual(payload["current"]["safe_url"], "http://127.0.0.1:1082")
         self.assertNotIn("user", str(payload))
         self.assertNotIn("pass", str(payload))
 

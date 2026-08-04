@@ -452,6 +452,70 @@ def test_open_scope_keeps_stale_latest_p1_subscription_without_fallback(
     assert scope["probability_envelope_id"].endswith("stale-current")
 
 
+def test_open_scope_never_downgrades_stale_p1_to_later_p0_or_p0m(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "target.db"
+    _database(db)
+    _add_probability(
+        db,
+        event_date="2026-07-28",
+        stage="P1",
+        decision_at_utc="2026-07-28T01:45:00Z",
+        fresh_until_utc="2026-07-28T01:59:59Z",
+        suffix="final-stale",
+    )
+    _add_probability(
+        db,
+        event_date="2026-07-28",
+        stage="P0",
+        decision_at_utc="2026-07-28T01:50:00Z",
+        fresh_until_utc="2026-07-28T15:00:00Z",
+        suffix="later-replay",
+    )
+    _add_probability(
+        db,
+        event_date="2026-07-28",
+        stage="P0-M",
+        decision_at_utc="2026-07-28T01:55:00Z",
+        fresh_until_utc="2026-07-28T15:00:00Z",
+        suffix="later-replay",
+    )
+
+    catalog = _scope(
+        db_path=db,
+        as_of_utc="2026-07-28T02:00:00Z",
+    )
+
+    scope = catalog["scopes"][0]
+    assert scope["event_day_state"] == "open"
+    assert scope["probability_stage"] == "P1"
+    assert scope["probability_evidence_fresh"] is False
+    assert scope["probability_envelope_id"] == "p1-final-stale"
+
+
+def test_scope_rejects_ambiguous_latest_checkpoint_within_stage(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "target.db"
+    _database(db)
+    for suffix in ("same-clock-a", "same-clock-b"):
+        _add_probability(
+            db,
+            event_date="2026-07-28",
+            stage="P0",
+            decision_at_utc="2026-07-28T01:50:00Z",
+            fresh_until_utc="2026-07-28T15:00:00Z",
+            suffix=suffix,
+        )
+
+    with pytest.raises(
+        ContractError,
+        match="resident_target_ws_probability_stage_checkpoint_ambiguous",
+    ):
+        _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+
+
 def test_only_future_probability_expiry_requires_catalog_refresh() -> None:
     open_scope = {
         "event_day_state": "open",

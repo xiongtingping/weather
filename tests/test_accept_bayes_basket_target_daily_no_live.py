@@ -11,7 +11,7 @@ import scripts.accept_bayes_basket_target_daily_no_live as acceptance
 
 H = "a" * 64
 SERVICES = {
-    "com.weather.reported_trajectory_no": 1001,
+    "com.weather.weather_basket_yes": 1001,
     "com.weather.market_ws": 1002,
     "com.weather.clob_order_service": 1003,
 }
@@ -159,7 +159,10 @@ def test_daily_acceptance_passes_and_reports_forward_oos_as_nonblocking(tmp_path
     assert result["checks"]["probability"]["stage_counts"] == {"P0": 1, "P0-M": 1, "P1": 1}
     assert result["checks"]["training"]["labels_state"] == "PENDING_SETTLEMENT"
     assert result["checks"]["forward_oos"]["blocks_production_no_live"] is False
-    assert result["checks"]["forward_oos"]["blocks_parameter_or_weight_promotion"] is True
+    assert result["checks"]["historical_oos"]["blocks_parameter_or_weight_promotion"] is False
+    assert result["checks"]["historical_oos"][
+        "historical_strict_oos_required_for_parameter_or_weight_promotion"
+    ] is True
     assert db.read_bytes() == before
 
 
@@ -174,7 +177,7 @@ def test_service_missing_or_drift_fails_closed(tmp_path: Path) -> None:
     )
     assert result["state"] == "BLOCKED_FAIL_CLOSED"
     assert "user_service_set_drift" in result["blockers"]
-    assert "user_service_missing:com.weather.reported_trajectory_no" in result["blockers"]
+    assert "user_service_missing:com.weather.weather_basket_yes" in result["blockers"]
 
 
 def test_stale_official_ws_fails_closed(tmp_path: Path) -> None:

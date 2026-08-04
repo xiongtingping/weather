@@ -1,0 +1,22 @@
+{
+  "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+  "calls_order_gateway": false,
+  "content_sha256": "744d0d66ece20abcb5f2b75c761a507b9b3005a938e49f8803dadfcb20f75035",
+  "event_date": "2026-07-23",
+  "official_tmax_c": 26.0,
+  "orders_submitted": 0,
+  "receipt_sha256": "283faafea49b120b122515560e5747febf96dab975a884259c27c205f5f35974",
+  "revision_no": 1,
+  "schema": "historical_awc_truth_revision_append_v1",
+  "settlement_timezone": "America/Mexico_City",
+  "source_packet_sha256": "b4280c4f9f0f3a59b3390b2eede6027f91155adb12a98a4647a25e3bfd9f5169",
+  "source_payload_sha256": "d1070e96a675edcd975259da4115cd7d12355c3a9f930cf994471a647a0cb64e",
+  "source_role": "AWC_HISTORICAL_REPLAY_INGRESS",
+  "state": "VALIDATED_NO_WRITE",
+  "station_day_end_utc": "2026-07-24T06:00:00.000Z",
+  "station_id": "MMMX",
+  "truth_id": "truth_c751d3d659f5077e336d28fc539aedd1c1385e28",
+  "writes_production_database": false,
+  "writes_target_database": false,
+  "wrote": false
+}

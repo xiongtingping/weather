@@ -1,7 +1,7 @@
 """Production decision path with live submission deliberately disabled.
 
 The target compiler is now exposed through the production vocabulary.  The
-decision path consumes the same materialized P0/P1, station-policy and
+decision path consumes the same materialized P0/P0-M/P1, station-policy and
 official-CLOB contracts used by the eventual executor, but this deployment
 mode stops at a durable, auditable order *candidate*: it never calls a
 gateway, writes an order/outbox/intent row, or treats a dry-run result as a
@@ -57,6 +57,9 @@ from .stages import select_current_stage
 
 PRODUCTION_PLAN_SCHEMA = "bayes_basket_production_plan_v1"
 PRODUCTION_EXECUTION_MODE = "production_no_live"
+STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
+    "basket_target_stage_zero_execution_anchor_v1"
+)
 
 
 def _normalized_utc(name: str, value: Any) -> tuple[str, datetime]:
@@ -125,8 +128,8 @@ def _build_forward_evidence_binding(
     if source != "OFFICIAL_CLOB_WS":
         raise ContractError("forward_quote_source_not_official_clob_ws")
     stage = str(lineage.get("probability_stage") or "").strip().upper()
-    if stage != "P1":
-        raise ContractError("forward_probability_stage_requires_p1")
+    if stage not in {"P0", "P0-M", "P1"}:
+        raise ContractError("forward_probability_stage_invalid")
     phase = str(lineage.get("cash_phase") or "").strip().upper()
     if phase not in {"HEAVY", "STANDARD", "TAIL"}:
         raise ContractError("forward_cash_phase_invalid")
@@ -230,6 +233,7 @@ def compile_production_plan(
     require_regime_ssot: bool = True,
     resource_probe_ok: bool = False,
     delta_v2_owns_cadence: bool = False,
+    expected_source_lane: str | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production_no_live decision."""
 
@@ -254,6 +258,7 @@ def compile_production_plan(
         require_regime_ssot=require_regime_ssot,
         resource_probe_ok=resource_probe_ok,
         delta_v2_owns_cadence=delta_v2_owns_cadence,
+        expected_source_lane=expected_source_lane,
     )
     plan = dict(result)
     plan["schema"] = PRODUCTION_PLAN_SCHEMA
@@ -735,9 +740,201 @@ def commit_production_candidate_atomic(
     return result
 
 
+def commit_production_stage_zero_execution_atomic(
+    conn: Any,
+    *,
+    compiled_plan: Mapping[str, Any],
+    anchor: Mapping[str, Any],
+    created_at_utc: str,
+) -> dict[str, Any]:
+    """Commit a pre-final no-execution decision and its exact forward fact.
+
+    This companion validates the complete read-only compile against its
+    content-addressed zero-execution anchor and delegates the single blocked
+    decision/vector write to the dedicated ledger boundary.  The resident
+    production_no_live entry point therefore never materializes observation,
+    bound, intent or reservation facts.  An authorized P0/P0-M decision does
+    atomically materialize its own exact forward-training fact, which is
+    explicitly evidence-only and never borrows P1 METAR/SPECI facts.
+    """
+
+    if not isinstance(compiled_plan, Mapping):
+        raise ContractError("stage_zero_execution_compiled_plan_mapping_required")
+    if not isinstance(anchor, Mapping):
+        raise ContractError("stage_zero_execution_anchor_mapping_required")
+    if compiled_plan.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
+        raise ContractError("stage_zero_execution_execution_mode_invalid")
+    if compiled_plan.get("live_submit_authorized") is not False:
+        raise ContractError("stage_zero_execution_live_submit_boundary_invalid")
+    boundary = compiled_plan.get("boundary")
+    if (
+        not isinstance(boundary, Mapping)
+        or boundary.get("calls_order_gateway") is not False
+        or boundary.get("places_orders") is not False
+        or int(boundary.get("orders_submitted", -1)) != 0
+    ):
+        raise ContractError("stage_zero_execution_gateway_boundary_invalid")
+    if anchor.get("schema") != STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA:
+        raise ContractError("stage_zero_execution_anchor_schema_invalid")
+    if (
+        anchor.get("final_authority") != "P1"
+        or anchor.get("capital_authorized") is not False
+        or int(anchor.get("intents_written", -1)) != 0
+        or int(anchor.get("reservations_written", -1)) != 0
+        or anchor.get("calls_order_gateway") is not False
+        or anchor.get("live_submit_authorized") is not False
+        or int(anchor.get("orders_submitted", -1)) != 0
+    ):
+        raise ContractError("stage_zero_execution_authority_boundary_invalid")
+
+    anchor_probability = anchor.get("probability_envelope")
+    if not isinstance(anchor_probability, Mapping):
+        raise ContractError("stage_zero_execution_anchor_probability_missing")
+    stage = str(anchor_probability.get("stage") or "").strip()
+    if stage not in {"P0", "P0-M"}:
+        raise ContractError("stage_zero_execution_anchor_probability_stage_invalid")
+    candidate_probability = compiled_plan.get("probability_envelope")
+    if not isinstance(candidate_probability, Mapping):
+        raise ContractError("stage_zero_execution_candidate_probability_missing")
+    if str(candidate_probability.get("stage") or "").strip() != stage:
+        raise ContractError("stage_zero_execution_candidate_probability_stage_mismatch")
+    plan = compiled_plan.get("plan")
+    if not isinstance(plan, Mapping):
+        raise ContractError("stage_zero_execution_candidate_plan_missing")
+    lineage = plan.get("lineage")
+    if (
+        not isinstance(lineage, Mapping)
+        or str(lineage.get("probability_stage") or "").strip() != stage
+    ):
+        raise ContractError("stage_zero_execution_candidate_plan_stage_mismatch")
+
+    # Compare the complete compiled object, rather than reconstructing a
+    # reduced projection.  The anchor is intentionally sensitive to every
+    # basket input and cannot be replayed against later market/inventory state.
+    expected_compiled_plan = {
+        key: value
+        for key, value in compiled_plan.items()
+        if key != "compiled_plan_sha256"
+    }
+    anchored_compiled_plan = anchor.get("compiled_plan")
+    if (
+        not isinstance(anchored_compiled_plan, Mapping)
+        or dict(anchored_compiled_plan) != expected_compiled_plan
+    ):
+        raise ContractError("stage_zero_execution_compiled_plan_anchor_mismatch")
+    expected_compiled_plan_sha = content_sha256(expected_compiled_plan)
+    if _required_sha(
+        "stage_zero_execution_compiled_plan_sha",
+        anchor.get("compiled_plan_sha256"),
+    ) != expected_compiled_plan_sha:
+        raise ContractError("stage_zero_execution_compiled_plan_sha_mismatch")
+    supplied_anchor_sha = _required_sha(
+        "stage_zero_execution_anchor_sha",
+        anchor.get("content_sha256"),
+    )
+    expected_anchor_sha = content_sha256({
+        key: value for key, value in anchor.items() if key != "content_sha256"
+    })
+    if supplied_anchor_sha != expected_anchor_sha:
+        raise ContractError("stage_zero_execution_anchor_sha_mismatch")
+
+    created_at, _created_at_dt = _normalized_utc(
+        "stage_zero_execution_created_at_utc",
+        created_at_utc,
+    )
+    anchor_evaluation_at, _anchor_evaluation_dt = _normalized_utc(
+        "stage_zero_execution_anchor_evaluation_at_utc",
+        anchor.get("evaluation_at_utc"),
+    )
+    candidate_evaluation_at, _candidate_evaluation_dt = _normalized_utc(
+        "stage_zero_execution_candidate_evaluation_at_utc",
+        compiled_plan.get("evaluation_at_utc"),
+    )
+    if (
+        created_at != anchor_evaluation_at
+        or candidate_evaluation_at != anchor_evaluation_at
+    ):
+        raise ContractError("stage_zero_execution_decision_clock_mismatch")
+
+    delta_v2_audit = compiled_plan.get("delta_v2_audit")
+    if delta_v2_audit is not None and not isinstance(delta_v2_audit, Mapping):
+        raise ContractError("stage_zero_execution_delta_v2_audit_mapping_required")
+    delta_v2_authorized = (
+        isinstance(delta_v2_audit, Mapping)
+        and delta_v2_audit.get("authorized") is True
+    )
+    forward_evidence_binding = None
+    if delta_v2_authorized:
+        market_snapshot = compiled_plan.get("production_market_snapshot")
+        production_inputs = compiled_plan.get("production_inputs")
+        if not isinstance(market_snapshot, Mapping):
+            raise ContractError("stage_zero_execution_market_snapshot_missing")
+        if not isinstance(production_inputs, Mapping):
+            raise ContractError("stage_zero_execution_production_inputs_missing")
+        forward_evidence_binding = _build_forward_evidence_binding(
+            plan=plan,
+            lineage=lineage,
+            market_snapshot=market_snapshot,
+            production_inputs=production_inputs,
+            delta_v2_audit=delta_v2_audit,
+            decision_at_utc=anchor_evaluation_at,
+        )
+
+    # The historical/post-fill P1 fact writer remains separate from the
+    # resident dry-run entry point.  This dedicated P0/P0-M boundary creates
+    # only a no-execution vector plus a fully lineage-bound forward fact.
+    from .atomic_ledger import commit_stage_zero_execution_scope_decision
+
+    receipt = commit_stage_zero_execution_scope_decision(
+        conn,
+        anchor=anchor,
+        # Preserve the normalized decision clock as the durable SQLite
+        # timestamp.  This is semantically identical to the caller's input
+        # but cannot diverge in representation from the anchor.
+        created_at_utc=anchor_evaluation_at,
+        training_fact_authorized=delta_v2_authorized,
+        forward_evidence_binding=forward_evidence_binding,
+    )
+    training_state = receipt.get("training_fact_state")
+    if delta_v2_authorized and training_state is None:
+        raise ContractError("stage_zero_execution_training_fact_state_missing")
+    return {
+        "schema": "bayes_basket_target_production_stage_zero_execution_atomic_v1",
+        "state": receipt["state"],
+        "receipt": receipt,
+        "stage_zero_execution_anchor_sha256": supplied_anchor_sha,
+        "candidate_will_order": False,
+        "orders_submitted": 0,
+        "places_orders": False,
+        "calls_order_gateway": False,
+        "writes_target_ledger": True,
+        "live_submit_authorized": False,
+        "intents_written": 0,
+        "reservations_written": 0,
+        "training_facts_written": int(
+            training_state in {"committed", "already_committed"}
+        ),
+        "delta_v2_training_fact": (
+            {
+                "schema": "delta_basket_score_training_fact_v2",
+                "state": str(training_state),
+                "idempotent": training_state == "already_committed",
+            }
+            if training_state is not None
+            else None
+        ),
+        "forward_observation_status": (
+            "ELIGIBLE"
+            if forward_evidence_binding is not None
+            else "INELIGIBLE_DELTA_V2_NOT_AUTHORIZED"
+        ),
+    }
+
+
 __all__ = [
     "PRODUCTION_EXECUTION_MODE",
     "PRODUCTION_PLAN_SCHEMA",
     "commit_production_candidate_atomic",
+    "commit_production_stage_zero_execution_atomic",
     "compile_production_plan",
 ]

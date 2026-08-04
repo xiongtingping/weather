@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.calibration import validate_formal_ensemble_artifact  # noqa: E402
+from bayes_basket_target.artifact_ingress import ingest_artifact_bundle  # noqa: E402
 from bayes_basket_target.contracts import (  # noqa: E402
     EPS,
     CalibrationActivation,
@@ -703,22 +704,43 @@ def repair_invalid_single_model_activations(
                     as_of_utc=timestamp,
                     station_ids=normalized_stations,
                 )
-                for index, repair in enumerate(repairs, start=1):
-                    values = tuple(repair[key] for key in ACTIVATION_COLUMNS)
-                    conn.execute(
-                        "INSERT INTO calibration_activation("
-                        + ",".join(ACTIVATION_COLUMNS)
-                        + ") VALUES("
-                        + ",".join("?" for _ in ACTIVATION_COLUMNS)
-                        + ")",
-                        values,
-                    )
-                    rows_written += 1
-                    if (
-                        _fail_after_insert is not None
-                        and index >= _fail_after_insert
-                    ):
+                if _fail_after_insert is not None and repairs:
+                    # Keep the fault-injection contract without reintroducing
+                    # a second SQL writer: the canonical artifact ingress is
+                    # all-or-nothing, so an injected fault aborts before it is
+                    # called and leaves zero rows behind.
+                    if _fail_after_insert <= len(repairs):
                         raise RuntimeError("repair_injected_failure")
+                packet = {
+                    "schema": "bayes_basket_target_artifact_ingress_v1",
+                    "execution_mode": "production_no_live",
+                    "live_order_authorized": False,
+                    "places_orders": False,
+                    "calls_order_gateway": False,
+                    "orders_submitted": 0,
+                    "calibration_artifacts": [],
+                    "ensemble_selection_evidence": [],
+                    "ensemble_artifacts": [],
+                    "calibration_activations": [
+                        {key: repair[key] for key in ACTIVATION_COLUMNS}
+                        for repair in repairs
+                    ],
+                    "global_priors": [],
+                    "policy_artifacts": [],
+                    "policy_activations": [],
+                    "cash_phase_policies": [],
+                    "cash_phase_authority_manifests": [],
+                    "calibration_promotions": [],
+                    "policy_promotions": [],
+                }
+                ingress_result = ingest_artifact_bundle(
+                    conn,
+                    packet,
+                    commit=True,
+                    finalize_transaction=False,
+                    require_full_schema=False,
+                )
+                rows_written = int(ingress_result["counts"]["calibration_activations"])
                 _quick_check(conn)
                 assert_process_memory_budget()
                 assert_target_db_capacity(database)

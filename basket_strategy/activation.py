@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-SCHEMA_VERSION = "basket_plus_hard_no_production_activation_v1"
-DEFAULT_PATH = Path(__file__).resolve().parents[1] / "config" / "trading" / "basket_plus_hard_no_v1.json"
+SCHEMA_VERSION = "basket_yes_production_activation_v1"
+DEFAULT_PATH = Path(__file__).resolve().parents[1] / "config" / "trading" / "basket_yes_v1.json"
 
 
 def _canonical(value: Mapping[str, Any]) -> str:
@@ -29,10 +29,7 @@ def validate_activation(value: Mapping[str, Any]) -> dict[str, Any]:
         blockers.append("basket_activation_schema_invalid")
     if row.get("state") not in {"disabled", "enabled"}:
         blockers.append("basket_activation_state_invalid")
-    if not isinstance(row.get("production_strategy_allowlist"), list) or row.get("production_strategy_allowlist") != [
-        "basket_yes",
-        "reported_trajectory_no",
-    ]:
+    if not isinstance(row.get("production_strategy_allowlist"), list) or row.get("production_strategy_allowlist") != ["basket_yes"]:
         blockers.append("basket_activation_strategy_allowlist_invalid")
     enabled = row.get("state") == "enabled"
     execution_mode = row.get("execution_mode", "production_live")

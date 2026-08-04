@@ -1,0 +1,89 @@
+{
+  "schema": "basket_settled_label_increment_receipt_v1",
+  "as_of_utc": "2026-08-01T10:07:33.449Z",
+  "target_ssot": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "canonical_truth_source": "/Users/xiong/weather/data/archive.db",
+  "forward_store": "/Users/xiong/weather/data/runtime/bayes_basket_target_cash_phase/forward_observations.sqlite3",
+  "before": {
+    "training": {
+      "facts": 1384,
+      "d2_facts": 962,
+      "labelled_d2_fact_ids": 405,
+      "unlabelled_d2_fact_ids": 557,
+      "label_rows": 623
+    },
+    "forward_store": {
+      "generation": 362,
+      "last_source_label_rowid": 623,
+      "forward_settlement_label_rows": 350,
+      "skipped_ineligible_label_rows": 273
+    }
+  },
+  "closed_scope_truth_probe": {
+    "station_id": "LEMD",
+    "event_date": "2026-07-31",
+    "state": "blocked_fail_closed",
+    "reason": "ContractError:settlement_truth_correction_requires_manual_review:correction_review_required:rtobs_b29ab39e8db77e9ada8fd21262d06e7a",
+    "wrote": false
+  },
+  "label_ingress": {
+    "schema": "delta_basket_score_training_label_batch_v2",
+    "state": "no_new_final_labels",
+    "candidate_count": 0,
+    "appended_count": 0,
+    "blockers": [],
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false
+  },
+  "forward_settlement_sync": {
+    "state": "already_current_for_materialized_labels",
+    "inserted": 0,
+    "ingested": 0,
+    "replayed": 64,
+    "retry_backlog": 273,
+    "retry_backlog_state": "SKIPPED_INELIGIBLE_waiting_exact_forward_observation",
+    "generation": 362,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false
+  },
+  "unlabelled_scope": {
+    "closed_awc_truth_blocked": [
+      {
+        "station_id": "LEMD",
+        "event_date": "2026-07-31",
+        "fact_count": 35,
+        "reason": "official_awc_correction_manual_review_required"
+      }
+    ],
+    "open_settlement_day": {
+      "event_date": "2026-08-01",
+      "fact_count": 522,
+      "reason": "official_awc_final_closed_truth_not_yet_eligible"
+    },
+    "legacy_out_of_delta_v2_scope": {
+      "event_date": "2026-07-28",
+      "fact_count": 422,
+      "fact_prefix": "sdfact_",
+      "reason": "not_d2fact_forward_contract_no_retrofit"
+    }
+  },
+  "after": {
+    "training": {
+      "facts": 1384,
+      "d2_facts": 962,
+      "labelled_d2_fact_ids": 405,
+      "unlabelled_d2_fact_ids": 557,
+      "label_rows": 623
+    },
+    "forward_store": {
+      "generation": 362,
+      "last_source_label_rowid": 623,
+      "forward_settlement_label_rows": 350,
+      "skipped_ineligible_label_rows": 273
+    }
+  },
+  "service_restart": false,
+  "content_sha256": "a894a3569e0410663afbed33dda39b99d2247e4b5c067822c2cef982c233882c"
+}

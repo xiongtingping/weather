@@ -24,6 +24,11 @@ BLOCKED_SCHEMA = "bayes_basket_target_prospective_model_arrival_blocked_v1"
 INDEX_SCHEMA = "bayes_basket_target_model_arrival_index_v2"
 ALLOWED_PROVIDERS = {
     "ecmwf_ifs025_official": "ECMWF",
+    # AIFS Single is an official ECMWF-native product, but it remains in the
+    # same ECMWF independence family as IFS.  A native arrival receipt makes
+    # the product eligible for forward calibration; it does not create a
+    # second independent family or bypass strict OOS activation.
+    "ecmwf_aifs025_official": "ECMWF",
     "gfs_0p25_official": "GFS",
     "icon_global_official": "ICON",
 }

@@ -1,0 +1,14 @@
+{
+  "content_sha256": "d5ac7b59fe9e8fe3797644564ab37638eeccd0709e8c93427fc8052fe28dbd59",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "94d1594bee209a90b8624a64337ab5ed6b793ab3bffa46173aca32258d529f98",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Kolkata",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "VILK"
+}

@@ -44,5 +44,5 @@ their bounds:
 - `balance_rate_limited_until` is set after `429` / `1015`
 
 Before changing any default, verify that Codex backend requests through the
-current Clash Verge mixed port, `http://127.0.0.1:7897`, remain stable while
+current Clash Verge mixed port, `http://127.0.0.1:1082`, remain stable while
 the CLOB service is active.

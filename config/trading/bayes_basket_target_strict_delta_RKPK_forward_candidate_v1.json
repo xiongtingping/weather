@@ -27,7 +27,7 @@
   "planned_train_end_date": "2026-08-03",
   "planned_holdout_start_date": "2026-08-04",
   "planned_holdout_end_date": "2026-08-10",
-  "oos_gate_version": "strict-delta-forward-oos-gate-v1",
+  "oos_gate_version": "strict-delta-historical-oos-gate-v1",
   "trained_through_utc": "2026-07-28T02:31:00Z",
   "valid_from_utc": "2026-07-28T02:32:00Z",
   "valid_until_utc": "2026-08-11T00:00:00Z",

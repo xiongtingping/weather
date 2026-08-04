@@ -1,0 +1,359 @@
+{
+  "artifact_id": "station_policy_utility_contract_v2",
+  "authority": "EVIDENCE_SCHEMA_ONLY",
+  "calls_order_gateway": false,
+  "content_sha256": "2ae33bbd5e6096f768cafdc292677f5ade17f24017b172ebc71325819719cfbe",
+  "contract_version": "2.0.0",
+  "families": {
+    "cadence": {
+      "binding_state": "UNBOUND",
+      "direct_fill_binding": "UNBOUND",
+      "family": "cadence",
+      "formula_language": "symbolic_no_evaluation",
+      "formulas": {
+        "cadence_utility_delta_usdc": "settlement_utility_delta_usdc - wait_opportunity_cost_usdc - adverse_selection_cost_usdc - capital_lock_cost_usdc",
+        "wait_opportunity_cost_usdc": "counterfactual_act_utility_usdc - counterfactual_wait_utility_usdc"
+      },
+      "hard_requirements": [
+        "candidate_and_baseline_same_exact_decision_scope",
+        "candidate_and_baseline_immutable_content_addressed",
+        "official_clob_ws_only_and_quote_fresh_at_decision",
+        "settlement_truth_closed_and_content_addressed",
+        "confirmed_fill_receipt_direct_binding_required_before_utility",
+        "no_score_or_proxy_outcome_in_decision_fact"
+      ],
+      "metric_definition": {
+        "candidate_baseline_pairing": "one_to_one_exact_scope",
+        "evaluation_phase": "POST_SETTLEMENT_ONLY",
+        "execution_cost_basis": "confirmed_filled_notional_from_direct_receipt_bindings",
+        "partial_fill_rule": "use confirmed filled quantity and notional by bucket; never promote requested quantity to filled quantity",
+        "score_row_emission": "forbidden unless all required raw bindings validate and an independent scorer version is explicitly activated",
+        "settlement_rule": "closed official winner bucket maps only direct confirmed YES fills to payout",
+        "unit": "USDC delta versus same-scope baseline",
+        "ws_cost_role": "official CLOB WS all-in YES asks are same-decision cost marks, not a fill or utility substitute",
+        "zero_fill_rule": "only explicit authoritative zero-fill receipt; absence of a receipt is never zero fill"
+      },
+      "metric_state": "DEFINED_UNBOUND",
+      "promotion_permitted": false,
+      "purpose": "Compare act-now versus wait/queue timing under identical scope, with explicit opportunity-cost and deadline facts.",
+      "required_bindings": {
+        "baseline_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_vs_baseline": [
+          "candidate_decision_fact_sha256",
+          "baseline_decision_fact_sha256",
+          "candidate_plan_sha256",
+          "baseline_plan_sha256",
+          "candidate_inventory_vector_sha256",
+          "baseline_inventory_vector_sha256",
+          "candidate_support_bucket_ids",
+          "baseline_support_bucket_ids"
+        ],
+        "execution": [
+          "candidate_fill_receipt_bindings",
+          "baseline_fill_receipt_bindings",
+          "candidate_fill_receipt_set_sha256",
+          "baseline_fill_receipt_set_sha256",
+          "candidate_confirmed_filled_qty_by_bucket",
+          "baseline_confirmed_filled_qty_by_bucket",
+          "candidate_confirmed_filled_notional_usdc_by_bucket",
+          "baseline_confirmed_filled_notional_usdc_by_bucket",
+          "candidate_fill_outcome_by_bucket",
+          "baseline_fill_outcome_by_bucket",
+          "wait_started_at_utc",
+          "wait_ended_at_utc",
+          "wait_or_act_arm",
+          "capital_lock_cost_usdc",
+          "adverse_selection_cost_usdc",
+          "counterfactual_act_receipt_bindings",
+          "counterfactual_wait_receipt_bindings"
+        ],
+        "official_clob_ws": [
+          "candidate_ws_snapshot_sha256",
+          "baseline_ws_snapshot_sha256",
+          "candidate_quote_sequence",
+          "baseline_quote_sequence",
+          "candidate_all_in_yes_ask_by_bucket",
+          "baseline_all_in_yes_ask_by_bucket",
+          "quote_source",
+          "quote_observed_at_utc",
+          "quote_expires_at_utc"
+        ],
+        "scope": [
+          "station_id",
+          "event_date",
+          "settlement_timezone",
+          "stage",
+          "decision_at_utc",
+          "strategy_version",
+          "season_bin",
+          "maturity_bin",
+          "liquidity_bin"
+        ],
+        "settlement": [
+          "settlement_truth_sha256",
+          "settlement_outcome_sha256",
+          "winner_bucket",
+          "settlement_closed_at_utc"
+        ],
+        "timing": [
+          "candidate_decision_at_utc",
+          "baseline_decision_at_utc",
+          "next_checkpoint_at_utc",
+          "event_deadline_at_utc"
+        ]
+      },
+      "units": {
+        "cost": "USDC",
+        "price": "USDC per YES share",
+        "quantity": "YES shares",
+        "time": "UTC seconds"
+      }
+    },
+    "reserve": {
+      "binding_state": "UNBOUND",
+      "direct_fill_binding": "UNBOUND",
+      "family": "reserve",
+      "formula_language": "symbolic_no_evaluation",
+      "formulas": {
+        "cancel_cost_usdc": "cancel_fee_usdc + reprice_cost_usdc",
+        "confirmed_fill_utility_delta_usdc": "settlement_utility_delta_usdc - queue_cost_usdc - cancel_cost_usdc - adverse_selection_cost_usdc - capital_lock_cost_usdc",
+        "queue_cost_usdc": "queue_wait_seconds * frozen_queue_cost_rate_usdc_per_second"
+      },
+      "hard_requirements": [
+        "candidate_and_baseline_same_exact_decision_scope",
+        "candidate_and_baseline_immutable_content_addressed",
+        "official_clob_ws_only_and_quote_fresh_at_decision",
+        "settlement_truth_closed_and_content_addressed",
+        "confirmed_fill_receipt_direct_binding_required_before_utility",
+        "no_score_or_proxy_outcome_in_decision_fact"
+      ],
+      "metric_definition": {
+        "candidate_baseline_pairing": "one_to_one_exact_scope",
+        "evaluation_phase": "POST_SETTLEMENT_ONLY",
+        "execution_cost_basis": "confirmed_filled_notional_from_direct_receipt_bindings",
+        "partial_fill_rule": "use confirmed filled quantity and notional by bucket; never promote requested quantity to filled quantity",
+        "score_row_emission": "forbidden unless all required raw bindings validate and an independent scorer version is explicitly activated",
+        "settlement_rule": "closed official winner bucket maps only direct confirmed YES fills to payout",
+        "unit": "USDC delta versus same-scope baseline",
+        "ws_cost_role": "official CLOB WS all-in YES asks are same-decision cost marks, not a fill or utility substitute",
+        "zero_fill_rule": "only explicit authoritative zero-fill receipt; absence of a receipt is never zero fill"
+      },
+      "metric_state": "DEFINED_UNBOUND",
+      "promotion_permitted": false,
+      "purpose": "Attribute confirmed Maker fill, queue wait, and cancel outcomes against the same-scope baseline.",
+      "required_bindings": {
+        "baseline_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_vs_baseline": [
+          "candidate_decision_fact_sha256",
+          "baseline_decision_fact_sha256",
+          "candidate_plan_sha256",
+          "baseline_plan_sha256",
+          "candidate_inventory_vector_sha256",
+          "baseline_inventory_vector_sha256",
+          "candidate_support_bucket_ids",
+          "baseline_support_bucket_ids"
+        ],
+        "execution": [
+          "candidate_fill_receipt_bindings",
+          "baseline_fill_receipt_bindings",
+          "candidate_fill_receipt_set_sha256",
+          "baseline_fill_receipt_set_sha256",
+          "candidate_confirmed_filled_qty_by_bucket",
+          "baseline_confirmed_filled_qty_by_bucket",
+          "candidate_confirmed_filled_notional_usdc_by_bucket",
+          "baseline_confirmed_filled_notional_usdc_by_bucket",
+          "candidate_fill_outcome_by_bucket",
+          "baseline_fill_outcome_by_bucket",
+          "queue_entered_at_utc",
+          "queue_exit_at_utc",
+          "cancel_requested_at_utc",
+          "cancel_confirmed_at_utc",
+          "cancel_receipt_sha256",
+          "adverse_selection_cost_usdc",
+          "capital_lock_cost_usdc",
+          "frozen_queue_cost_rate_usdc_per_second",
+          "cancel_fee_usdc",
+          "reprice_cost_usdc"
+        ],
+        "official_clob_ws": [
+          "candidate_ws_snapshot_sha256",
+          "baseline_ws_snapshot_sha256",
+          "candidate_quote_sequence",
+          "baseline_quote_sequence",
+          "candidate_all_in_yes_ask_by_bucket",
+          "baseline_all_in_yes_ask_by_bucket",
+          "quote_source",
+          "quote_observed_at_utc",
+          "quote_expires_at_utc"
+        ],
+        "scope": [
+          "station_id",
+          "event_date",
+          "settlement_timezone",
+          "stage",
+          "decision_at_utc",
+          "strategy_version",
+          "season_bin",
+          "maturity_bin",
+          "liquidity_bin"
+        ],
+        "settlement": [
+          "settlement_truth_sha256",
+          "settlement_outcome_sha256",
+          "winner_bucket",
+          "settlement_closed_at_utc"
+        ],
+        "timing": []
+      },
+      "units": {
+        "cost": "USDC",
+        "price": "USDC per YES share",
+        "quantity": "YES shares",
+        "time": "UTC seconds"
+      }
+    },
+    "target": {
+      "binding_state": "UNBOUND",
+      "direct_fill_binding": "UNBOUND",
+      "family": "target",
+      "formula_language": "symbolic_no_evaluation",
+      "formulas": {
+        "confirmed_fill_cost_usdc": "sum_b(confirmed_filled_notional_usdc_b)",
+        "settlement_net_usdc": "settlement_payout_usdc - confirmed_fill_cost_usdc",
+        "settlement_payout_usdc": "confirmed_filled_quantity_winner_bucket if winner_bucket in support else 0",
+        "settlement_utility_delta_usdc": "candidate_settlement_net_usdc - baseline_settlement_net_usdc",
+        "ws_mark_cost_usdc": "sum_b(quantity_b * all_in_yes_ask_b) + fees_usdc"
+      },
+      "hard_requirements": [
+        "candidate_and_baseline_same_exact_decision_scope",
+        "candidate_and_baseline_immutable_content_addressed",
+        "official_clob_ws_only_and_quote_fresh_at_decision",
+        "settlement_truth_closed_and_content_addressed",
+        "confirmed_fill_receipt_direct_binding_required_before_utility",
+        "no_score_or_proxy_outcome_in_decision_fact"
+      ],
+      "metric_definition": {
+        "candidate_baseline_pairing": "one_to_one_exact_scope",
+        "evaluation_phase": "POST_SETTLEMENT_ONLY",
+        "execution_cost_basis": "confirmed_filled_notional_from_direct_receipt_bindings",
+        "partial_fill_rule": "use confirmed filled quantity and notional by bucket; never promote requested quantity to filled quantity",
+        "score_row_emission": "forbidden unless all required raw bindings validate and an independent scorer version is explicitly activated",
+        "settlement_rule": "closed official winner bucket maps only direct confirmed YES fills to payout",
+        "unit": "USDC delta versus same-scope baseline",
+        "ws_cost_role": "official CLOB WS all-in YES asks are same-decision cost marks, not a fill or utility substitute",
+        "zero_fill_rule": "only explicit authoritative zero-fill receipt; absence of a receipt is never zero fill"
+      },
+      "metric_state": "DEFINED_UNBOUND",
+      "promotion_permitted": false,
+      "purpose": "Compare one frozen candidate inventory vector with its same-scope frozen baseline using official WS all-in cost and closed settlement truth.",
+      "required_bindings": {
+        "baseline_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_inventory": [
+          "plan_sha256",
+          "inventory_vector_sha256",
+          "support_bucket_ids",
+          "target_quantity_by_bucket"
+        ],
+        "candidate_vs_baseline": [
+          "candidate_decision_fact_sha256",
+          "baseline_decision_fact_sha256",
+          "candidate_plan_sha256",
+          "baseline_plan_sha256",
+          "candidate_inventory_vector_sha256",
+          "baseline_inventory_vector_sha256",
+          "candidate_support_bucket_ids",
+          "baseline_support_bucket_ids"
+        ],
+        "execution": [
+          "candidate_fill_receipt_bindings",
+          "baseline_fill_receipt_bindings",
+          "candidate_fill_receipt_set_sha256",
+          "baseline_fill_receipt_set_sha256",
+          "candidate_confirmed_filled_qty_by_bucket",
+          "baseline_confirmed_filled_qty_by_bucket",
+          "candidate_confirmed_filled_notional_usdc_by_bucket",
+          "baseline_confirmed_filled_notional_usdc_by_bucket",
+          "candidate_fill_outcome_by_bucket",
+          "baseline_fill_outcome_by_bucket"
+        ],
+        "official_clob_ws": [
+          "candidate_ws_snapshot_sha256",
+          "baseline_ws_snapshot_sha256",
+          "candidate_quote_sequence",
+          "baseline_quote_sequence",
+          "candidate_all_in_yes_ask_by_bucket",
+          "baseline_all_in_yes_ask_by_bucket",
+          "quote_source",
+          "quote_observed_at_utc",
+          "quote_expires_at_utc"
+        ],
+        "scope": [
+          "station_id",
+          "event_date",
+          "settlement_timezone",
+          "stage",
+          "decision_at_utc",
+          "strategy_version",
+          "season_bin",
+          "maturity_bin",
+          "liquidity_bin"
+        ],
+        "settlement": [
+          "settlement_truth_sha256",
+          "settlement_outcome_sha256",
+          "winner_bucket",
+          "settlement_closed_at_utc"
+        ],
+        "timing": []
+      },
+      "units": {
+        "cost": "USDC",
+        "price": "USDC per YES share",
+        "quantity": "YES shares",
+        "time": "UTC seconds"
+      }
+    }
+  },
+  "global_requirements": {
+    "candidate_baseline_pairing": "one_to_one_same_scope",
+    "direct_fill_binding": "UNBOUND",
+    "metric_contract_state": "DEFINED_UNBOUND",
+    "proxy_weather_or_quote_scoring": "FORBIDDEN",
+    "quote_source": "OFFICIAL_CLOB_WS",
+    "scope_key": "station_id|event_date|stage|decision_at_utc|strategy_version",
+    "score_emission": "FORBIDDEN",
+    "settlement_authority": "OFFICIAL_CLOSED_SETTLEMENT_TRUTH"
+  },
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "promotion_permitted": false,
+  "schema": "station_policy_utility_contract_v2",
+  "writes_production_db": false
+}

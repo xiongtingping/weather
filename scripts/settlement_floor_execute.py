@@ -167,7 +167,7 @@ def _positions_proxy() -> str:
     ports: list[int] = []
     for raw in (
         os.environ.get("PM_PROXY_PORTS", ""),
-        os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897"),
+        os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082"),
     ):
         for value in str(raw or "").replace(" ", ",").split(","):
             try:
@@ -176,7 +176,7 @@ def _positions_proxy() -> str:
                 continue
             if 1 <= port <= 65535 and port not in ports:
                 ports.append(port)
-    ports.extend(port for port in (7897,) if port not in ports)
+    ports.extend(port for port in (1082,) if port not in ports)
     for value in configured:
         try:
             parsed = urlparse(value if "://" in value else f"http://{value}")

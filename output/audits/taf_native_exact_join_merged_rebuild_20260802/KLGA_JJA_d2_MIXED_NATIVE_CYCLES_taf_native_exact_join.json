@@ -1,0 +1,23 @@
+{
+  "content_sha256": "345bacb61145fe7318a114e7c27d0ebbea1064f5b66a3f9c6df3d51a42892590",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "e5804e1df09620d0be7f93c90a83b3a15eb76c4995b4ede71ad26d3505fc0fac",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/New_York",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KLGA"
+}

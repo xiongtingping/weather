@@ -1,0 +1,21 @@
+{
+  "as_of_utc": null,
+  "blockers": [
+    "ContractError:aifs_deterministic_curve_points_insufficient"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_formal_provider_binding": false,
+    "downloads_raw": false,
+    "formal_p0_eligible": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "reads_ssot_read_only": true,
+    "writes_production_database": false
+  },
+  "content_sha256": "e880b1aac7f05cd3cb3cdebb944a47cbfca91110573f9d511b896a6b2e339727",
+  "fact_count": 0,
+  "schema": "aifs_deterministic_training_facts_runner_receipt_v1",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "station_id": "NZWN"
+}

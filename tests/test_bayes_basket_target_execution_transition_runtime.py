@@ -157,6 +157,7 @@ def _db() -> tuple[sqlite3.Connection, dict[str, str], str]:
             "observation_id": "observation-0",
             "station_id": "ZUUU",
             "event_date": "2026-07-23",
+            "settlement_timezone": SCOPE["settlement_timezone"],
             "source_lane": "AMSC",
             "report_type": "METAR",
             "raw_sha256": "8" * 64,

@@ -5,14 +5,14 @@ import json
 from datetime import datetime, timezone
 
 from daily_regime_snapshot_materializer import materialize_daily_regime_snapshot
-from reported_trajectory_no_schema import apply_reported_trajectory_no_schema
+from weather_basket_yes_schema import apply_weather_basket_yes_schema
 from ui.server import _china_board_regime_snapshot
 
 
 def test_materializes_taf_regime_and_ui_reads_the_persisted_projection() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.execute(
         """INSERT INTO amsc_taf_snapshots(
           source_revision_id,event_date,station_id,source_lane,forecast_revision_kind,
@@ -50,7 +50,7 @@ def test_materializes_taf_regime_and_ui_reads_the_persisted_projection() -> None
 def test_nwp_regime_uses_direct_physical_fields_not_temperature_peak() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.execute(
         """INSERT INTO official_nwp_station_snapshots(
           snapshot_id,provider_id,station_id,loc_key,event_date,run_at_utc,
@@ -78,7 +78,7 @@ def test_nwp_regime_uses_direct_physical_fields_not_temperature_peak() -> None:
 def test_target_day_official_metar_overrides_wet_forecast_regime() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.executemany(
         """INSERT INTO reported_trajectory_observations(
              observation_id,source_lane,station_id,report_type,valid_at,

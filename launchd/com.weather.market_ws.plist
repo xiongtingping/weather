@@ -18,6 +18,16 @@
       <string>production_no_live</string>
       <key>WEATHER_SERVICE_DOMAIN</key>
       <string>user</string>
+      <key>PM_MARKET_WS_PROXY</key>
+      <string>direct_then_env</string>
+      <key>PM_MARKET_WS_HTTP_PROXY</key>
+      <string>http://127.0.0.1:1082</string>
+      <key>HTTP_PROXY</key>
+      <string>http://127.0.0.1:1082</string>
+      <key>HTTPS_PROXY</key>
+      <string>http://127.0.0.1:1082</string>
+      <key>ALL_PROXY</key>
+      <string>http://127.0.0.1:1082</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

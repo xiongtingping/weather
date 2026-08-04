@@ -34,7 +34,7 @@ CurrentAsOfModelRun
 
 ### 1. 风险语义
 
-篮子优化使用两个彼此独立、可审计的风险 overlay；overlay 只影响候选桶、排序、预算和组合覆盖价值，不修改已物化的 P0/P1 概率、regime、硬 NO 证明或官方事实。
+篮子优化使用两个彼此独立、可审计的风险 overlay；overlay 只影响候选桶、排序、预算和组合覆盖价值，不修改已物化的 P0/P1 概率、regime或官方硬事实排除集合。
 
 - `underreach_risk`（未达成风险）：P1 主桶可能达不到。设 `M=argmax(P1)`、`R=official_reported_high`、`G=max(0, M-R)`；当当前最高温长期低于 `M`、距 ET 截止时间缩短、最近升温速度不足、或校准后三模型的剩余升温包络不足以填平 `G` 时，风险升高。若 `M=30℃`、`R=25℃`，候选下方尾部是 `D1=29℃`、`D2=28℃`；这不是“实况从 30℃跌到 29℃”，也不把当前 25℃的下一个桶 26℃误判为上行风险。
 - `upside_breakthrough_risk`（上行突破风险）：官方实况形成新的已报最高温后，才将 `U1=successor(R)` 纳入突破风险；只有上行剩余时间、校准后三模型上尾质量和盘口深度均支持时，才扩展 `U2=successor(U1)`。例如官方实况突破 31℃后，`U1=32℃`，必要时 `U2=33℃`。没有官方新高事件时，不凭 P1 或普通预报单独制造突破事件。
@@ -114,10 +114,10 @@ P1 主桶 M = 30℃
 - `bayes_basket_target/promotion_evidence.py`：M8-12/M8-13 前向 scorecard 的结构化证据门；要求 target-owned、严格 as-of、真实样本覆盖、逐族/逐阶段归因与故障矩，缺文件或结构不完整即 fail closed；它只验证，不晋级、不写库。
 - target basket kernel 已移除旧 source-wallet clip 金额的隐式默认；`clip_max_notional_usdc` 缺失时直接 `fail closed`，必须由显式自有 policy/cash-phase 输入绑定。定向合同回归 25 passed，target + adaptive 回归 403 passed（254 + 149）。
 - `bayes_basket_target/calibration_evidence.py` + `scripts/build_bayes_basket_target_calibration_evidence.py`：从冻结 strict-as-of 文件生成残差、候选校准/组合 artifact 和拒绝晋级 receipt；缺 canonical source、published/received 时间或三模型时只保留证据，不写 SSOT activation。
-- `bayes_basket_target/et_history.py` + `scripts/build_bayes_basket_target_et_history.py`：历史证据先经过固定 `America/New_York` 日界与 target registry AMSC/AWC lane ownership；旧 `Asia/Shanghai` 日界、缺显式 target timezone、修订报文、跨 lane fallback 和不完整三模型 join 均只生成 bounded `BLOCKED_EVIDENCE`，并在 `truth_missing` 上附带 ET 窗口 `not_started/open/closed` 与 UTC 起止边界；绝不重标、复制 raw 或写 target DB。当前 receipt：`output/audits/bayes_basket_target_et_history_evidence.json`。
-- `scripts/rebuild_bayes_basket_target_historical_truth.py`：从官方原始报文重建历史 truth；中国站点的 AMSC 整点 `:00` `METAR` 是正式主来源，AMSC 半点 `METAR` 另写 `REFERENCE_ONLY`，针对中国站点的 AWC 整点 `METAR` 也另写独立 reference evidence。参考证据可用于交叉核验和缺口诊断，但合同固定 `formal_truth_fallback_allowed=false`、`enters_et_join=false`、`enters_calibration=false`，AWC 不得覆盖或替代 AMSC 整点 truth，也不得写入生产输入。
+- `bayes_basket_target/et_history.py` + `scripts/build_bayes_basket_target_et_history.py`：历史证据先经过固定 `America/New_York` 日界与 target registry 的全球 AWC lane ownership；旧 `Asia/Shanghai` 日界、缺显式 target timezone、修订报文、跨源 fallback 和不完整三模型 join 均只生成 bounded `BLOCKED_EVIDENCE`，并在 `truth_missing` 上附带 ET 窗口 `not_started/open/closed` 与 UTC 起止边界；绝不重标、复制 raw 或写 target DB。当前 receipt：`output/audits/bayes_basket_target_et_history_evidence.json`。
+- **已 superseded（仅历史说明，非正式来源）**：早期 `scripts/rebuild_bayes_basket_target_historical_truth.py` 的“中国站点 AMSC 整点 `:00` METAR 为正式主来源”口径已退役。当前 45 站（含中国/台湾）均只消费官方 AWC 整点 `:00` METAR 与有效 SPECI；AMSC 及旧 AMSC lineage 一律为 `retired_history_only`，仅可离线审计/对照，禁止进入正式 truth、P1、hard NO、校准或 production-no-live OOS。
 - `scripts/bayes_basket_target_post_et_refresh.py`：post-ET 唯一入口；目标日未闭合时只写 bounded `WAITING_FOR_ET_CLOSE` receipt，闭合后才调用既有只读 evidence refresh，避免重复轮询或提前把日内观测当作最终 truth。
-- `bayes_basket_target/native_model_decode.py` + `scripts/decode_bayes_basket_target_native_model_arrivals.py`：只读解码已保留的原生 ECMWF/GFS/ICON GRIB2；ECMWF/GFS 直接用 ecCodes，ICON 使用 DWD 官方 remap 资产；raw 仅按既有 SHA 引用，不复制 payload。单点只形成 `VALID_BLOCKED_NATIVE_DECODE_EVIDENCE`，必须覆盖完整目标本地日曲线后才可作为 calibration model rows。ECMWF 采集器使用官方 `.index` 的 `2t` byte-range，并强制 HTTP `206 Content-Range` 精确匹配，避免保存约 140 MB 的全 GRIB 文件。
+- `bayes_basket_target/native_model_decode.py` + `scripts/decode_bayes_basket_target_native_model_arrivals.py`：只读解码已保留的官方原生 ECMWF PF50、NOAA GEFS、ECCC GEPS 及具备官方历史发布证据的区域集合 GRIB2；raw 仅按既有 SHA 引用，不复制 payload。Open-Meteo 仅作为显式 `aggregator_republisher` 候选，须独立严格 OOS 后才可进入 no-live P0，不能伪造 native arrival。单点只形成 `VALID_BLOCKED_NATIVE_DECODE_EVIDENCE`，必须覆盖完整目标本地日曲线后才可作为 calibration model rows。
 - `bayes_basket_target/model_arrival.py` 的 arrival index v2 以 `provider_id + station_id + target_local_date + run_initialization_utc + valid_time_utc` 定位单点；同一 native run 的多个合法 valid time 可组成曲线，同一点重复或冲突仍 fail closed。当前真实 evidence 已形成681条 arrival，其中 `2026-07-24` 为675点，覆盖45站×ECMWF/GFS/ICON×5点；按 AWC `stationinfo` 坐标注册表逐站解码后，681点全部通过，形成135条完整目标日曲线。target ET history 现在只读取 native decode receipt，不再读取 legacy Asia/Shanghai CSV；目标日尚无 canonical settlement truth exact join，因此 calibration evidence 仍 blocked，不能晋级。
 - `bayes_basket_target/station_registry.py` 是 native model decode 的唯一坐标来源，保留 AWC stationinfo 快照 SHA；缺 station 坐标直接 fail closed，禁止回退到 ZUUU 或任何猜测坐标。
 - calibration CLI 默认先检查 ET history receipt；当前 `et_history_evidence=BLOCKED_EVIDENCE` 时，calibration artifact/ensemble/promotion 均固定为 0，任何旧历史文件不能绕过该门。
@@ -135,7 +135,7 @@ P1 主桶 M = 30℃
 - 资源与留存是 target-only 硬边界：单次 JSON/输入、进程 RSS、DB/WAL、raw aggregate 和剩余磁盘均先验限额；原生 raw 只在 receipt lineage 引用时保留，死 PID 临时残片和超过宽限期的无引用 content-addressed 对象由 target collector 清理，禁止外置盘、共享 live DB 或无界旧数据作为依赖。
 - target market registry 当前已物化 1 个快照、5,214 行；其中 1,783 行为来源合格且可交易记录，target runtime 缺快照或快照损坏直接 fail closed。
 - 结果固定 `execution_mode=production_no_live`、`target_only=true`、`orders_submitted=0`、`writes_production_db=false`、`calls_order_gateway=false`。
-- 该目标 lane 只能作为 `reported_trajectory_no` 内部无下单 worker 的候选输入，不形成第四个服务，也不触碰另一条 live 线。
+- 该目标 lane 只能作为 `weather_basket_yes` 内部无下单 worker 的候选输入，不形成第四个服务，也不触碰其他 live 线。
 - readiness/release 的 forward scorecard 是正式硬门；缺训练样本、标签、向量或任一 cash/station 结构证据时保持 `BLOCKED_NOT_RELEASE`。即使 scorecard 验证通过也只产生 `EVIDENCE_COMPLETE_NO_LIVE_REVIEW`，不改变 no-live activation 或共享 system 服务。
 
 验收入口：

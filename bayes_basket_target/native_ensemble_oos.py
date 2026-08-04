@@ -1,9 +1,9 @@
-"""Strict-forward OOS training for native-member ensemble P0.
+"""Strict historical OOS training for native-member ensemble P0.
 
 The module reads only append-only member runs and canonical daily-high truth.
 Open-Meteo rows remain ``PRODUCTION_NO_LIVE_CANDIDATE`` evidence.  They may
-earn a ``PRODUCTION_NO_LIVE_ONLY`` activation after a real forward holdout,
-but can never create ``FORMAL_PROMOTED`` authority.
+earn a ``PRODUCTION_NO_LIVE_ONLY`` activation after a real, closed-day
+strict-as-of holdout, but can never create ``FORMAL_PROMOTED`` authority.
 """
 
 from __future__ import annotations
@@ -34,8 +34,14 @@ NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS = 2
 NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS = 1
 FORMAL_PROMOTION_THRESHOLD_PROFILE = "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT"
 NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE = (
-    "PRODUCTION_NO_LIVE_BOOTSTRAP_2_TRAIN_1_FORWARD_HOLDOUT"
+    "PRODUCTION_NO_LIVE_BOOTSTRAP_2_TRAIN_1_HISTORICAL_HOLDOUT"
 )
+# Open-Meteo fallback samples are allowed only after the station day is
+# closed and the corresponding AWC truth is visible at the strict-as-of
+# cutoff.  Keep this explicit class distinct from a prospective receipt so a
+# future event can never be counted as an OOS holdout.
+HISTORICAL_REPUBLISHER_RECEIPT = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
+HISTORICAL_OOS_TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 DEFAULT_VALID_DAYS = 30
 DEFAULT_FAMILY_WEIGHT_CAPS = {
     "ECMWF": 0.45,
@@ -57,6 +63,16 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "run_cycle": "00Z",
     },
 }
+# The forward packet still requires the two globally available anchor feeds
+# (ECMWF PF50 + NOAA GEFS), but the strict-OOS selector must not hard-pin the
+# calibrated P0 system set to that pair.  ECCC GEPS (and any future registered
+# official family) is included whenever it has the same exact holdout cohort;
+# a pair remains valid when a third family is unavailable.  This keeps model
+# selection availability-only and preserves the >=2 independent-family floor.
+OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS = frozenset({
+    "ECMWF_IFS_ENS_OPEN_PF50",
+    "NOAA_GEFS_05",
+})
 EPS = 1e-12
 VALID_NATIVE_RUN_CYCLES = frozenset({
     "00Z",
@@ -428,7 +444,7 @@ def _bounded_family_weights(
 def _load_systems(
     conn: sqlite3.Connection,
 ) -> dict[str, dict[str, Any]]:
-    return {
+    systems = {
         str(row[0]): {
             "ensemble_system_id": str(row[0]),
             "canonical_name": str(row[1]),
@@ -444,6 +460,30 @@ def _load_systems(
             "FROM calibration_native_ensemble_system"
         )
     }
+    republisher_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND "
+        "name='calibration_republisher_ensemble_product'"
+    ).fetchone()
+    if republisher_table is not None:
+        for row in conn.execute(
+            "SELECT ensemble_system_id,canonical_name,"
+            "independence_family_id,upstream_provider_id,"
+            "expected_member_count,content_sha256 "
+            "FROM calibration_republisher_ensemble_product"
+        ):
+            # Native product registration wins if an official lane has
+            # independently registered the same upstream system.  The
+            # republisher row remains available to its own candidate queries
+            # below, but cannot replace a native registry record.
+            systems.setdefault(str(row[0]), {
+                "ensemble_system_id": str(row[0]),
+                "canonical_name": str(row[1]),
+                "independence_family_id": str(row[2]),
+                "provider_id": str(row[3]),
+                "expected_member_count": int(row[4]),
+                "content_sha256": str(row[5]),
+            })
+    return systems
 
 
 def _historical_transport_scope_allowed(
@@ -462,6 +502,159 @@ def _historical_transport_scope_allowed(
             and run_cycle == official["run_cycle"]
         )
     return transport_provider_id == "OPEN_METEO"
+
+
+def _table_columns(
+    conn: sqlite3.Connection,
+    table_name: str,
+) -> set[str]:
+    """Return the columns for a known local table.
+
+    Historical republisher contracts are introduced by an append-only SSOT
+    migration.  The OOS reader must remain safe while an older database is
+    being upgraded: an absent contract column/table means *not eligible*, not
+    a permissive fallback.  Table names are internal constants in this
+    module, so PRAGMA interpolation is bounded to those names.
+    """
+
+    return {
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({table_name})")
+    }
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _historical_republisher_contract_state(
+    conn: sqlite3.Connection,
+    *,
+    contract_id: str,
+    system_id: str,
+    station: str,
+    day: str,
+    lead_bucket: str,
+    run_cycle: str,
+    day_end: datetime,
+    as_of: datetime,
+    truth: Mapping[str, Any],
+) -> tuple[bool, bool]:
+    """Validate a republisher receipt contract without widening authority.
+
+    The first result says that the contract is structurally valid and can be
+    identified as a historical receipt.  The second result is the explicit
+    ``historical_oos_eligible`` bit.  A valid contract with that bit cleared
+    remains training evidence; a missing or malformed contract can never
+    become an OOS sample.
+    """
+
+    if not contract_id:
+        return False, False
+    table = "calibration_republisher_historical_oos_contract"
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    if exists is None:
+        return False, False
+    required = {
+        "historical_oos_contract_id",
+        "contract_version",
+        "ensemble_system_id",
+        "station_id",
+        "target_local_date",
+        "archive_lead_bucket",
+        "run_cycle",
+        "station_day_closed",
+        "station_day_end_utc",
+        "station_day_closed_at_utc",
+        "awc_truth_id",
+        "awc_truth_revision_no",
+        "awc_truth_asof_utc",
+        "awc_truth_source_lane",
+        "receipt_class",
+        "temporal_scope",
+        "future_event_count",
+        "historical_oos_eligible",
+        "republisher_receipt_sha256",
+        "content_sha256",
+        "created_at_utc",
+    }
+    columns = _table_columns(conn, table)
+    if not required.issubset(columns):
+        return False, False
+    select_columns = sorted(required)
+    row = conn.execute(
+        "SELECT " + ",".join(select_columns) + " FROM " + table
+        + " WHERE historical_oos_contract_id=?",
+        (contract_id,),
+    ).fetchone()
+    if row is None:
+        return False, False
+    contract = dict(zip(select_columns, row))
+    # Contract identity must bind exactly to the member run scope.  This
+    # prevents a valid receipt for one station/day being reused elsewhere.
+    try:
+        station_day_closed = int(contract["station_day_closed"])
+        future_event_count = int(contract["future_event_count"])
+        contract_revision = int(contract["awc_truth_revision_no"])
+    except (TypeError, ValueError):
+        return False, False
+    if (
+        str(contract["historical_oos_contract_id"]) != contract_id
+        or str(contract["ensemble_system_id"]) != system_id
+        or str(contract["station_id"]).upper() != station
+        or str(contract["target_local_date"]) != day
+        or str(contract["archive_lead_bucket"]) != lead_bucket
+        or str(contract["run_cycle"]) != run_cycle
+        or station_day_closed != 1
+        or str(contract["awc_truth_source_lane"]) != "AWC"
+        or str(contract["receipt_class"]) != HISTORICAL_REPUBLISHER_RECEIPT
+        or str(contract["temporal_scope"]) != HISTORICAL_OOS_TEMPORAL_SCOPE
+        or future_event_count != 0
+    ):
+        return False, False
+    if (
+        len(str(contract["republisher_receipt_sha256"])) != 64
+        or len(str(contract["content_sha256"])) != 64
+        or not str(contract["contract_version"]).strip()
+    ):
+        return False, False
+    contract_day_end = _parse_utc(contract["station_day_end_utc"])
+    closed_at = _parse_utc(contract["station_day_closed_at_utc"])
+    truth_asof = _parse_utc(contract["awc_truth_asof_utc"])
+    created_at = _parse_utc(contract["created_at_utc"])
+    truth_committed = _parse_utc(truth.get("canonical_committed_at_utc"))
+    if (
+        contract_day_end is None
+        or closed_at is None
+        or truth_asof is None
+        or created_at is None
+        or truth_committed is None
+        or contract_day_end != day_end
+        or closed_at < day_end
+        or closed_at > as_of
+        or truth_asof < truth_committed
+        or truth_asof > as_of
+        or created_at > as_of
+        or str(contract["awc_truth_id"]) != str(truth.get("truth_id") or "")
+        or contract_revision != int(truth.get("revision_no", -1))
+    ):
+        return False, False
+    try:
+        eligible = int(contract["historical_oos_eligible"]) == 1
+    except (TypeError, ValueError):
+        return False, False
+    return True, eligible
 
 
 def _load_cases(
@@ -517,59 +710,52 @@ def _load_cases(
     settlement_definition = str(station_row[0])
     systems = _load_systems(conn)
     truth = {
-        str(row[0]): {
-            "actual_tmax_c": float(row[1]),
-            "canonical_committed_at_utc": str(row[2]),
+        str(row[1]): {
+            "truth_id": str(row[0]),
+            "actual_tmax_c": float(row[2]),
+            "canonical_committed_at_utc": str(row[3]),
+            "revision_no": int(row[4]),
+            "source_lane": str(row[5]),
         }
         for row in conn.execute(
-            "SELECT local_date,official_tmax_c,"
-            "canonical_committed_at_utc "
-            "FROM calibration_station_daily_high_truth "
-            "WHERE station_id=? AND qc_status='ACCEPTED' "
-            "AND authority_scope IN "
-            "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE')",
-            (station,),
+            "SELECT t.truth_id,t.local_date,t.official_tmax_c,"
+            "t.canonical_committed_at_utc,t.revision_no,t.source_lane "
+            "FROM calibration_station_daily_high_truth AS t "
+            "WHERE t.station_id=? AND t.source_lane='AWC' "
+            "AND t.qc_status='ACCEPTED' "
+            "AND t.authority_scope IN "
+            "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
+            "AND julianday(t.canonical_committed_at_utc)<=julianday(?) "
+            "AND t.revision_no=( "
+            "SELECT MAX(t2.revision_no) "
+            "FROM calibration_station_daily_high_truth AS t2 "
+            "WHERE t2.station_id=t.station_id "
+            "AND t2.local_date=t.local_date "
+            "AND t2.settlement_definition=t.settlement_definition "
+            "AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED' "
+            "AND t2.authority_scope IN "
+            "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
+            "AND julianday(t2.canonical_committed_at_utc)<=julianday(?)"
+            ") ORDER BY t.local_date",
+            (station, as_of_utc, as_of_utc),
         )
     }
     grouped: dict[
         tuple[str, str, str, str, str],
-        list[tuple[str, float, str, bool, str, str]],
+        list[tuple[str, float, str, bool, str, str, str]],
     ] = defaultdict(list)
-    for row in conn.execute(
-        "SELECT ensemble_system_id,target_local_date,lead_bucket,"
-        "run_cycle,aggregator_snapshot_at_utc,member_id,raw_tmax_c,"
-        "content_sha256 "
-        "FROM calibration_native_ensemble_member_run "
-        "WHERE station_id=? AND qc_status='ACCEPTED' "
-        "AND authority_scope='PRODUCTION_NO_LIVE_CANDIDATE' "
-        "AND transport_provider_id='OPEN_METEO' "
-        "AND ensemble_system_id NOT IN "
-        "('NOAA_GEFS_05','ECMWF_IFS_ENS_OPEN_PF50',"
-        "'ECCC_GEM_GLOBAL_ENS') "
-        "ORDER BY target_local_date,aggregator_snapshot_at_utc,member_id",
-        (station,),
-    ):
-        run_cycle = str(row[3] or "").strip()
-        if run_cycle not in VALID_NATIVE_RUN_CYCLES:
-            raise ContractError(
-                "native_ensemble_oos_run_cycle_mapping_missing"
-            )
-        grouped[
-            (
-                str(row[0]),
-                str(row[1]),
-                str(row[2]),
-                run_cycle,
-                str(row[4]),
-            )
-        ].append((
-            str(row[5]),
-            float(row[6]),
-            str(row[7]),
-            True,
-            "FORWARD_LOCAL_RECEIPT",
-            "OPEN_METEO",
-        ))
+    historical_contract_ids_by_group: dict[
+        tuple[str, str, str, str, str],
+        set[str],
+    ] = defaultdict(set)
+    tz = ZoneInfo(timezone_name)
+    # The live/forward republisher table is intentionally *not* a source for
+    # OOS or training.  Its rows remain observational candidates forever; a
+    # later station-day close must not retro-promote them.  The legacy native
+    # member table with OPEN_METEO transport is likewise prospective evidence
+    # and is excluded here.  Only the append-only historical archive below,
+    # with an explicit historical OOS contract, can supply republisher
+    # holdout rows.
     historical_table = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND "
         "name='calibration_native_ensemble_historical_member_run'"
@@ -586,10 +772,8 @@ def _load_cases(
             "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
             "AND holdout_eligible=0 "
             "AND transport_provider_id IN "
-            "('OPEN_METEO','NOAA_GEFS_PDS_S3',"
-            "'ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER') "
-            "AND (transport_provider_id='OPEN_METEO' "
-            "OR archive_lead_bucket='d2') "
+            "('NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER') "
+            "AND archive_lead_bucket='d2' "
             "ORDER BY target_local_date,archive_query_at_utc,member_id",
             (station,),
         ):
@@ -639,12 +823,157 @@ def _load_cases(
                     else "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY"
                 ),
                 str(row[8]),
+                str(row[9] or "").strip(),
             ))
+    republisher_historical_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND "
+        "name='calibration_republisher_ensemble_historical_member_run'"
+    ).fetchone()
+    if republisher_historical_table is not None:
+        historical_table_name = (
+            "calibration_republisher_ensemble_historical_member_run"
+        )
+        historical_columns = _table_columns(
+            conn,
+            historical_table_name,
+        )
+        base_historical_columns = {
+            "ensemble_system_id",
+            "target_local_date",
+            "archive_lead_bucket",
+            "run_cycle",
+            "archive_query_at_utc",
+            "member_id",
+            "raw_tmax_c",
+            "content_sha256",
+            "transport_provider_id",
+            "authority_scope",
+            "holdout_eligible",
+        }
+        if base_historical_columns.issubset(historical_columns):
+            contract_columns = {
+                "historical_oos_contract_id",
+                "historical_oos_eligible",
+            } & historical_columns
+            run_init_columns = {"native_run_init_utc"} & historical_columns
+            selected_columns = sorted(
+                (
+                    base_historical_columns
+                    | contract_columns
+                    | run_init_columns
+                    | {"station_id"}
+                )
+                & historical_columns
+            )
+            # SELECT * is deliberately avoided: this keeps the loader stable
+            # across append-only migrations while preserving strict column
+            # presence checks above.
+            select_sql = ",".join(selected_columns)
+            for raw_row in conn.execute(
+                "SELECT " + select_sql + " FROM " + historical_table_name
+                + " WHERE station_id=? AND qc_status='ACCEPTED' "
+                "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
+                "AND holdout_eligible=0 AND transport_provider_id='OPEN_METEO' "
+                "ORDER BY target_local_date,archive_query_at_utc,member_id",
+                (station,),
+            ):
+                row = dict(zip(selected_columns, raw_row))
+                run_cycle = str(row["run_cycle"] or "").strip()
+                if run_cycle not in VALID_NATIVE_RUN_CYCLES:
+                    raise ContractError(
+                        "native_ensemble_oos_run_cycle_mapping_missing"
+                    )
+                system_id = str(row["ensemble_system_id"])
+                day = str(row["target_local_date"])
+                lead_bucket = str(row["archive_lead_bucket"])
+                snapshot_at = str(row["archive_query_at_utc"])
+                contract_id = str(
+                    row.get("historical_oos_contract_id") or ""
+                )
+                contract_valid = False
+                contract_oos_eligible = False
+                if system_id in systems and day in truth:
+                    day_end = (
+                        datetime.fromisoformat(day).replace(tzinfo=tz)
+                        + timedelta(days=1)
+                    ).astimezone(timezone.utc)
+                    contract_valid, contract_oos_eligible = (
+                        _historical_republisher_contract_state(
+                            conn,
+                            contract_id=contract_id,
+                            system_id=system_id,
+                            station=station,
+                            day=day,
+                            lead_bucket=lead_bucket,
+                            run_cycle=run_cycle,
+                            day_end=day_end,
+                            as_of=as_of,
+                            truth=truth[day],
+                        )
+                    )
+                try:
+                    row_oos_eligible = (
+                        int(row.get("historical_oos_eligible", 0) or 0)
+                        == 1
+                    )
+                except (TypeError, ValueError):
+                    row_oos_eligible = False
+                group_key = (
+                    system_id,
+                    day,
+                    lead_bucket,
+                    run_cycle,
+                    snapshot_at,
+                )
+                if contract_valid and contract_id:
+                    historical_contract_ids_by_group[group_key].add(
+                        contract_id
+                    )
+                candidate_member = (
+                    str(row["member_id"]),
+                    float(row["raw_tmax_c"]),
+                    str(row["content_sha256"]),
+                    bool(
+                        row_oos_eligible
+                        and contract_valid
+                        and contract_oos_eligible
+                    ),
+                    (
+                        HISTORICAL_REPUBLISHER_RECEIPT
+                        if contract_valid
+                        else "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY"
+                    ),
+                    str(row["transport_provider_id"]),
+                    str(row.get("native_run_init_utc") or "").strip(),
+                )
+                # Contract binding is append-only, so a bound successor row
+                # legitimately coexists with its earlier train-only row.
+                # Select the bound successor for the same member/group rather
+                # than counting both copies and discarding an otherwise
+                # complete ensemble.
+                existing_members = grouped[group_key]
+                existing_index = next(
+                    (
+                        index
+                        for index, existing_member in enumerate(existing_members)
+                        if existing_member[0] == candidate_member[0]
+                    ),
+                    None,
+                )
+                if existing_index is None:
+                    existing_members.append(candidate_member)
+                elif (
+                    candidate_member[3]
+                    and not existing_members[existing_index][3]
+                ):
+                    existing_members[existing_index] = candidate_member
+        # A pre-contract historical archive remains training-only.  It is
+        # intentionally not loaded into ``grouped`` because the absence of an
+        # explicit eligibility bit must not be inferred as a holdout.
     by_scope_day: dict[
         tuple[str, str, str, str, str],
         dict[str, Any],
     ] = {}
-    tz = ZoneInfo(timezone_name)
     for (
         system_id,
         day,
@@ -657,7 +986,7 @@ def _load_cases(
         expected = systems[system_id]["expected_member_count"]
         member_ids = {
             member
-            for member, _value, _sha256, _holdout, _class, _transport
+            for member, _value, _sha256, _holdout, _class, _transport, _native_run_init
             in member_rows
         }
         if len(member_rows) != expected or len(member_ids) != expected:
@@ -665,6 +994,8 @@ def _load_cases(
         snapshot = datetime.fromisoformat(
             snapshot_at.replace("Z", "+00:00")
         )
+        if snapshot.tzinfo is None:
+            continue
         day_end = (
             datetime.fromisoformat(day)
             .replace(tzinfo=tz)
@@ -676,8 +1007,16 @@ def _load_cases(
                 "+00:00",
             )
         )
+        if truth_committed.tzinfo is None:
+            continue
         if (
-            snapshot.astimezone(timezone.utc) > as_of
+            # A record is allowed into OOS only after its station-local day
+            # has actually closed.  A prospective forecast remains an
+            # arrival/interface observation until that boundary and closed
+            # AWC truth are both historical as-of this evaluation.
+            as_of < day_end
+            or truth_committed.astimezone(timezone.utc) < day_end
+            or snapshot.astimezone(timezone.utc) > as_of
             or truth_committed.astimezone(timezone.utc) > as_of
         ):
             continue
@@ -696,13 +1035,39 @@ def _load_cases(
         if len(transport_ids) != 1:
             continue
         transport_provider_id = next(iter(transport_ids))
+        retrospective_contract_bound = (
+            transport_provider_id == "OPEN_METEO"
+            and evidence_timing_class == HISTORICAL_REPUBLISHER_RECEIPT
+            and bool(historical_contract_ids_by_group.get((
+                system_id,
+                day,
+                lead_bucket,
+                run_cycle,
+                snapshot_at,
+            )))
+        )
         if (
-            evidence_timing_class == "FORWARD_LOCAL_RECEIPT"
+            oos_eligible
+            and not retrospective_contract_bound
             and (
-            snapshot >= day_end or snapshot >= truth_committed
+                snapshot.astimezone(timezone.utc) >= day_end
+                or snapshot.astimezone(timezone.utc)
+                >= truth_committed.astimezone(timezone.utc)
             )
         ):
-            continue
+            # Native chronological archives still require an arrival before
+            # the station-day/truth boundary.  A retained Open-Meteo archive
+            # is different: it can only enter OOS after an explicit immutable
+            # CLOSED_HISTORICAL_AWC_TRUTH contract binds the retrospective
+            # receipt to the exact station/day/revision.  The contract does
+            # not create native arrival, P1, or live authority.
+            oos_eligible = False
+        if transport_provider_id == "OPEN_METEO":
+            # A republisher holdout requires the explicit historical contract
+            # validated while ingesting the member rows.  Never infer that
+            # contract from a closed day or from the transport name alone.
+            if evidence_timing_class != HISTORICAL_REPUBLISHER_RECEIPT:
+                oos_eligible = False
         scope_day = (
             system_id,
             _season_bin(day),
@@ -724,23 +1089,40 @@ def _load_cases(
             "aggregator_snapshot_at_utc": snapshot_at,
             "values": [
                 value
-                for _member, value, _sha256, _holdout, _class, _transport
+                for _member, value, _sha256, _holdout, _class, _transport, _native_run_init
                 in sorted(member_rows)
             ],
             "member_run_content_shas": sorted(
                 sha256
-                for _member, _value, sha256, _holdout, _class, _transport
+                for _member, _value, sha256, _holdout, _class, _transport, _native_run_init
                 in member_rows
             ),
             "member_set_sha256": content_sha256(sorted(
                 sha256
-                for _member, _value, sha256, _holdout, _class, _transport
+                for _member, _value, sha256, _holdout, _class, _transport, _native_run_init
                 in member_rows
             )),
+            "member_native_run_init_utcs": [
+                native_run_init
+                for _member, _value, _sha256, _holdout, _class, _transport, native_run_init
+                in sorted(member_rows)
+            ],
             "holdout_eligible": oos_eligible,
             "evidence_timing_class": evidence_timing_class,
             "transport_provider_id": transport_provider_id,
             "actual_tmax_c": truth[day]["actual_tmax_c"],
+            "historical_closed_day": True,
+            "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
+            "future_event_count": 0,
+            "historical_oos_contract_ids": sorted(
+                historical_contract_ids_by_group.get((
+                    system_id,
+                    day,
+                    lead_bucket,
+                    run_cycle,
+                    snapshot_at,
+                ), set())
+            ),
             "settlement_definition": settlement_definition,
             "timezone_name": timezone_name,
         }
@@ -779,28 +1161,72 @@ def _evaluate_system(
             "native_ensemble_oos_transport_scope_mixed"
         )
     transport_provider_id = next(iter(transports))
-    forward = [
+    if (
+        transport_provider_id != "OPEN_METEO"
+        and (
+            min_train_days != DEFAULT_MIN_TRAIN_DAYS
+            or min_holdout_days != DEFAULT_MIN_HOLDOUT_DAYS
+        )
+    ):
+        raise ContractError(
+            "native_ensemble_oos_official_window_must_be_20_train_8_holdout"
+        )
+    holdout_cases = [
         case for case in cases
         if case.get("holdout_eligible") is True
     ]
-    if len(forward) < min_holdout_days:
+    # A retrospective Open-Meteo contract makes a closed day eligible for
+    # strict historical evaluation, but the append-only contract intentionally
+    # does not mutate the retained member row's ``holdout_eligible`` bit.  In
+    # a multi-day republisher cohort that means every valid day can appear as
+    # a holdout candidate.  Treat the latest chronological ``min_holdout``
+    # days as holdout and the earlier valid days as train.  This is the same
+    # walk-forward split used by the formal window; it never adds a future
+    # event, widens the truth scope, or upgrades republisher authority.
+    # Native archives retain their explicit holdout flags and are unchanged.
+    if (
+        transport_provider_id == "OPEN_METEO"
+        and len(holdout_cases) == len(cases)
+        and len(cases) > min_holdout_days
+    ):
+        chronological = sorted(
+            holdout_cases,
+            key=lambda case: str(case.get("event_date") or ""),
+        )
+        holdout_cases = chronological[-min_holdout_days:]
+    # This evaluator is also callable with externally supplied case maps.
+    # Keep the historical boundary here in addition to the SQL loader so a
+    # prospective/forward row cannot be reintroduced by a caller or by a
+    # later database migration.
+    if any(
+        case.get("historical_closed_day") is not True
+        or case.get("future_event_count", 0) != 0
+        or case.get("evidence_timing_class")
+        not in {
+            "OFFLINE_CHRONOLOGICAL_NATIVE_ARCHIVE",
+            HISTORICAL_REPUBLISHER_RECEIPT,
+        }
+        for case in holdout_cases
+    ):
+        raise ContractError("native_ensemble_oos_forward_holdout_forbidden")
+    if len(holdout_cases) < min_holdout_days:
         return {
             "state": "ACCUMULATING_STRICT_OOS",
             "system_id": system_id,
             "transport_provider_id": transport_provider_id,
             "case_count": len(cases),
-            "training_case_count": len(cases) - len(forward),
-            "strict_holdout_case_count": len(forward),
+            "training_case_count": len(cases) - len(holdout_cases),
+            "strict_holdout_case_count": len(holdout_cases),
             "required_train_case_count": min_train_days,
             "required_strict_holdout_case_count": min_holdout_days,
             "missing_train_case_count": max(
-                0, min_train_days - (len(cases) - len(forward))
+                0, min_train_days - (len(cases) - len(holdout_cases))
             ),
             "missing_strict_holdout_case_count": (
-                min_holdout_days - len(forward)
+                min_holdout_days - len(holdout_cases)
             ),
         }
-    holdout = list(forward[-min_holdout_days:])
+    holdout = list(holdout_cases[-min_holdout_days:])
     holdout_start = str(holdout[0]["event_date"])
     first_holdout_decision = min(
         str(case["aggregator_snapshot_at_utc"])
@@ -810,8 +1236,18 @@ def _evaluate_system(
         case
         for case in cases
         if str(case["event_date"]) < holdout_start
-        and str(case["aggregator_snapshot_at_utc"])
-        < first_holdout_decision
+        and (
+            # Open-Meteo retrospective receipts are queried in one bounded
+            # archive batch, so several closed event days legitimately share
+            # one receipt timestamp.  The immutable historical OOS contract
+            # already supplies the strict truth/as-of boundary; requiring a
+            # strictly earlier transport timestamp here would erase every
+            # training day from that cohort.  Native chronological archives
+            # retain the stricter arrival ordering check.
+            transport_provider_id == "OPEN_METEO"
+            or str(case["aggregator_snapshot_at_utc"])
+            < first_holdout_decision
+        )
     ]
     if len(train) < min_train_days:
         return {
@@ -837,6 +1273,9 @@ def _evaluate_system(
             "member_run_content_shas": case[
                 "member_run_content_shas"
             ],
+            "historical_oos_contract_ids": list(
+                case.get("historical_oos_contract_ids") or []
+            ),
             "probability": probability,
             "actual_tmax_c": float(case["actual_tmax_c"]),
             "metrics": _metrics(
@@ -848,6 +1287,8 @@ def _evaluate_system(
         "state": "OOS_READY",
         "system_id": system_id,
         "transport_provider_id": transport_provider_id,
+        "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
+        "future_event_count": 0,
         "case_count": len(cases),
         "train_start_date": train[0]["event_date"],
         "train_end_date": train[-1]["event_date"],
@@ -864,6 +1305,11 @@ def _evaluate_system(
             "FORWARD_LOCAL_RECEIPT": sum(
                 case.get("evidence_timing_class")
                 == "FORWARD_LOCAL_RECEIPT"
+                for case in train
+            ),
+            HISTORICAL_REPUBLISHER_RECEIPT: sum(
+                case.get("evidence_timing_class")
+                == HISTORICAL_REPUBLISHER_RECEIPT
                 for case in train
             ),
             "OFFLINE_CHRONOLOGICAL_NATIVE_ARCHIVE": sum(
@@ -891,6 +1337,104 @@ def _evaluate_system(
     }
 
 
+def _select_exact_shared_holdout_cohort(
+    *,
+    ready_rows: Sequence[tuple[str, str, Mapping[str, Any]]],
+    systems: Mapping[str, Mapping[str, Any]],
+    min_holdout_days: int,
+    allowed_system_ids: Sequence[str] | None = None,
+) -> tuple[
+    tuple[str, ...],
+    list[tuple[str, str, Mapping[str, Any]]],
+] | None:
+    """Select one bounded availability-only cross-system OOS cohort."""
+
+    # Do not let the forward packet's two-anchor transport requirement leak
+    # into calibration selection.  Every ready official system is eligible;
+    # exact holdout matching below naturally falls back to the largest valid
+    # pair when a third family is unavailable.
+    allowed = (
+        None
+        if allowed_system_ids is None
+        else {str(value) for value in allowed_system_ids}
+    )
+    candidate_rows = [
+        row for row in ready_rows
+        if allowed is None or str(row[0]) in allowed
+    ]
+    ready_by_holdout: dict[
+        tuple[str, ...],
+        list[tuple[str, str, Mapping[str, Any]]],
+    ] = defaultdict(list)
+    for ready_row in candidate_rows:
+        holdout_days = tuple(sorted(
+            str(prediction["event_date"])
+            for prediction in ready_row[2]["predictions"]
+        ))
+        if len(holdout_days) != min_holdout_days:
+            raise ContractError(
+                "native_ensemble_oos_ready_holdout_window_invalid"
+            )
+        ready_by_holdout[holdout_days].append(ready_row)
+    eligible_cohorts = []
+    for holdout_days, cohort in ready_by_holdout.items():
+        # A system can have both an official native row and an Open-Meteo
+        # republisher row for the same exact holdout.  Keep at most one scope
+        # per system, preferring the official transport.  This prevents a
+        # republisher copy from creating a mixed transport scope conflict.
+        preferred_by_system: dict[
+            str, tuple[str, str, Mapping[str, Any]]
+        ] = {}
+        for row in cohort:
+            system_key = str(row[0])
+            current = preferred_by_system.get(system_key)
+            if current is None:
+                preferred_by_system[system_key] = row
+                continue
+            current_official = (
+                str(current[2].get("transport_provider_id") or "")
+                != "OPEN_METEO"
+            )
+            row_official = (
+                str(row[2].get("transport_provider_id") or "")
+                != "OPEN_METEO"
+            )
+            if row_official and not current_official:
+                preferred_by_system[system_key] = row
+        preferred = list(preferred_by_system.values())
+        official = [
+            row
+            for row in preferred
+            if str(row[2].get("transport_provider_id") or "")
+            != "OPEN_METEO"
+        ]
+        official_families = {
+            systems[system_id]["independence_family_id"]
+            for system_id, _run_cycle, _evaluation in official
+        }
+        # Native history is the authority when it already supplies two or
+        # more independent families.  Only if that official set is below the
+        # two-family floor may the explicitly marked Open-Meteo rows fill a
+        # missing family.
+        candidate = official if len(official_families) >= 2 else preferred
+        cohort_families = {
+            systems[system_id]["independence_family_id"]
+            for system_id, _run_cycle, _evaluation in candidate
+        }
+        if len(cohort_families) >= 2:
+            eligible_cohorts.append((holdout_days, candidate))
+    if not eligible_cohorts:
+        return None
+    return sorted(
+        eligible_cohorts,
+        key=lambda item: (
+            -len(item[1]),
+            tuple(sorted(row[0] for row in item[1])),
+            item[0],
+        ),
+    )[0]
+
+
 def build_native_ensemble_oos(
     conn: sqlite3.Connection,
     *,
@@ -899,6 +1443,8 @@ def build_native_ensemble_oos(
     min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
     min_holdout_days: int = DEFAULT_MIN_HOLDOUT_DAYS,
     family_weight_caps: Mapping[str, float] | None = None,
+    system_mask: Sequence[str] | None = None,
+    max_event_date: str | None = None,
 ) -> dict[str, Any]:
     """Build candidate artifacts; perform no writes."""
 
@@ -922,15 +1468,68 @@ def build_native_ensemble_oos(
     else:
         threshold_profile = "CUSTOM_STRICT_CHRONOLOGICAL_OOS"
     station = station_id.strip().upper()
+    historical_event_date_cutoff = None
+    if max_event_date is not None:
+        historical_event_date_cutoff = str(max_event_date).strip()
+        try:
+            cutoff = datetime.strptime(
+                historical_event_date_cutoff,
+                "%Y-%m-%d",
+            ).date()
+        except ValueError as exc:
+            raise ContractError(
+                "native_ensemble_oos_event_date_cutoff_invalid"
+            ) from exc
+        if cutoff > as_of.astimezone(timezone.utc).date():
+            raise ContractError(
+                "native_ensemble_oos_event_date_cutoff_future_forbidden"
+            )
     systems = _load_systems(conn)
     cases_by_scope = _load_cases(
         conn,
         station_id=station,
         as_of_utc=as_of_utc,
     )
+    if historical_event_date_cutoff is not None:
+        # Keep only scopes that still have at least one historical case after
+        # applying the cutoff.  ``_load_cases`` also returns registered
+        # scopes whose rows are entirely newer than the requested cutoff;
+        # passing those empty lists to ``_evaluate_system`` makes the
+        # transport-set guard report a misleading ``transport_scope_mixed``
+        # error and prevents a valid earlier strict-OOS replay from running.
+        cases_by_scope = {
+            scope: filtered
+            for scope, cases in cases_by_scope.items()
+            if (filtered := [
+                case for case in cases
+                if str(case["event_date"]) <= historical_event_date_cutoff
+            ])
+        }
     evaluations: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     readiness = []
+    # A no-live bootstrap report may intentionally scope itself to retained
+    # Open-Meteo republisher systems.  Do not evaluate unrelated official
+    # scopes with the 2-train/1-holdout bootstrap window: official archives
+    # remain on the fixed 20-train/8-holdout contract and must not be
+    # accidentally promoted through a republisher fallback report.
+    bootstrap_mask_only = (
+        threshold_profile == NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE
+        and system_mask is not None
+    )
     for scope, cases in sorted(cases_by_scope.items()):
+        if bootstrap_mask_only:
+            allowed_bootstrap_systems = {
+                str(value) for value in system_mask or ()
+            }
+            if (
+                scope[0] not in allowed_bootstrap_systems
+                or any(
+                    str(case.get("transport_provider_id") or "")
+                    != "OPEN_METEO"
+                    for case in cases
+                )
+            ):
+                continue
         result = _evaluate_system(
             system_id=scope[0],
             cases=cases,
@@ -1019,12 +1618,29 @@ def build_native_ensemble_oos(
         ]
         if len(ready_rows) < 2:
             continue
+        # A ready system whose independently-fixed strict holdout window
+        # does not overlap the other ready systems must not poison an
+        # otherwise valid cross-native calibration.  Every system evaluation
+        # exposes exactly ``min_holdout_days`` latest chronological cases, so
+        # grouping by the complete holdout set is a bounded, deterministic
+        # way to select the largest exact common-OOS cohort.  This selection
+        # uses availability/timing only--never OOS scores--and consequently
+        # cannot tune the model on its holdout result.
+        selected_cohort = _select_exact_shared_holdout_cohort(
+            ready_rows=ready_rows,
+            systems=systems,
+            min_holdout_days=min_holdout_days,
+            allowed_system_ids=system_mask,
+        )
+        if selected_cohort is None:
+            continue
+        common_holdout, selected_ready_rows = selected_cohort
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
-            _cycle_mapping_for_rows(ready_rows)
+            _cycle_mapping_for_rows(selected_ready_rows)
         )
         rows = [
             (system_id, evaluation)
-            for system_id, _run_cycle, evaluation in ready_rows
+            for system_id, _run_cycle, evaluation in selected_ready_rows
         ]
         family_by_system = {
             system_id: systems[system_id]["independence_family_id"]
@@ -1032,16 +1648,13 @@ def build_native_ensemble_oos(
         }
         if len(set(family_by_system.values())) < 2:
             continue
-        holdout_sets = [
-            {
-                prediction["event_date"]
-                for prediction in evaluation["predictions"]
-            }
-            for _system_id, evaluation in rows
-        ]
-        common_holdout = sorted(set.intersection(*holdout_sets))
-        if len(common_holdout) < min_holdout_days:
-            continue
+        # ``selected_ready_rows`` is grouped by this exact set above.  Keep
+        # the explicit guard beside the cross calculation as a fail-closed
+        # invariant if the per-system evaluator ever changes its shape.
+        if len(common_holdout) != min_holdout_days:
+            raise ContractError(
+                "native_ensemble_oos_cross_holdout_window_invalid"
+            )
         train_rmse = {
             system_id: float(
                 evaluation["parameters"]["train_rmse_c"]
@@ -1109,6 +1722,14 @@ def build_native_ensemble_oos(
                     ]
                     for system in sorted(weights)
                 },
+                "historical_oos_contract_ids_by_system": {
+                    system: list(
+                        predictions_by_system[system][day].get(
+                            "historical_oos_contract_ids"
+                        ) or []
+                    )
+                    for system in sorted(weights)
+                },
                 "actual_tmax_c": actual,
                 "probability": probability,
                 "metrics": _metrics(probability, actual),
@@ -1172,6 +1793,8 @@ def build_native_ensemble_oos(
                 if oos_pass
                 else "OOS_REJECTED"
             ),
+            "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
+            "future_event_count": 0,
             "station_id": station,
             "season_bin": season_bin,
             "lead_bucket": lead_bucket,
@@ -1182,12 +1805,8 @@ def build_native_ensemble_oos(
                 for system_id in selected_system_ids
             },
             "run_cycle_by_system_sha256": cycle_mapping_sha,
-            "p0_exact_match_ready": run_cycle_scope == "SAME_NATIVE_CYCLE",
-            "p0_exact_match_blocker": (
-                None
-                if run_cycle_scope == "SAME_NATIVE_CYCLE"
-                else "MIXED_CYCLE_SCHEMA_AND_P0_QUERY_REQUIRED"
-            ),
+            "p0_exact_match_ready": True,
+            "p0_exact_match_blocker": None,
             "settlement_definition": next(
                 iter(cases_by_scope.values())
             )[0]["settlement_definition"],
@@ -1199,9 +1818,44 @@ def build_native_ensemble_oos(
             )][0]["timezone_name"],
             "selected_system_ids": selected_system_ids,
             "selected_system_count": len(selected_system_ids),
+            "ready_system_ids": sorted(
+                system_id
+                for system_id, _run_cycle, _evaluation in ready_rows
+            ),
+            "excluded_ready_system_ids": sorted(
+                system_id
+                for system_id, _run_cycle, _evaluation in ready_rows
+                if system_id not in set(selected_system_ids)
+            ),
+            "cross_selection_rule": (
+                "PRE_REGISTERED_SYSTEM_MASK::"
+                + ("ALL_READY_OFFICIAL" if system_mask is None else
+                   _json(sorted(str(value) for value in system_mask)))
+                + "::MAX_EXACT_SHARED_STRICT_HOLDOUT"
+                "_THEN_MAX_SYSTEM_COVERAGE"
+            ),
             "system_transport_provider_ids": {
                 system_id: str(
                     evaluation["transport_provider_id"]
+                )
+                for system_id, evaluation in rows
+                if system_id in weights
+            },
+            # This is an explicit lineage flag, not a probability or an
+            # authority upgrade.  It lets the ledger distinguish a governed
+            # Open-Meteo no-live fallback from an all-native candidate while
+            # keeping the official transport preferred whenever both cover
+            # the same exact scope.
+            "republisher_fallback_used": any(
+                str(evaluation["transport_provider_id"]) == "OPEN_METEO"
+                for _system_id, evaluation in rows
+                if _system_id in weights
+            ),
+            "source_role_by_system": {
+                system_id: (
+                    "aggregator_republisher"
+                    if str(evaluation["transport_provider_id"]) == "OPEN_METEO"
+                    else "official_native_archive"
                 )
                 for system_id, evaluation in rows
                 if system_id in weights
@@ -1263,6 +1917,7 @@ def build_native_ensemble_oos(
         "min_train_days": min_train_days,
         "min_holdout_days": min_holdout_days,
         "threshold_profile": threshold_profile,
+        "historical_event_date_cutoff": historical_event_date_cutoff,
         "formal_promotion_threshold_profile":
             FORMAL_PROMOTION_THRESHOLD_PROFILE,
         "formal_promotion_min_train_days": DEFAULT_MIN_TRAIN_DAYS,
@@ -1329,6 +1984,8 @@ def _selection_identity(
         "season_bin": candidate["season_bin"],
         "lead_bucket": candidate["lead_bucket"],
         "run_cycle": run_cycle,
+        "run_cycle_by_system_json": mapping_json,
+        "run_cycle_by_system_sha256": mapping_sha,
         "settlement_definition": candidate[
             "settlement_definition"
         ],
@@ -1382,15 +2039,69 @@ def _selection_identity(
     }
 
 
-def persist_native_ensemble_oos(
+def _evaluation_identity(
+    candidate: Mapping[str, Any],
+    *,
+    selection_evidence_sha256: str,
+    evaluated_at_utc: str,
+) -> dict[str, Any]:
+    """Return the immutable OOS result for one exact cross-system mask."""
+
+    (
+        cycle_by_system,
+        cycle_mapping_sha,
+        run_cycle,
+        _run_cycle_scope,
+    ) = _candidate_cycle_mapping(candidate)
+    state = str(candidate.get("state") or "")
+    if state not in {
+        "PRODUCTION_NO_LIVE_OOS_PASS",
+        "OOS_REJECTED",
+    }:
+        raise ContractError("native_ensemble_oos_evaluation_state_invalid")
+    selected_system_ids = sorted(
+        str(value) for value in candidate["selected_system_ids"]
+    )
+    available_system_set_hash = str(
+        candidate.get("available_system_set_hash") or ""
+    )
+    if (
+        not selected_system_ids
+        or available_system_set_hash != content_sha256(selected_system_ids)
+        or str(selection_evidence_sha256 or "")
+        != content_sha256(_selection_identity(candidate))
+    ):
+        raise ContractError("native_ensemble_oos_evaluation_identity_invalid")
+    return {
+        "station_id": candidate["station_id"],
+        "season_bin": candidate["season_bin"],
+        "lead_bucket": candidate["lead_bucket"],
+        "run_cycle": run_cycle,
+        "run_cycle_by_system_json": _json(cycle_by_system),
+        "run_cycle_by_system_sha256": cycle_mapping_sha,
+        "settlement_definition": candidate["settlement_definition"],
+        "ensemble_system_ids_json": _json(selected_system_ids),
+        "available_system_set_hash": available_system_set_hash,
+        "selection_evidence_sha256": selection_evidence_sha256,
+        "oos_state": state,
+        "threshold_profile": candidate["threshold_profile"],
+        "min_train_days": candidate["min_train_days"],
+        "min_holdout_days": candidate["min_holdout_days"],
+        "train_end_date": candidate["train_end_date"],
+        "holdout_start_date": candidate["holdout_start_date"],
+        "holdout_end_date": candidate["holdout_end_date"],
+        "oos_metrics_json": _json(candidate["oos_metrics"]),
+        "climatology_baseline_metrics_json": _json(
+            candidate["climatology_baseline_metrics"]
+        ),
+        "evaluated_at_utc": evaluated_at_utc,
+    }
+
+
+def _validate_native_ensemble_oos_report(
     conn: sqlite3.Connection,
     report: Mapping[str, Any],
-    *,
-    activated_at_utc: str,
-    valid_days: int = DEFAULT_VALID_DAYS,
-) -> dict[str, Any]:
-    """Persist passing candidate artifacts and no-live activations."""
-
+) -> None:
     if report.get("schema") != SCHEMA:
         raise ContractError("native_ensemble_oos_report_schema_invalid")
     identity = {
@@ -1400,6 +2111,157 @@ def persist_native_ensemble_oos(
     }
     if str(report.get("content_sha256") or "") != content_sha256(identity):
         raise ContractError("native_ensemble_oos_report_sha_mismatch")
+    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
+        raise ContractError(
+            "native_ensemble_oos_foundation_schema_missing"
+        )
+    # Persistence is a second trust boundary.  A signed report may arrive
+    # after the read-only builder, so do not let a caller reintroduce a
+    # prospective/forward row by editing the in-memory map.  Legacy native
+    # reports can omit the explicit scope because their offline archive class
+    # is already historical; republisher reports never receive that
+    # relaxation and must carry the historical receipt contract pointer.
+    for candidate in report.get("cross_candidates") or []:
+        if not isinstance(candidate, Mapping):
+            raise ContractError("native_ensemble_oos_candidate_invalid")
+        temporal_scope = str(
+            candidate.get("oos_event_temporal_scope") or ""
+        )
+        if temporal_scope and temporal_scope != HISTORICAL_OOS_TEMPORAL_SCOPE:
+            raise ContractError("native_ensemble_oos_forward_scope_forbidden")
+        try:
+            future_event_count = int(
+                candidate.get("future_event_count", 0) or 0
+            )
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "native_ensemble_oos_future_event_count_invalid"
+            ) from exc
+        if future_event_count != 0:
+            raise ContractError(
+                "native_ensemble_oos_future_event_count_nonzero"
+            )
+        evaluations = candidate.get("system_evaluations")
+        transports = candidate.get("system_transport_provider_ids")
+        if not isinstance(evaluations, Mapping) or not isinstance(transports, Mapping):
+            raise ContractError(
+                "native_ensemble_oos_historical_lineage_missing"
+            )
+        for system_id, raw_evaluation in evaluations.items():
+            if not isinstance(raw_evaluation, Mapping):
+                raise ContractError(
+                    "native_ensemble_oos_system_evaluation_invalid"
+                )
+            provider = str(
+                transports.get(system_id)
+                or raw_evaluation.get("transport_provider_id")
+                or ""
+            )
+            holdout_class = str(
+                raw_evaluation.get("holdout_source_class") or ""
+            )
+            if holdout_class == "FORWARD_LOCAL_RECEIPT":
+                raise ContractError(
+                    "native_ensemble_oos_forward_holdout_forbidden"
+                )
+            if provider == "OPEN_METEO":
+                if (
+                    temporal_scope != HISTORICAL_OOS_TEMPORAL_SCOPE
+                    or holdout_class != HISTORICAL_REPUBLISHER_RECEIPT
+                ):
+                    raise ContractError(
+                        "native_ensemble_oos_republisher_history_required"
+                    )
+                for prediction in raw_evaluation.get("predictions") or []:
+                    if (
+                        not isinstance(prediction, Mapping)
+                        or not prediction.get("historical_oos_contract_ids")
+                    ):
+                        raise ContractError(
+                            "native_ensemble_oos_republisher_contract_missing"
+                        )
+            elif holdout_class not in {
+                "",
+                "OFFLINE_CHRONOLOGICAL_NATIVE_ARCHIVE",
+            }:
+                raise ContractError(
+                    "native_ensemble_oos_native_holdout_lineage_invalid"
+                )
+
+
+def persist_native_ensemble_oos_evaluations(
+    conn: sqlite3.Connection,
+    report: Mapping[str, Any],
+    *,
+    evaluated_at_utc: str,
+    _manage_savepoint: bool = True,
+) -> dict[str, Any]:
+    """Append PASS and REJECTED evidence without creating activations.
+
+    This is deliberately separate from the OOS builder and activation writer:
+    a completed signed manifest can be ingested later without recomputing,
+    downloading, or widening model authority.
+    """
+
+    _validate_native_ensemble_oos_report(conn, report)
+    try:
+        datetime.fromisoformat(evaluated_at_utc.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractError(
+            "native_ensemble_oos_evaluation_timestamp_invalid"
+        ) from exc
+    if _manage_savepoint:
+        conn.execute("SAVEPOINT native_ensemble_oos_evaluations")
+    count = 0
+    try:
+        for candidate in report.get("cross_candidates") or []:
+            selection_sha = content_sha256(_selection_identity(candidate))
+            evaluation_identity = _evaluation_identity(
+                candidate,
+                selection_evidence_sha256=selection_sha,
+                evaluated_at_utc=evaluated_at_utc,
+            )
+            evaluation_sha = content_sha256(evaluation_identity)
+            evaluation_row = {
+                "evaluation_id": (
+                    "native-oos-evaluation-" + evaluation_sha[:24]
+                ),
+                **evaluation_identity,
+                "content_sha256": evaluation_sha,
+            }
+            count += _insert_content_row(
+                conn,
+                table="calibration_cross_native_ensemble_oos_evaluation",
+                primary_key="evaluation_id",
+                row=evaluation_row,
+            )
+    except Exception:
+        if _manage_savepoint:
+            conn.execute("ROLLBACK TO native_ensemble_oos_evaluations")
+            conn.execute("RELEASE native_ensemble_oos_evaluations")
+        raise
+    if _manage_savepoint:
+        conn.execute("RELEASE native_ensemble_oos_evaluations")
+    return {
+        "schema": "native_ensemble_oos_evaluation_persist_v1",
+        "state": "COMMITTED" if count else "NOOP_IDEMPOTENT",
+        "oos_evaluations": count,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+
+
+def persist_native_ensemble_oos(
+    conn: sqlite3.Connection,
+    report: Mapping[str, Any],
+    *,
+    activated_at_utc: str,
+    valid_days: int = DEFAULT_VALID_DAYS,
+) -> dict[str, Any]:
+    """Persist passing candidate artifacts and no-live activations."""
+
+    _validate_native_ensemble_oos_report(conn, report)
     if valid_days < 1 or valid_days > 90:
         raise ContractError("native_ensemble_oos_valid_days_invalid")
     activated = datetime.fromisoformat(
@@ -1412,27 +2274,32 @@ def persist_native_ensemble_oos(
         "system_artifacts": 0,
         "selection_evidence": 0,
         "cross_artifacts": 0,
+        "oos_evaluations": 0,
         "oos_predictions": 0,
         "activations": 0,
     }
     receipts = []
     conn.execute("SAVEPOINT native_ensemble_oos_persist")
     try:
+        counts["oos_evaluations"] = int(
+            persist_native_ensemble_oos_evaluations(
+                conn,
+                report,
+                evaluated_at_utc=activated_at_utc,
+                _manage_savepoint=False,
+            )["oos_evaluations"]
+        )
         for candidate in report.get("cross_candidates") or []:
-            if candidate.get("state") != "PRODUCTION_NO_LIVE_OOS_PASS":
-                continue
             cycle_by_system, cycle_mapping_sha, candidate_run_cycle, (
-                candidate_run_cycle_scope
+                _candidate_run_cycle_scope
             ) = _candidate_cycle_mapping(candidate)
-            if candidate_run_cycle_scope == "PER_SYSTEM_NATIVE_CYCLE":
-                raise ContractError(
-                    "native_ensemble_oos_mixed_cycle_persistence_requires_"
-                    "schema_and_p0_query"
-                )
+            cycle_mapping_json = _json(cycle_by_system)
             candidate_selection_identity = _selection_identity(candidate)
             candidate_selection_sha = content_sha256(
                 candidate_selection_identity
             )
+            if candidate.get("state") != "PRODUCTION_NO_LIVE_OOS_PASS":
+                continue
             reusable = conn.execute(
                 "SELECT a.activation_id,a.artifact_id,"
                 "c.selection_evidence_sha256,a.valid_until_utc "
@@ -1443,14 +2310,22 @@ def persist_native_ensemble_oos(
                 "AND a.station_id=? AND a.season_bin=? "
                 "AND a.lead_bucket=? AND a.run_cycle=? "
                 "AND a.available_system_set_hash_or_star=? "
+                "AND a.run_cycle_by_system_json=? "
+                "AND a.run_cycle_by_system_sha256=? "
+                "AND c.run_cycle_by_system_json=? "
+                "AND c.run_cycle_by_system_sha256=? "
                 "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
                 "ORDER BY a.generation DESC LIMIT 1",
                 (
                     candidate["station_id"],
                     candidate["season_bin"],
                     candidate["lead_bucket"],
-                    candidate["run_cycle"],
+                    candidate_run_cycle,
                     candidate["available_system_set_hash"],
+                    cycle_mapping_json,
+                    cycle_mapping_sha,
+                    cycle_mapping_json,
+                    cycle_mapping_sha,
                 ),
             ).fetchone()
             if (
@@ -1475,7 +2350,9 @@ def persist_native_ensemble_oos(
                     "station_id": candidate["station_id"],
                     "season_bin": candidate["season_bin"],
                     "lead_bucket": candidate["lead_bucket"],
-                    "run_cycle": candidate["run_cycle"],
+                    "run_cycle": candidate_run_cycle,
+                    "run_cycle_by_system": cycle_by_system,
+                    "run_cycle_by_system_sha256": cycle_mapping_sha,
                     "system_artifact_ids": {},
                     "system_activation_ids": {},
                     "selection_evidence_id": str(selection_row[0]),
@@ -1513,6 +2390,14 @@ def persist_native_ensemble_oos(
                             if int(train_source_counts[
                                 "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY"
                             ]) > 0
+                            else []
+                        ),
+                        *(
+                            ["CALIBRATION_TRAIN_ONLY"]
+                            if int(train_source_counts.get(
+                                HISTORICAL_REPUBLISHER_RECEIPT,
+                                0,
+                            )) > 0
                             else []
                         ),
                         *(
@@ -1559,6 +2444,12 @@ def persist_native_ensemble_oos(
                         "holdout_source_class": evaluation[
                             "holdout_source_class"
                         ],
+                        "oos_event_temporal_scope": evaluation.get(
+                            "oos_event_temporal_scope"
+                        ),
+                        "future_event_count": int(
+                            evaluation.get("future_event_count", 0)
+                        ),
                         "transport_provider_id":
                             transport_provider_id,
                         "source_authority_scopes":
@@ -1598,11 +2489,26 @@ def persist_native_ensemble_oos(
                         "retrospective_archive_training_only": (
                             not official_native_archive
                         ),
-                        "retrospective_archive_holdout_eligible": False,
+                        "retrospective_archive_holdout_eligible": (
+                            evaluation.get("holdout_source_class")
+                            == HISTORICAL_REPUBLISHER_RECEIPT
+                        ),
                         "offline_chronological_oos_eligible":
                             official_native_archive,
-                        "holdout_snapshot_before_day_end": True,
-                        "holdout_snapshot_before_truth_commit": True,
+                        # These two facts are native-archive timing facts;
+                        # do not assert them for a retrospective Open-Meteo
+                        # packet.  The republisher path is instead bound by
+                        # its explicit CLOSED_HISTORICAL_AWC_TRUTH contract.
+                        "holdout_snapshot_before_day_end": (
+                            official_native_archive
+                        ),
+                        "holdout_snapshot_before_truth_commit": (
+                            official_native_archive
+                        ),
+                        "historical_republisher_contract_bound": (
+                            evaluation.get("holdout_source_class")
+                            == HISTORICAL_REPUBLISHER_RECEIPT
+                        ),
                     }),
                     "train_start_date": evaluation["train_start_date"],
                     "train_end_date": evaluation["train_end_date"],
@@ -1645,6 +2551,8 @@ def persist_native_ensemble_oos(
                     "AND station_id=? AND ensemble_system_id_or_star=? "
                     "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
                     "AND available_system_set_hash_or_star='*' "
+                    "AND run_cycle_by_system_json=? "
+                    "AND run_cycle_by_system_sha256=? "
                     "ORDER BY generation DESC LIMIT 1",
                     (
                         candidate["station_id"],
@@ -1652,6 +2560,8 @@ def persist_native_ensemble_oos(
                         candidate["season_bin"],
                         candidate["lead_bucket"],
                         system_run_cycle,
+                        _json({system_id: system_run_cycle}),
+                        content_sha256({system_id: system_run_cycle}),
                     ),
                 ).fetchone()
                 if (
@@ -1693,6 +2603,12 @@ def persist_native_ensemble_oos(
                         "season_bin": candidate["season_bin"],
                         "lead_bucket": candidate["lead_bucket"],
                         "run_cycle": system_run_cycle,
+                        "run_cycle_by_system_json": _json({
+                            system_id: system_run_cycle,
+                        }),
+                        "run_cycle_by_system_sha256": content_sha256({
+                            system_id: system_run_cycle,
+                        }),
                         "settlement_definition": candidate[
                             "settlement_definition"
                         ],
@@ -1746,7 +2662,9 @@ def persist_native_ensemble_oos(
                 "station_id": candidate["station_id"],
                 "season_bin": candidate["season_bin"],
                 "lead_bucket": candidate["lead_bucket"],
-                "run_cycle": candidate["run_cycle"],
+                "run_cycle": candidate_run_cycle,
+                "run_cycle_by_system_json": cycle_mapping_json,
+                "run_cycle_by_system_sha256": cycle_mapping_sha,
                 "settlement_definition": candidate[
                     "settlement_definition"
                 ],
@@ -1809,7 +2727,9 @@ def persist_native_ensemble_oos(
                     ],
                     "season_bin": candidate["season_bin"],
                     "lead_bucket": candidate["lead_bucket"],
-                    "run_cycle": candidate["run_cycle"],
+                    "run_cycle": candidate_run_cycle,
+                    "run_cycle_by_system_json": cycle_mapping_json,
+                    "run_cycle_by_system_sha256": cycle_mapping_sha,
                     "settlement_definition": candidate[
                         "settlement_definition"
                     ],
@@ -1863,7 +2783,7 @@ def persist_native_ensemble_oos(
                 candidate["station_id"],
                 candidate["season_bin"],
                 candidate["lead_bucket"],
-                candidate["run_cycle"],
+                candidate_run_cycle,
                 candidate["available_system_set_hash"],
             )
             existing_activation = conn.execute(
@@ -1873,8 +2793,14 @@ def persist_native_ensemble_oos(
                 "AND station_id=? AND season_bin=? AND lead_bucket=? "
                 "AND run_cycle=? "
                 "AND available_system_set_hash_or_star=? "
+                "AND run_cycle_by_system_json=? "
+                "AND run_cycle_by_system_sha256=? "
                 "ORDER BY generation DESC LIMIT 1",
-                activation_scope,
+                (
+                    *activation_scope,
+                    cycle_mapping_json,
+                    cycle_mapping_sha,
+                ),
             ).fetchone()
             if (
                 existing_activation is not None
@@ -1901,7 +2827,9 @@ def persist_native_ensemble_oos(
                     "ensemble_system_id_or_star": "*",
                     "season_bin": candidate["season_bin"],
                     "lead_bucket": candidate["lead_bucket"],
-                    "run_cycle": candidate["run_cycle"],
+                    "run_cycle": candidate_run_cycle,
+                    "run_cycle_by_system_json": cycle_mapping_json,
+                    "run_cycle_by_system_sha256": cycle_mapping_sha,
                     "settlement_definition": candidate[
                         "settlement_definition"
                     ],
@@ -1933,7 +2861,9 @@ def persist_native_ensemble_oos(
                 "station_id": candidate["station_id"],
                 "season_bin": candidate["season_bin"],
                 "lead_bucket": candidate["lead_bucket"],
-                "run_cycle": candidate["run_cycle"],
+                "run_cycle": candidate_run_cycle,
+                "run_cycle_by_system": cycle_by_system,
+                "run_cycle_by_system_sha256": cycle_mapping_sha,
                 "system_artifact_ids": system_artifact_ids,
                 "system_activation_ids": system_activation_ids,
                 "selection_evidence_id": selection_row[
@@ -1952,7 +2882,12 @@ def persist_native_ensemble_oos(
     return {
         "schema": "native_ensemble_oos_persist_v1",
         "state": (
-            "COMMITTED" if receipts else "NO_OOS_PASS_NO_WRITE"
+            "COMMITTED" if receipts
+            else (
+                "COMMITTED_EVALUATIONS_ONLY"
+                if counts["oos_evaluations"]
+                else "NO_OOS_PASS_NO_WRITE"
+            )
         ),
         "counts": counts,
         "receipts": receipts,
@@ -1972,5 +2907,6 @@ __all__ = [
     "NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE",
     "SCHEMA",
     "build_native_ensemble_oos",
+    "persist_native_ensemble_oos_evaluations",
     "persist_native_ensemble_oos",
 ]

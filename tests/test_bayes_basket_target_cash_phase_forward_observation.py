@@ -20,14 +20,14 @@ from bayes_basket_target.contracts import content_sha256
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _inputs():
+def _inputs(*, probability_stage: str = "P1"):
     binding = {
         "schema": "bayes_basket_target_forward_evidence_binding_v1",
         "station_id": "RKPK",
         "event_date": "2026-07-27",
         "settlement_timezone": "Asia/Seoul",
         "decision_at_utc": "2026-07-26T21:08:23.560Z",
-        "probability_stage": "P1",
+        "probability_stage": probability_stage,
         "probability_decision_at_utc": "2026-07-26T21:00:00Z",
         "probability_artifact_sha256": "3" * 64,
         "probability_lineage_sha256": "4" * 64,
@@ -100,8 +100,8 @@ def _rehash_packet(packet):
     return packet
 
 
-def _build(existing=None):
-    args = _inputs()
+def _build(existing=None, *, probability_stage: str = "P1"):
+    args = _inputs(probability_stage=probability_stage)
     return build_forward_observation_packet(
         cycle_receipt=args[0], registry=args[1], existing=existing,
     )
@@ -201,17 +201,59 @@ def test_ws_order_authority_is_hard_gate(field: str, value: bool) -> None:
         )
 
 
-def test_registry_timezone_mismatch_and_unmaterialized_probability_block() -> None:
+def test_registry_timezone_mismatch_and_exact_stage_probability_binding() -> None:
     args = list(_inputs())
     args[1] = {"rows": [{"station_id": "RKPK", "event_date": "2026-07-27", "settlement_timezone": "America/New_York"}]}
     with pytest.raises(ForwardObservationError, match="timezone_mismatch"):
         build_forward_observation_packet(cycle_receipt=args[0], registry=args[1])
-    args = list(_inputs())
-    args[0] = deepcopy(args[0])
-    args[0]["forward_evidence_binding"]["probability_stage"] = "P0"
-    _rehash(args[0])
-    with pytest.raises(ForwardObservationError, match="requires_p1"):
+    for stage in ("P0", "P0-M", "P1"):
+        row = _build(probability_stage=stage)["observations"][0]
+        assert row["probability_stage"] == stage
+        if stage == "P1":
+            # The original P1-only stream is immutable: retained settlement
+            # labels and retention receipts keep the v1 key unchanged.
+            assert row["observation_key"] == (
+                "RKPK|2026-07-27|STANDARD|2026-07-26T21:08:23.560Z"
+            )
+        else:
+            assert row["observation_key"] == (
+                "RKPK|2026-07-27|STANDARD|2026-07-26T21:08:23.560Z"
+                f"|{stage}"
+            )
+
+    args = list(_inputs(probability_stage="P0-F"))
+    with pytest.raises(ForwardObservationError, match="probability_stage_invalid"):
         build_forward_observation_packet(cycle_receipt=args[0], registry=args[1])
+
+
+def test_same_clock_p0_and_p0m_are_distinct_exact_stage_observations() -> None:
+    """A later P0-M must not poison the same-clock P0 forward record."""
+
+    p0_packet = _build(probability_stage="P0")
+    combined = _build(existing=p0_packet, probability_stage="P0-M")
+    rows = combined["observations"]
+    assert len(rows) == 2
+    assert {row["probability_stage"] for row in rows} == {"P0", "P0-M"}
+    assert len({row["observation_key"] for row in rows}) == 2
+
+
+def test_rehashed_packet_cannot_smuggle_unknown_or_noncanonical_stage(
+    tmp_path: Path,
+) -> None:
+    packet = _build(probability_stage="P0")
+    packet["observations"][0]["probability_stage"] = "P0-F"
+    _rehash_packet(packet)
+    with pytest.raises(ForwardObservationError, match="probability_stage_invalid"):
+        write_forward_observation_packet(tmp_path / "unknown-stage.json", packet)
+
+    packet = _build(probability_stage="P0")
+    packet["observations"][0]["probability_stage"] = "p0"
+    _rehash_packet(packet)
+    with pytest.raises(
+        ForwardObservationError,
+        match="probability_stage_not_canonical",
+    ):
+        write_forward_observation_packet(tmp_path / "lowercase-stage.json", packet)
 
 
 @pytest.mark.parametrize(

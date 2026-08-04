@@ -1,0 +1,30 @@
+{
+  "schema": "open_meteo_historical_oos_contract_append_v1",
+  "as_of_utc": "2026-08-03T01:34:30Z",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "commit": true,
+  "production_no_live": true,
+  "calls_order_gateway": false,
+  "orders_submitted": 0,
+  "native_arrival_index_written": false,
+  "p1_authority_written": false,
+  "summary": {
+    "group_count": 185,
+    "contract_count": 20,
+    "successor_member_row_count": 820,
+    "stations": [
+      "NZWN",
+      "ZBAA",
+      "ZGGG",
+      "ZHHH",
+      "ZSQD"
+    ],
+    "systems": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ],
+    "skipped": {}
+  },
+  "inserted_contracts": 20,
+  "inserted_successor_member_rows": 820
+}

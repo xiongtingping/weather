@@ -25,7 +25,14 @@ CANONICAL_MODEL_PROVIDERS = (
 # an aggregator curve overlap the same station/day/run.  The aggregator is
 # only a completion path, never a silent replacement of native evidence.
 MODEL_PROVIDER_VARIANTS: Mapping[str, tuple[str, ...]] = {
-    "ecmwf_ifs025_official": ("ecmwf_ifs025_official",),
+    # IFS and AIFS are distinct official ECMWF products but one independence
+    # family/model role.  IFS stays the deterministic production preference
+    # until AIFS earns its own strict OOS artifact; AIFS receipts are retained
+    # as native forward-calibration evidence, never counted as a sixth family.
+    "ecmwf_ifs025_official": (
+        "ecmwf_ifs025_official",
+        "ecmwf_aifs025_official",
+    ),
     "gfs_0p25_official": ("gfs_0p25_official",),
     "icon_global_official": (
         "icon_global_official",
@@ -40,6 +47,7 @@ MODEL_PROVIDER_VARIANTS: Mapping[str, tuple[str, ...]] = {
 
 HISTORICAL_REPLAY_ONLY_PROVIDERS: Mapping[str, str] = {
     "ecmwf_ifs_open_meteo_previous_runs": "ecmwf_ifs025_official",
+    "ecmwf_aifs_single_open_meteo": "ecmwf_ifs025_official",
     "gfs_global_open_meteo_previous_runs": "gfs_0p25_official",
 }
 
@@ -54,6 +62,7 @@ REGIONAL_MODEL_ID_BY_PROVIDER = {
     "ncep_hrrr_conus_open_meteo": "HRRR",
     "ncep_nbm_conus_open_meteo": "NBM",
     "ncep_nam_conus_open_meteo": "NAM",
+    "icon_eu_open_meteo": "ICON-EU",
     "icon_d2_open_meteo": "ICON-D2",
     "meteofrance_arome_france0025_open_meteo": "AROME-FR",
     "ukmo_uk_deterministic_2km_open_meteo": "UKMO-2KM",
@@ -63,6 +72,22 @@ REGIONAL_MODEL_ID_BY_PROVIDER = {
 }
 REGIONAL_MODEL_ROLE_BY_PROVIDER = {
     provider: f"regional_{model_id.lower().replace('-', '_')}"
+    for provider, model_id in REGIONAL_MODEL_ID_BY_PROVIDER.items()
+}
+# Regional products are currently available through Open-Meteo only in this
+# capture chain.  Keep product scope and lineage explicit so ICON-EU,
+# ICON-D2, AROME, HARMONIE and UKMO rows cannot be mistaken for DWD/KNMI/
+# Meteo-France/Met Office native arrivals.  A future native receipt must add a
+# separate provider id and pass its own strict-OOS gate; it must not mutate
+# these republisher rows in place.
+REGIONAL_MODEL_LINEAGE: Mapping[str, Mapping[str, Any]] = {
+    provider: {
+        "model_id": model_id,
+        "model_scope": "regional",
+        "source_class": "aggregator_republisher",
+        "native_arrival_index_eligible": False,
+        "formal_p0_eligible": False,
+    }
     for provider, model_id in REGIONAL_MODEL_ID_BY_PROVIDER.items()
 }
 MODEL_ROLE_BY_PROVIDER.update(REGIONAL_MODEL_ROLE_BY_PROVIDER)
@@ -149,6 +174,21 @@ def provider_source_class(provider_id: Any) -> str:
     raise ContractError("model_provider_not_allowed")
 
 
+def regional_model_lineage(provider_id: Any) -> dict[str, Any]:
+    """Return immutable lineage metadata for one regional candidate.
+
+    The helper intentionally exposes only republisher candidates.  It raises
+    for global providers so callers cannot silently downgrade a global native
+    model into a regional fallback or vice versa.
+    """
+
+    provider = str(provider_id or "").strip().lower()
+    try:
+        return dict(REGIONAL_MODEL_LINEAGE[provider])
+    except KeyError as exc:
+        raise ContractError("regional_model_provider_not_registered") from exc
+
+
 __all__ = [
     "ALLOWED_MODEL_PROVIDERS",
     "CANONICAL_MODEL_PROVIDERS",
@@ -157,6 +197,7 @@ __all__ = [
     "MODEL_ROLE_BY_PROVIDER",
     "MODEL_ROLES",
     "REGIONAL_MODEL_ID_BY_PROVIDER",
+    "REGIONAL_MODEL_LINEAGE",
     "has_one_provider_per_model_role",
     "missing_model_roles",
     "model_id_for_provider",
@@ -164,4 +205,5 @@ __all__ = [
     "provider_role",
     "provider_roles",
     "provider_source_class",
+    "regional_model_lineage",
 ]

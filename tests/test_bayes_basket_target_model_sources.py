@@ -14,6 +14,7 @@ from bayes_basket_target.model_sources import (
     model_id_for_provider,
     provider_role,
     provider_source_class,
+    regional_model_lineage,
 )
 
 
@@ -55,3 +56,27 @@ def test_previous_runs_transport_cannot_satisfy_formal_provider_set() -> None:
         "gem_global_open_meteo",
         "cma_grapes_global_open_meteo",
     ])
+
+
+def test_regional_icon_and_european_candidates_keep_republisher_lineage() -> None:
+    expected = {
+        "icon_eu_open_meteo": "ICON-EU",
+        "icon_d2_open_meteo": "ICON-D2",
+        "meteofrance_arome_france0025_open_meteo": "AROME-FR",
+        "knmi_harmonie_arome_netherlands_open_meteo": "HARMONIE-NL",
+        "knmi_harmonie_arome_europe_open_meteo": "HARMONIE-EU",
+        "ukmo_uk_deterministic_2km_open_meteo": "UKMO-2KM",
+    }
+    for provider, model_id in expected.items():
+        lineage = regional_model_lineage(provider)
+        assert lineage["model_id"] == model_id
+        assert lineage["model_scope"] == "regional"
+        assert lineage["source_class"] == "aggregator_republisher"
+        assert lineage["native_arrival_index_eligible"] is False
+        assert lineage["formal_p0_eligible"] is False
+        assert provider_source_class(provider) == "aggregator_republisher"
+
+
+def test_global_native_provider_is_not_accepted_as_regional_lineage() -> None:
+    with pytest.raises(ContractError, match="regional_model_provider_not_registered"):
+        regional_model_lineage("icon_global_official")

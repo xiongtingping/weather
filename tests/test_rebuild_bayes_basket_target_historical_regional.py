@@ -101,6 +101,11 @@ def test_regional_pool_covers_exact_canonical_45_station_scope() -> None:
     )
     assert payload["selection_contract"]["minimum_selected_models"] == 2
     assert payload["selection_contract"]["future_targets_for_training_forbidden"] is True
+    assert (
+        payload["official_native_global_products"]
+        ["ECCC_GEM_GLOBAL_ENS"]["independence_family_id"]
+        == "ECCC_GEM"
+    )
 
 
 def test_regional_history_rebuild_uses_only_closed_historical_exact_run(

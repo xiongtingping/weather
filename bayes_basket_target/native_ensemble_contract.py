@@ -18,6 +18,16 @@ P0_PROBABILITY_PATHWAY = "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE"
 TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA = (
     "bayes_basket_taf_native_ensemble_live_compatibility_fingerprint_v1"
 )
+# The native-system registry describes the upstream model, not an arbitrary
+# transport that happens to expose a similarly named product.  Keep this
+# mapping deliberately small: adding an official provider is a SSOT change,
+# never an implicit side effect of registering a model name.
+OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER = {
+    "ECMWF": "ECMWF_OPEN_DATA_S3",
+    "NOAA": "NOAA_GEFS_PDS_S3",
+    "ECCC": "ECCC_DD_WEATHER",
+    "DWD": "DWD",
+}
 
 
 def native_ensemble_family_set_hash(family_ids: Sequence[str]) -> str:
@@ -28,14 +38,11 @@ def native_ensemble_family_set_hash(family_ids: Sequence[str]) -> str:
     return hashlib.sha256("|".join(canonical).encode("utf-8")).hexdigest()
 
 
-def validate_cross_native_ensemble_gate(
+def _selected_native_systems(
     *,
     selected_system_ids: Sequence[str],
     systems_by_id: Mapping[str, Mapping[str, Any]],
-    member_runs: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    """Validate that a cross-model gate counts systems/families, not members."""
-
+) -> tuple[tuple[str, ...], list[Mapping[str, Any]]]:
     selected = tuple(sorted(str(item).strip() for item in selected_system_ids))
     if any(not item for item in selected) or len(set(selected)) != len(selected):
         raise ContractError("native_ensemble_system_set_invalid")
@@ -49,7 +56,58 @@ def validate_cross_native_ensemble_gate(
             raise ContractError("native_ensemble_source_class_invalid")
         if bool(system.get("aggregator_or_republisher")):
             raise ContractError("native_ensemble_republisher_forbidden")
+        provider_id = str(system.get("provider_id") or "").strip()
+        if provider_id not in OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER:
+            raise ContractError("native_ensemble_system_provider_not_official")
         systems.append(system)
+    return selected, systems
+
+
+def validate_native_ensemble_transport_gate(
+    *,
+    selected_system_ids: Sequence[str],
+    systems_by_id: Mapping[str, Mapping[str, Any]],
+    transport_provider_by_system: Mapping[str, Any],
+) -> dict[str, str]:
+    """Bind each native system to its sole official transport.
+
+    This deliberately validates the transport separately from member/OOS
+    completeness so official forward P0 compilation can reuse the same
+    lineage rule without inventing member publication fields from an archive
+    receipt.  Republisher packets never call this native-only gate.
+    """
+
+    selected, systems = _selected_native_systems(
+        selected_system_ids=selected_system_ids,
+        systems_by_id=systems_by_id,
+    )
+    resolved: dict[str, str] = {}
+    for system_id, system in zip(selected, systems):
+        provider_id = str(system["provider_id"]).strip()
+        expected_transport = OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER[
+            provider_id
+        ]
+        observed_transport = str(
+            transport_provider_by_system.get(system_id) or ""
+        ).strip()
+        if observed_transport != expected_transport:
+            raise ContractError("native_ensemble_transport_not_official")
+        resolved[system_id] = observed_transport
+    return dict(sorted(resolved.items()))
+
+
+def validate_cross_native_ensemble_gate(
+    *,
+    selected_system_ids: Sequence[str],
+    systems_by_id: Mapping[str, Mapping[str, Any]],
+    member_runs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate that a cross-model gate counts systems/families, not members."""
+
+    selected, systems = _selected_native_systems(
+        selected_system_ids=selected_system_ids,
+        systems_by_id=systems_by_id,
+    )
 
     family_ids = tuple(
         str(system.get("independence_family_id", "")).strip()
@@ -64,10 +122,36 @@ def validate_cross_native_ensemble_gate(
     member_ids_by_system: dict[str, set[str]] = {
         system_id: set() for system_id in selected
     }
+    transport_provider_by_system: dict[str, str] = {}
     for member in member_runs:
         system_id = str(member.get("ensemble_system_id", "")).strip()
         if system_id not in member_ids_by_system:
             raise ContractError("native_ensemble_member_outside_selected_systems")
+        system = systems_by_id[system_id]
+        if (
+            str(member.get("provider_id") or "").strip()
+            != str(system.get("provider_id") or "").strip()
+        ):
+            raise ContractError("native_ensemble_member_provider_mismatch")
+        member_transport = str(
+            member.get("transport_provider_id") or ""
+        ).strip()
+        existing_transport = transport_provider_by_system.get(system_id)
+        if (
+            existing_transport is not None
+            and existing_transport != member_transport
+        ):
+            raise ContractError("native_ensemble_transport_not_official")
+        transport_provider_by_system[system_id] = member_transport
+
+    official_transport_by_system = validate_native_ensemble_transport_gate(
+        selected_system_ids=selected,
+        systems_by_id=systems_by_id,
+        transport_provider_by_system=transport_provider_by_system,
+    )
+
+    for member in member_runs:
+        system_id = str(member.get("ensemble_system_id", "")).strip()
         if (
             str(member.get("authority_scope") or "")
             != "FORMAL_NATIVE_ELIGIBLE"
@@ -105,6 +189,9 @@ def validate_cross_native_ensemble_gate(
             system_id: len(member_ids_by_system[system_id])
             for system_id in selected
         },
+        "official_transport_provider_by_system": (
+            official_transport_by_system
+        ),
     }
 
 

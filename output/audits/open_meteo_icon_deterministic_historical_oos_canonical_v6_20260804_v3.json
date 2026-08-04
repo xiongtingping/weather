@@ -1,0 +1,3825 @@
+{
+  "as_of_utc": "2026-08-04T05:16:39Z",
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "climatology_baseline_metrics": {
+        "mae_c": 2.4624999999999995,
+        "mean_error_c": 2.3249999999999993,
+        "rmse_c": 3.0024989592004854
+      },
+      "content_sha256": "2ae18f0b685310cfb3d76e3ad141ff1fb8a774a72a88d241960182f92bb4808d",
+      "formal_p0_eligible": false,
+      "future_event_count": 0,
+      "historical_oos_contract_ids": [
+        "det-om-hist-oos-77b1418206dddcd5842c709fbdfa4b728a18a63a",
+        "det-om-hist-oos-23cdd2574808ef971fb2a5ecee8d4a7a9e3a75fd",
+        "det-om-hist-oos-abf73a277c8ded3d309d69095fc150204d223c9a",
+        "det-om-hist-oos-a8bbd45a2e6cf6277e771156d116cd6fa8dd36ed",
+        "det-om-hist-oos-24a676c71b85f127ec5b0e3b9c25428934d1767a",
+        "det-om-hist-oos-477ee01a48398bee1d8d63a995571aa31290f87b",
+        "det-om-hist-oos-df2444215483969ccc8cba5a6728c2d9302ec4b4",
+        "det-om-hist-oos-267c82d1bbb94a25c7af547935bd0c14085c6f6c"
+      ],
+      "holdout_end_date": "2026-07-29",
+      "holdout_n": 8,
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d0",
+      "min_holdout_days": 8,
+      "min_train_days": 20,
+      "model_id": "ICON",
+      "model_metrics": {
+        "mae_c": 0.4137500000000016,
+        "mean_error_c": -0.4100000000000015,
+        "rmse_c": 0.494949492372708
+      },
+      "native_arrival_index_eligible": false,
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "p1_eligible": false,
+      "predictions": [
+        {
+          "actual_tmax_c": 22.0,
+          "calibrated_daily_max_c": 21.814999999999998,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.18500000000000227,
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 21.4,
+          "historical_oos_contract_id": "det-om-hist-oos-77b1418206dddcd5842c709fbdfa4b728a18a63a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 26.0,
+          "calibrated_daily_max_c": 25.115,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.8850000000000016,
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 24.7,
+          "historical_oos_contract_id": "det-om-hist-oos-23cdd2574808ef971fb2a5ecee8d4a7a9e3a75fd",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 25.0,
+          "calibrated_daily_max_c": 24.615,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.38500000000000156,
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 24.2,
+          "historical_oos_contract_id": "det-om-hist-oos-abf73a277c8ded3d309d69095fc150204d223c9a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 26.0,
+          "calibrated_daily_max_c": 25.615,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.38500000000000156,
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 25.2,
+          "historical_oos_contract_id": "det-om-hist-oos-a8bbd45a2e6cf6277e771156d116cd6fa8dd36ed",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 26.814999999999998,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.18500000000000227,
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 26.4,
+          "historical_oos_contract_id": "det-om-hist-oos-24a676c71b85f127ec5b0e3b9c25428934d1767a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 29.0,
+          "calibrated_daily_max_c": 28.415,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.5850000000000009,
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 28.0,
+          "historical_oos_contract_id": "det-om-hist-oos-477ee01a48398bee1d8d63a995571aa31290f87b",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 27.015,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": 0.015000000000000568,
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 26.6,
+          "historical_oos_contract_id": "det-om-hist-oos-df2444215483969ccc8cba5a6728c2d9302ec4b4",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 26.314999999999998,
+          "decision_at_utc": "2026-08-03T07:01:59Z",
+          "error_c": -0.6850000000000023,
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 25.9,
+          "historical_oos_contract_id": "det-om-hist-oos-267c82d1bbb94a25c7af547935bd0c14085c6f6c",
+          "member_run_content_shas": [
+            "ae37b4cabe0fff26060101c7444d7c5e648a86206b29468e842178beb74724a1"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        }
+      ],
+      "provider_id": "icon_global_open_meteo",
+      "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_SCOPE",
+      "schema": "deterministic_republisher_strict_oos_candidate_v1",
+      "season_bin": "JJA",
+      "source_role": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_OOS_PASS",
+      "station_id": "CYYZ",
+      "train_bias_c": 0.4149999999999997,
+      "train_climatology_tmax_c": 28.45,
+      "train_end_date": "2026-07-21",
+      "train_n": 20,
+      "train_start_date": "2026-07-02",
+      "transport_provider_id": "OPEN_METEO"
+    },
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "climatology_baseline_metrics": {
+        "mae_c": 1.25,
+        "mean_error_c": 0.5,
+        "rmse_c": 1.5
+      },
+      "content_sha256": "ac4ec4646da68e393accfe6930de63f49e62185ef4c5914bbca1de27935709e1",
+      "formal_p0_eligible": false,
+      "future_event_count": 0,
+      "historical_oos_contract_ids": [
+        "det-om-hist-oos-0a9c460249a3bb26bcf0a951a438f3196a8ed1f3",
+        "det-om-hist-oos-f9447ad0a38afee61c1c5a77056b37f17be6dae4",
+        "det-om-hist-oos-7777396535b4341bf7852e7bfd830e2270e59662",
+        "det-om-hist-oos-1a95f94a60e45ea18a94fef5a0b92871484124e0",
+        "det-om-hist-oos-c3a887ea67ef1bb6662da8127074f11a6bccf399",
+        "det-om-hist-oos-49fc667add9fc7359b805e2acbbf2791d9dc2088",
+        "det-om-hist-oos-d66e33fe712b9b002da7bedb52255b22f6d2a8ba",
+        "det-om-hist-oos-d22d634c2774fe1eff6a080c18117700209f9ef5"
+      ],
+      "holdout_end_date": "2026-07-29",
+      "holdout_n": 8,
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d0",
+      "min_holdout_days": 8,
+      "min_train_days": 20,
+      "model_id": "ICON",
+      "model_metrics": {
+        "mae_c": 0.4500000000000002,
+        "mean_error_c": -0.3250000000000006,
+        "rmse_c": 0.5916079783099619
+      },
+      "native_arrival_index_eligible": false,
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "p1_eligible": false,
+      "predictions": [
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.75,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.25,
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 13.3,
+          "historical_oos_contract_id": "det-om-hist-oos-0a9c460249a3bb26bcf0a951a438f3196a8ed1f3",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.85,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.15000000000000036,
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 13.4,
+          "historical_oos_contract_id": "det-om-hist-oos-f9447ad0a38afee61c1c5a77056b37f17be6dae4",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.85,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.15000000000000036,
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 13.4,
+          "historical_oos_contract_id": "det-om-hist-oos-7777396535b4341bf7852e7bfd830e2270e59662",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 12.0,
+          "calibrated_daily_max_c": 12.049999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": 0.049999999999998934,
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 11.6,
+          "historical_oos_contract_id": "det-om-hist-oos-1a95f94a60e45ea18a94fef5a0b92871484124e0",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 10.0,
+          "calibrated_daily_max_c": 9.549999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.45000000000000107,
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 9.1,
+          "historical_oos_contract_id": "det-om-hist-oos-c3a887ea67ef1bb6662da8127074f11a6bccf399",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 11.0,
+          "calibrated_daily_max_c": 10.149999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.8500000000000014,
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 9.7,
+          "historical_oos_contract_id": "det-om-hist-oos-49fc667add9fc7359b805e2acbbf2791d9dc2088",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 13.0,
+          "calibrated_daily_max_c": 11.75,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -1.25,
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 11.3,
+          "historical_oos_contract_id": "det-om-hist-oos-d66e33fe712b9b002da7bedb52255b22f6d2a8ba",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 12.0,
+          "calibrated_daily_max_c": 12.45,
+          "decision_at_utc": "2026-08-03T07:01:59Z",
+          "error_c": 0.4499999999999993,
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 12.0,
+          "historical_oos_contract_id": "det-om-hist-oos-d22d634c2774fe1eff6a080c18117700209f9ef5",
+          "member_run_content_shas": [
+            "4b4e044e7cf8a439a103618057af30bfc543005744cbac8fb55b6f1bf1f71c9c"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        }
+      ],
+      "provider_id": "icon_global_open_meteo",
+      "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_SCOPE",
+      "schema": "deterministic_republisher_strict_oos_candidate_v1",
+      "season_bin": "JJA",
+      "source_role": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_OOS_PASS",
+      "station_id": "NZWN",
+      "train_bias_c": 0.44999999999999973,
+      "train_climatology_tmax_c": 13.0,
+      "train_end_date": "2026-07-21",
+      "train_n": 20,
+      "train_start_date": "2026-07-02",
+      "transport_provider_id": "OPEN_METEO"
+    }
+  ],
+  "capture_receipt_sha256s": [
+    "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+    "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+    "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26"
+  ],
+  "content_sha256": "bff748ed4e4c1061d2999d1a5f30cf32ca721fca0f0152ae548d28d2a6dd6879",
+  "curve_count": 1381,
+  "formal_p0_eligible": false,
+  "legacy_truth_projection_read": false,
+  "missing_truth_scopes": [
+    {
+      "event_date": "2026-07-01",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZUUU"
+    }
+  ],
+  "model_id": "ICON",
+  "oos_policy": {
+    "calls_order_gateway": false,
+    "formal_live_authority_written": false,
+    "future_event_count": 0,
+    "min_holdout_days": 8,
+    "min_train_days": 20,
+    "native_arrival_index_written": false,
+    "orders_submitted": 0,
+    "p1_authority_written": false,
+    "production_database_written": false,
+    "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+  },
+  "provider_id": "icon_global_open_meteo",
+  "schema": "deterministic_republisher_strict_oos_v1",
+  "shortfalls": [
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EDDM"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EFHK"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EGLC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EHAM"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EPWA"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "FACT"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KATL"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KAUS"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KBKF"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KDAL"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KHOU"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KLAX"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KLGA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KMIA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KORD"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KSEA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KSFO"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LEMD"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LFPB"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LIMC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LTAC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "MMMX"
+    },
+    {
+      "available_closed_historical_days": 17,
+      "missing_days": 11,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "MPMG"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "OEJN"
+    },
+    {
+      "available_closed_historical_days": 21,
+      "missing_days": 7,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "OPKC"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RCSS"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RJTT"
+    },
+    {
+      "available_closed_historical_days": 25,
+      "missing_days": 3,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RKPK"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RKSI"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RPLL"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "SAEZ"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "SBGR"
+    },
+    {
+      "available_closed_historical_days": 25,
+      "missing_days": 3,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "VILK"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "WMKK"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "WSSS"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZBAA"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZGGG"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZGSZ"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZHHH"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZSPD"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZSQD"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZUCK"
+    },
+    {
+      "available_closed_historical_days": 14,
+      "missing_days": 14,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZUUU"
+    }
+  ],
+  "source_role": "aggregator_republisher",
+  "state": "READY_CANDIDATES",
+  "station_count": 45,
+  "transport_provider_id": "OPEN_METEO",
+  "truth_count": 596,
+  "truth_source": "canonical_ssot_fact_v6"
+}

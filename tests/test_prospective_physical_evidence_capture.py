@@ -209,11 +209,6 @@ def test_direct_nwp_path_returns_materialization_and_persists_rotation(
     monkeypatch.setattr(
         capture_module, "build_official_nwp_daily_curve_monitor_job", fake_monitor
     )
-    monkeypatch.setattr(
-        capture_module,
-        "materialize_official_nwp_daily_peak_p1",
-        lambda **_: {"ok": True, "state": "applied", "outcomes": []},
-    )
     status = tmp_path / "status.json"
     result = capture_official_nwp_tier_a(
         db_path=tmp_path / "archive.db",
@@ -225,10 +220,10 @@ def test_direct_nwp_path_returns_materialization_and_persists_rotation(
     )
 
     assert result["ok"] is True
-    assert result["state"] == "official_nwp_tier_a_captured"
+    assert result["state"] == "official_nwp_curve_captured_for_p0"
     assert result["selected_providers"] == ["ecmwf"]
     assert result["next_provider_index"] == 1
-    assert result["p1_materialization"]["state"] == "applied"
+    assert result["p1_materialization"]["state"] == "RETIRED_FORECAST_CANNOT_MATERIALIZE_P1"
     assert seen["job_contract"]["providers"] == ["ecmwf"]
     persisted = json.loads(status.read_text(encoding="utf-8"))
     assert persisted["next_provider_index"] == 1

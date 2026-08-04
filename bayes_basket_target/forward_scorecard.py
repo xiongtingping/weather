@@ -36,11 +36,13 @@ from .cash_phase_oos import (
 SCHEMA = "bayes_basket_target_forward_scorecard_v1"
 MAKER_FORWARD_SCHEMA = "bayes_basket_target_maker_forward_scorecard_v1"
 MAX_ROWS = 512
-# Keep the worst-case retained JSON payload bounded at 64 MiB even when a
-# complete station-day contains more than the former 256-row cap.
-MAX_FEATURE_JSON_BYTES = 131_072
+# Match the producer's immutable feature contract.  The scorer previously
+# rejected valid 128-256 KiB facts that the writer had accepted, making their
+# content hashes unverifiable downstream.  The independent aggregate, depth,
+# node and row caps below still bound every scorecard run.
+MAX_FEATURE_JSON_BYTES = 262_144
 MAX_TOTAL_SCORECARD_ROWS = 20_000
-MAX_TOTAL_SCORECARD_JSON_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_SCORECARD_JSON_BYTES = 256 * 1024 * 1024
 MAX_JSON_DEPTH = 32
 MAX_JSON_NODES = 100_000
 MAX_MAKER_TARGETS_PER_FACT = 64

@@ -1,0 +1,304 @@
+{
+  "as_of_utc": "2026-08-02T02:26:06Z",
+  "calls_order_gateway": false,
+  "content_sha256": "fad677fe0d680973a1fa7500465db0b3e72ad7cae74f695b29e21dede8dd87c0",
+  "event_date": "2026-07-31",
+  "formal_truth_row_count": 0,
+  "formal_truth_rows": [],
+  "materializer_consequence": "no_candidate: its required inner join to calibration_station_daily_high_truth has no row",
+  "orders_submitted": 0,
+  "query_only": true,
+  "remediation": "wait_for_or_ingest_official_AWC_truth_then_use_the_existing_settlement_label_materializer; do_not_synthesize_truth_or_label",
+  "schema": "delta_v2_label_truth_gap_audit_v1",
+  "selector": {
+    "fact_authority_scope": "PRODUCTION_NO_LIVE_FORWARD",
+    "fact_id_prefix": "d2fact_",
+    "unlabelled_only": true
+  },
+  "stage": "P1",
+  "state": "BLOCKED_MISSING_FORMAL_TRUTH",
+  "station_id": "LEMD",
+  "unlabelled_fact_count": 35,
+  "unlabelled_fact_items": [
+    {
+      "content_sha256": "883db24ec4cf68d54c0ccd895580d32f446285258e2a78f75b44fc10c20802be",
+      "decision_at_utc": "2026-07-30T22:26:40.669Z",
+      "fact_id": "d2fact_883db24ec4cf68d54c0ccd895580d32f44628525",
+      "probability_envelope_id": "p1_067a9aa3d2ff6cd0891749ef4d7a8e30",
+      "rowid": 729,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "2113813e5ad19ee11cad35f5937bea586361a82773aedb7c5eb7a99ae5eff528",
+      "decision_at_utc": "2026-07-30T22:32:13.738Z",
+      "fact_id": "d2fact_2113813e5ad19ee11cad35f5937bea586361a827",
+      "probability_envelope_id": "p1_067a9aa3d2ff6cd0891749ef4d7a8e30",
+      "rowid": 737,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "8eed0679a6155e7a33837173a1dea583f8d557589c11e007489c7e62445d8ac0",
+      "decision_at_utc": "2026-07-30T22:37:12.969Z",
+      "fact_id": "d2fact_8eed0679a6155e7a33837173a1dea583f8d55758",
+      "probability_envelope_id": "p1_067a9aa3d2ff6cd0891749ef4d7a8e30",
+      "rowid": 740,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "be300a7670aa608e808832ce80f4f5e08c0ca0317d8f29e9f139cdfb3f8123a7",
+      "decision_at_utc": "2026-07-30T22:38:29.275Z",
+      "fact_id": "d2fact_be300a7670aa608e808832ce80f4f5e08c0ca031",
+      "probability_envelope_id": "p1_067a9aa3d2ff6cd0891749ef4d7a8e30",
+      "rowid": 743,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "4599ab47b0fbef3b1a3f03197ee9682a04d14cb6d5ad24457a58f166b660b83c",
+      "decision_at_utc": "2026-07-30T22:57:36.727Z",
+      "fact_id": "d2fact_4599ab47b0fbef3b1a3f03197ee9682a04d14cb6",
+      "probability_envelope_id": "p1_067a9aa3d2ff6cd0891749ef4d7a8e30",
+      "rowid": 748,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "c8fc7b230ed42108e79541ed9789ac03b2b2cd2b0e3e0401276a523d4b4f6e96",
+      "decision_at_utc": "2026-07-30T23:06:07.838Z",
+      "fact_id": "d2fact_c8fc7b230ed42108e79541ed9789ac03b2b2cd2b",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 755,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "59553d981d355b4085f6c0845fd8be581e476c75f8578e3bac49007fff75663d",
+      "decision_at_utc": "2026-07-30T23:13:49.540Z",
+      "fact_id": "d2fact_59553d981d355b4085f6c0845fd8be581e476c75",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 761,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "3fc464c0b61e6d5c95f29636647e719f9148dcf7cc2c411f35eaeacd4fd1f2b5",
+      "decision_at_utc": "2026-07-30T23:37:57.292Z",
+      "fact_id": "d2fact_3fc464c0b61e6d5c95f29636647e719f9148dcf7",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 763,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "abe9085b30b5b5f9bd4eb604a79aa3d3ace00737fed28219906e3574cdc5c8e4",
+      "decision_at_utc": "2026-07-30T23:39:12.760Z",
+      "fact_id": "d2fact_abe9085b30b5b5f9bd4eb604a79aa3d3ace00737",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 765,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "9d43c9a2ac8779362ed2c94d3645a85b1695167d75862678fee45c756b6d9c5d",
+      "decision_at_utc": "2026-07-30T23:40:28.717Z",
+      "fact_id": "d2fact_9d43c9a2ac8779362ed2c94d3645a85b1695167d",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 767,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "5ebb6f109174d94dfd3a9dfbaeaeb9878c6a010c31c639cbf49910deaecb0e8f",
+      "decision_at_utc": "2026-07-30T23:41:43.642Z",
+      "fact_id": "d2fact_5ebb6f109174d94dfd3a9dfbaeaeb9878c6a010c",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 768,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "20d335785c26cc11786269c3460ab266437f47477d951db5bee4e05c7df94478",
+      "decision_at_utc": "2026-07-30T23:42:57.958Z",
+      "fact_id": "d2fact_20d335785c26cc11786269c3460ab266437f4747",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 769,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "f6371f80bf2cb8ad7421bbf57854cdd9d1bd138170e0ed8bb66385fb5e8705ee",
+      "decision_at_utc": "2026-07-30T23:44:18.926Z",
+      "fact_id": "d2fact_f6371f80bf2cb8ad7421bbf57854cdd9d1bd1381",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 770,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "4cd9e245b8ca81dcd330af973d5584892e570b3672081efd10474ce352bde1b8",
+      "decision_at_utc": "2026-07-30T23:45:36.095Z",
+      "fact_id": "d2fact_4cd9e245b8ca81dcd330af973d5584892e570b36",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 771,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "85feea4976606134635269165b18d5cf437f91a2f197664d00230736ff390ccc",
+      "decision_at_utc": "2026-07-30T23:49:38.691Z",
+      "fact_id": "d2fact_85feea4976606134635269165b18d5cf437f91a2",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 772,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "34d68b15e1f5d7fd29f8c25dbcff75f4d09f0a194a948b0c8152feaa37f6e9a2",
+      "decision_at_utc": "2026-07-30T23:50:52.767Z",
+      "fact_id": "d2fact_34d68b15e1f5d7fd29f8c25dbcff75f4d09f0a19",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 774,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "77d69fe06b1392a3d8089da0bdea00922d2bb9437ff37609d69e6883bf812dc2",
+      "decision_at_utc": "2026-07-30T23:54:39.345Z",
+      "fact_id": "d2fact_77d69fe06b1392a3d8089da0bdea00922d2bb943",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 777,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "93a1b62ac0bc833f20a66c596d556019cac29fbdb6a560034f74311b8e65fd84",
+      "decision_at_utc": "2026-07-30T23:55:53.420Z",
+      "fact_id": "d2fact_93a1b62ac0bc833f20a66c596d556019cac29fbd",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 778,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "0f4d61ef545beffc8085f0392dcf9355147a91e1fd38042bf4193511e5d3815b",
+      "decision_at_utc": "2026-07-30T23:58:25.157Z",
+      "fact_id": "d2fact_0f4d61ef545beffc8085f0392dcf9355147a91e1",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 779,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "365c8be0d3aafd7e7cdd0a051ef9a9fc25bcbb106285045657a7ef11ae174995",
+      "decision_at_utc": "2026-07-31T00:00:54.255Z",
+      "fact_id": "d2fact_365c8be0d3aafd7e7cdd0a051ef9a9fc25bcbb10",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 780,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "edd965f1b81b7334350d605a4c5da36afaafa1e16b2b6ffe27a208ecb47de690",
+      "decision_at_utc": "2026-07-31T00:03:26.868Z",
+      "fact_id": "d2fact_edd965f1b81b7334350d605a4c5da36afaafa1e1",
+      "probability_envelope_id": "p1_27f36339a3f5f6619dcfc261958c0368",
+      "rowid": 784,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "1120e6eab8e0dd50c2caa84311404cd33f01b04207fe986e34177906867c8828",
+      "decision_at_utc": "2026-07-31T00:07:10.518Z",
+      "fact_id": "d2fact_1120e6eab8e0dd50c2caa84311404cd33f01b042",
+      "probability_envelope_id": "p1_9ec2d269415b00d80055753cac2d7a99",
+      "rowid": 789,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "e902d4cf1d51f03b3c0ab1ffbfc9cbc87d910ba243fb72fd0780065fa0ff641e",
+      "decision_at_utc": "2026-07-31T00:09:41.978Z",
+      "fact_id": "d2fact_e902d4cf1d51f03b3c0ab1ffbfc9cbc87d910ba2",
+      "probability_envelope_id": "p1_9ec2d269415b00d80055753cac2d7a99",
+      "rowid": 792,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "335e9cdaea8cca61dee1c25c45132e9ad0d58d9e7b441944be11cfdddede5ed5",
+      "decision_at_utc": "2026-07-31T00:10:55.904Z",
+      "fact_id": "d2fact_335e9cdaea8cca61dee1c25c45132e9ad0d58d9e",
+      "probability_envelope_id": "p1_9ec2d269415b00d80055753cac2d7a99",
+      "rowid": 793,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "971532d168cb1367b5668feb1c661b0bd7305a1f9395a423409c3e038cc53437",
+      "decision_at_utc": "2026-07-31T00:12:11.477Z",
+      "fact_id": "d2fact_971532d168cb1367b5668feb1c661b0bd7305a1f",
+      "probability_envelope_id": "p1_9ec2d269415b00d80055753cac2d7a99",
+      "rowid": 795,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "9fa8d1f939bc861b32a19ef930baab82e1aca00dcf98910f21a6ec71ec27645b",
+      "decision_at_utc": "2026-07-31T00:42:19.450Z",
+      "fact_id": "d2fact_9fa8d1f939bc861b32a19ef930baab82e1aca00d",
+      "probability_envelope_id": "p1_9ec2d269415b00d80055753cac2d7a99",
+      "rowid": 800,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "c23f86cdc4ab32ef26806403200e7dcf770b4532f72f7a4cb8ffed72e62d3975",
+      "decision_at_utc": "2026-07-31T01:27:13.801Z",
+      "fact_id": "d2fact_c23f86cdc4ab32ef26806403200e7dcf770b4532",
+      "probability_envelope_id": "p1_2d2035e5b5f93241d2bde1d6cd2f8ecc",
+      "rowid": 804,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "d3e881f9b91b66a653af6f62fe2487f209981d0d2ed8e0d823b469df4e6cff39",
+      "decision_at_utc": "2026-07-31T01:28:37.285Z",
+      "fact_id": "d2fact_d3e881f9b91b66a653af6f62fe2487f209981d0d",
+      "probability_envelope_id": "p1_2d2035e5b5f93241d2bde1d6cd2f8ecc",
+      "rowid": 807,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "2c972de613ebd2fbc98db8e35b17310af27c657de0c4af3f3dea59a8bb10bc59",
+      "decision_at_utc": "2026-07-31T01:50:35.862Z",
+      "fact_id": "d2fact_2c972de613ebd2fbc98db8e35b17310af27c657d",
+      "probability_envelope_id": "p1_2d2035e5b5f93241d2bde1d6cd2f8ecc",
+      "rowid": 818,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "90233d20aa36b49ce4d6c686ce9696b3949cc2d4729aa139366f76629ea74539",
+      "decision_at_utc": "2026-07-31T01:51:49.277Z",
+      "fact_id": "d2fact_90233d20aa36b49ce4d6c686ce9696b3949cc2d4",
+      "probability_envelope_id": "p1_2d2035e5b5f93241d2bde1d6cd2f8ecc",
+      "rowid": 820,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "b1c0f34cad41514605783c5d9e874c79a56e37747fbdba0d698685589dac1b1c",
+      "decision_at_utc": "2026-07-31T01:53:03.767Z",
+      "fact_id": "d2fact_b1c0f34cad41514605783c5d9e874c79a56e3774",
+      "probability_envelope_id": "p1_2d2035e5b5f93241d2bde1d6cd2f8ecc",
+      "rowid": 824,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "3d09db276b10bde44790d5b00a511a0ef54dc5144c372812a8850debc12ba1c5",
+      "decision_at_utc": "2026-07-31T02:05:41.902Z",
+      "fact_id": "d2fact_3d09db276b10bde44790d5b00a511a0ef54dc514",
+      "probability_envelope_id": "p1_2f136f440fc67659ee2b808241bf1e9c",
+      "rowid": 833,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "f435f78c011f78dc3b19944469460740161c95d57fc8e63055b48c5c8396ce19",
+      "decision_at_utc": "2026-07-31T02:14:26.999Z",
+      "fact_id": "d2fact_f435f78c011f78dc3b19944469460740161c95d5",
+      "probability_envelope_id": "p1_2f136f440fc67659ee2b808241bf1e9c",
+      "rowid": 842,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "e0d0ae097b6f4c1ce3230941dba96f4b8b21ea764c87e0f3247909d4173160fb",
+      "decision_at_utc": "2026-07-31T02:19:33.864Z",
+      "fact_id": "d2fact_e0d0ae097b6f4c1ce3230941dba96f4b8b21ea76",
+      "probability_envelope_id": "p1_2f136f440fc67659ee2b808241bf1e9c",
+      "rowid": 847,
+      "settlement_timezone": "Europe/Madrid"
+    },
+    {
+      "content_sha256": "86989f8608ee173ab7cf9c068e10b32fffc8164a91bf1149f3267dd820146045",
+      "decision_at_utc": "2026-07-31T02:29:50.596Z",
+      "fact_id": "d2fact_86989f8608ee173ab7cf9c068e10b32fffc8164a",
+      "probability_envelope_id": "p1_2f136f440fc67659ee2b808241bf1e9c",
+      "rowid": 852,
+      "settlement_timezone": "Europe/Madrid"
+    }
+  ]
+}

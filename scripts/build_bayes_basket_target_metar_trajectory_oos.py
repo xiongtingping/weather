@@ -200,21 +200,85 @@ def main() -> int:
         raise ContractError(
             "metar_trajectory_training_boundary_invalid"
         )
-    result = train_metar_trajectory_artifact(
-        folds=packet_input.get("folds") or (),
-        smoothing_candidates=(
-            packet_input.get("smoothing_candidates") or ()
-        ),
-        minimum_training_folds=int(
-            packet_input.get("minimum_training_folds") or 0
-        ),
-        minimum_effective_sample_n=float(
-            packet_input.get("minimum_effective_sample_n") or 0
-        ),
-        artifact_parameters=(
-            packet_input.get("artifact_parameters") or {}
-        ),
-    )
+    try:
+        result = train_metar_trajectory_artifact(
+            folds=packet_input.get("folds") or (),
+            smoothing_candidates=(
+                packet_input.get("smoothing_candidates") or ()
+            ),
+            minimum_training_folds=int(
+                packet_input.get("minimum_training_folds") or 0
+            ),
+            minimum_effective_sample_n=float(
+                packet_input.get("minimum_effective_sample_n") or 0
+            ),
+            artifact_parameters=(
+                packet_input.get("artifact_parameters") or {}
+            ),
+        )
+    except ContractError as exc:
+        reason = str(exc)
+        if reason not in {
+            "metar_trajectory_training_complete_hourly_curve_folds_missing",
+            "metar_trajectory_training_fold_count_invalid",
+        }:
+            raise
+        source_manifest = packet_input.get("source_manifest")
+        source_counts = (
+            {
+                "eligible_fold_count": int(
+                    source_manifest.get("eligible_fold_count") or 0
+                ),
+                "v3_eligible_fold_count": int(
+                    source_manifest.get("v3_eligible_fold_count") or 0
+                ),
+                "v3_incomplete_future_curve_fold_count": int(
+                    source_manifest.get(
+                        "v3_incomplete_future_curve_fold_count"
+                    )
+                    or 0
+                ),
+            }
+            if isinstance(source_manifest, Mapping)
+            else {}
+        )
+        blocked_identity = {
+            "schema": "bayes_basket_metar_trajectory_oos_blocked_v1",
+            "source_packet_sha256": supplied_sha,
+            "state": "BLOCKED_EVIDENCE",
+            "reason": reason,
+            "source_counts": source_counts,
+            "oos_gate_passed": False,
+            "activations": [],
+            "boundary": {
+                "execution_mode": "production_no_live",
+                "writes_production_database": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            },
+        }
+        blocked = {
+            **blocked_identity,
+            "content_sha256": content_sha256(blocked_identity),
+        }
+        write_bounded_json(
+            args.packet_output.expanduser().resolve(),
+            blocked,
+            limit=OUTPUT_LIMIT_BYTES,
+        )
+        write_bounded_json(
+            args.output.expanduser().resolve(),
+            blocked,
+            limit=OUTPUT_LIMIT_BYTES,
+        )
+        print(json.dumps({
+            "state": "BLOCKED_EVIDENCE",
+            "reason": reason,
+            "oos_gate_passed": False,
+            "orders_submitted": 0,
+        }, sort_keys=True))
+        return 2
     ingress_packet = build_ingress_packet(
         result=result,
         generation=int(packet_input.get("generation") or 0),

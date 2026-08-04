@@ -79,6 +79,7 @@ def _bundle(index: int = 0, *, amount: float = 4.0) -> dict[str, object]:
             "observation_id": f"fault-obs-{index}",
             "station_id": "ZUUU",
             "event_date": "2026-07-23",
+            "settlement_timezone": SETTLEMENT_TIMEZONE,
             "source_lane": "AMSC",
             "report_type": "METAR",
             "raw_sha256": SHA_A,

@@ -1,0 +1,14 @@
+{
+  "content_sha256": "9039b537acc341e2718df4892e6b38e31fc4f448b88e67276fc5cf58b58f2e2a",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "e670399fe9898e2bda19563fe2f5db4019620aec65e2ea01def4608e078ede62",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Rome",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LIMC"
+}

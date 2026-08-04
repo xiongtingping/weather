@@ -1,0 +1,974 @@
+{
+  "content_sha256": "a61330f4e89d39838f2b33e66ea9b4208700482d2e9bcf9b4bf596b1353d01c9",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "bc439b75b04aea7a491a5386b469897d36927503b494b20bd773f0653378af67",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 10,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-21",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-19T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "b2ce6e9bb34a2791a827849447a14bb014342c8916fb6dc78ac00a88424266a7",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 1.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-21T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-20T22:12:09Z",
+        "capture_content_sha256": "9d10fe5edbcfe09ac96a52cacaaa3bf062ed696a5e14dd40dc29c4dfef0aa321",
+        "cloud_cover_fraction": 0.6111111111111112,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 17.0,
+        "wind_speed_mps": 2.1149364444444445
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "9d10fe5edbcfe09ac96a52cacaaa3bf062ed696a5e14dd40dc29c4dfef0aa321",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-8ce3d80daf54b7b2146a7bfb8c836b11",
+        "source_lane": "AWC",
+        "tmax_c": 18.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-22",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-20T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "f022f3445b15fae66a9ce819ecf9135e2a7a0a9e44d13109f40242a1f0f5de17",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 1.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-22T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-21T22:10:13Z",
+        "capture_content_sha256": "293260268899b67fa16aff835cc03519fbbf6db0dad79f5fdd39f80e8f755885",
+        "cloud_cover_fraction": 0.4895833333333333,
+        "precipitation_probability": 0.1,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 16.0,
+        "wind_speed_mps": 3.558237666666666
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "293260268899b67fa16aff835cc03519fbbf6db0dad79f5fdd39f80e8f755885",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-31f8d130bc4c2104fe1f61cac9beea49",
+        "source_lane": "AWC",
+        "tmax_c": 16.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-23",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-21T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "bc6e296114a0ab7f22a92ac0554ff43c75bed8113c1eab4f9e1c7f0bdb1fe5c2",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 1.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-23T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-22T22:11:33Z",
+        "capture_content_sha256": "80673b4a7967a523df12b32c0b3a13aedc6f6da99eda66d36957ffeb5a9c45f9",
+        "cloud_cover_fraction": 0.9038461538461539,
+        "precipitation_probability": 0.3076923076923077,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 15.0,
+        "wind_speed_mps": 4.19469723076923
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "80673b4a7967a523df12b32c0b3a13aedc6f6da99eda66d36957ffeb5a9c45f9",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-81d8071825f21f92b4f75a4aa1d765df",
+        "source_lane": "AWC",
+        "tmax_c": 15.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-24",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-22T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "a67b2728b46e7e3635c6a61410ee4f7a32687f3ee3b5e0c739de4b5d0146b757",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 1.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-24T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-23T22:10:12Z",
+        "capture_content_sha256": "7bbf5aa29fa5ab33d1734d55cb831cd35c4db0bffa1fbca2f7e89bb767a1d2ef",
+        "cloud_cover_fraction": 0.09375,
+        "precipitation_probability": 0.1,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 18.0,
+        "wind_speed_mps": 1.8005540000000002
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "7bbf5aa29fa5ab33d1734d55cb831cd35c4db0bffa1fbca2f7e89bb767a1d2ef",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-b174312254c9ead033e753cd6692820a",
+        "source_lane": "AWC",
+        "tmax_c": 18.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-25",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-23T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "22950c64211d2864b5363cf804fcac0ae69cff59a3a24ee6262cd67781d52d65",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 0.8390322580645162,
+          "21°C": 0.10696774193548388,
+          "22°C": 0.024000000000000004,
+          "23°C": 0.030000000000000002,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-25T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-24T22:10:13Z",
+        "capture_content_sha256": "9775e41a4022c3bc2dc332695ccdbc149d7009b55697b620d76129f634d07dcc",
+        "cloud_cover_fraction": 0.0,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 21.0,
+        "wind_speed_mps": 5.14444
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "9775e41a4022c3bc2dc332695ccdbc149d7009b55697b620d76129f634d07dcc",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-FACT-2026-07-25-r0-920985762dce",
+        "source_lane": "AWC",
+        "tmax_c": 21.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "8341703349101ab066669ba1401bb38538ad1fb9d6cd25028ddf07e478440447",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 0.6118924731182797,
+          "21°C": 0.10696774193548386,
+          "22°C": 0.15513978494623656,
+          "23°C": 0.048,
+          "24°C": 0.042,
+          "25°C": 0.03,
+          "26°C": 0.006,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-26T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-25T22:13:38Z",
+        "capture_content_sha256": "b5389f2c292f23492faee961d1ca0e03ec1b6d20b91b10e5be902007f3d4bfcb",
+        "cloud_cover_fraction": 0.23863636363636365,
+        "precipitation_probability": 0.07272727272727272,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 21.0,
+        "wind_speed_mps": 2.2448465454545454
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "b5389f2c292f23492faee961d1ca0e03ec1b6d20b91b10e5be902007f3d4bfcb",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-FACT-2026-07-26-r0-61eb74a6c9ba",
+        "source_lane": "AWC",
+        "tmax_c": 24.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-27",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-25T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "10bb8154408e5ce7891d2cef3bf937bb61289af643f8e4b9fc491294a8f69c0d",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 1.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-27T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-26T22:10:18Z",
+        "capture_content_sha256": "ce7f48e169357ccbdb55ba173e7efaa6b7d07b3e34515e931a639d1335c0ebc6",
+        "cloud_cover_fraction": 0.59375,
+        "precipitation_probability": 0.075,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 22.0,
+        "wind_speed_mps": 6.644901666666666
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "ce7f48e169357ccbdb55ba173e7efaa6b7d07b3e34515e931a639d1335c0ebc6",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-FACT-2026-07-27-r0-6907eef4d594",
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-28",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-26T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "ce87122344546388c9b07e5c7fb7ffb6c193ac0291c19d02b0c72a7280966434",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 0.9881720430107527,
+          "21°C": 0.01182795698924731,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-28T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-27T22:10:16Z",
+        "capture_content_sha256": "ae16b9454b9cc0d9dcd7045eb181d6c8124b9abf9ae40d07b4e93b117bc0d790",
+        "cloud_cover_fraction": 0.125,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 19.0,
+        "wind_speed_mps": 7.71666
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "ae16b9454b9cc0d9dcd7045eb181d6c8124b9abf9ae40d07b4e93b117bc0d790",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-FACT-2026-07-28-r0-939402a6f109",
+        "source_lane": "AWC",
+        "tmax_c": 20.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "b6b471b301907b899f644c702de524fb6e793c3f862790bebeadaf19272a4e8c",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 0.8197096774193549,
+          "21°C": 0.09928445747800589,
+          "22°C": 0.08100586510263932,
+          "23°C": 0.0,
+          "24°C": 0.0,
+          "25°C": 0.0,
+          "26°C": 0.0,
+          "27°C": 0.0,
+          "28°C": 0.0,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-29T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-28T22:20:10Z",
+        "capture_content_sha256": "fe5c16832dd1d43e822fd4e5ae5cdaa8a7c05b5a7aa14fb9b64307a8f848df31",
+        "cloud_cover_fraction": 0.0,
+        "precipitation_probability": 0.075,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 21.0,
+        "wind_speed_mps": 1.5004616666666668
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "fe5c16832dd1d43e822fd4e5ae5cdaa8a7c05b5a7aa14fb9b64307a8f848df31",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-FACT-2026-07-29-r0-71f936d3e136",
+        "source_lane": "AWC",
+        "tmax_c": 21.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-31",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "20°C or below": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C or higher": 30.0
+        },
+        "decision_at_utc": "2026-07-29T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "1b2fe3188690b15ff6ed76bbfb9ea911d5540cb04d0c49ae7d3150b355f7011f",
+        "prediction_oos": true,
+        "probabilities": {
+          "20°C or below": 0.36485826001955035,
+          "21°C": 0.0681006842619746,
+          "22°C": 0.09892473118279571,
+          "23°C": 0.16810459433040081,
+          "24°C": 0.08763831867057673,
+          "25°C": 0.14964613880742916,
+          "26°C": 0.031363636363636364,
+          "27°C": 0.025090909090909094,
+          "28°C": 0.006272727272727274,
+          "29°C": 0.0,
+          "30°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-31T22:00:00Z"
+      },
+      "station_id": "FACT",
+      "taf": {
+        "available_at_utc": "2026-07-30T22:10:30Z",
+        "capture_content_sha256": "74819bf9c276b4e700d9c982230fe7e17eb9b97ceb3a3992cd3fedacdc6a20c2",
+        "cloud_cover_fraction": 0.0,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 23.0,
+        "wind_speed_mps": 2.3435782222222223
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "74819bf9c276b4e700d9c982230fe7e17eb9b97ceb3a3992cd3fedacdc6a20c2",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "truth_1a2d29b3d1fdf0b211a246e4452677befab21b88",
+        "source_lane": "AWC",
+        "tmax_c": 24.0
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Africa/Johannesburg",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "FACT"
+}

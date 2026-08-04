@@ -28,9 +28,15 @@ SCHEMA = "open_meteo_native_ensemble_forward_packet_v1"
 API_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 VARIABLE = "temperature_2m_max"
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+# A packet produced here is a live/forward transport observation, never a
+# retrospective strict-as-of sample.  Historical Open-Meteo OOS has a
+# separate append-only contract bound to closed AWC truth.
+OBSERVATIONAL_EVIDENCE_ROLE = "observational_candidate_not_oos"
+FORWARD_OOS_TEMPORAL_SCOPE = OBSERVATIONAL_EVIDENCE_ROLE
 ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     "ECMWF_IFS_ENS_GLOBAL": {
         "canonical_name": "ECMWF IFS 0.25 Ensemble",
+        "model_scope": "global",
         "provider_id": "ECMWF",
         "independence_family_id": "ECMWF",
         "api_model": "ecmwf_ifs025_ensemble",
@@ -45,17 +51,30 @@ ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     },
     "ECMWF_AIFS_ENS_GLOBAL": {
         "canonical_name": "ECMWF AIFS 0.25 Ensemble",
+        "model_scope": "global",
         "provider_id": "ECMWF",
         "independence_family_id": "ECMWF",
         "api_model": "ecmwf_aifs025_ensemble",
         "expected_member_count": 51,
+        # AIFS is a distinct ECMWF product but not a second independent
+        # ECMWF family.  This local integration only has the Open-Meteo
+        # transport receipt; it has no official AIFS native-arrival proof.
+        "candidate_only": True,
+        "formal_p0_eligible": False,
+        "native_arrival_index_eligible": False,
+        "official_native_arrival_status": "MISSING_FAIL_CLOSED",
     },
     "ECMWF_AIFS_ENS_EUROPE": {
         "canonical_name": "ECMWF AIFS Europe Ensemble",
+        "model_scope": "regional",
         "provider_id": "ECMWF",
         "independence_family_id": "ECMWF",
         "api_model": "ecmwf_aifs_europe_ensemble",
         "expected_member_count": 51,
+        "candidate_only": True,
+        "formal_p0_eligible": False,
+        "native_arrival_index_eligible": False,
+        "official_native_arrival_status": "MISSING_FAIL_CLOSED",
     },
     "NOAA_GEFS_SEAMLESS": {
         "canonical_name": "NOAA GEFS Seamless",
@@ -87,6 +106,7 @@ ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     },
     "DWD_ICON_EPS_SEAMLESS": {
         "canonical_name": "DWD ICON EPS Seamless",
+        "model_scope": "global",
         "provider_id": "DWD",
         "independence_family_id": "DWD_ICON_EPS",
         "api_model": "icon_seamless_eps",
@@ -94,6 +114,7 @@ ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     },
     "DWD_ICON_GLOBAL_EPS": {
         "canonical_name": "DWD ICON Global EPS",
+        "model_scope": "global",
         "provider_id": "DWD",
         "independence_family_id": "DWD_ICON_EPS",
         "api_model": "icon_global_eps",
@@ -101,6 +122,7 @@ ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     },
     "DWD_ICON_EU_EPS": {
         "canonical_name": "DWD ICON EU EPS",
+        "model_scope": "regional",
         "provider_id": "DWD",
         "independence_family_id": "DWD_ICON_EPS",
         "api_model": "icon_eu_eps",
@@ -108,6 +130,7 @@ ENSEMBLE_SYSTEMS: dict[str, dict[str, Any]] = {
     },
     "DWD_ICON_D2_EPS": {
         "canonical_name": "DWD ICON D2 EPS",
+        "model_scope": "regional",
         "provider_id": "DWD",
         "independence_family_id": "DWD_ICON_EPS",
         "api_model": "icon_d2_eps",
@@ -383,6 +406,7 @@ def capture_scope(
                 "independence_family_id"
             ],
             "canonical_name": config["canonical_name"],
+            "model_scope": config.get("model_scope", "global"),
             "upstream_provider_id": config["provider_id"],
             "transport_provider_id": "OPEN_METEO",
             "api_model": config["api_model"],
@@ -391,6 +415,27 @@ def capture_scope(
             "members": members,
             "member_set_sha256": member_set_sha,
             "raw_bucket_probabilities": probabilities,
+            # Deliberately repeat this authority beside the product, rather
+            # than relying on the envelope-wide transport label.  AIFS must
+            # not acquire native-arrival or formal-P0 meaning at ingress.
+            "candidate_authority": {
+                "source_role": "aggregator_republisher",
+                "candidate_only": bool(
+                    config.get("candidate_only", False)
+                ),
+                "formal_p0_eligible": bool(
+                    config.get("formal_p0_eligible", False)
+                ),
+                "native_arrival_index_eligible": bool(
+                    config.get("native_arrival_index_eligible", False)
+                ),
+                "official_native_arrival_status": str(
+                    config.get(
+                        "official_native_arrival_status",
+                        "NOT_APPLICABLE",
+                    )
+                ),
+            },
         })
     available_ids = [
         str(system["ensemble_system_id"]) for system in systems
@@ -427,6 +472,10 @@ def capture_scope(
         "station_id": station_id.strip().upper(),
         "event_date": event_date,
         "settlement_timezone": settlement_timezone,
+        "evidence_role": OBSERVATIONAL_EVIDENCE_ROLE,
+        "oos_event_temporal_scope": FORWARD_OOS_TEMPORAL_SCOPE,
+        "strict_oos_sample_eligible": False,
+        "can_substitute_for_formal_promotion": False,
         "latitude": float(latitude),
         "longitude": float(longitude),
         "bucket_contract_sha256": bucket_contract_sha,
@@ -455,6 +504,11 @@ def capture_scope(
             "native_arrival_index_eligible": False,
             "formal_p0_eligible": False,
             "production_no_live_calibration_candidate": True,
+            "evidence_role": OBSERVATIONAL_EVIDENCE_ROLE,
+            "oos_event_temporal_scope": FORWARD_OOS_TEMPORAL_SCOPE,
+            "counts_as_strict_oos": False,
+            "historical_oos_contract_bound": False,
+            "can_substitute_for_formal_promotion": False,
         },
         "snapshot_content_sha256": content_sha256(stable_identity),
     }
@@ -467,6 +521,8 @@ def capture_scope(
 __all__ = [
     "API_URL",
     "ENSEMBLE_SYSTEMS",
+    "FORWARD_OOS_TEMPORAL_SCOPE",
+    "OBSERVATIONAL_EVIDENCE_ROLE",
     "SCHEMA",
     "capture_scope",
 ]

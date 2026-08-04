@@ -645,7 +645,22 @@ def evaluate_regime_gate(
         reasons = ("center_lead_margin_below_stability_threshold",)
         allowed = False
     elif resolved.regime != probability_direction:
-        raise ContractError("regime_direction_mismatch")
+        # A station policy may deliberately raise the probability-side
+        # direction deadband and therefore classify the same envelope as
+        # ``NEUTRAL`` even though the fixed regime companion is UP/DOWN.
+        # Treat that as a conservative direction conflict (no directional
+        # actions) instead of throwing a global compile error.  Opposite
+        # directional claims remain a hard lineage mismatch and continue to
+        # fail closed through the existing exception.
+        if probability_direction == "NEUTRAL":
+            state = "NEUTRAL_REGIME_CONFLICT"
+            reasons = (
+                "probability_direction_neutral",
+                "regime_direction_not_authoritative",
+            )
+            allowed = False
+        else:
+            raise ContractError("regime_direction_mismatch")
     elif resolved.regime == "NEUTRAL":
         state = "NEUTRAL"
         reasons = ("stable_neutral_probability_direction",)

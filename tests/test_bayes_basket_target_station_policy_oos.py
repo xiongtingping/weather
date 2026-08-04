@@ -43,6 +43,9 @@ def _rows() -> list[dict[str, object]]:
 
 def _evaluate(rows: list[dict[str, object]], **kwargs: object) -> dict[str, object]:
     promotion_requested = bool(kwargs.pop("promotion_requested", False))
+    decided_at_utc = str(
+        kwargs.pop("decided_at_utc", "2026-07-27T00:00:00Z")
+    )
     return evaluate_station_policy_oos(
         rows,
         station_ids=STATIONS,
@@ -50,6 +53,7 @@ def _evaluate(rows: list[dict[str, object]], **kwargs: object) -> dict[str, obje
         test_start_utc="2026-01-17T00:00:00Z",
         test_end_utc="2026-02-01T00:00:00Z",
         promotion_requested=promotion_requested,
+        decided_at_utc=decided_at_utc,
         limits={
             "min_cross_seasons": 4,
             "min_window_n_eff": 2,
@@ -114,6 +118,52 @@ def test_truth_freeze_and_future_feature_leakage_fail_closed() -> None:
     rows = _rows()
     rows[13]["feature_as_of_utc"] = "2026-01-15T00:00:00Z"
     with pytest.raises(ContractError, match="future_feature_leakage"):
+        _evaluate(rows)
+
+
+def test_future_or_preclose_truth_cannot_enter_station_policy_oos() -> None:
+    rows = _rows()
+    rows[13]["truth_frozen_at_utc"] = "2026-08-01T00:00:00Z"
+    with pytest.raises(ContractError, match="truth_after_evaluation_asof"):
+        _evaluate(rows)
+
+    rows = _rows()
+    rows[13]["truth_frozen_at_utc"] = "2026-01-13T00:00:00Z"
+    with pytest.raises(ContractError, match="truth_before_settlement_close"):
+        _evaluate(rows)
+
+
+def test_future_decision_and_open_event_cannot_enter_station_policy_oos() -> None:
+    rows = _rows()
+    rows[13]["decision_at_utc"] = "2026-08-01T00:00:00Z"
+    with pytest.raises(ContractError, match="future_decision_not_oos"):
+        _evaluate(rows)
+
+    rows = _rows()
+    # Moving the evaluation cut before an otherwise valid event makes the
+    # decision itself forward data; it must not be rescued by frozen truth.
+    rows[13]["decision_at_utc"] = "2026-07-28T00:00:00Z"
+    with pytest.raises(ContractError, match="future_decision_not_oos"):
+        _evaluate(rows, decided_at_utc="2026-07-27T00:00:00Z")
+
+    rows = _rows()
+    # Keep the row's historical decision/truth timestamps but move the
+    # settlement day beyond the evaluation cut.  This is an explicit forward
+    # event diagnostic; it must not reach the before-close truth branch.
+    rows[13]["event_date"] = "2026-08-01"
+    with pytest.raises(ContractError, match="future_event_not_oos"):
+        _evaluate(rows)
+
+
+def test_forward_evidence_role_and_non_awc_truth_lane_are_rejected() -> None:
+    rows = _rows()
+    rows[13]["evidence_role"] = "observational_candidate_not_oos"
+    with pytest.raises(ContractError, match="forward_evidence_not_oos"):
+        _evaluate(rows)
+
+    rows = _rows()
+    rows[13]["truth_source_lane"] = "OPEN_METEO"
+    with pytest.raises(ContractError, match="truth_source_lane_not_awc"):
         _evaluate(rows)
 
 

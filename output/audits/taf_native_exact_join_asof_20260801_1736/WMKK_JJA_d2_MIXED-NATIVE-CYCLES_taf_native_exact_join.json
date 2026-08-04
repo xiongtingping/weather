@@ -1,0 +1,14 @@
+{
+  "content_sha256": "50b5a55a0efa1b089ccacbb8a2a28df0f600b032ade7b22bce52ecb5ab09d109",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "e149f54b57d176e14605a7490271fcaa115b2e46f5fe4d070848048a99b578fe",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Kuala_Lumpur",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "WMKK"
+}

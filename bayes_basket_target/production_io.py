@@ -40,6 +40,7 @@ from .contracts import (
     timestamp_lte,
 )
 from .execution_deadline import derive_target_execution_hard_deadline
+from .market_registry import load_active_registry_rows
 from .policy import (
     GlobalBasketPriorArtifact,
     PolicyArtifact,
@@ -66,6 +67,11 @@ from .resource_bounds import (
 )
 
 
+STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
+    "basket_target_stage_zero_execution_anchor_v1"
+)
+
+
 def _json(name: str, value: Any, *, mapping: bool = False) -> Any:
     if isinstance(value, str):
         try:
@@ -81,6 +87,73 @@ def _row_mapping(row: sqlite3.Row | Sequence[Any], columns: Sequence[str]) -> di
     if isinstance(row, sqlite3.Row):
         return {key: row[key] for key in columns}
     return {key: row[index] for index, key in enumerate(columns)}
+
+
+def target_registry_source_lane(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> str:
+    """Return the one formal source lane from the current target registry.
+
+    This is a consumer-side authority gate.  It deliberately reads the
+    newest complete target-local registry snapshot instead of trusting a P1
+    envelope's self-described lineage.  Historical envelopes remain
+    append-only evidence; a P1 whose lineage lane differs from this result is
+    rejected by :func:`load_materialized_probability_envelopes`, never
+    silently downgraded to P0/P0-M.
+    """
+
+    station = str(station_id or "").strip().upper()
+    day = str(event_date or "").strip()
+    if not station or not day:
+        raise ContractError("target_registry_source_lane_scope_invalid")
+    rows = load_active_registry_rows(
+        conn,
+        station_id=station,
+        event_date=day,
+    )
+    lanes = {
+        str(row.get("source_lane") or "").strip().lower()
+        for row in rows
+        if str(row.get("station_id") or "").strip().upper() == station
+        and str(row.get("event_date") or "").strip() == day
+    }
+    if len(lanes) != 1:
+        raise ContractError("target_registry_source_lane_not_unique")
+    lane = next(iter(lanes))
+    if lane not in {"amsc", "awc"}:
+        raise ContractError("target_registry_source_lane_invalid")
+    return lane
+
+
+def _is_memory_connection(conn: sqlite3.Connection) -> bool:
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+    except sqlite3.Error:
+        return False
+    return not str(row[2] or "")
+
+
+def _strict_expected_source_lane(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> str | None:
+    """Require registry authority on file-backed SSOT; retain memory fixtures."""
+
+    try:
+        return target_registry_source_lane(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+        )
+    except ContractError:
+        if _is_memory_connection(conn):
+            return None
+        raise
 
 
 def _verify_record_sha(schema: str, raw: Mapping[str, Any]) -> None:
@@ -100,6 +173,20 @@ def _aware_utc(name: str, value: Any) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ContractError(f"{name}_timezone_required")
     return parsed.astimezone(timezone.utc)
+
+
+def _normalized_utc(name: str, value: Any) -> tuple[str, datetime]:
+    parsed = _aware_utc(name, value)
+    return parsed.isoformat().replace("+00:00", "Z"), parsed
+
+
+def _required_sha256(name: str, value: Any) -> str:
+    result = str(value or "").strip().lower()
+    if len(result) != 64 or any(
+        character not in "0123456789abcdef" for character in result
+    ):
+        raise ContractError(f"{name}_invalid_sha256")
+    return result
 
 
 def _promotion_state(conn: sqlite3.Connection, table: str, artifact_kind: str, artifact_id: str) -> bool:
@@ -359,6 +446,7 @@ def load_materialized_probability_envelopes(
     event_date: str,
     evaluation_at_utc: str,
     required_probability_pathway: str | None = P0_PROBABILITY_PATHWAY,
+    expected_source_lane: str | None = None,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -405,6 +493,62 @@ def load_materialized_probability_envelopes(
             raise ContractError("probability_envelope_content_sha_mismatch")
         if timestamp_lte(envelope.decision_at_utc, evaluation_at_utc):
             validated.append(envelope)
+    expected_lane = (
+        str(expected_source_lane or "").strip().lower()
+        if expected_source_lane is not None
+        else ""
+    )
+    if expected_source_lane is not None and expected_lane not in {"amsc", "awc"}:
+        raise ContractError("probability_expected_source_lane_invalid")
+    if expected_lane:
+        # P1 is final authority.  A wrong-lane P1 must therefore block the
+        # scope instead of being filtered out and allowing a P0/P0-M
+        # fallback.  Inspect only the newest visible P1 generation: old
+        # append-only AWC history remains auditable after a newer compliant
+        # AMSC P1 has atomically superseded it.  Checking every historical
+        # P1 would make that safe repair permanently impossible.
+        visible_p1 = [
+            envelope for envelope in validated if envelope.stage == "P1"
+        ]
+        if visible_p1:
+            newest_at = max(
+                _aware_utc(
+                    "probability_p1_source_lane_decision_at",
+                    envelope.decision_at_utc,
+                )
+                for envelope in visible_p1
+            )
+            newest_p1 = [
+                envelope
+                for envelope in visible_p1
+                if _aware_utc(
+                    "probability_p1_source_lane_decision_at",
+                    envelope.decision_at_utc,
+                )
+                == newest_at
+            ]
+            if any(
+                str(envelope.lineage.get("source_lane") or "")
+                .strip()
+                .lower()
+                != expected_lane
+                for envelope in newest_p1
+            ):
+                raise ContractError("probability_p1_source_lane_mismatch")
+            # P1 is the METAR/SPECI checkpoint for the immutable prediction
+            # branch.  When an exact TAF/P0-M checkpoint exists it is the
+            # preferred root; otherwise a valid P0-root P1 is the legal
+            # no-TAF path.  Inspect only the newest visible P1 generation so
+            # append-only history remains auditable while a newer branch can
+            # supersede it without deletion.
+            if any(
+                str(envelope.lineage.get("prediction_root_stage") or "")
+                .strip()
+                .upper()
+                not in {"P0", "P0-M"}
+                for envelope in newest_p1
+            ):
+                raise ContractError("probability_p1_root_stage_mismatch")
     if required_probability_pathway is None:
         envelopes = validated
     else:
@@ -996,6 +1140,386 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
     return {"observation": observation, "bound": bound}
 
 
+def target_stage_zero_execution_anchor_from_cycle(
+    compiled_cycle: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the no-execution anchor from one complete SSOT compile.
+
+    This is deliberately *not* a weakened variant of
+    :func:`target_atomic_facts_from_cycle`.  It records the complete
+    probability/market/economic input set as a content-addressed blocker
+    instead of materializing observation, bound, intent, or reservation
+    facts.  The ledger re-reads all of the referenced objects inside its own
+    write transaction before it writes the zero-execution decision.
+    """
+
+    if not isinstance(compiled_cycle, Mapping):
+        raise ContractError("stage_zero_execution_compiled_cycle_mapping_required")
+    if "stage_zero_execution_anchor" in compiled_cycle:
+        # An anchor is an output of this adapter.  Allowing it back into the
+        # input would make the required full-plan identity recursive.
+        raise ContractError("stage_zero_execution_anchor_recursive_input")
+
+    raw_envelope = compiled_cycle.get("probability_envelope")
+    if not isinstance(raw_envelope, Mapping):
+        raise ContractError("stage_zero_execution_probability_envelope_missing")
+    envelope_payload = dict(raw_envelope)
+    supplied_envelope_sha = envelope_payload.pop("content_sha256", None)
+    supplied_envelope_id = envelope_payload.pop("envelope_id", None)
+    probability = ProbabilityEnvelope.from_mapping(envelope_payload)
+    probability_sha = probability.content_sha256
+    if supplied_envelope_sha not in (None, "") and _required_sha256(
+        "stage_zero_execution_probability_envelope",
+        supplied_envelope_sha,
+    ) != probability_sha:
+        raise ContractError("stage_zero_execution_probability_envelope_sha_mismatch")
+    if supplied_envelope_id not in (None, "") and str(
+        supplied_envelope_id
+    ).strip() != probability.checkpoint_id:
+        raise ContractError("stage_zero_execution_probability_envelope_id_mismatch")
+    if probability.stage not in {"P0", "P0-M", "P1"}:
+        raise ContractError("stage_zero_execution_probability_stage_invalid")
+    if (
+        compiled_cycle.get("stage") not in (None, "")
+        and str(compiled_cycle.get("stage") or "").strip()
+        != probability.stage
+    ):
+        raise ContractError("stage_zero_execution_probability_stage_mismatch")
+
+    canonical_fact_keys = (
+        "canonical_observation_event_id",
+        "canonical_observation_sha256",
+        "canonical_observation_committed_at",
+        "hard_bound_id",
+    )
+    p1_canonical_fact_keys = (
+        *canonical_fact_keys,
+        "source_lane",
+        "report_type",
+    )
+    if probability.stage in {"P0", "P0-M"} and any(
+        key in probability.lineage for key in canonical_fact_keys
+    ):
+        raise ContractError("stage_zero_execution_canonical_facts_forbidden")
+    if probability.stage == "P1" and any(
+        not str(probability.lineage.get(key) or "").strip()
+        for key in p1_canonical_fact_keys
+    ):
+        raise ContractError("stage_zero_execution_p1_canonical_facts_missing")
+    if probability.stage == "P1":
+        trajectory_lineage = probability.lineage
+        activation_id = str(
+            trajectory_lineage.get("metar_trajectory_activation_id") or ""
+        ).strip()
+        artifact_id = str(
+            trajectory_lineage.get("metar_trajectory_artifact_id") or ""
+        ).strip()
+        likelihood_mode = str(
+            trajectory_lineage.get("observation_likelihood_mode") or ""
+        ).strip()
+        try:
+            applied_strength = float(
+                trajectory_lineage.get("metar_trajectory_applied_strength")
+            )
+        except (TypeError, ValueError):
+            applied_strength = 0.0
+        proof_sha = str(
+            trajectory_lineage.get("metar_trajectory_proof_sha256") or ""
+        ).strip().lower()
+        path_state_sha = str(
+            trajectory_lineage.get("metar_conditional_path_state_sha256")
+            or ""
+        ).strip().lower()
+        future_curve_sha = str(
+            trajectory_lineage.get("metar_future_temperature_curve_sha256")
+            or ""
+        ).strip().lower()
+        if (
+            not activation_id
+            or activation_id.upper() == "NONE"
+            or not artifact_id
+            or likelihood_mode
+            != "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+            or not 0.0 < applied_strength <= 1.0
+            or len(proof_sha) != 64
+            or any(character not in "0123456789abcdef" for character in proof_sha)
+            or len(path_state_sha) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in path_state_sha
+            )
+            or len(future_curve_sha) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in future_curve_sha
+            )
+        ):
+            raise ContractError(
+                "stage_zero_execution_p1_strong_likelihood_missing"
+            )
+
+    evaluation_at_utc, evaluation_at = _normalized_utc(
+        "stage_zero_execution_evaluation_at_utc",
+        compiled_cycle.get("evaluation_at_utc"),
+    )
+    probability_at_utc, probability_at = _normalized_utc(
+        "stage_zero_execution_probability_decision_at_utc",
+        probability.decision_at_utc,
+    )
+    fresh_until_utc, fresh_until = _normalized_utc(
+        "stage_zero_execution_probability_fresh_until_utc",
+        probability.fresh_until_utc,
+    )
+    if probability_at > evaluation_at:
+        raise ContractError("stage_zero_execution_probability_after_evaluation")
+    if evaluation_at >= fresh_until:
+        raise ContractError("stage_zero_execution_probability_stale")
+
+    plan = compiled_cycle.get("plan")
+    if not isinstance(plan, Mapping):
+        raise ContractError("stage_zero_execution_compiled_plan_missing")
+    plan_lineage = plan.get("lineage")
+    if not isinstance(plan_lineage, Mapping):
+        raise ContractError("stage_zero_execution_plan_lineage_missing")
+    if probability.stage in {"P0", "P0-M"} and any(
+        key in plan_lineage for key in canonical_fact_keys
+    ):
+        raise ContractError("stage_zero_execution_plan_canonical_facts_forbidden")
+    if probability.stage == "P1":
+        if any(
+            str(plan_lineage.get(key) or "").strip()
+            != str(probability.lineage.get(key) or "").strip()
+            for key in p1_canonical_fact_keys
+        ):
+            raise ContractError(
+                "stage_zero_execution_p1_plan_canonical_facts_mismatch"
+            )
+    if (
+        str(plan.get("station_id") or "").strip() != probability.station_id
+        or str(plan.get("event_date") or "").strip() != probability.event_date
+        or str(plan.get("settlement_timezone") or "").strip()
+        != probability.settlement_timezone
+    ):
+        raise ContractError("stage_zero_execution_plan_probability_scope_mismatch")
+    if str(plan_lineage.get("probability_stage") or "").strip() != probability.stage:
+        raise ContractError("stage_zero_execution_plan_probability_stage_mismatch")
+    if _required_sha256(
+        "stage_zero_execution_plan_probability",
+        plan_lineage.get("probability_envelope_sha256"),
+    ) != probability_sha:
+        raise ContractError("stage_zero_execution_plan_probability_sha_mismatch")
+    if str(plan_lineage.get("probability_decision_at_utc") or "").strip() != probability.decision_at_utc:
+        raise ContractError("stage_zero_execution_plan_probability_time_mismatch")
+
+    market = compiled_cycle.get("production_market_snapshot")
+    if not isinstance(market, Mapping):
+        raise ContractError("stage_zero_execution_market_snapshot_missing")
+    if (
+        str(market.get("station_id") or "").strip() != probability.station_id
+        or str(market.get("event_date") or "").strip() != probability.event_date
+        or str(market.get("settlement_timezone") or "").strip()
+        != probability.settlement_timezone
+    ):
+        raise ContractError("stage_zero_execution_market_probability_scope_mismatch")
+    if str(market.get("quote_source") or "").strip().upper() != "OFFICIAL_CLOB_WS":
+        raise ContractError("stage_zero_execution_quote_source_not_official_clob_ws")
+    if any(
+        market.get(key) is not True
+        for key in (
+            "evidence_fresh",
+            "contract_matches",
+            "order_state_known",
+            "risk_inputs_complete",
+        )
+    ):
+        raise ContractError("stage_zero_execution_market_evidence_incomplete")
+    quote_observed_at_utc, quote_observed_at = _normalized_utc(
+        "stage_zero_execution_quote_observed_at",
+        market.get("quote_observed_at"),
+    )
+    quote_expires_at_utc, quote_expires_at = _normalized_utc(
+        "stage_zero_execution_quote_expires_at",
+        market.get("quote_expires_at"),
+    )
+    if quote_observed_at > evaluation_at:
+        raise ContractError("stage_zero_execution_quote_after_evaluation")
+    if quote_expires_at <= quote_observed_at or evaluation_at >= quote_expires_at:
+        raise ContractError("stage_zero_execution_quote_stale")
+    inventory_observed_at_utc, inventory_observed_at = _normalized_utc(
+        "stage_zero_execution_inventory_observed_at",
+        market.get("inventory_observed_at"),
+    )
+    order_state_observed_at_utc, order_state_observed_at = _normalized_utc(
+        "stage_zero_execution_order_state_observed_at",
+        market.get("order_state_observed_at"),
+    )
+    if inventory_observed_at > evaluation_at:
+        raise ContractError("stage_zero_execution_inventory_after_evaluation")
+    if order_state_observed_at > evaluation_at:
+        raise ContractError("stage_zero_execution_order_state_after_evaluation")
+
+    production_inputs = compiled_cycle.get("production_inputs")
+    if not isinstance(production_inputs, Mapping):
+        raise ContractError("stage_zero_execution_production_inputs_missing")
+    regime_sha = _required_sha256(
+        "stage_zero_execution_regime_artifact",
+        production_inputs.get("regime_artifact_sha256"),
+    )
+    if _required_sha256(
+        "stage_zero_execution_regime_probability",
+        production_inputs.get("regime_probability_sha256"),
+    ) != probability_sha:
+        raise ContractError("stage_zero_execution_regime_probability_sha_mismatch")
+    station_policy_sha = _required_sha256(
+        "stage_zero_execution_station_policy",
+        plan_lineage.get("policy_resolution_sha256"),
+    )
+    cash_policy_decision_sha = _required_sha256(
+        "stage_zero_execution_cash_policy_decision",
+        plan_lineage.get("cash_phase_decision_sha256"),
+    )
+    cash_policy_sha = _required_sha256(
+        "stage_zero_execution_cash_policy",
+        plan_lineage.get("cash_phase_policy_sha256"),
+    )
+    cash_observed_at_utc, cash_observed_at = _normalized_utc(
+        "stage_zero_execution_cash_observed_at",
+        plan_lineage.get("cash_phase_observed_at_utc"),
+    )
+    if cash_observed_at > evaluation_at:
+        raise ContractError("stage_zero_execution_cash_after_evaluation")
+    cash_phase = str(plan_lineage.get("cash_phase") or "").strip().upper()
+    if cash_phase not in {"HEAVY", "STANDARD", "TAIL"}:
+        raise ContractError("stage_zero_execution_cash_phase_invalid")
+    cash_checkpoint_id = str(
+        plan_lineage.get("cash_phase_checkpoint_id") or ""
+    ).strip()
+    if not cash_checkpoint_id:
+        raise ContractError("stage_zero_execution_cash_checkpoint_missing")
+
+    delta_v2_audit = compiled_cycle.get("delta_v2_audit")
+    if not isinstance(delta_v2_audit, Mapping):
+        raise ContractError("stage_zero_execution_delta_v2_evaluation_missing")
+    plan_delta_v2_audit = plan.get("delta_v2_audit")
+    if (
+        isinstance(plan_delta_v2_audit, Mapping)
+        and _required_sha256(
+            "stage_zero_execution_plan_delta_v2_evaluation",
+            plan_delta_v2_audit.get("content_sha256"),
+        )
+        != _required_sha256(
+            "stage_zero_execution_delta_v2_evaluation",
+            delta_v2_audit.get("content_sha256"),
+        )
+    ):
+        raise ContractError("stage_zero_execution_delta_v2_evaluation_mismatch")
+    delta_v2_artifact_sha = _required_sha256(
+        "stage_zero_execution_delta_v2_artifact",
+        production_inputs.get("delta_v2_artifact_sha256"),
+    )
+    delta_v2_evaluation_sha = _required_sha256(
+        "stage_zero_execution_delta_v2_evaluation",
+        delta_v2_audit.get("content_sha256"),
+    )
+
+    supplied_cycle_sha = _required_sha256(
+        "stage_zero_execution_production_cycle",
+        compiled_cycle.get("production_cycle_sha256"),
+    )
+    expected_cycle_sha = content_sha256({
+        key: value
+        for key, value in compiled_cycle.items()
+        if key not in {"production_cycle_sha256", "compiled_plan_sha256"}
+    })
+    if supplied_cycle_sha != expected_cycle_sha:
+        raise ContractError("stage_zero_execution_production_cycle_sha_mismatch")
+    full_compiled_plan = dict(compiled_cycle)
+    supplied_full_plan_sha = full_compiled_plan.pop("compiled_plan_sha256", None)
+    compiled_plan_sha = content_sha256(full_compiled_plan)
+    if supplied_full_plan_sha not in (None, "") and _required_sha256(
+        "stage_zero_execution_compiled_plan",
+        supplied_full_plan_sha,
+    ) != compiled_plan_sha:
+        raise ContractError("stage_zero_execution_compiled_plan_sha_mismatch")
+
+    anchor = {
+        "schema": STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA,
+        "station_id": probability.station_id,
+        "event_date": probability.event_date,
+        "settlement_timezone": probability.settlement_timezone,
+        "evaluation_at_utc": evaluation_at_utc,
+        "probability_evidence_fresh": True,
+        "official_ws_fresh": True,
+        "inventory_complete": True,
+        "order_state_known": True,
+        "probability_envelope": {
+            **probability.to_dict(),
+            "envelope_id": probability.checkpoint_id,
+            "content_sha256": probability_sha,
+            "decision_at_utc": probability_at_utc,
+            "fresh_until_utc": fresh_until_utc,
+        },
+        "regime_artifact_sha256": regime_sha,
+        "official_ws_snapshot": {
+            "snapshot_id": str(market.get("snapshot_id") or "").strip(),
+            "content_sha256": _required_sha256(
+                "stage_zero_execution_official_ws_snapshot",
+                market.get("official_ws_quote_sha256")
+                or market.get("content_sha256"),
+            ),
+            "quote_observed_at": quote_observed_at_utc,
+            "quote_expires_at": quote_expires_at_utc,
+        },
+        "inventory_snapshot": {
+            "inventory_snapshot_id": str(
+                market.get("inventory_snapshot_id") or ""
+            ).strip(),
+            "content_sha256": _required_sha256(
+                "stage_zero_execution_inventory",
+                market.get("inventory_sha256"),
+            ),
+            "observed_at": inventory_observed_at_utc,
+        },
+        "order_state_snapshot": {
+            "order_state_snapshot_id": str(
+                market.get("order_state_snapshot_id") or ""
+            ).strip(),
+            "content_sha256": _required_sha256(
+                "stage_zero_execution_order_state",
+                market.get("order_state_sha256"),
+            ),
+            "observed_at": order_state_observed_at_utc,
+        },
+        "station_policy_sha256": station_policy_sha,
+        "cash_policy_decision_sha256": cash_policy_decision_sha,
+        "cash_phase": {
+            "phase": cash_phase,
+            "checkpoint_id": cash_checkpoint_id,
+            "observed_at_utc": cash_observed_at_utc,
+            "policy_sha256": cash_policy_sha,
+        },
+        "delta_v2_artifact_sha256": delta_v2_artifact_sha,
+        "delta_v2_evaluation_sha256": delta_v2_evaluation_sha,
+        "compiled_plan": full_compiled_plan,
+        "compiled_plan_sha256": compiled_plan_sha,
+        "final_authority": "P1",
+        "capital_authorized": False,
+        "intents_written": 0,
+        "reservations_written": 0,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    if (
+        not anchor["official_ws_snapshot"]["snapshot_id"]
+        or not anchor["inventory_snapshot"]["inventory_snapshot_id"]
+        or not anchor["order_state_snapshot"]["order_state_snapshot_id"]
+    ):
+        raise ContractError("stage_zero_execution_snapshot_identity_missing")
+    anchor["content_sha256"] = content_sha256(anchor)
+    return anchor
+
+
 def _latest_snapshot_row(conn: sqlite3.Connection, table: str, station_id: str, event_date: str, evaluation_at_utc: str) -> dict[str, Any]:
     cursor = conn.execute(
         f"SELECT * FROM {table} WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? ORDER BY observed_at DESC, rowid DESC LIMIT 1",
@@ -1086,9 +1610,13 @@ def load_production_market_snapshot(
             (station_id, event_date),
         ).fetchone()
         if prior_decision is not None:
+            prior_decision_fields = _row_mapping(
+                prior_decision,
+                ("details_json",),
+            )
             prior_details = _json(
                 "prior_basket_decision_details",
-                prior_decision["details_json"],
+                prior_decision_fields["details_json"],
                 mapping=True,
             )
             raw_core = prior_details.get("core_buckets")
@@ -1227,10 +1755,16 @@ def load_production_market_snapshot(
         ),
         "quote_source": str(quote["quote_source"]),
         "official_ws_quote_sha256": str(quote["content_sha256"]),
+        "inventory_snapshot_id": str(inventory["inventory_snapshot_id"]),
         "inventory_version": inventory_version,
         "inventory_sha256": str(inventory["content_sha256"]),
+        "inventory_observed_at": str(inventory["observed_at"]),
+        "order_state_snapshot_id": str(
+            order_state["order_state_snapshot_id"]
+        ),
         "order_state_version": order_version,
         "order_state_sha256": str(order_state["content_sha256"]),
+        "order_state_observed_at": str(order_state["observed_at"]),
         "remaining_budget_usdc": float(quote["remaining_budget_usdc"]),
         "current_core_buckets": list(current_core_buckets),
         "current_direction": current_direction,
@@ -1335,6 +1869,11 @@ def compile_production_cycle_from_ssot(
 ) -> dict[str, Any]:
     """Compile one real-SSOT candidate while preserving the no-live boundary."""
 
+    evaluation_at_utc, _evaluation_at = _normalized_utc(
+        "production_evaluation_at_utc",
+        evaluation_at_utc,
+    )
+
     try:
         assert_process_memory_budget()
         # The target SSOT owns this connection.  Permit exactly one bounded
@@ -1349,6 +1888,11 @@ def compile_production_cycle_from_ssot(
         )
     except ResourceBoundError as exc:
         raise ContractError("delta_v2_resource_probe_failed:" + str(exc)) from exc
+    expected_source_lane = _strict_expected_source_lane(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+    )
     envelopes = load_materialized_probability_envelopes(
         conn,
         station_id=station_id,
@@ -1359,6 +1903,7 @@ def compile_production_cycle_from_ssot(
             if strategy_version == "target-v2"
             else None
         ),
+        expected_source_lane=expected_source_lane,
     )
     current_envelope = select_current_stage(
         envelopes,
@@ -1474,6 +2019,7 @@ def compile_production_cycle_from_ssot(
         require_regime_ssot=True,
         resource_probe_ok=True,
         delta_v2_owns_cadence=True,
+        expected_source_lane=expected_source_lane,
     )
     plan["production_inputs"] = {
         "probability_envelope_count": len(envelopes),
@@ -1529,6 +2075,10 @@ def compile_production_cycle_from_ssot(
     # The writer boundary receives the exact quote snapshot that was used by
     # the compiler.  It never refetches market data or consults tick history.
     plan["production_market_snapshot"] = market_snapshot
+    # The compiler's evaluation timestamp is an immutable decision clock.
+    # P0/P0-M stage-zero anchors bind to this exact clock and the ledger
+    # rejects a later write clock rather than silently extending freshness.
+    plan["evaluation_at_utc"] = evaluation_at_utc
     plan["production_cycle_sha256"] = content_sha256(
         {key: value for key, value in plan.items() if key != "production_cycle_sha256"}
     )
@@ -1575,6 +2125,7 @@ def load_post_fill_recompute_requests(
 
 __all__ = [
     "ProductionArtifactBundle",
+    "STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA",
     "apply_no_live_execution_receipt",
     "build_no_live_execution_receipt",
     "compile_production_cycle_from_ssot",
@@ -1584,5 +2135,7 @@ __all__ = [
     "load_production_market_snapshot",
     "load_post_fill_recompute_requests",
     "resolve_delta_v2_runtime_authority",
+    "target_registry_source_lane",
     "target_atomic_facts_from_cycle",
+    "target_stage_zero_execution_anchor_from_cycle",
 ]

@@ -49,7 +49,7 @@ def _round() -> dict:
         "candidate_accumulation_station_ids": [],
         "not_started_station_ids": [],
         "services": {
-            "com.weather.reported_trajectory_no": 1,
+            "com.weather.weather_basket_yes": 1,
             "com.weather.market_ws": 2,
             "com.weather.clob_order_service": 3,
         },

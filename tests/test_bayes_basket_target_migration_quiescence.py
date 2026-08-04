@@ -234,7 +234,7 @@ def test_isolated_target_receipt_blocks_target_writer_or_system_residue(
 
     def fake_probe(command: list[str]) -> tuple[bool, str]:
         target = command[-1]
-        if loaded_target and target == "gui/501/com.weather.reported_trajectory_no":
+        if loaded_target and target == "gui/501/com.weather.weather_basket_yes":
             return True, "state = running\npid = 42\n"
         if system_residue and target == "system/com.weather.market_ws":
             return True, "state = running\npid = 43\n"

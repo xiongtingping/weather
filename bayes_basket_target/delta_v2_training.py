@@ -76,6 +76,38 @@ def build_delta_v2_training_fact(
     }
 
 
+def build_stage_zero_delta_v2_training_fact(
+    conn: sqlite3.Connection,
+    *,
+    compiled_plan: Mapping[str, Any],
+    market_snapshot: Mapping[str, Any],
+    atomic_bundle: Mapping[str, Any],
+    created_at_utc: str,
+) -> dict[str, Any]:
+    """Build a pre-final, no-execution fact from exact P0/P0-M evidence.
+
+    A stage-zero decision has no canonical METAR/SPECI observation or hard
+    bound.  It must therefore use its own NO_EXECUTION atomic bundle rather
+    than borrowing the P1/M5 writer's weather facts.  The common validator
+    already enforces the exact probability, official WS, inventory,
+    order-state and policy lineage for all supported probability stages.
+    """
+
+    envelope = compiled_plan.get("probability_envelope")
+    if not isinstance(envelope, Mapping):
+        raise ContractError("stage_zero_delta_v2_probability_mapping_required")
+    stage = str(envelope.get("stage") or "").strip().upper()
+    if stage not in {"P0", "P0-M"}:
+        raise ContractError("stage_zero_delta_v2_probability_stage_invalid")
+    return build_delta_v2_training_fact(
+        conn,
+        compiled_plan=compiled_plan,
+        market_snapshot=market_snapshot,
+        atomic_bundle=atomic_bundle,
+        created_at_utc=created_at_utc,
+    )
+
+
 def commit_delta_v2_training_fact(
     conn: sqlite3.Connection,
     *,
@@ -132,6 +164,7 @@ def commit_delta_v2_training_fact(
 __all__ = [
     "FACT_SCHEMA",
     "build_delta_v2_training_fact",
+    "build_stage_zero_delta_v2_training_fact",
     "commit_delta_v2_training_fact",
     "delta_v2_decision_scope_key",
 ]

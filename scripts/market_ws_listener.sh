@@ -17,6 +17,15 @@ if [ -f "$ROOT/scripts/lib/load_launchctl_env.sh" ]; then
   load_repo_env_file "$ROOT/.env"
 fi
 
+# A local proxy can be TCP-reachable while rejecting WebSocket CONNECTs.  The
+# listener's explicit fallback mode keeps the official CLOB WS direct-first,
+# then tries this same local proxy only if direct transport is unavailable.
+# No secondary market-data endpoint is introduced.
+if [[ "${PM_MARKET_WS_PROXY:-}" =~ ^https?:// ]]; then
+  export PM_MARKET_WS_HTTP_PROXY="$PM_MARKET_WS_PROXY"
+  export PM_MARKET_WS_PROXY="direct_then_env"
+fi
+
 if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then
   echo "[market_ws] user_domain_required" >&2
   exit 78
@@ -33,13 +42,16 @@ fi
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PM_MARKET_WS_DAYS_AHEAD="${PM_MARKET_WS_DAYS_AHEAD:-2}"
-# Core production subscribes to both sides: NO for hard-NO entry and YES for
-# basket entry plus mandatory pre-entry liquidation. Two near-even shards
-# reduce connection failure area.
+# Core production subscribes only to official YES tokens for the pure-YES
+# basket. Hard-NO entry is retired; held-YES reconciliation uses its own
+# bounded auxiliary evidence socket. Two near-even shards reduce connection
+# failure area.
 export PM_MARKET_WS_MAX_ASSETS="${PM_MARKET_WS_MAX_ASSETS:-4000}"
 export PM_MARKET_WS_SHARD_SIZE="${PM_MARKET_WS_SHARD_SIZE:-400}"
 export PM_MARKET_WS_RELOAD_SEC="${PM_MARKET_WS_RELOAD_SEC:-60}"
 export PM_MARKET_WS_CATALOG_PROBE_SEC="${PM_MARKET_WS_CATALOG_PROBE_SEC:-1.0}"
 export PM_MARKET_WS_SHARDED_SNAPSHOT="1"
-export PM_MARKET_WS_SOURCE_LANE="amsc,awc"
+# Production market evidence is AWC-only.  AMSC is retired_history_only and
+# must never enter the live CLOB subscription catalog, even as a fallback.
+export PM_MARKET_WS_SOURCE_LANE="awc"
 exec "$PY" "$ROOT/scripts/market_ws_listener.py" >> "$ROOT/data/market_ws.log" 2>&1

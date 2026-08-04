@@ -15,6 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -30,13 +31,13 @@ from bayes_basket_target.historical_model_rows import (  # noqa: E402
     load_historical_model_rows,
     select_preferred_model_rows,
 )
-from bayes_basket_target.resource_bounds import load_bounded_json, write_bounded_json  # noqa: E402
+from bayes_basket_target.resource_bounds import MIB, load_bounded_json, write_bounded_json  # noqa: E402
 
 
 DEFAULT_CANONICAL = ROOT / "output/audits/bayes_basket_target_canonical_observation_evidence.json"
 DEFAULT_TIMEZONE_REGISTRY = ROOT / "data/bayes_basket_target_market_registry_snapshot.json"
 DEFAULT_OUTPUT = ROOT / "output/audits/bayes_basket_target_et_history_evidence.json"
-MAX_INPUT_BYTES = 64 * 1024 * 1024
+MAX_INPUT_BYTES = 256 * MIB
 HISTORICAL_REBUILD_SCHEMA = "bayes_basket_target_historical_native_rebuild_evidence_v1"
 ICON_RETAINED_RAW_REBUILD_SCHEMA = "bayes_basket_target_icon_retained_raw_rebuild_evidence_v1"
 
@@ -132,6 +133,7 @@ def _native_complete_rows(
     path: Path,
     *,
     station_scope: set[str] | None = None,
+    station_timezone_map: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     value = load_bounded_json(_bounded_path(path))
     if not isinstance(value, Mapping):
@@ -157,10 +159,29 @@ def _native_complete_rows(
         for point in item.get("temperature_points") or item.get("points") or []:
             if not isinstance(point, Mapping):
                 raise ValueError("native_decode_point_invalid")
-            rows.append({
+            station = str(item.get("station_id") or "").strip().upper()
+            expected_timezone = str((station_timezone_map or {}).get(station) or "").strip()
+            inherited_timezone = str(item.get("target_timezone") or target_timezone).strip()
+            event_date = str(item.get("event_date") or "").strip()
+            repaired = False
+            legacy_event_date = event_date
+            legacy_timezone = inherited_timezone
+            valid_time_raw = str(point.get("valid_time_utc") or "").strip()
+            if expected_timezone and valid_time_raw:
+                try:
+                    valid_at = datetime.fromisoformat(valid_time_raw.replace("Z", "+00:00"))
+                    if valid_at.tzinfo is not None and valid_at.utcoffset() is not None:
+                        derived_date = valid_at.astimezone(ZoneInfo(expected_timezone)).date().isoformat()
+                        if event_date != derived_date or inherited_timezone != expected_timezone:
+                            event_date = derived_date
+                            repaired = True
+                        inherited_timezone = expected_timezone
+                except (TypeError, ValueError):
+                    pass
+            row = {
                 "station_id": item.get("station_id"),
-                "event_date": item.get("event_date"),
-                "target_timezone": item.get("target_timezone") or target_timezone,
+                "event_date": event_date,
+                "target_timezone": inherited_timezone,
                 "provider_id": item.get("provider_id"),
                 "model_run_initialization_utc": item.get("model_run_initialization_utc"),
                 "valid_time_utc": point.get("valid_time_utc"),
@@ -172,7 +193,12 @@ def _native_complete_rows(
                 "capture_mode": "prospective",
                 "historical_replay_eligible": False,
                 "prospective_strict_asof_eligible": True,
-            })
+            }
+            if repaired:
+                row["settlement_timezone_repaired_from_valid_time"] = True
+                row["legacy_event_date"] = legacy_event_date
+                row["legacy_target_timezone"] = legacy_timezone
+            rows.append(row)
     return rows
 
 
@@ -217,6 +243,12 @@ def _historical_rebuild_rows(
             as_of_utc=as_of_utc or _current_utc(),
             station_timezone_map=station_timezone_map,
             require_reconstructed_at=False,
+            # Retained native rebuild packets predating the 45-station
+            # registry carry the former operational timezone.  Recompute the
+            # local day only from immutable valid_time + station registry;
+            # never relabel a row from its UTC date or fabricate a missing
+            # point.  The loader preserves the legacy fields for audit.
+            repair_registry_timezone=True,
         )
     except ContractError as exc:
         raise ValueError(str(exc)) from exc
@@ -275,7 +307,11 @@ def run(
     excluded_historical_event_dates: set[str] = set()
     if native_decode_path is not None:
         model_rows.extend(
-            _native_complete_rows(native_decode_path, station_scope=station_scope)
+            _native_complete_rows(
+                native_decode_path,
+                station_scope=station_scope,
+                station_timezone_map=station_timezone_map,
+            )
         )
     for historical_rebuild_path in historical_rebuild_paths or []:
         if not history_only:

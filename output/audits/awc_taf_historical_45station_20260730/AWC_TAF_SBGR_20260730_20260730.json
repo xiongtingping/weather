@@ -1,0 +1,266 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "c9fc9ad69e212f78bc3bd145c36305b816cf802871ba1e027bd5a7ca2f9de124",
+  "end_date": "2026-07-30",
+  "excluded_sample_count": 0,
+  "excluded_samples": [],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 12752,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 268435456
+  },
+  "sample_count": 1,
+  "samples": [
+    {
+      "decision_anchor_utc": "2026-07-30T04:00:00Z",
+      "event_date": "2026-07-30",
+      "receipts": {
+        "metar_response_sha256": "5183a6d02c9fe379acf02b510e155b01fe756b62955a9d3d61402d7924b23fbd",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&taf=false&hours=24&date=20260731_0300",
+        "taf_response_sha256": "43b8f370dde9e4c3181e0bc2b99f6bc2089c24eef47aa044eb9124f586c0ed96",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-30T04%3A00%3A00Z"
+      },
+      "reference_only": false,
+      "sample_id": "taf-sample-99dd6fc3357b5fcbf702c5455b67c7e0",
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-31T03:00:00Z",
+        "start_utc": "2026-07-30T03:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "SBGR",
+      "taf": {
+        "available_time_utc": "2026-07-30T02:31:11Z",
+        "cloud_cover_fraction": 0.5454545454545454,
+        "issue_time_utc": "2026-07-30T02:30:00Z",
+        "precipitation_probability": 0.05454545454545454,
+        "raw_taf": "TAF SBGR 300230Z 3006/3112 09003KT CAVOK TN14/3009Z TX22/3017Z PROB30 3009/3011 BKN008 BECMG 3012/3015 12010KT 9999 BKN025 BECMG 3020/3023 SCT016 BECMG 3103/3106 08005KT SCT008 PROB30 3107/3111 4000 BR BKN005 RMK PGH",
+        "raw_taf_sha256": "6391748de417d0e2667f3d1bdbc84485d373cff74b02131a92c1a670ab25b7cf",
+        "tx_c": 22.0,
+        "tx_valid_at_utc": "2026-07-30T17:00:00Z",
+        "wind_speed_mps": 3.226966909090909
+      },
+      "truth": {
+        "observation_count": 24,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-30T03:00:00Z",
+            "raw_report": "METAR SBGR 300300Z 00000KT CAVOK 15/13 Q1021",
+            "received_at_utc": "2026-07-30T02:57:06.408Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T04:00:00Z",
+            "raw_report": "METAR SBGR 300400Z 15001KT CAVOK 14/12 Q1021",
+            "received_at_utc": "2026-07-30T03:57:46.611Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T05:00:00Z",
+            "raw_report": "METAR SBGR 300500Z 08002KT CAVOK 14/12 Q1021",
+            "received_at_utc": "2026-07-30T04:56:47.847Z",
+            "report_type": "METAR",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T06:00:00Z",
+            "raw_report": "METAR SBGR 300600Z 00000KT 9000 NSC 13/12 Q1022",
+            "received_at_utc": "2026-07-30T05:57:53.729Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T07:00:00Z",
+            "raw_report": "METAR SBGR 300700Z 00000KT 9000 NSC 13/12 Q1022",
+            "received_at_utc": "2026-07-30T06:55:25.555Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T08:00:00Z",
+            "raw_report": "METAR SBGR 300800Z 00000KT 8000 NSC 13/12 Q1021",
+            "received_at_utc": "2026-07-30T07:55:36.002Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T09:00:00Z",
+            "raw_report": "METAR SBGR 300900Z 13002KT 5000 BR NSC 12/11 Q1021",
+            "received_at_utc": "2026-07-30T08:57:31.038Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T10:00:00Z",
+            "raw_report": "METAR SBGR 301000Z 09005KT 5000 BR NSC 13/12 Q1022",
+            "received_at_utc": "2026-07-30T09:57:50.684Z",
+            "report_type": "METAR",
+            "temperature_c": 13.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T11:00:00Z",
+            "raw_report": "METAR SBGR 301100Z 14004KT 9999 SCT011 15/13 Q1024",
+            "received_at_utc": "2026-07-30T11:02:32.859Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T12:00:00Z",
+            "raw_report": "METAR SBGR 301200Z 10007KT 9999 SCT013 BKN017 16/12 Q1025",
+            "received_at_utc": "2026-07-30T12:02:26.702Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T13:00:00Z",
+            "raw_report": "METAR SBGR 301300Z 09007KT 9999 BKN021 16/12 Q1026",
+            "received_at_utc": "2026-07-30T12:58:26.488Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T14:00:00Z",
+            "raw_report": "METAR SBGR 301400Z 13005KT 9999 BKN021 19/12 Q1026",
+            "received_at_utc": "2026-07-30T13:57:54.882Z",
+            "report_type": "METAR",
+            "temperature_c": 19.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T15:00:00Z",
+            "raw_report": "METAR SBGR 301500Z 07009KT 9999 FEW021 19/12 Q1025",
+            "received_at_utc": "2026-07-30T15:00:08.770Z",
+            "report_type": "METAR",
+            "temperature_c": 19.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T16:00:00Z",
+            "raw_report": "METAR SBGR 301600Z 11006KT CAVOK 20/12 Q1025",
+            "received_at_utc": "2026-07-30T15:55:20.428Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T17:00:00Z",
+            "raw_report": "METAR SBGR 301700Z 16007KT 120V200 CAVOK 22/13 Q1024",
+            "received_at_utc": "2026-07-30T16:56:58.949Z",
+            "report_type": "METAR",
+            "temperature_c": 22.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T18:00:00Z",
+            "raw_report": "METAR SBGR 301800Z 13005KT 100V170 CAVOK 22/12 Q1023",
+            "received_at_utc": "2026-07-30T17:55:36.032Z",
+            "report_type": "METAR",
+            "temperature_c": 22.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T19:00:00Z",
+            "raw_report": "METAR SBGR 301900Z 12007KT 090V160 CAVOK 21/12 Q1023",
+            "received_at_utc": "2026-07-30T18:55:20.612Z",
+            "report_type": "METAR",
+            "temperature_c": 21.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T20:00:00Z",
+            "raw_report": "METAR SBGR 302000Z 16008KT 140V200 CAVOK 19/14 Q1023",
+            "received_at_utc": "2026-07-30T19:58:47.670Z",
+            "report_type": "METAR",
+            "temperature_c": 19.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T21:00:00Z",
+            "raw_report": "METAR SBGR 302100Z 11004KT 070V150 9999 FEW017 17/14 Q1024",
+            "received_at_utc": "2026-07-30T20:55:51.999Z",
+            "report_type": "METAR",
+            "temperature_c": 17.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T22:00:00Z",
+            "raw_report": "METAR SBGR 302200Z 10005KT 060V130 9999 FEW011 BKN013 16/14 Q1024",
+            "received_at_utc": "2026-07-30T21:56:22.023Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T23:00:00Z",
+            "raw_report": "METAR SBGR 302300Z 15004KT 9999 BKN011 16/14 Q1025",
+            "received_at_utc": "2026-07-30T22:55:26.176Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T00:00:00Z",
+            "raw_report": "METAR SBGR 310000Z 15004KT 100V190 9999 BKN011 16/13 Q1026",
+            "received_at_utc": "2026-07-30T23:57:02.646Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T01:00:00Z",
+            "raw_report": "METAR SBGR 310100Z 16005KT 9999 BKN013 16/13 Q1026",
+            "received_at_utc": "2026-07-31T00:59:36.424Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T02:00:00Z",
+            "raw_report": "METAR SBGR 310200Z 15005KT 9999 OVC013 16/13 Q1027",
+            "received_at_utc": "2026-07-31T02:00:17.055Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 22.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    }
+  ],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "America/Sao_Paulo",
+  "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
+  "start_date": "2026-07-30",
+  "station_id": "SBGR",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+}

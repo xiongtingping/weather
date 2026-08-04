@@ -14,7 +14,7 @@ effective_from: 2026-07-23
 ## 运行边界
 
 - `shadow_only=true`、`places_orders=false`、`writes_production_db=false`、`calls_order_gateway=false` 和 `orders_submitted=0` 是固定边界，不能配置覆盖。
-- 包内禁止导入生产篮子、跟单、`reported_trajectory_no_runtime`、数据库、网络或子进程模块。
+- 包内禁止导入生产篮子、跟单、`weather_basket_yes_runtime`、数据库、网络或子进程模块。
 - CLI 只读 JSON，拒绝数据库输入和输出；当前不是 activation、daemon、scheduler 或第四个服务。
 - v5 只接受 `OFFICIAL_CLOB_WS` 多档 asks；旧 `ask_price + executable_depth_shares` 单档输入被合同拒绝，避免伪造 VWAP。
 - v5 删除第二套天气方向输入：中心与方向都只由当前阶段桶概率决定，方向为上下尾偏斜符号，偏斜不足时保持中性。

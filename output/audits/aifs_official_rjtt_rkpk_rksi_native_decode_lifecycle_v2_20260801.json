@@ -1,0 +1,1169 @@
+{
+  "as_of_utc": "2026-08-01T12:15:00Z",
+  "blocked_captures": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "read_only_decode": true,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "checks": {
+    "calls_order_gateway": false,
+    "complete_curve_count_positive": true,
+    "decoded_points_have_coordinate_lineage": true,
+    "decoded_points_have_raw_lineage": true,
+    "icon_prepared_cache_bytes": 0,
+    "icon_prepared_payload_cache_bounded": true,
+    "native_provider_only": true,
+    "no_default_station_coordinate_fallback": true,
+    "official_ecmwf_gfs_icon_only": true,
+    "orders_submitted": 0,
+    "production_authority": false,
+    "promotion_allowed": false,
+    "writes_production_db": false
+  },
+  "curves": {
+    "all_complete": true,
+    "complete_curve_count": 3,
+    "curve_count": 3,
+    "curves": [
+      {
+        "blockers": [],
+        "coverage": {
+          "endpoint_tolerance_hours": 6.0,
+          "ends_within_hours": 3.0,
+          "first_valid_time_utc": "2026-07-31T18:00:00Z",
+          "last_valid_time_utc": "2026-08-01T12:00:00Z",
+          "max_gap_hours": 6.0,
+          "point_count": 4,
+          "starts_within_hours": 3.0
+        },
+        "curve_sha256": "313bdff3c77f78b927eb6267c5f6177332f88c026fb89a576cec69231c056a0f",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 38.089,
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 27.377,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 32.404,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 38.089,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 32.316,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "provider_id": "ecmwf_aifs025_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "COMPLETE",
+        "station_id": "RKPK",
+        "target_timezone": "Asia/Seoul"
+      },
+      {
+        "blockers": [],
+        "coverage": {
+          "endpoint_tolerance_hours": 6.0,
+          "ends_within_hours": 3.0,
+          "first_valid_time_utc": "2026-07-31T18:00:00Z",
+          "last_valid_time_utc": "2026-08-01T12:00:00Z",
+          "max_gap_hours": 6.0,
+          "point_count": 4,
+          "starts_within_hours": 3.0
+        },
+        "curve_sha256": "f1d1426e3331715845fbf3bb22ac213e060bfde1d52ec5ba312b9af7b7a79349",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 30.808,
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 27.721,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 29.154,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 30.808,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 28.41,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "provider_id": "ecmwf_aifs025_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "COMPLETE",
+        "station_id": "RKSI",
+        "target_timezone": "Asia/Seoul"
+      },
+      {
+        "blockers": [],
+        "coverage": {
+          "endpoint_tolerance_hours": 6.0,
+          "ends_within_hours": 3.0,
+          "first_valid_time_utc": "2026-07-31T18:00:00Z",
+          "last_valid_time_utc": "2026-08-01T12:00:00Z",
+          "max_gap_hours": 6.0,
+          "point_count": 4,
+          "starts_within_hours": 3.0
+        },
+        "curve_sha256": "b5b5036cd8930ee192957e17bae67fe2cf9c643a8dafe411cdd466fe235eb2b3",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 34.839,
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 27.221,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 30.997,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 34.839,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 31.348,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "provider_id": "ecmwf_aifs025_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "COMPLETE",
+        "station_id": "RJTT",
+        "target_timezone": "Asia/Tokyo"
+      }
+    ],
+    "eligible_model_rows": [
+      {
+        "component_published_at_utc": [
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:15Z",
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:16Z"
+        ],
+        "component_raw_message_sha256": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "component_receipt_sha256": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "component_received_at_utc": [
+          "2026-08-01T07:31:41Z",
+          "2026-08-01T07:31:49Z",
+          "2026-08-01T05:36:43Z",
+          "2026-08-01T05:36:52Z"
+        ],
+        "daily_curve_complete": true,
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 38.089,
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "model_run_lineage_sha256": "531651228752f82c84878958581663a7746ec3b5b487e961bec544966c8a33cd",
+        "provider_id": "ecmwf_aifs025_official",
+        "published_at_utc": "2026-07-31T23:28:16Z",
+        "raw_message_sha256": "f5e526d47ad5dab4873fc07257324bc85e064d4306d777e7c1fe820858c879b8",
+        "receipt_sha256": "b55261746cd8370ce794530c764c45c6899b1b60843cd579cb785e3dd99ed471",
+        "received_at_utc": "2026-08-01T07:31:49Z",
+        "sample_count": 4,
+        "station_id": "RKPK",
+        "target_timezone": "Asia/Seoul",
+        "temperature_2m_c": 38.089,
+        "temperature_points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 27.377,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 32.404,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 38.089,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RKPK",
+            "temperature_2m_c": 32.316,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "valid_time_utc": "2026-08-01T06:00:00Z"
+      },
+      {
+        "component_published_at_utc": [
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:15Z",
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:16Z"
+        ],
+        "component_raw_message_sha256": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "component_receipt_sha256": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "component_received_at_utc": [
+          "2026-08-01T07:31:41Z",
+          "2026-08-01T07:31:49Z",
+          "2026-08-01T05:36:43Z",
+          "2026-08-01T05:36:52Z"
+        ],
+        "daily_curve_complete": true,
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 30.808,
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "model_run_lineage_sha256": "bbb908ecf34572e6caad80c664ada781325f331c37ff4f78447a24602c6a7164",
+        "provider_id": "ecmwf_aifs025_official",
+        "published_at_utc": "2026-07-31T23:28:16Z",
+        "raw_message_sha256": "f5e526d47ad5dab4873fc07257324bc85e064d4306d777e7c1fe820858c879b8",
+        "receipt_sha256": "b55261746cd8370ce794530c764c45c6899b1b60843cd579cb785e3dd99ed471",
+        "received_at_utc": "2026-08-01T07:31:49Z",
+        "sample_count": 4,
+        "station_id": "RKSI",
+        "target_timezone": "Asia/Seoul",
+        "temperature_2m_c": 30.808,
+        "temperature_points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 27.721,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 29.154,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 30.808,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RKSI",
+            "temperature_2m_c": 28.41,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "valid_time_utc": "2026-08-01T06:00:00Z"
+      },
+      {
+        "component_published_at_utc": [
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:15Z",
+          "2026-07-31T23:28:04Z",
+          "2026-07-31T23:28:16Z"
+        ],
+        "component_raw_message_sha256": [
+          "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+          "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+          "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+        ],
+        "component_receipt_sha256": [
+          "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+          "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+          "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+          "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b"
+        ],
+        "component_received_at_utc": [
+          "2026-08-01T07:31:41Z",
+          "2026-08-01T07:31:49Z",
+          "2026-08-01T05:36:43Z",
+          "2026-08-01T05:36:52Z"
+        ],
+        "daily_curve_complete": true,
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 34.839,
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "model_run_lineage_sha256": "1574d354222f21b6e8384cdf4e83b63d63b317b77117eab586fb91813c49a619",
+        "provider_id": "ecmwf_aifs025_official",
+        "published_at_utc": "2026-07-31T23:28:16Z",
+        "raw_message_sha256": "f5e526d47ad5dab4873fc07257324bc85e064d4306d777e7c1fe820858c879b8",
+        "receipt_sha256": "b55261746cd8370ce794530c764c45c6899b1b60843cd579cb785e3dd99ed471",
+        "received_at_utc": "2026-08-01T07:31:49Z",
+        "sample_count": 4,
+        "station_id": "RJTT",
+        "target_timezone": "Asia/Tokyo",
+        "temperature_2m_c": 34.839,
+        "temperature_points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 27.221,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:15Z",
+            "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+            "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+            "received_at_utc": "2026-08-01T07:31:49Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 30.997,
+            "valid_time_utc": "2026-08-01T00:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+            "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+            "received_at_utc": "2026-08-01T05:36:43Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 34.839,
+            "valid_time_utc": "2026-08-01T06:00:00Z"
+          },
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:16Z",
+            "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+            "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+            "received_at_utc": "2026-08-01T05:36:52Z",
+            "station_id": "RJTT",
+            "temperature_2m_c": 31.348,
+            "valid_time_utc": "2026-08-01T12:00:00Z"
+          }
+        ],
+        "valid_time_utc": "2026-08-01T06:00:00Z"
+      }
+    ],
+    "production_authority": false,
+    "promotion_allowed": false,
+    "schema": "bayes_basket_target_native_model_daily_curve_v1",
+    "station_timezones": {
+      "RJTT": "Asia/Tokyo",
+      "RKPK": "Asia/Seoul",
+      "RKSI": "Asia/Seoul"
+    },
+    "target_timezone": "REGISTRY_BOUND_PER_STATION"
+  },
+  "decoded_point_count": 12,
+  "decoded_points": [
+    {
+      "coordinate_lineage": {
+        "latitude": 35.553,
+        "longitude": 139.781,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RJTT"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.553,
+      "longitude": 139.781,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+      "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "received_at_utc": "2026-08-01T07:31:41Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RJTT",
+      "temperature_2m_c": 27.221,
+      "valid_time_utc": "2026-07-31T18:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.553,
+        "longitude": 139.781,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RJTT"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.553,
+      "longitude": 139.781,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:15Z",
+      "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+      "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "received_at_utc": "2026-08-01T07:31:49Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RJTT",
+      "temperature_2m_c": 30.997,
+      "valid_time_utc": "2026-08-01T00:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.553,
+        "longitude": 139.781,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RJTT"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.553,
+      "longitude": 139.781,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+      "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "received_at_utc": "2026-08-01T05:36:43Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RJTT",
+      "temperature_2m_c": 34.839,
+      "valid_time_utc": "2026-08-01T06:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.553,
+        "longitude": 139.781,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RJTT"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.553,
+      "longitude": 139.781,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:16Z",
+      "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+      "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "received_at_utc": "2026-08-01T05:36:52Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RJTT",
+      "temperature_2m_c": 31.348,
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.179,
+        "longitude": 128.938,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKPK"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.179,
+      "longitude": 128.938,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+      "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "received_at_utc": "2026-08-01T07:31:41Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKPK",
+      "temperature_2m_c": 27.377,
+      "valid_time_utc": "2026-07-31T18:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.179,
+        "longitude": 128.938,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKPK"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.179,
+      "longitude": 128.938,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:15Z",
+      "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+      "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "received_at_utc": "2026-08-01T07:31:49Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKPK",
+      "temperature_2m_c": 32.404,
+      "valid_time_utc": "2026-08-01T00:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.179,
+        "longitude": 128.938,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKPK"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.179,
+      "longitude": 128.938,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+      "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "received_at_utc": "2026-08-01T05:36:43Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKPK",
+      "temperature_2m_c": 38.089,
+      "valid_time_utc": "2026-08-01T06:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 35.179,
+        "longitude": 128.938,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKPK"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 35.179,
+      "longitude": 128.938,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:16Z",
+      "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+      "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "received_at_utc": "2026-08-01T05:36:52Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKPK",
+      "temperature_2m_c": 32.316,
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 37.469,
+        "longitude": 126.451,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKSI"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 37.469,
+      "longitude": 126.451,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+      "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "received_at_utc": "2026-08-01T07:31:41Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKSI",
+      "temperature_2m_c": 27.721,
+      "valid_time_utc": "2026-07-31T18:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 37.469,
+        "longitude": 126.451,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKSI"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 37.469,
+      "longitude": 126.451,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:15Z",
+      "raw_message_sha256": "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2",
+      "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "received_at_utc": "2026-08-01T07:31:49Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKSI",
+      "temperature_2m_c": 29.154,
+      "valid_time_utc": "2026-08-01T00:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 37.469,
+        "longitude": 126.451,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKSI"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 37.469,
+      "longitude": 126.451,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+      "receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "received_at_utc": "2026-08-01T05:36:43Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKSI",
+      "temperature_2m_c": 30.808,
+      "valid_time_utc": "2026-08-01T06:00:00Z"
+    },
+    {
+      "coordinate_lineage": {
+        "latitude": 37.469,
+        "longitude": 126.451,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "RKSI"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": 37.469,
+      "longitude": 126.451,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:16Z",
+      "raw_message_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+      "receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "received_at_utc": "2026-08-01T05:36:52Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "RKSI",
+      "temperature_2m_c": 28.41,
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    }
+  ],
+  "evidence_sha256": "8b95434e51c9bd74c68e8f4461015c2c4df0108edf2b18a142885cc8ecbe8af7",
+  "input_artifacts": [
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "9eddb96358a989c735f242aba8ad43c55f71de338e8f6893aac4adcd2e20fb05",
+      "arrival_identity_sha256": "9eddb96358a989c735f242aba8ad43c55f71de338e8f6893aac4adcd2e20fb05",
+      "arrival_raw_payload_sha256s": [
+        "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+      ],
+      "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "arrival_timing_identity_sha256": "b0b1457e29e8dcc7c69306b0ce23788a410921e3d8dd22c7400d1b018c7de5f7",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260731T180000Z.json",
+      "sha256": "b97e93d0b3c84f63d289d99cb9193e7d4dd7f94d199304ff9924a2f7df178503",
+      "wrapper_capture_sha256": "b97e93d0b3c84f63d289d99cb9193e7d4dd7f94d199304ff9924a2f7df178503",
+      "wrapper_current_sha256": "b97e93d0b3c84f63d289d99cb9193e7d4dd7f94d199304ff9924a2f7df178503",
+      "wrapper_immutable_sha256": "8f6a084ff78e7c533959cef6c36c2589837ce8996e973feb5c0c2c96c6506d59"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "9c48ae462115c2d3a8dc4334b2644cd9f1c6fb3de539a6a6512e16379e8410a8",
+      "arrival_identity_sha256": "9c48ae462115c2d3a8dc4334b2644cd9f1c6fb3de539a6a6512e16379e8410a8",
+      "arrival_raw_payload_sha256s": [
+        "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+      ],
+      "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "arrival_timing_identity_sha256": "7149109aba76e40a8dfdec3b46ee2888711c53a49f7458fb2b5920154ad51020",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T000000Z.json",
+      "sha256": "8a7ebd0197d779edbf700a070cc10cc081867bb881056e22d821f889c0aba0e6",
+      "wrapper_capture_sha256": "8a7ebd0197d779edbf700a070cc10cc081867bb881056e22d821f889c0aba0e6",
+      "wrapper_current_sha256": "8a7ebd0197d779edbf700a070cc10cc081867bb881056e22d821f889c0aba0e6",
+      "wrapper_immutable_sha256": "b0d3b255edbdb9121b983ff3ec23477cef156b507c65de940d9cc1af063ffb05"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "e24fb4eae2dcef5e8189e29bac4bc1e7d3d23994d9041aec143ff36831c502ff",
+      "arrival_identity_sha256": "e24fb4eae2dcef5e8189e29bac4bc1e7d3d23994d9041aec143ff36831c502ff",
+      "arrival_raw_payload_sha256s": [
+        "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+      ],
+      "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "arrival_timing_identity_sha256": "6c1905a4776f393f947e29a4494d30eb3fc0ff13a7c282413de41487f815d685",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T060000Z.json",
+      "sha256": "0b65fef437a3d9e6f51dfa2a210147742c13ad08d77cec33c0214638d743baf4",
+      "wrapper_capture_sha256": "0b65fef437a3d9e6f51dfa2a210147742c13ad08d77cec33c0214638d743baf4",
+      "wrapper_current_sha256": "0b65fef437a3d9e6f51dfa2a210147742c13ad08d77cec33c0214638d743baf4",
+      "wrapper_immutable_sha256": "0ee8f93ed66d145accc4a4f316e22b8c09d4c3b16a63474afc18b13ab0618cb2"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "05044e2312f58c032359e60c9adb742f28478ac27e666d1678627bb15b0e38c0",
+      "arrival_identity_sha256": "05044e2312f58c032359e60c9adb742f28478ac27e666d1678627bb15b0e38c0",
+      "arrival_raw_payload_sha256s": [
+        "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+      ],
+      "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "arrival_timing_identity_sha256": "5fcca4bb768c9c4122c812dc2c1c6e494ae2923aebfe47a498b1091883133661",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RJTT_20260801T120000Z.json",
+      "sha256": "682a23540462bf45fe0829eb0803661c83346ae61e7760860a409f29e7ed5070",
+      "wrapper_capture_sha256": "682a23540462bf45fe0829eb0803661c83346ae61e7760860a409f29e7ed5070",
+      "wrapper_current_sha256": "682a23540462bf45fe0829eb0803661c83346ae61e7760860a409f29e7ed5070",
+      "wrapper_immutable_sha256": "4cd3994017a4750a5670da01095da9e1934b944085aa446b0bd0885416ccc185"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "faa75042287c795496756540e8dcccc24cc1bcf94f5e81e219319fbbf28ca633",
+      "arrival_identity_sha256": "faa75042287c795496756540e8dcccc24cc1bcf94f5e81e219319fbbf28ca633",
+      "arrival_raw_payload_sha256s": [
+        "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+      ],
+      "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "arrival_timing_identity_sha256": "d00140d6693cfb562e3bcd16ffea2c8e6ad5f56ca7ec7028ce78f2fd33c25228",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKPK_20260731T180000Z.json",
+      "sha256": "9cd7d25e31909449be244b31aff95e78e5f25bed7899c761850852dc452a34e3",
+      "wrapper_capture_sha256": "9cd7d25e31909449be244b31aff95e78e5f25bed7899c761850852dc452a34e3",
+      "wrapper_current_sha256": "9cd7d25e31909449be244b31aff95e78e5f25bed7899c761850852dc452a34e3",
+      "wrapper_immutable_sha256": "f44ab529fe0dd5bd00da2e90bddf67105b7678ef2571082920638bf9b5b1ebec"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "556870f6848c2c7fcd111f2afd8b3720016d17e8d29d5eeb8760e18480d45794",
+      "arrival_identity_sha256": "556870f6848c2c7fcd111f2afd8b3720016d17e8d29d5eeb8760e18480d45794",
+      "arrival_raw_payload_sha256s": [
+        "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+      ],
+      "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "arrival_timing_identity_sha256": "faa0b84ae8e221ab4f9cb82e1da90b46c62d9d1b88b5da8c58b88490e938335f",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKPK_20260801T000000Z.json",
+      "sha256": "6a7190f8943f9524ef0358b7742d061a81e789f157b40c7f46e5a7b3e5d468ea",
+      "wrapper_capture_sha256": "6a7190f8943f9524ef0358b7742d061a81e789f157b40c7f46e5a7b3e5d468ea",
+      "wrapper_current_sha256": "6a7190f8943f9524ef0358b7742d061a81e789f157b40c7f46e5a7b3e5d468ea",
+      "wrapper_immutable_sha256": "86dd130ab3c92a5111be7097c1640491a5d63e89089fff05aefd98f9cd71d9f5"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "6cc3b1a46dab9bd15b9d15e02c9e301bb9ff03fbcfc6f3de6ce0d9309d7795bf",
+      "arrival_identity_sha256": "6cc3b1a46dab9bd15b9d15e02c9e301bb9ff03fbcfc6f3de6ce0d9309d7795bf",
+      "arrival_raw_payload_sha256s": [
+        "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+      ],
+      "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "arrival_timing_identity_sha256": "2dcc982253fd68102c6a4b82d86736cfbab29807fb9a40dd3d1c1fc7d75fa17d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKPK_20260801T060000Z.json",
+      "sha256": "2a4886f7f4a951e7f72f98ee9e032f2fd0261c8a1fc248cbcc40693ba793b919",
+      "wrapper_capture_sha256": "2a4886f7f4a951e7f72f98ee9e032f2fd0261c8a1fc248cbcc40693ba793b919",
+      "wrapper_current_sha256": "2a4886f7f4a951e7f72f98ee9e032f2fd0261c8a1fc248cbcc40693ba793b919",
+      "wrapper_immutable_sha256": "3792369312f84c2de3995448dc3a103bcfa41dee1dcaf9e593281d0059ea35bd"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "e712f5d95a0eb988fa8e8d1c776639e6231a37ae9ad6ba6167ab6522d9940017",
+      "arrival_identity_sha256": "e712f5d95a0eb988fa8e8d1c776639e6231a37ae9ad6ba6167ab6522d9940017",
+      "arrival_raw_payload_sha256s": [
+        "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+      ],
+      "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "arrival_timing_identity_sha256": "7df5f14587db0a03b0bbf749b07e651a86851e23ed3b193d08367e7c7e6e96d7",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKPK_20260801T120000Z.json",
+      "sha256": "0844e759b9df34181a5dedc4cb9fa55a2661eb6200203dc01e1ab1d22ef516f5",
+      "wrapper_capture_sha256": "0844e759b9df34181a5dedc4cb9fa55a2661eb6200203dc01e1ab1d22ef516f5",
+      "wrapper_current_sha256": "0844e759b9df34181a5dedc4cb9fa55a2661eb6200203dc01e1ab1d22ef516f5",
+      "wrapper_immutable_sha256": "ca5b06ea5fc88cbc3401037018504f2ef5b2d221400f105e509bf368f355b573"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "ee6dc06f4c1bc64a14d9b300128949c8aaaa0efeed3ab669167c6ac9b09dcbaf",
+      "arrival_identity_sha256": "ee6dc06f4c1bc64a14d9b300128949c8aaaa0efeed3ab669167c6ac9b09dcbaf",
+      "arrival_raw_payload_sha256s": [
+        "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea"
+      ],
+      "arrival_receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "arrival_timing_identity_sha256": "d1b8fa3faa4fb010b269f9c598a8ddce9a259c589d868ce71615e89024cfdf26",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260731T180000Z.json",
+      "sha256": "645c451408b4b8a730354a116df68c33c8ba65914cfad525a61fbb489f29be78",
+      "wrapper_capture_sha256": "645c451408b4b8a730354a116df68c33c8ba65914cfad525a61fbb489f29be78",
+      "wrapper_current_sha256": "645c451408b4b8a730354a116df68c33c8ba65914cfad525a61fbb489f29be78",
+      "wrapper_immutable_sha256": "36493bb60f9d9d2e6e1f4a100c628a101d04590540f5a76fcbeb5008b5989d37"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "6d18d2d0cbd5da0893b266414ff01c23f46b24cdfbc4a2813428d56db55e4b0e",
+      "arrival_identity_sha256": "6d18d2d0cbd5da0893b266414ff01c23f46b24cdfbc4a2813428d56db55e4b0e",
+      "arrival_raw_payload_sha256s": [
+        "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+      ],
+      "arrival_receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+      "arrival_timing_identity_sha256": "881aa2dbf21d2a246bee498706884e2789b6b54f35a30aeb2e638273cfca7198",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T000000Z.json",
+      "sha256": "1fc2f51ff12dee2ea17764851685de6be3a856f07d62a036c22926384c9fc683",
+      "wrapper_capture_sha256": "1fc2f51ff12dee2ea17764851685de6be3a856f07d62a036c22926384c9fc683",
+      "wrapper_current_sha256": "1fc2f51ff12dee2ea17764851685de6be3a856f07d62a036c22926384c9fc683",
+      "wrapper_immutable_sha256": "eb3397d3c8d7d7043575273eff743e43ab6e6fe459073f01025ebbce69f48018"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "4335f7125e8f6cc5156969581160b62631710e6c4c685a9601fe23e23188e4e8",
+      "arrival_identity_sha256": "4335f7125e8f6cc5156969581160b62631710e6c4c685a9601fe23e23188e4e8",
+      "arrival_raw_payload_sha256s": [
+        "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+      ],
+      "arrival_receipt_sha256": "7ac81fd0bd58183f5ed533298e2df834b0cd1ffae4cfd0476de0e3f6b7db8023",
+      "arrival_timing_identity_sha256": "5c682326b98a54fc415f709a7f72d179d7dac53c3e79ae25f657845c73542269",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T060000Z.json",
+      "sha256": "3e07b0c24dd94aec2d75e54f77b2463b62477dea0e31666c62c7dc82b0269b5c",
+      "wrapper_capture_sha256": "3e07b0c24dd94aec2d75e54f77b2463b62477dea0e31666c62c7dc82b0269b5c",
+      "wrapper_current_sha256": "3e07b0c24dd94aec2d75e54f77b2463b62477dea0e31666c62c7dc82b0269b5c",
+      "wrapper_immutable_sha256": "478f97872fde5e2de03e6797dd4cdb3a8e6239ab16cbc24109f88f1b9a5b475c"
+    },
+    {
+      "allowed_wrapper_lifecycle_fields": [
+        "formal_consumed_at_utc"
+      ],
+      "arrival_content_sha256": "d20464d220239f6081c1e5bd8e640a8961d5807ef12e66305667a5e22da16eaa",
+      "arrival_identity_sha256": "d20464d220239f6081c1e5bd8e640a8961d5807ef12e66305667a5e22da16eaa",
+      "arrival_raw_payload_sha256s": [
+        "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e"
+      ],
+      "arrival_receipt_sha256": "bf32af1ab612412f304c0e76bc8dcde8aeac88b660eb9665b8dfb5360db92c4b",
+      "arrival_timing_identity_sha256": "8b6e425cbeb2a5975eff9e340b675aa5620b7d1e192aaec5b9fce71669ed9a1d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/RKSI_20260801T120000Z.json",
+      "sha256": "695acd3c7c728d13ebb5f98d1f60d7836af9e9716193925244e443684b58e0c2",
+      "wrapper_capture_sha256": "695acd3c7c728d13ebb5f98d1f60d7836af9e9716193925244e443684b58e0c2",
+      "wrapper_current_sha256": "695acd3c7c728d13ebb5f98d1f60d7836af9e9716193925244e443684b58e0c2",
+      "wrapper_immutable_sha256": "5e7d941215d9152ff6291d16984fa0f8d3416907eb2e7be51a71aa7b5693fca1"
+    }
+  ],
+  "market_registry_snapshot_sha256": "6e3296367876ad05a1dac12b5e1b300e08a2f33856f8771828672da28531c3be",
+  "receipt_sha256": "b90136f26b3f468dd2e812b15a53a06984fd3b85130ceca783e8b1907f79861d",
+  "schema": "bayes_basket_target_native_model_arrival_decode_evidence_v1",
+  "station_coordinate_registry": {
+    "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+    "schema": "bayes_basket_target_station_coordinate_registry_v1",
+    "source_id": "awc_stationinfo",
+    "source_schema": "awc_stationinfo_v1",
+    "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+    "source_url": "https://aviationweather.gov/api/data/stationinfo",
+    "station_count": 45,
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ]
+  },
+  "station_timezones": {
+    "RJTT": "Asia/Tokyo",
+    "RKPK": "Asia/Seoul",
+    "RKSI": "Asia/Seoul"
+  },
+  "target_timezone": "REGISTRY_BOUND_PER_STATION"
+}

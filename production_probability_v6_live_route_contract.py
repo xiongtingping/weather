@@ -2,7 +2,7 @@
 
 The former monitor/poller/SPECI and embedded probability-worker fan-out is
 retired.  The only resident weather decision route is the activation-gated,
-no-live target compiler embedded in ``reported_trajectory_no``.
+no-live target compiler embedded in ``com.weather.weather_basket_yes``.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 SCHEMA_VERSION = "production_probability_v6_live_route_contract_v3"
 CONFIRMATION = "ATTEST_RESIDENT_IDENTIFIABLE_PHYSICAL_ROUTE"
 ROOT = Path(__file__).resolve().parent
-ROUTE_FILES = ("scripts/reported_trajectory_no_daemon.py",)
+ROUTE_FILES = ("scripts/weather_basket_yes_daemon.py",)
 REQUIRED_ROUTE_TOKENS = (
     "TargetProductionWorker",
     "compile_production_cycle_from_ssot",
@@ -59,7 +59,7 @@ def audit_v6_live_routes(root: Path = ROOT) -> dict[str, Any]:
     try:
         targets = build_v6_live_route_targets(base)
         installer = (
-            base / "scripts/install_reported_trajectory_no_system_services.sh"
+            base / "scripts/install_weather_basket_yes_user_services.sh"
         ).read_text(encoding="utf-8")
     except (OSError, UnicodeError, ValueError) as exc:
         return {
@@ -98,7 +98,7 @@ def audit_v6_live_routes(root: Path = ROOT) -> dict[str, Any]:
         "state": "resident_route_active" if not blockers else "blocked",
         "blockers": blockers,
         "files": files,
-        "resident_service": "com.weather.reported_trajectory_no",
+        "resident_service": "com.weather.weather_basket_yes",
         "target_candidate_orderless": True,
         "target_activation_gated": True,
         "no_fourth_service_definition": no_fourth_service,

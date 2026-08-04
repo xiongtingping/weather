@@ -1,0 +1,1111 @@
+{
+  "boundary": {
+    "amd_cor_station_day_quarantine_preserved": true,
+    "append_to_ssot_performed": false,
+    "calls_order_gateway": false,
+    "forbids_forged_tx": true,
+    "forward_data_counted_as_oos": false,
+    "legacy_amsc_used": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "writes_database": false
+  },
+  "content_sha256": "e262bd35e7ebff531fba5998f0f9d6ab95865e75c5d1f5e293e7de73cffb0233",
+  "input_artifacts": {
+    "current_exact_audit": {
+      "content_sha256": "d8c5a99d0538a921a2f4da15208349f7c3415e290f7c89a876d0ed920f8a3ace",
+      "file_sha256": "d66a7c76e59ee2487c6de467622d04acd1af1acfcb4e64c633c2f6c87c59f20e",
+      "path": "/Users/xiong/weather/output/audits/taf_p0m_exact_join_45station_reused_20260803.json"
+    },
+    "formal_reuse_merge_receipt": {
+      "content_sha256": "4fee4b7ccde2a493d5aeac879c56aa68674d338f06fc1da05a86d7a9f166c9ef",
+      "file_sha256": "cc69e1a26549c30c754e6185bd7ee01330cb6569e05bb975b07d03f1b068f5f9",
+      "path": "/tmp/taf-formal-reuse-full.C5zLgs/merge_receipt.json"
+    },
+    "p0_inbox": {
+      "content_sha256": "eb13450f3e89f1da7e9c6c909e9a8ff08f74686146179d9388f38ae91aac880e",
+      "file_sha256": "35c30129de64f9db2c7102abce95493527cb8d714d5d66098f52470279d48bc9",
+      "path": "/Users/xiong/weather/data/bayes_basket_target_p0_inbox.json"
+    },
+    "ssot": {
+      "file_sha256": "b7c0fb6f30b031678e0bf53923e778318ea544bfaf953ae041a186a23382a332",
+      "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db"
+    }
+  },
+  "minimum_taf_native_oos_sample_n": 24,
+  "schema": "taf_p0m_current_scope_repair_gap_ledger_v1",
+  "state": "NO_EXACT_DAY_ADDED_RESEARCH_ONLY",
+  "station_gap_ledger": [
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "CYYZ"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "EDDM"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "EFHK"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 24,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "EGLC"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "EHAM"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "EPWA"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "FACT"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KATL"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KAUS"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 7,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 26,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 3,
+      "missing_to_minimum_24": 17,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KBKF"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [],
+      "current_p0_strict_date_count": 0,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "keep_taf_p0m_gate_blocked; do_not_forge_or_substitute_tx",
+      "special_blockers": [
+        "current_p0_scope_missing",
+        "no_local_formal_awc_tx_sample_2026-07-01_to_2026-07-31"
+      ],
+      "station_id": "KDAL"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 9,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "keep_taf_p0m_gate_blocked; do_not_forge_or_substitute_tx",
+      "special_blockers": [
+        "no_local_formal_awc_tx_sample_2026-07-01_to_2026-07-31"
+      ],
+      "station_id": "KHOU"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KLAX"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KLGA"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-22",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 10,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KMIA"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KORD"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KSEA"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "KSFO"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "LEMD"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 26,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "LFPB"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "LIMC"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "LTAC"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 6,
+      "current_p0_date_range": [
+        "2026-07-22",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 11,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 26,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 18,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "MMMX"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "MPMG"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "NZWN"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "OEJN"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "OPKC"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "RCSS"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "RJTT"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 11,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 25,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 1,
+      "missing_to_minimum_24": 13,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "RKPK"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 11,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 28,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 13,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "RKSI"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-23",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 11,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "RPLL"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 8,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 11,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 26,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 1,
+      "missing_to_minimum_24": 16,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "SAEZ"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 9,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 13,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 24,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 15,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "SBGR"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "VILK"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "WMKK"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 0,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 11,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 0,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 29,
+      "missing_to_minimum_24": 24,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "WSSS"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZBAA"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZGGG"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZGSZ"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZHHH"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZSPD"
+    },
+    {
+      "amd_cor_quarantined_day_count": 0,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZSQD"
+    },
+    {
+      "amd_cor_quarantined_day_count": 1,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 10,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 14,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZUCK"
+    },
+    {
+      "amd_cor_quarantined_day_count": 2,
+      "current_blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_exact_join_sample_count": 9,
+      "current_p0_date_range": [
+        "2026-07-21",
+        "2026-08-03"
+      ],
+      "current_p0_strict_date_count": 12,
+      "local_formal_awc_tx_date_count_in_reused_2026_07_01_to_31": 29,
+      "local_no_tx_exclusion_count_in_reused_2026_07_01_to_31": 0,
+      "missing_to_minimum_24": 15,
+      "recommended_next_action": "materialize_earlier_strict_historical_p0_for_same_scope_before_any_taf_ingest",
+      "special_blockers": [],
+      "station_id": "ZUUU"
+    }
+  ],
+  "summary": {
+    "canonical_station_count": 45,
+    "current_exact_max_station_sample_count": 11,
+    "current_exact_sample_count_total": 141,
+    "exact_days_added": 0,
+    "qualified_scope_count_at_24": 0,
+    "unmaterialized_already_exact_day_count": 7,
+    "unmaterialized_current_p0_scope_count": 7,
+    "unmaterialized_formal_awc_samples": 13
+  },
+  "unmaterialized_formal_awc_samples": [
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-06",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "d80ba77feaeae4aaeb43b7e5aa2fc1dbe57e34c0598108eae7693293ba844121"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_RKSI_20260701_20260721.json"
+      ],
+      "source_sample_sha256": "f79cd997fb7019d506b86a4f173971fa2c8cc8d637d12cf2359c0c0b2baf2a71",
+      "station_id": "RKSI"
+    },
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-01",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "0d40beca8632a03c89bc5705e3ba5149b1da3967e2b01e7d3ea012884617d601"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_SAEZ_20260701_20260721.json"
+      ],
+      "source_sample_sha256": "7384f30af071f1d2fbbc2d0ea551d1e54775c9079bdbfcd7d527739924893f40",
+      "station_id": "SAEZ"
+    },
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-19",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "0d40beca8632a03c89bc5705e3ba5149b1da3967e2b01e7d3ea012884617d601"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_SAEZ_20260701_20260721.json"
+      ],
+      "source_sample_sha256": "6989c61d20c4f5d3382b14947bea3cc258f5c58da757d34a8f982378ec301d0c",
+      "station_id": "SAEZ"
+    },
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-02",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "b1102c1f2328d8de0a0fa2dd043f04824657cab8138ae8e5759f5fdb564d8417"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_SBGR_20260701_20260721.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json"
+      ],
+      "source_sample_sha256": "e5430b6f393ed434a67a5040548f9276ebe17a16752e2eb79d035cae5cef0bf6",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-03",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "b1102c1f2328d8de0a0fa2dd043f04824657cab8138ae8e5759f5fdb564d8417"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_SBGR_20260701_20260721.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json"
+      ],
+      "source_sample_sha256": "d0b38918844442f41e35cce739f7c2b56a5d14e0b16b06e9f4de991409041ae3",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": false,
+      "current_p0_scope_contains_date": false,
+      "event_date": "2026-07-19",
+      "safe_ssot_append_effect_on_exact_day_count": null,
+      "source_archive_content_sha256": [
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "b1102c1f2328d8de0a0fa2dd043f04824657cab8138ae8e5759f5fdb564d8417"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260721/AWC_TAF_SBGR_20260701_20260721.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json"
+      ],
+      "source_sample_sha256": "1b8af5c93e14c7c98d22c91e34db3cbff37e409b1230f307d1b5df02d5e9ac8b",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-22",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "04ea9388a2e690401bea4a36e17c959bc6827ae10cff6d2e3aa78be47e867c28",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-23",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "b2c94eadeab7f545c114d04d239ddb284f4f05efa1ed8cb0802b5a17c186b824",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-24",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "4150c895d4b0e01eba565908ed98bd5e22aa6d33554a0a166a377ecb4a0a245b",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-25",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "a3b3a84cc342bf5927596128330d27e29ca7b81bc2263a45823947d3e4ea13e9",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-26",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "626ec933e9b012b7b9d74aa85754ca924e150449c6b2d93b20d5a4f1eed86fe7",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-27",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "e7b4ef47d923faa021f91e4f5288f4da004fda7437f7df02417b95c1a2782069",
+      "station_id": "SBGR"
+    },
+    {
+      "current_exact_date_already_present": true,
+      "current_p0_scope_contains_date": true,
+      "event_date": "2026-07-29",
+      "safe_ssot_append_effect_on_exact_day_count": 0,
+      "source_archive_content_sha256": [
+        "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+        "1dc99a9fd249df7e8a0397f83b6fb492ef29637ab9be48571b6e0858125ec76e",
+        "400a2bba6524aa14db460daebdef40af09ad6b3aed50b5d90c1efed63716a65c",
+        "b960b809581b0ed08c8814fc992cbdd72ea2acfc4eb711d0667e7eec113dc80e",
+        "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548"
+      ],
+      "source_archive_paths": [
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_SBGR_20260705_20260731.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260722_20260729/AWC_TAF_SBGR_20260722_20260729.json",
+        "/Users/xiong/weather/output/audits/awc_taf_historical_fix_asof_skew_20260704_20260729/AWC_TAF_SBGR_20260704_20260729.json"
+      ],
+      "source_sample_sha256": "bb69111baa12ff2653e9f66814f5c60cbdd607f3aa83e243e0be3c8340cfe5fe",
+      "station_id": "SBGR"
+    }
+  ]
+}

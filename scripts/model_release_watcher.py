@@ -750,7 +750,7 @@ def build_payload(
     session = requests.Session()
     # Release probing is an official-source metadata check.  It never
     # inherits ambient proxy variables; when the operator explicitly sets
-    # PM_OFFICIAL_NWP_PROXY (Clash Verge mixed port 7897 on this host), use that same
+    # PM_OFFICIAL_NWP_PROXY (Clash Verge mixed port 1082 on this host), use that same
     # bounded tunnel in both the parent and disposable child paths.
     configure_official_requests_session(session)
     watched = [

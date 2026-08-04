@@ -97,7 +97,7 @@ def test_d1_plan_uses_30_36_42_48_51_and_only_official_index(tmp_path) -> None:
     assert plan["points"][-1]["valid_time_utc"] == "2026-07-27T03:00:00Z"
     assert all(point["index_url"].endswith(".index") for point in plan["points"])
     assert all("ecmwf-forecasts.s3.eu-central-1.amazonaws.com" in point["index_url"] for point in plan["points"])
-    assert plan["resource_budget"]["max_response_bytes"] == 64 * 1024 * 1024
+    assert plan["resource_budget"]["max_response_bytes"] == 128 * 1024 * 1024
 
 
 def test_plan_allows_not_started_target_for_raw_capture_only(tmp_path) -> None:

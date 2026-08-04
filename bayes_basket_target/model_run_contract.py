@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, content_sha256
 
@@ -17,6 +18,7 @@ from .contracts import ContractError, content_sha256
 SCHEMA = "bayes_basket_target_model_run_contract_v1"
 PROVIDERS = (
     "ecmwf_ifs025_official",
+    "ecmwf_aifs025_official",
     "gfs_0p25_official",
     "icon_global_official",
 )
@@ -63,6 +65,29 @@ def _stations(values: Sequence[Any]) -> list[str]:
     return normalized
 
 
+def _station_timezones(
+    stations: Sequence[str], values: Mapping[str, Any] | None
+) -> dict[str, str]:
+    """Validate a registry-derived per-station settlement-timezone map."""
+
+    if values is None:
+        return {}
+    normalized = {
+        _text("station_timezone_station", station).upper(): _text(
+            "station_timezone", timezone_name
+        )
+        for station, timezone_name in values.items()
+    }
+    if set(normalized) != set(stations):
+        raise ContractError("model_run_contract_station_timezone_scope_mismatch")
+    for timezone_name in normalized.values():
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as exc:
+            raise ContractError("model_run_contract_station_timezone_invalid") from exc
+    return dict(sorted(normalized.items()))
+
+
 def build_model_run_contract(
     *,
     target_local_date: str,
@@ -70,12 +95,14 @@ def build_model_run_contract(
     station_ids: Sequence[Any],
     target_timezone: str,
     market_registry_snapshot_sha256: str = "",
+    station_timezones: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a content-addressed, non-authorizing target run manifest."""
 
     run = normalize_run_initialization(run_initialization_utc)
     stations = _stations(station_ids)
     timezone_name = _text("target_timezone", target_timezone)
+    timezones = _station_timezones(stations, station_timezones)
     registry_sha = str(market_registry_snapshot_sha256 or "").strip().lower()
     if registry_sha and (len(registry_sha) != 64 or any(ch not in "0123456789abcdef" for ch in registry_sha)):
         raise ContractError("market_registry_snapshot_sha256_invalid")
@@ -99,6 +126,10 @@ def build_model_run_contract(
             "unrelated_production_line_touched": False,
         },
     }
+    # Keep the old single-timezone shape valid for legacy artifacts, while all
+    # multi-station global captures bind their exact registry timezones here.
+    if timezones:
+        identity["station_timezones"] = timezones
     digest = content_sha256(identity)
     return {**identity, "contract_sha256": digest}
 
@@ -122,6 +153,8 @@ def validate_capture_request(
         "run_initialization_utc", "market_registry_snapshot_sha256",
         "providers", "station_ids", "boundary",
     )}
+    if "station_timezones" in contract:
+        identity["station_timezones"] = contract.get("station_timezones")
     if expected_hash != content_sha256(identity):
         raise ContractError("model_run_contract_sha256_mismatch")
     expected_run = normalize_run_initialization(contract.get("run_initialization_utc"))
@@ -131,6 +164,12 @@ def validate_capture_request(
     if expected_provider_set != PROVIDERS:
         raise ContractError("model_run_contract_provider_set_invalid")
     expected_stations = _stations(contract.get("station_ids") or ())
+    expected_station_timezones = _station_timezones(
+        expected_stations,
+        contract.get("station_timezones")
+        if "station_timezones" in contract
+        else None,
+    )
     if str(provider_id).strip().lower() not in PROVIDERS:
         raise ContractError("model_run_contract_provider_invalid")
     if str(station_id).strip().upper() not in expected_stations:
@@ -139,7 +178,10 @@ def validate_capture_request(
         raise ContractError("model_run_contract_target_date_mismatch")
     if normalize_run_initialization(run_initialization_utc) != expected_run:
         raise ContractError("model_run_contract_run_mismatch")
-    if _text("target_timezone", target_timezone) != expected_timezone:
+    expected_capture_timezone = expected_station_timezones.get(
+        str(station_id).strip().upper(), expected_timezone
+    )
+    if _text("target_timezone", target_timezone) != expected_capture_timezone:
         raise ContractError("model_run_contract_timezone_mismatch")
     boundary = contract.get("boundary", {})
     if (

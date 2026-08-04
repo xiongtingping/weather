@@ -35,6 +35,7 @@ SCHEMA = "bayes_basket_target_native_model_point_evidence_v1"
 CURVE_SCHEMA = "bayes_basket_target_native_model_daily_curve_v1"
 MODEL_BY_PROVIDER = {
     "ecmwf_ifs025_official": "ECMWF",
+    "ecmwf_aifs025_official": "ECMWF",
     "gfs_0p25_official": "GFS",
     "icon_global_official": "ICON",
     "gem_gdps_official": "GEM",
@@ -47,6 +48,22 @@ MAX_GRIB_GET_STDOUT_BYTES = 4 * 1024 * 1024
 MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_CURVE_GAP_HOURS = 6.0
 MIN_CURVE_POINTS = 4
+MIN_CURVE_POINTS_BY_PROVIDER = {
+    # A local day whose two endpoints fall exactly between AIFS Single's
+    # six-hour publication steps has three in-day points (for example NZWN
+    # at 18Z/00Z/06Z).  The independent max-gap and ±6h endpoint gates still
+    # prove complete 24-hour coverage; a fourth in-day point does not exist.
+    "ecmwf_aifs025_official": 3,
+}
+DEFAULT_CURVE_ENDPOINT_TOLERANCE_HOURS = 3.0
+CURVE_ENDPOINT_TOLERANCE_HOURS_BY_PROVIDER = {
+    # AIFS Single Open Data is natively six-hourly.  Requiring a point within
+    # three hours of both timezone-dependent day edges makes half of all
+    # settlement zones impossible despite a complete native cadence.  The
+    # endpoint tolerance may match one native interval; the separate six-hour
+    # max-gap gate remains unchanged.
+    "ecmwf_aifs025_official": 6.0,
+}
 DEFAULT_ICON_SUPPORT_ROOT = (
     Path(__file__).resolve().parents[1]
     / "data"
@@ -593,6 +610,14 @@ def materialize_native_daily_curves(
         ordered = [by_valid[item] for item in sorted(by_valid)]
         start, end = _target_bounds(event_date, target_timezone)
         times = [_timestamp("valid_time_utc", row["valid_time_utc"]) for row in ordered]
+        endpoint_tolerance_hours = CURVE_ENDPOINT_TOLERANCE_HOURS_BY_PROVIDER.get(
+            provider,
+            DEFAULT_CURVE_ENDPOINT_TOLERANCE_HOURS,
+        )
+        minimum_point_count = MIN_CURVE_POINTS_BY_PROVIDER.get(
+            provider,
+            MIN_CURVE_POINTS,
+        )
         gaps = [
             (later - earlier).total_seconds() / 3600.0
             for earlier, later in zip(times, times[1:])
@@ -604,15 +629,16 @@ def materialize_native_daily_curves(
             "max_gap_hours": max(gaps) if gaps else None,
             "starts_within_hours": (times[0] - start).total_seconds() / 3600.0 if times else None,
             "ends_within_hours": (end - times[-1]).total_seconds() / 3600.0 if times else None,
+            "endpoint_tolerance_hours": endpoint_tolerance_hours,
         }
         blockers: list[str] = []
         if conflict:
             blockers.append("native_duplicate_valid_time_conflict")
-        if len(ordered) < MIN_CURVE_POINTS:
+        if len(ordered) < minimum_point_count:
             blockers.append("native_daily_curve_point_count_insufficient")
-        if times and times[0] > start + timedelta(hours=3):
+        if times and times[0] > start + timedelta(hours=endpoint_tolerance_hours):
             blockers.append("native_daily_curve_start_coverage_incomplete")
-        if times and times[-1] < end - timedelta(hours=3):
+        if times and times[-1] < end - timedelta(hours=endpoint_tolerance_hours):
             blockers.append("native_daily_curve_end_coverage_incomplete")
         if not times:
             blockers.append("native_daily_curve_empty")
@@ -777,6 +803,7 @@ __all__ = [
     "CURVE_SCHEMA",
     "MAX_CURVE_GAP_HOURS",
     "MIN_CURVE_POINTS",
+    "MIN_CURVE_POINTS_BY_PROVIDER",
     "MODEL_BY_PROVIDER",
     "SCHEMA",
     "decode_native_temperature_points",

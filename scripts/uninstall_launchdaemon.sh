@@ -15,6 +15,7 @@ PLISTS=(
   com.weather.daily_scan.plist
   com.weather.chengdu_wu_backfill.plist
   com.weather.monitor.daemon.plist
+  com.weather.model_release_watcher.plist
   com.weather.auto_trade_watcher.plist
   com.weather.auto_trade_entry_1m.plist
   com.weather.trade_engine.plist

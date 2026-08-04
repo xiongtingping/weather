@@ -1,13 +1,27 @@
 from __future__ import annotations
 
+import json
 import unittest
 import sqlite3
+from pathlib import Path
+from unittest.mock import patch
 
+from reported_trajectory_country_sources import station_source_route
 from reported_trajectory_market_registry import (
     commit_registry_rows,
     load_config,
     materialize_event_registry,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
+AWC_GLOBAL_STATIONS = {
+    "CYYZ", "EDDM", "EFHK", "EGLC", "EHAM", "EPWA", "FACT", "KATL", "KAUS",
+    "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
+    "LEMD", "LFPB", "LIMC", "LTAC", "MMMX", "MPMG", "NZWN", "OEJN", "OPKC",
+    "RCSS", "RJTT", "RKPK", "RKSI", "RPLL", "SAEZ", "SBGR", "VILK", "WMKK",
+    "WSSS", "ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD", "ZUCK", "ZUUU",
+}
 
 
 def event(city: str, station: str = "ZBAA") -> dict:
@@ -87,16 +101,64 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
         )
         conn.close()
 
-    def test_china_market_routes_to_amsc(self) -> None:
+    def test_beijing_market_routes_to_global_awc(self) -> None:
         rows = materialize_event_registry(event("beijing"), event_date="2026-07-18", config=load_config())
-        self.assertTrue(all(row["source_lane"] == "amsc" for row in rows))
+        self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
         self.assertTrue(all(row["source_eligible"] for row in rows))
         self.assertEqual(rows[0]["station_id"], "ZBAA")
-        self.assertEqual(rows[0]["preferred_origin_source_id"], "cn_amsc")
-        self.assertEqual(rows[0]["origin_country_code"], "CN")
+        self.assertEqual(rows[0]["preferred_origin_source_id"], "global_noaa_awc_relay")
+        self.assertEqual(rows[0]["preferred_origin_adapter"], "awc")
+        self.assertEqual(rows[0]["origin_country_code"], "ZZ")
+
+    def test_rcss_uses_global_awc_relay(self) -> None:
+        rows = materialize_event_registry(
+            event("taipei", "RCSS"), event_date="2026-07-18", config=load_config()
+        )
+        self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
+        self.assertTrue(all(row["source_eligible"] for row in rows))
+        self.assertEqual(rows[0]["preferred_origin_source_id"], "global_noaa_awc_relay")
+        self.assertEqual(rows[0]["preferred_origin_adapter"], "awc")
+        self.assertEqual(rows[0]["origin_country_code"], "ZZ")
+        self.assertEqual(station_source_route("RCSS")["provider_id"], "global_noaa_awc_relay")
+        self.assertEqual(station_source_route("RCSS")["adapter"], "awc")
+
+    def test_rcss_rejects_cn_amsc_impersonation(self) -> None:
+        with patch(
+            "reported_trajectory_market_registry.station_source_route",
+            return_value={"provider_id": "cn_amsc", "adapter": "amsc"},
+        ):
+            rows = materialize_event_registry(
+                event("taipei", "RCSS"), event_date="2026-07-18", config=load_config()
+            )
+        self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
+        self.assertTrue(all(not row["source_eligible"] for row in rows))
+        self.assertTrue(
+            all("amsc_production_route_forbidden" in row["source_block_reasons"] for row in rows)
+        )
+
+    def test_resolved_station_not_city_slug_selects_the_formal_lane(self) -> None:
+        rows = materialize_event_registry(
+            event("beijing", "KATL"), event_date="2026-07-18", config=load_config()
+        )
+        self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
+        self.assertTrue(all(row["source_eligible"] for row in rows))
+
+    def test_station_lane_config_has_nine_amsc_and_thirty_six_awc_stations(self) -> None:
+        lane_map = json.loads(
+            (ROOT / "config/trading/bayes_basket_target_station_lane_map_v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        stations = lane_map["stations"]
+        amsc = {station for station, lane in stations.items() if lane == "amsc"}
+        awc = {station for station, lane in stations.items() if lane == "awc"}
+        self.assertEqual(amsc, set())
+        self.assertEqual(awc, AWC_GLOBAL_STATIONS)
+        self.assertEqual(len(awc), 45)
+        self.assertEqual(awc, set(stations))
 
     def test_non_china_market_routes_to_awc_when_enabled(self) -> None:
-        rows = materialize_event_registry(event("london", "EGLL"), event_date="2026-07-18", config=load_config())
+        rows = materialize_event_registry(event("london", "EGLC"), event_date="2026-07-18", config=load_config())
         self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
         self.assertTrue(all(row["source_eligible"] for row in rows))
 
@@ -104,7 +166,7 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
         value = event("hong-kong", "VHHH")
         value["description"] = "Resolution source is the Hong Kong Observatory. It measures to one decimal place."
         rows = materialize_event_registry(value, event_date="2026-07-18", config=load_config())
-        self.assertTrue(all(row["source_lane"] == "blocked" for row in rows))
+        self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
         self.assertTrue(all(not row["source_eligible"] for row in rows))
 
 

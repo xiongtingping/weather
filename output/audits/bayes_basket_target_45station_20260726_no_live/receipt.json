@@ -7,7 +7,7 @@
     "network_used": false,
     "orders_submitted": 0,
     "output_write_root": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_20260726_no_live",
-    "target_ssot_open_mode": "read_only_immutable",
+    "target_ssot_open_mode": "read_only_wal_safe_query_only",
     "writes_production_db": false,
     "writes_real_ssot": false
   },
@@ -20,7 +20,7 @@
   },
   "decision_cutoff_utc": "2026-07-25T00:00:00Z",
   "event_date": "2026-07-26",
-  "generated_at_utc": "2026-07-27T16:50:16.181448Z",
+  "generated_at_utc": "2026-08-02T18:19:56.278614Z",
   "input_artifacts": [
     {
       "bytes": 1217,
@@ -58,23 +58,23 @@
       "sha256": "16b634af524ce637f1944fc6ac1d511ef2bb324dcf09765e69339787b3efe985"
     }
   ],
-  "receipt_sha256": "afaae2dd2558706df131081540d05706d2525ad9d3a04ead24dfdcf4d7cf4f5a",
+  "receipt_sha256": "b6ae8c53e8b52ab9843d1cedc9d03cc6094df08f0452393d38d383786504c39a",
   "registry_snapshot_sha256_as_of_cutoff": "04eec50d013dcc5342e5ad05924427228d36150f3541bf03df9b2c724b1c994c",
   "resource_budget": {
-    "free_bytes_after": 19061223424,
-    "free_bytes_before": 19061231616,
+    "free_bytes_after": 30434025472,
+    "free_bytes_before": 30434000896,
     "max_input_file_bytes": 8388608,
     "max_output_file_bytes": 16777216,
-    "max_rss_bytes": 805306368,
+    "max_rss_bytes": 4294967296,
     "max_stations": 45,
-    "max_total_input_bytes": 67108864,
+    "max_total_input_bytes": 268435456,
     "max_total_output_bytes": 33554432,
     "minimum_free_bytes": 2147483648,
     "observed_input_bytes": 3335284,
     "observed_json_nodes": 60790,
     "observed_max_json_depth": 7,
-    "rss_bytes_after": 34373632,
-    "rss_bytes_before": 21397504
+    "rss_bytes_after": 56541184,
+    "rss_bytes_before": 43909120
   },
   "rows": [
     {
@@ -8784,13 +8784,13 @@
   "target_ssot_fingerprint_after": {
     "device": 16777233,
     "inode": 1235462603,
-    "mtime_ns": 1785168009711696127,
-    "size": 76333056
+    "mtime_ns": 1785693625893145570,
+    "size": 2282303488
   },
   "target_ssot_fingerprint_before": {
     "device": 16777233,
     "inode": 1235462603,
-    "mtime_ns": 1785168009711696127,
-    "size": 76333056
+    "mtime_ns": 1785693625893145570,
+    "size": 2282303488
   }
 }

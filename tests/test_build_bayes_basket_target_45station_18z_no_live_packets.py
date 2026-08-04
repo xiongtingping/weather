@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from bayes_basket_target import ContractError
 from scripts.build_bayes_basket_target_45station_18z_no_live_packets import (
     _station_quality,
 )
@@ -59,7 +62,7 @@ def test_probability_oos_activation_is_not_vetoed_by_point_diagnostic() -> None:
     assert state == "ACTIVATION_PACKET_READY"
 
 
-def test_temporary_awc_truth_requires_explicit_no_live_authority() -> None:
+def test_temporary_awc_truth_is_retired_even_for_no_live() -> None:
     payload = {
         "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL",
         "exact_join_rows": [{
@@ -83,12 +86,10 @@ def test_temporary_awc_truth_requires_explicit_no_live_authority() -> None:
         },
     }
 
-    assert _station_quality(
-        payload,
-        truth_by_date={"2026-07-28": 10.0},
-    )[3] == "BLOCKED_TEMPORARY_AWC_TRUTH"
-    assert _station_quality(
-        payload,
-        truth_by_date={"2026-07-28": 10.0},
-        allow_temporary_awc_no_live=True,
-    )[3] == "ACTIVATION_PACKET_READY_TEMPORARY_AWC_NO_LIVE"
+    with pytest.raises(
+        ContractError, match="explicit_18z_temporary_awc_truth_retired"
+    ):
+        _station_quality(
+            payload,
+            truth_by_date={"2026-07-28": 10.0},
+        )

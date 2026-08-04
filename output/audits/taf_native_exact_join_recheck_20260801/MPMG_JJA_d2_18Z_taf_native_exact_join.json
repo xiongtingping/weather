@@ -1,0 +1,14 @@
+{
+  "content_sha256": "8c6da82ad4f97f040362b0d2afc01fcd813aa1d4128589f38de711a315698293",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "8ae754329056e30fa5c47cfe9c037e14750e20e3413ad4a21077c5a60a04df7c",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Panama",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "MPMG"
+}

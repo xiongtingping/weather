@@ -87,7 +87,8 @@ bridge 可用时，新 composer 只在同一 Transaction B 物化篮子消费的
 原子 generation 更新；切换后旧 composer 禁止 live fallback，但可保留为离线历史回放。
 
 生产接入不得恢复 monitor、独立 SPECI watcher 或第四个概率服务。新 composer 必须作为
-无下单 worker 驻留在现有 `com.weather.reported_trajectory_no` 服务中：硬 NO lane 与其证据
+无下单 worker 驻留在当前 `com.weather.weather_basket_yes` 服务中；旧
+`com.weather.reported_trajectory_no` label 已退役且禁止作为别名。AWC 硬事实排除与概率证据
 完全隔离，篮子 lane 只消费它原子物化的 P0/P1/SSOT。旧 activation 时 worker 必须在打开
 数据库前休眠。受控发布先冻结 release bundle；writer quiescence 后先提交 additive schema、
 再安装内容寻址 artifacts，activation 文件最后原子替换。提交后故障只能 fail closed，不得
@@ -100,7 +101,7 @@ fail-closed 阻断项。
 
 严格样本的前瞻采集不受新 composer activation 控制，否则会形成“未校准所以不激活、未
 激活所以不积累校准证据”的闭环。TAF/AMD 与官方 NWP Tier-A 采集作为无订单后台任务嵌入
-同一 `reported_trajectory_no` 进程，但与硬 NO lane 完全隔离：只追加不可变 raw/P1 证据，
+同一 `weather_basket_yes` 进程，但与 AWC 硬事实排除 lane 完全隔离：只追加不可变 raw/P1 证据，
 不得写 posterior、SSOT、decision、intent 或订单。NWP provider 必须按持久化游标逐源轮转，
 单轮只完成一个 provider 的整条官方曲线；失败也推进游标，禁止单一慢源长期饿死其他源。
 依赖 ECMWF client、TLS roots 与 ecCodes 的 NWP collector 必须由同一服务以有墙钟上限的

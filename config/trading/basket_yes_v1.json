@@ -1,0 +1,50 @@
+{
+  "schema": "basket_yes_production_activation_v1",
+  "state": "enabled",
+  "execution_mode": "production_no_live",
+  "strategy_id": "weather_basket_yes_v2",
+  "production_strategy_allowlist": [
+    "basket_yes"
+  ],
+  "live_decision_write_authorized": false,
+  "live_submit_authorized": false,
+  "places_orders": false,
+  "calls_order_gateway": false,
+  "target_scope": {
+    "season_bin": "ALL",
+    "maturity_bin": "ALL",
+    "liquidity_bin": "ALL",
+    "strategy_version": "bayes_basket_target_station_policy_v1"
+  },
+  "basket": {
+    "bankroll_usdc": 30.0,
+    "basket_width": 3,
+    "dynamic_convergence_enabled": true,
+    "convergence_widths": [
+      4,
+      3,
+      2
+    ],
+    "convergence_target_4": 0.6,
+    "convergence_target_3": 0.72,
+    "convergence_target_2": 0.84,
+    "tranche_budget_usdc": 10.0,
+    "allow_dynamic_additions": true,
+    "regime_gate_enabled": false,
+    "direction_deadband_c": 0.5,
+    "minimum_guaranteed_profit_usdc": 0.0,
+    "fee_rate": 0.0,
+    "minimum_order_shares": 1.0,
+    "live_submit_authorized": false,
+    "order_type": "FOK",
+    "all_legs_required": true,
+    "max_quote_age_sec": 5.0,
+    "poll_interval_sec": 15.0
+  },
+  "three_leg_strategy": {
+    "state": "disabled",
+    "live_submit_authorized": false,
+    "fallback_forbidden": true
+  },
+  "activation_contract_sha256": "cfe27878394261edf58e1b967e36983c9bfa596ecbec0df00b1e697e26b81277"
+}

@@ -195,6 +195,18 @@ def test_native_decode_allows_p0_pre_event_gate_then_checks_raw_lineage(
     )
 
     assert result["decoded_point_count"] == 0
+    artifact = result["input_artifacts"][0]
+    assert artifact["wrapper_capture_sha256"] == artifact[
+        "wrapper_current_sha256"
+    ]
+    assert artifact["arrival_content_sha256"] == artifact[
+        "arrival_identity_sha256"
+    ]
+    assert artifact["arrival_raw_payload_sha256s"] == ["a" * 64]
+    assert artifact["arrival_receipt_sha256"] == "b" * 64
+    assert artifact["allowed_wrapper_lifecycle_fields"] == [
+        "formal_consumed_at_utc"
+    ]
     assert result["blocked_captures"][0]["receipt"]["reason_codes"] == [
         "ResourceBoundError:target_input_stat_failed"
     ]

@@ -67,7 +67,7 @@
   "consecutive_forward_windows": 0,
   "compared_baselines": [],
   "oos_metrics": {},
-  "oos_gate_version": "delta-v2-forward-oos-v1",
+  "oos_gate_version": "delta-v2-historical-oos-v1",
   "oos_gate_passed": false,
   "trained_through_utc": "2026-07-27T15:00:00Z",
   "valid_from_utc": "2026-07-28T00:00:00Z",

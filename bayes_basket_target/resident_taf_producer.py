@@ -21,12 +21,14 @@ from typing import Any, Mapping, Sequence
 from .contracts import ContractError, content_sha256
 from .event_contracts import ForecastRevision, validate_forecast_revision_chain
 from .resource_bounds import (
+    MIB,
     MAX_JSON_INPUT_BYTES,
     assert_process_memory_budget,
     load_bounded_json,
     write_bounded_json_if_changed,
 )
 from .settlement_time import settlement_day_window
+from .taf_oos_contract import OBSERVATIONAL_CANDIDATE_NOT_OOS
 from .taf_calibration import MIN_TAF_CALIBRATION_SAMPLE_N
 from .taf_revision import (
     TAF_NWP_CROSSFIT_ARTIFACT_KIND,
@@ -42,7 +44,9 @@ MAX_SOURCE_INBOXES = 45
 MAX_CAPTURES = 256
 MAX_SOURCE_INBOX_BYTES = 2 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
-MAX_TOTAL_INPUT_BYTES = 16 * 1024 * 1024
+# Up to 45 source inboxes (2 MiB each) plus one strict-OOS artifact may be
+# joined atomically.  The per-file caps remain unchanged.
+MAX_TOTAL_INPUT_BYTES = 128 * MIB
 MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 MAX_TEMPORARY_BYTES = MAX_OUTPUT_BYTES
 CORRELATION_TOLERANCE = 1e-12
@@ -81,6 +85,7 @@ def _not_configured(
         "schema": SCHEMA,
         "state": "not_configured",
         "reason": "resident_taf_formal_input_missing",
+        "evidence_role": OBSERVATIONAL_CANDIDATE_NOT_OOS,
         "as_of_utc": as_of_utc,
         "missing": sorted(set(str(item) for item in missing)),
         "source_inbox_paths": sorted(
@@ -297,6 +302,9 @@ def _validate_inbox(
         or boundary.get("places_orders") is not False
     ):
         raise ContractError("resident_taf_source_inbox_boundary_invalid")
+    evidence_role = str(raw.get("evidence_role") or "").strip().lower()
+    if evidence_role and evidence_role != OBSERVATIONAL_CANDIDATE_NOT_OOS:
+        raise ContractError("resident_taf_forward_evidence_role_invalid")
     identity = {
         str(key): value
         for key, value in raw.items()
@@ -469,6 +477,7 @@ def refresh_resident_taf_inputs(
         "schema": INBOX_SCHEMA,
         "capture_count": len(captures),
         "captures": captures,
+        "evidence_role": OBSERVATIONAL_CANDIDATE_NOT_OOS,
         "boundary": {
             "forward_only": True,
             "max_captures": MAX_CAPTURES,

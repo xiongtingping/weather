@@ -3,10 +3,10 @@
     {
       "consumer_owner": "bayes_basket_target",
       "reason": "target_must_not_read_protected_l0_config",
-      "resource_path": "config/trading/basket_plus_hard_no_v1.json"
+      "resource_path": "config/trading/basket_yes_v1.json"
     }
   ],
-  "manifest_sha256": "c7d2c2cc5e9d501d2e30a1f2fe31e65c758d751801d708c5acfcb7704e468af4",
+  "manifest_sha256": "cff57120ea5fedf0ac9f8271da8bb8a9358ce3e2db06b9dc336e65acfc7efcfb",
   "manifest_version": 1,
   "protected_legacy_config": [
     {
@@ -14,8 +14,8 @@
         "legacy_l0_runtime"
       ],
       "owner": "protected_l0_legacy",
-      "path": "config/trading/basket_plus_hard_no_v1.json",
-      "sha256": "94623db2d33322e5f01ead34374a073fd28d6355c0543a45f2635e30a97e075f"
+      "path": "config/trading/basket_yes_v1.json",
+      "sha256": "5f462ee5e193768e777d93409262bad7ee371ba62196ac2a85ff3d707a54779e"
     }
   ],
   "schema": "bayes_basket_target_runtime_config_isolation_v1",
@@ -26,7 +26,7 @@
       ],
       "owner": "bayes_basket_target",
       "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
-      "sha256": "c9ef50f3ba0438dba1412cdc284202fe96859aa9f0dafcdd97feba2450fc3c19"
+      "sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45"
     },
     "owner": "bayes_basket_target",
     "source_closure": [
@@ -35,16 +35,16 @@
           "target_runtime"
         ],
         "owner": "bayes_basket_target",
-        "path": "scripts/reported_trajectory_no_daemon.py",
-        "sha256": "bb366cb33d754ff2d30b87813393d97fcafe6dff310b004f43f140ca582645ba"
+        "path": "scripts/weather_basket_yes_daemon.py",
+        "sha256": "b3afda933df6bcf8c7d035f597f42334e9a5ddbf69528681e40b0c824cd9e235"
       },
       {
         "consumers": [
           "target_runtime"
         ],
         "owner": "bayes_basket_target",
-        "path": "scripts/reported_trajectory_no_daemon.sh",
-        "sha256": "d983434d143f6b6909e95bad353e2f1c5ce89d0ec58fe58c444ebae182717e02"
+        "path": "scripts/weather_basket_yes_daemon.sh",
+        "sha256": "b62bff0e6eb62f2cceb384d04f5c9f78d26fa1f02b78c3fc639e1e0b88c4680b"
       },
       {
         "consumers": [
@@ -52,7 +52,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/market_ws_listener.py",
-        "sha256": "46289dd32399bc74210212b3ea58529df58fe9a5ee5f6766b045f428ac3effa8"
+        "sha256": "ff51d70286bb9ab908f843947ae843bb7d6935048cd8f2870ed9903e60d22e5b"
       },
       {
         "consumers": [
@@ -60,7 +60,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/market_ws_listener.sh",
-        "sha256": "8d87fa62042407ed3777059b0e186ff55d66847e086814b82eef162ced008a9e"
+        "sha256": "519fbd1350599be9ef642e2e82a4f7db893555a3b4aeff55e1dc418c81528862"
       },
       {
         "consumers": [
@@ -68,7 +68,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/clob_order_service.mjs",
-        "sha256": "d22e3cb91add417815117aeec4870128feac8aa17c33e8e762c6b03bd350122b"
+        "sha256": "c632ced24de35516daed37d24ae8129aae2abb4ffae110c9dde54f12aefe59d2"
       },
       {
         "consumers": [
@@ -76,7 +76,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "scripts/clob_order_service.sh",
-        "sha256": "2562342e2ef1f040f01eb5409cde26ad5c0b1e6209ed22b085566b943722c18a"
+        "sha256": "b6fb895d03cf15243edcdb35e768b188f9c17c175328e6cc6cfb1f52a2068b14"
       },
       {
         "consumers": [
@@ -84,7 +84,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/production_worker.py",
-        "sha256": "59a0cde43d7dcde70ae9e1ae03bc384f9e79254e1533405aceeca4c959900c0a"
+        "sha256": "5ee3002be0b8387544a7b06b9bf253f00359db2472ab4cc1eea7f3fb8605fa00"
       },
       {
         "consumers": [
@@ -100,7 +100,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/delta_v2_runtime.py",
-        "sha256": "0c3cd34e68e6876683d2c1fb53f7b0f91a6eaf0fec7e04c477979c013c713fd6"
+        "sha256": "778ae16daabf8a4db9e661003ae8aa6235bc9db949c109af260ef679c4ef39f2"
       },
       {
         "consumers": [
@@ -108,7 +108,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/delta_v2_training.py",
-        "sha256": "721f51e4ccd7be8eb5b070f81757a80baf1ca1d3d3b1021572882a372e7e2831"
+        "sha256": "d0ea458db9fa4fa70682209226cf883ccccb5b347aea2193f2201d0562eaf715"
       },
       {
         "consumers": [
@@ -116,7 +116,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/delta_v2_settlement_label.py",
-        "sha256": "99d833168bd4a0dff5d697241949aa6df6d1166daa1f4afe38af6d36e738b44c"
+        "sha256": "68cd6affe57e84375ac9dbf4d69e05ed18893403a5e7db899e3945455a7cdea9"
       },
       {
         "consumers": [
@@ -124,7 +124,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/settlement_truth.py",
-        "sha256": "86e34249f4e7c6b3a6e8850cd5e65c6135a46e9c303e667e958a84834498c9f6"
+        "sha256": "a00fd4b3f14641ce6dd057a7ffd236708d067835baeb8fa5d674892619f32dca"
       },
       {
         "consumers": [
@@ -132,7 +132,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/forward_training_validation.py",
-        "sha256": "ad578b15a65582d0b8cdf4ec3ed197d179f9eac5a9a4cc360825cde52dfc4e4e"
+        "sha256": "deb4b0da7ee2862f1e4f470d5c06b3aaed4d96714d31006a9f930698e2ba61e2"
       },
       {
         "consumers": [
@@ -148,7 +148,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/production.py",
-        "sha256": "8e07c3af7535b5da3a36f39279b93971d80dc78a2338b3b98275f0826405eca7"
+        "sha256": "2ee50f27c36908e94ce923419d52f3c9527ca1f071a1ddcd7cf100dbc11769f6"
       },
       {
         "consumers": [
@@ -156,7 +156,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/production_io.py",
-        "sha256": "8938a09f402bcd2fe24d3948037bbd275af1981829769d087abf409787f0fe89"
+        "sha256": "6d97dedb5e0c9c3a26c88bd0445a44e769bcf6ba3cb27ad98970e641500d1dc6"
       },
       {
         "consumers": [
@@ -164,7 +164,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/runtime.py",
-        "sha256": "ae6461f50c0941b6bf5bfd9680a73ae3c72dd44ebc796226df4c783c5d4b0e46"
+        "sha256": "22cbb3adb30f90f0fb7b36e904871698ae2ec1f575e37370a65cd30e76211198"
       },
       {
         "consumers": [
@@ -172,7 +172,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/cash_phase_forward_observation.py",
-        "sha256": "74151362af9f0463715d6d1194711547913064d21623fee841ea960a2de42897"
+        "sha256": "847a3425356bc6915a06030f2a4502dd90fb5936ada48c70ded418208d1c76d8"
       },
       {
         "consumers": [
@@ -196,7 +196,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/atomic_ledger.py",
-        "sha256": "1eb176e8f3328f0ea7f42dc803017fa48436f41bd947d904d154e15a5d2e454d"
+        "sha256": "bda4db853cf5e5a346eabbd819b4486477ef2597c815f96e8c50ebb08fd2e45d"
       },
       {
         "consumers": [
@@ -252,7 +252,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/basket_kernel/support.py",
-        "sha256": "c5edcc1a8cc1161b6c479fe1c7b2c9cdf329d758e5e958975521ad9e94632ee8"
+        "sha256": "4c5afd1146fc24e56ac9da1478b986daf9350abe32091f8cd13cddefac299e41"
       },
       {
         "consumers": [
@@ -260,7 +260,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "bayes_basket_target/basket_kernel/delta_v2.py",
-        "sha256": "0522da4c567ddcb8caf2109145b7792f178d9210980552e83dbaabc5b71069e5"
+        "sha256": "5fa9e0d978040cae86b77a6d65c8f7df0ba5e6f47e051d56448cded786b59d94"
       }
     ]
   }

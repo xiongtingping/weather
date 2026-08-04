@@ -381,6 +381,21 @@ def _find_existing_capture_receipt(
                 continue
         except (OSError, ValueError):
             continue
+        try:
+            actual_bytes = int(raw_ref.stat().st_size)
+            response_bytes = int(raw.get("response_bytes") or -1)
+            advertised_bytes = int(
+                (raw.get("response_headers") or {}).get(
+                    "content-length", -1
+                )
+            )
+        except (OSError, TypeError, ValueError):
+            continue
+        if (
+            response_bytes != actual_bytes
+            or advertised_bytes != actual_bytes
+        ):
+            continue
         if not str(raw.get("response_completed_at") or "").strip():
             continue
         return path.resolve()

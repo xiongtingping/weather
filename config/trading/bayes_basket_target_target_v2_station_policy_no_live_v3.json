@@ -2,7 +2,7 @@
   "schema": "bayes_basket_target_target_v2_station_policy_no_live_manifest_v1",
   "station_id": "RKPK",
   "strategy_version": "target-v2",
-  "stages": ["P0", "P1"],
+  "stages": ["P0", "P0-M", "P1"],
   "season_bin": "summer",
   "maturity_bins": ["d1", "d2", "d2_fallback"],
   "liquidity_bin": "liquid",

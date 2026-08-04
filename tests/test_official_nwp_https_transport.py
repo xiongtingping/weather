@@ -3,6 +3,7 @@ import ssl
 
 import certifi
 import pytest
+from urllib.error import URLError
 from urllib.request import Request
 
 import official_nwp_https_transport as transport
@@ -54,6 +55,52 @@ def test_open_official_https_keeps_verified_context_with_proxy(monkeypatch):
     context = captured["handlers"][1]._context
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname is True
+
+
+def test_refused_explicit_proxy_retries_once_with_verified_direct_tls(monkeypatch):
+    monkeypatch.setenv("PM_OFFICIAL_NWP_PROXY", "http://127.0.0.1:7890")
+    opened = []
+
+    class _Opener:
+        def __init__(self, handlers):
+            self.handlers = handlers
+
+        def open(self, request, timeout):
+            opened.append((self.handlers, request, timeout))
+            if len(opened) == 1:
+                raise URLError(ConnectionRefusedError(61, "Connection refused"))
+            return object()
+
+    monkeypatch.setattr(
+        transport,
+        "build_opener",
+        lambda *handlers: _Opener(handlers),
+    )
+
+    assert transport.open_official_https(
+        Request("https://example.com"), timeout_sec=4
+    ) is not None
+    assert opened[0][0][0].proxies["https"] == "http://127.0.0.1:7890"
+    assert opened[1][0][0].proxies == {}
+    assert opened[1][0][1]._context.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_non_refused_proxy_failure_does_not_fallback(monkeypatch):
+    monkeypatch.setenv("PM_OFFICIAL_NWP_PROXY", "http://127.0.0.1:7890")
+    opens = 0
+
+    class _Opener:
+        def open(self, request, timeout):
+            nonlocal opens
+            opens += 1
+            raise URLError(TimeoutError("timed out"))
+
+    monkeypatch.setattr(transport, "build_opener", lambda *handlers: _Opener())
+    with pytest.raises(URLError):
+        transport.open_official_https(
+            Request("https://example.com"), timeout_sec=4
+        )
+    assert opens == 1
 
 
 def _write_network_config(path, *, enabled=True, proxy_url="http://127.0.0.1:1082"):

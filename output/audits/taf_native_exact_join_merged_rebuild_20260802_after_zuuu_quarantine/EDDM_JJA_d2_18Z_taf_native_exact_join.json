@@ -1,0 +1,14 @@
+{
+  "content_sha256": "bfdacbc27b21ae419085f060a33c96cd22173744c4c5a633dda37f31339881a0",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "95b1a28cd87fd6162218a1db3ce5fe10d6139ad202f1bafab683f254b7da0f26",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Berlin",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "EDDM"
+}

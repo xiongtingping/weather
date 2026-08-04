@@ -34,7 +34,7 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 
 
 SCHEMA = "bayes_basket_target_canonical_nwp_scheduler_acceptance_v1"
-DEFAULT_STATUS = ROOT / "data" / "reported_trajectory_no_status.json"
+DEFAULT_STATUS = ROOT / "data" / "weather_basket_yes_status.json"
 MAX_STATUS_AGE_SECONDS = 120.0
 MAX_SELECTED_SCOPES = 4
 MAX_CANDIDATE_PREFETCH_SCOPES = 1
@@ -188,9 +188,11 @@ def audit_status(
         "configured_station_ids": list(configured),
         "discovered_station_ids": list(discovered),
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": {
-            "blocks_production_no_live": False,
-            "blocks_formal_promotion_or_live": True,
+        "historical_oos_boundary": {
+            "future_data_counts_as_oos": False,
+            "future_data_blocks_production_no_live": False,
+            "future_data_blocks_formal_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_promotion_or_live": True,
         },
         "production_no_live": True,
         "calls_order_gateway": False,

@@ -105,10 +105,10 @@ tail -f weather/data/logs/trade_engine.log | grep "CLOB Client"
 **检查**:
 ```bash
 # 1. 代理服务是否运行
-lsof -i :7897
+lsof -i :1082
 
 # 2. 代理是否可达
-curl -x http://127.0.0.1:7897 https://clob.polymarket.com/book
+curl -x http://127.0.0.1:1082 https://clob.polymarket.com/book
 
 # 3. 查看详细错误
 tail -50 weather/data/logs/trade_engine.log | grep -i "proxy\|error"

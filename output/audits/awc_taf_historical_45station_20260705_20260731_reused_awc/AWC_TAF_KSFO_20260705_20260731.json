@@ -1,0 +1,489 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "truth_days_closed": true,
+    "truth_only_enters_p0m": false,
+    "truth_only_samples_are_not_taf_samples": true,
+    "truth_only_writes_production_db": false,
+    "writes_production_db": false
+  },
+  "content_sha256": "37e3d1a50837f60f924a4dffbc711cc31157cf0ef2b8e7a9ebce0f5e38c21a19",
+  "end_date": "2026-07-31",
+  "excluded_sample_count": 27,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-05",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-06",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-07",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-08",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-09",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-10",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-11",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-12",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-13",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-14",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-15",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-16",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-17",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-18",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-19",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-20",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-21",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-22",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-23",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-24",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-25",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-26",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-27",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-28",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-29",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-30",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-31",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    }
+  ],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 760995,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 268435456
+  },
+  "sample_count": 0,
+  "samples": [],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "America/Los_Angeles",
+  "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
+  "start_date": "2026-07-05",
+  "station_id": "KSFO",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+  "truth_only_sample_count": 1,
+  "truth_only_samples": [
+    {
+      "event_date": "2026-07-31",
+      "receipts": {
+        "metar_response_sha256": "8bbeb67a637ff76128d70f7b6d2b1336cd850d3d0e9348ff4883f5a9e49bc723",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=KSFO&format=json&taf=false&hours=24&date=20260801_0700",
+        "taf_response_sha256": "600c6b620eb3a3f02f272636ef36290ef44f3fd8166e9875a5e198cf7fff02b9",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KSFO&format=json&time=issue&date=20260731_0759"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Los_Angeles",
+      "settlement_window": {
+        "end_utc": "2026-08-01T07:00:00Z",
+        "start_utc": "2026-07-31T07:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "KSFO",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_observation": {
+        "available_time_utc": "2026-07-31T05:20:14Z",
+        "cloud_cover_fraction": 0.08333333333333333,
+        "issue_time_utc": "2026-07-31T05:20:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF KSFO 310520Z 3106/0112 28008KT P6SM FEW010 FM311900 28013KT P6SM SKC FM312100 28015G25KT P6SM SKC FM010200 29010KT P6SM SKC",
+        "raw_taf_sha256": "e5230f60115ddda19e10f0fa6d7d7271b3640fc2ba3ab255760a284f57799a2a",
+        "source_class": "official_date_addressed_historical_replay",
+        "taf_calibration_eligible": false,
+        "taf_response_sha256": "600c6b620eb3a3f02f272636ef36290ef44f3fd8166e9875a5e198cf7fff02b9",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KSFO&format=json&time=issue&date=20260731_0759",
+        "tx_available": false,
+        "tx_c": null,
+        "wind_speed_mps": 5.087279555555555
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "0982974b7241e12e0c0e730de81319a5dc7e0212aee07c37cd66aa5d1fc0fd0a",
+        "observation_count": 26,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T07:56:00Z",
+            "raw_report": "METAR KSFO 310756Z 28007KT 10SM FEW011 16/12 A2999 RMK AO2 SLP156 T01560122 402280139",
+            "raw_sha256": "d301d58a349ac57f4dc176bbdd4fbba025c2ce4abdde585ca8452b73faeae323",
+            "received_at_utc": "2026-07-31T08:00:29.411Z",
+            "report_type": "METAR",
+            "temperature_c": 15.6
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T08:56:00Z",
+            "raw_report": "METAR KSFO 310856Z 32005KT 10SM FEW011 15/12 A2999 RMK AO2 SLP155 T01500122 58001",
+            "raw_sha256": "cc7b1894a3c96b8305ee9c9fcd24f13392b306a115d377df9f51556eb548eecb",
+            "received_at_utc": "2026-07-31T09:01:03.555Z",
+            "report_type": "METAR",
+            "temperature_c": 15.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T09:56:00Z",
+            "raw_report": "METAR KSFO 310956Z 30007KT 10SM FEW011 14/12 A2999 RMK AO2 SLP156 T01440122",
+            "raw_sha256": "f8dba8e39ddd189369bfb0d0fb65830cf92e633395cbe910cc3b192ef2cd8d18",
+            "received_at_utc": "2026-07-31T10:00:06.645Z",
+            "report_type": "METAR",
+            "temperature_c": 14.4
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T10:56:00Z",
+            "raw_report": "METAR KSFO 311056Z 31005KT 10SM FEW011 14/12 A2999 RMK AO2 SLP156 T01440122",
+            "raw_sha256": "121fb943fb7027e802a402f675f6c79f0d562bb9138b36cc4d8a74d712987351",
+            "received_at_utc": "2026-07-31T11:00:13.352Z",
+            "report_type": "METAR",
+            "temperature_c": 14.4
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T11:56:00Z",
+            "raw_report": "METAR KSFO 311156Z 29005KT 10SM FEW011 14/12 A2999 RMK AO2 SLP156 T01390117 10156 20139 51001",
+            "raw_sha256": "e1d51a93121093ab96b2eb8c3872665389dd17467f3c08ad32b8a19371d8e503",
+            "received_at_utc": "2026-07-31T12:00:09.832Z",
+            "report_type": "METAR",
+            "temperature_c": 13.9
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T12:56:00Z",
+            "raw_report": "METAR KSFO 311256Z 32004KT 10SM FEW011 14/12 A3000 RMK AO2 SLP158 T01390117",
+            "raw_sha256": "7d6c7f5968f54bbd55b6f840d470897836a878a3f2475085fd180b232850d4b8",
+            "received_at_utc": "2026-07-31T13:00:08.281Z",
+            "report_type": "METAR",
+            "temperature_c": 13.9
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T13:56:00Z",
+            "raw_report": "METAR KSFO 311356Z 00000KT 10SM FEW010 14/12 A3001 RMK AO2 SLP162 T01440117",
+            "raw_sha256": "9de125d4fcb5fd7bfa87442b772de5e33b7e908f55363fdd8d68bcc6700fc3c5",
+            "received_at_utc": "2026-07-31T14:00:10.495Z",
+            "report_type": "METAR",
+            "temperature_c": 14.4
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T14:21:00Z",
+            "raw_report": "SPECI KSFO 311421Z VRB04KT 10SM FEW006 16/11 A3002 RMK AO2 T01560111",
+            "raw_sha256": "fae915092a5abfa335bcef678f1f88cf07667a759f7c23c86b2d8aa18a019478",
+            "received_at_utc": "2026-07-31T14:24:07.002Z",
+            "report_type": "SPECI",
+            "temperature_c": 15.6
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T14:56:00Z",
+            "raw_report": "METAR KSFO 311456Z 30010G15KT 10SM FEW006 16/12 A3003 RMK AO2 SLP167 T01560117 53011",
+            "raw_sha256": "804fcac11caaef4ec4f7f9be448d952b1efaf2af9fdc92f6691bf5e5121def88",
+            "received_at_utc": "2026-07-31T15:00:18.003Z",
+            "report_type": "METAR",
+            "temperature_c": 15.6
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T15:56:00Z",
+            "raw_report": "METAR KSFO 311556Z 29008KT 10SM FEW006 17/12 A3003 RMK AO2 SLP170 T01720117",
+            "raw_sha256": "c338cae2ad1a28d83b2ae2e2f4f62f0c314400d618c9fbe415db782b28324089",
+            "received_at_utc": "2026-07-31T16:00:10.704Z",
+            "report_type": "METAR",
+            "temperature_c": 17.2
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T16:56:00Z",
+            "raw_report": "METAR KSFO 311656Z 30010KT 10SM FEW006 18/12 A3003 RMK AO2 SLP168 T01830117",
+            "raw_sha256": "f8a822562ed2cc96a4e0e43e74286ddedf5c9380ffc610f50c0e7449cd2c0951",
+            "received_at_utc": "2026-07-31T17:00:17.536Z",
+            "report_type": "METAR",
+            "temperature_c": 18.3
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T17:56:00Z",
+            "raw_report": "METAR KSFO 311756Z 32013KT 10SM FEW006 20/12 A3002 RMK AO2 SLP166 T02000122 10200 20139 58001",
+            "raw_sha256": "288c67b3e317dc42945a7a20b5b00b347ebf6d0142dd8f62b348a597bd0871bd",
+            "received_at_utc": "2026-07-31T18:00:41.003Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T18:56:00Z",
+            "raw_report": "METAR KSFO 311856Z 31013KT 10SM FEW006 21/12 A3001 RMK AO2 SLP163 T02110122",
+            "raw_sha256": "3da3ff95dbedbf5acf7652ac7149c9b206c24d05aff172eb864b42719e54a62a",
+            "received_at_utc": "2026-07-31T19:00:21.136Z",
+            "report_type": "METAR",
+            "temperature_c": 21.1
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T19:56:00Z",
+            "raw_report": "METAR KSFO 311956Z 30018KT 10SM FEW006 22/12 A3002 RMK AO2 SLP164 T02220117",
+            "raw_sha256": "92348c4af57bd263d436e6fe5f19b5c46b6739635e7732489cf3029cb91616b6",
+            "received_at_utc": "2026-07-31T20:00:08.927Z",
+            "report_type": "METAR",
+            "temperature_c": 22.2
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T20:56:00Z",
+            "raw_report": "METAR KSFO 312056Z 30021G28KT 10SM FEW006 21/12 A3001 RMK AO2 PK WND 30028/2053 SLP163 T02110117 56003 $",
+            "raw_sha256": "c2beb31bc141b421c0cc0db8dfc9c2fa0a07a60f25d78136be1d17d819e2c733",
+            "received_at_utc": "2026-07-31T21:00:23.275Z",
+            "report_type": "METAR",
+            "temperature_c": 21.1
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T21:56:00Z",
+            "raw_report": "METAR KSFO 312156Z 30022G28KT 10SM FEW006 21/13 A3001 RMK AO2 PK WND 30029/2101 SLP161 T02110128 $",
+            "raw_sha256": "19ff5088cf7f79805b81180c5763ff4b186766a8f29e6814e976ba2cde13a28d",
+            "received_at_utc": "2026-07-31T22:00:20.096Z",
+            "report_type": "METAR",
+            "temperature_c": 21.1
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T22:56:00Z",
+            "raw_report": "METAR KSFO 312256Z 29021KT 10SM FEW006 21/12 A3000 RMK AO2 PK WND 30030/2158 SLP158 T02060122 $",
+            "raw_sha256": "a415e6c4c2de417eb7b6cfba1207f0752ae1ae468be23d0fb64f8045ed83a48e",
+            "received_at_utc": "2026-07-31T23:00:24.414Z",
+            "report_type": "METAR",
+            "temperature_c": 20.6
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-31T23:56:00Z",
+            "raw_report": "METAR KSFO 312356Z 28023G32KT 10SM FEW006 20/13 A2999 RMK AO2 PK WND 29032/2350 SLP156 T02000128 10222 20200 56007 $",
+            "raw_sha256": "b2f1fb5e15f00cc4df77eb2caeb855b8f5f4c1aad49a539660d012c309cecb7d",
+            "received_at_utc": "2026-08-01T00:00:13.724Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T00:56:00Z",
+            "raw_report": "METAR KSFO 010056Z 29023KT 10SM FEW006 19/13 A2999 RMK AO2 PK WND 29028/0008 SLP156 T01940128 $",
+            "raw_sha256": "c7e3c80c8cec1afffe90a469d0bea8d56381fee5f454c0f9981983a613977235",
+            "received_at_utc": "2026-08-01T01:00:26.042Z",
+            "report_type": "METAR",
+            "temperature_c": 19.4
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T01:56:00Z",
+            "raw_report": "METAR KSFO 010156Z 28019G25KT 10SM FEW008 18/13 A2999 RMK AO2 PK WND 29028/0101 SLP156 T01830128 $",
+            "raw_sha256": "264c7cb28a9f2d9d7751754724fbd49a52f1ef224b7a51df7fd5ded3acd6eb9d",
+            "received_at_utc": "2026-08-01T02:00:09.984Z",
+            "report_type": "METAR",
+            "temperature_c": 18.3
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T02:56:00Z",
+            "raw_report": "METAR KSFO 010256Z 27015KT 10SM FEW008 17/13 A3000 RMK AO2 SLP159 T01720128 53003 $",
+            "raw_sha256": "e86e6549bb0057913f3fc563313bf1fc2c4687d55834e28e4115cdd2694cfb21",
+            "received_at_utc": "2026-08-01T03:00:12.209Z",
+            "report_type": "METAR",
+            "temperature_c": 17.2
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T03:33:00Z",
+            "raw_report": "SPECI KSFO 010333Z 26014G20KT 10SM FEW008 BKN014 17/13 A3002 RMK AO2 T01670133 $",
+            "raw_sha256": "83918e2b174809ba39b3d197967c2a459a6923923955a8673149c6ed43391d05",
+            "received_at_utc": "2026-08-01T03:36:11.560Z",
+            "report_type": "SPECI",
+            "temperature_c": 16.7
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T03:56:00Z",
+            "raw_report": "METAR KSFO 010356Z 28013G19KT 10SM FEW006 BKN014 16/13 A3002 RMK AO2 SLP167 T01610133 $",
+            "raw_sha256": "a40243cf8ff868ac2ce5c0255bcc7a1f1d624aca7f64bdc0db979e2c1c66ea51",
+            "received_at_utc": "2026-08-01T04:00:12.900Z",
+            "report_type": "METAR",
+            "temperature_c": 16.1
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T04:56:00Z",
+            "raw_report": "METAR KSFO 010456Z 26012G21KT 10SM FEW003 BKN011 16/13 A3003 RMK AO2 SLP170 T01610128 $",
+            "raw_sha256": "31f3d409228291ebffd2f1eeb3ee0716d950298ed6bfad51ecbe0d23fd940113",
+            "received_at_utc": "2026-08-01T05:00:18.850Z",
+            "report_type": "METAR",
+            "temperature_c": 16.1
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T05:56:00Z",
+            "raw_report": "METAR KSFO 010556Z 27016KT 10SM FEW003 BKN011 16/13 A3004 RMK AO2 SLP172 T01560128 10200 20156 51013 $",
+            "raw_sha256": "ad5ad5c5c08215b9e96d16625d2028b6eb019a4a10825ad9940e0e15a84be7f1",
+            "received_at_utc": "2026-08-01T06:00:09.759Z",
+            "report_type": "METAR",
+            "temperature_c": 15.6
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-08-01T06:56:00Z",
+            "raw_report": "METAR KSFO 010656Z 27010KT 10SM FEW003 BKN011 16/13 A3003 RMK AO2 SLP168 T01560128 $",
+            "raw_sha256": "9f01a9bce166530526e76997d6aa0b866bd161112d4b65024027feb30c2ac753",
+            "received_at_utc": "2026-08-01T07:00:21.070Z",
+            "report_type": "METAR",
+            "temperature_c": 15.6
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 22.2,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-5dc031a971381a15ea1eb11e764cb926"
+    }
+  ]
+}

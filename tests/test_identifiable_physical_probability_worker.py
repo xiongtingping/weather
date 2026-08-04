@@ -50,11 +50,11 @@ def test_old_activation_disables_before_database_or_archive_touch(tmp_path: Path
 
 
 def test_retired_probability_worker_is_outside_production_closure() -> None:
-    daemon = (ROOT / "scripts/reported_trajectory_no_daemon.py").read_text(
+    daemon = (ROOT / "scripts/weather_basket_yes_daemon.py").read_text(
         encoding="utf-8"
     )
     installer = (
-        ROOT / "scripts/install_reported_trajectory_no_system_services.sh"
+        ROOT / "scripts/install_weather_basket_yes_user_services.sh"
     ).read_text(encoding="utf-8")
 
     assert "IdentifiablePhysicalProbabilityWorker" not in daemon
@@ -63,10 +63,11 @@ def test_retired_probability_worker_is_outside_production_closure() -> None:
     assert "prospective_evidence_worker.run" not in daemon
     assert "TargetProductionWorker" in daemon
     assert "compile_production_cycle_from_ssot" in daemon
-    assert '"taf_requested": False' in daemon
+    assert '"basket_strategy_id": "weather_basket_yes_v2"' in daemon
+    assert '"hard_no_strategy_removed": True' in daemon
     assert "identifiable_physical_probability" not in installer
     assert "prospective_physical_evidence" not in installer
-    assert "com.weather.reported_trajectory_no" in installer
+    assert "com.weather.weather_basket_yes" in installer
 
 
 def test_initial_ingress_preserves_each_reports_original_first_seen(

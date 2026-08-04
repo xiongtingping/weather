@@ -34,13 +34,15 @@ def _write_fixture(root: Path) -> None:
         "activation_contract_sha256": "a" * 64,
     }), encoding="utf-8")
     (root / baseline.PROTECTED_FILES[0]).write_text(json.dumps({
-        "schema": "resident",
+        "schema": "basket_yes_production_activation_v1",
         "state": "enabled",
-        "strategy_id": "resident",
-        "live_submit_authorized": True,
-        "execution_mode": "production_live",
-        "places_orders": True,
-        "calls_order_gateway": True,
+        "strategy_id": "weather_basket_yes_v2",
+        "production_strategy_allowlist": ["basket_yes"],
+        "live_decision_write_authorized": False,
+        "live_submit_authorized": False,
+        "execution_mode": "production_no_live",
+        "places_orders": False,
+        "calls_order_gateway": False,
         "activation_contract_sha256": "b" * 64,
     }), encoding="utf-8")
     (root / baseline.PROTECTED_FILES[1]).write_text(json.dumps({
@@ -77,12 +79,12 @@ def test_baseline_is_deterministic_and_does_not_mutate_protected_files(tmp_path,
     monkeypatch.setattr(baseline, "PROCESS_MARKERS", {
         "market_ws": "scripts/market_ws_listener.py",
         "clob_order_service": "scripts/clob_order_service.mjs",
-        "reported_trajectory_no": "scripts/reported_trajectory_no_daemon.py",
+        "weather_basket_yes": "scripts/weather_basket_yes_daemon.py",
     })
     ps = subprocess.CompletedProcess(
         ["ps"],
         0,
-        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/reported_trajectory_no_daemon.py\n",
+        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/weather_basket_yes_daemon.py\n",
         stderr="",
     )
     monkeypatch.setattr(baseline.subprocess, "run", lambda *args, **kwargs: ps)
@@ -105,12 +107,12 @@ def test_baseline_ignores_expected_ws_payload_refresh_but_keeps_contract_guard(t
     monkeypatch.setattr(baseline, "PROCESS_MARKERS", {
         "market_ws": "scripts/market_ws_listener.py",
         "clob_order_service": "scripts/clob_order_service.mjs",
-        "reported_trajectory_no": "scripts/reported_trajectory_no_daemon.py",
+        "weather_basket_yes": "scripts/weather_basket_yes_daemon.py",
     })
     ps = subprocess.CompletedProcess(
         ["ps"],
         0,
-        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/reported_trajectory_no_daemon.py\n",
+        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/weather_basket_yes_daemon.py\n",
         stderr="",
     )
     monkeypatch.setattr(baseline.subprocess, "run", lambda *args, **kwargs: ps)
@@ -137,12 +139,12 @@ def test_baseline_ignores_protected_runtime_heartbeat_refresh_but_keeps_no_live_
     monkeypatch.setattr(baseline, "PROCESS_MARKERS", {
         "market_ws": "scripts/market_ws_listener.py",
         "clob_order_service": "scripts/clob_order_service.mjs",
-        "reported_trajectory_no": "scripts/reported_trajectory_no_daemon.py",
+        "weather_basket_yes": "scripts/weather_basket_yes_daemon.py",
     })
     ps = subprocess.CompletedProcess(
         ["ps"],
         0,
-        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/reported_trajectory_no_daemon.py\n",
+        stdout="101 /tmp/scripts/market_ws_listener.py\n102 /tmp/scripts/clob_order_service.mjs\n103 /tmp/scripts/weather_basket_yes_daemon.py\n",
         stderr="",
     )
     monkeypatch.setattr(baseline.subprocess, "run", lambda *args, **kwargs: ps)
@@ -162,5 +164,37 @@ def test_baseline_ignores_protected_runtime_heartbeat_refresh_but_keeps_no_live_
 
     assert first["facts_sha256"] == second["facts_sha256"]
     assert first["protected_files_before"][1]["sha256"] != second["protected_files_before"][1]["sha256"]
-    assert second["protected_boundary"]["reported_trajectory_no"]["checks"]["production_no_live"] is True
+    assert second["protected_boundary"]["basket_yes_no_live"]["checks"]["basket_yes_production_no_live"] is True
     assert second["ok"] is True
+
+
+def test_baseline_fails_closed_for_legacy_no_process_or_live_basket_config(tmp_path, monkeypatch) -> None:
+    _write_fixture(tmp_path)
+    ps = subprocess.CompletedProcess(
+        ["ps"],
+        0,
+        stdout="101 /tmp/scripts/reported_trajectory_no_daemon.py\n",
+        stderr="",
+    )
+    monkeypatch.setattr(baseline.subprocess, "run", lambda *args, **kwargs: ps)
+
+    legacy = baseline.audit(project_root=tmp_path)
+    assert legacy["ok"] is False
+    assert legacy["checks"]["retired_reported_trajectory_no_absent"] is False
+
+    (tmp_path / baseline.PROTECTED_FILES[0]).write_text(json.dumps({
+        "schema": "basket_yes_production_activation_v1",
+        "state": "enabled",
+        "strategy_id": "weather_basket_yes_v2",
+        "production_strategy_allowlist": ["basket_yes"],
+        "live_decision_write_authorized": True,
+        "live_submit_authorized": True,
+        "execution_mode": "production_live",
+        "places_orders": True,
+        "calls_order_gateway": True,
+    }), encoding="utf-8")
+    clean_ps = subprocess.CompletedProcess(["ps"], 0, stdout="", stderr="")
+    monkeypatch.setattr(baseline.subprocess, "run", lambda *args, **kwargs: clean_ps)
+    live = baseline.audit(project_root=tmp_path)
+    assert live["ok"] is False
+    assert live["checks"]["basket_yes_no_live_boundary"] is False

@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-46e4432896d9e9636b3ad950",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "e2270d7eb31bd91c7e6ada8a559d03a954263b4dc47d29b8162071335c37617e",
+    "decision_at_utc": "2026-08-01T05:36:43Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ECMWF",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "ecmwf_aifs025_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-31T23:28:04Z",
+    "raw_payload_sha256s": [
+      "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5"
+    ],
+    "receipt_sha256": "d223147c7c6c38392856b8656d4ce3e8ddb1de77a80bfad71716e5c07552d8fe",
+    "received_at_utc": "2026-08-01T05:36:43Z",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260731/18z/aifs-single/0p25/oper/20260731180000-12h-oper-fc.grib2",
+    "station_id": "EPWA",
+    "target_local_date": "2026-08-01",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-08-01T06:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-08-01T05:37:09.591Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/ecmwf_aifs025_official/receipts/5765c9cccf6eb8819c15a5c17862c98a819f0bbf798d11aae264e20f02054010.json"
+}

@@ -55,10 +55,29 @@ ZERO_BOUNDARY_KEYS = {
     "gateway_writes",
 }
 
-FORWARD_OOS_BOUNDARY = {
+# OOS is historical-only.  Forward/未闭日 packets are retained strictly as
+# arrival/interface observations and can neither count as OOS nor block the
+# no-live path.  Formal promotion/live still requires a *historical* strict
+# as-of OOS artifact; keeping that requirement explicit prevents a future
+# sample from being used as a substitute.
+HISTORICAL_OOS_BOUNDARY = {
+    # Compatibility names retain their old shape but are explicitly false:
+    # future/forward evidence is never a hard gate.
     "blocks_production_no_live": False,
-    "blocks_formal_promotion_or_live": True,
+    "blocks_formal_promotion_or_live": False,
+    "future_data_counts_as_oos": False,
+    "future_data_blocks_production_no_live": False,
+    "future_data_blocks_formal_promotion_or_live": False,
+    "historical_strict_oos_required_for_formal_promotion_or_live": True,
 }
+# Kept as an import-compatible name for older receipt builders.  The value is
+# deliberately the historical-only contract above; it no longer describes a
+# future OOS hard gate.
+FORWARD_OOS_BOUNDARY = HISTORICAL_OOS_BOUNDARY
+RELEASE_ARTIFACT_ROLES = frozenset({
+    "schema_bootstrap_only",
+    "native_ensemble_ssot_authority",
+})
 
 
 class AtomicCutoverReceiptError(ValueError):
@@ -194,7 +213,10 @@ def seal_stage(
         "payload_schema": str(payload.get("schema") or ""),
         "payload_state": str(payload.get("state") or ""),
         "facts": facts,
-        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
+        # Compatibility projection; it carries the same historical-only
+        # contract and is never interpreted as a future OOS gate.
+        "forward_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
@@ -234,8 +256,17 @@ def validate_sealed_receipt(
         raise AtomicCutoverReceiptError("atomic_receipt_live_boundary_invalid")
     if float(receipt.get("orders_submitted") or 0) != 0.0:
         raise AtomicCutoverReceiptError("atomic_receipt_orders_nonzero")
-    if receipt.get("forward_oos_boundary") != FORWARD_OOS_BOUNDARY:
+    boundary = receipt.get("historical_oos_boundary")
+    # A legacy key may be present while an old receipt is being replayed, but
+    # it must carry the new historical-only value.  New receipts emit only
+    # ``historical_oos_boundary``.
+    legacy_boundary = receipt.get("forward_oos_boundary")
+    if boundary is None and legacy_boundary is not None:
+        boundary = legacy_boundary
+    if legacy_boundary is not None and legacy_boundary != HISTORICAL_OOS_BOUNDARY:
         raise AtomicCutoverReceiptError("atomic_receipt_forward_oos_boundary_invalid")
+    if boundary != HISTORICAL_OOS_BOUNDARY:
+        raise AtomicCutoverReceiptError("atomic_receipt_historical_oos_boundary_invalid")
     errors = _boundary_errors(receipt)
     if errors:
         raise AtomicCutoverReceiptError(
@@ -308,7 +339,7 @@ def build_cutover_receipt(
         raise AtomicCutoverReceiptError("atomic_receipt_release_sha256_invalid")
     if release.get("station_scope_mode") != "canonical_allowlist":
         raise AtomicCutoverReceiptError("atomic_receipt_release_scope_invalid")
-    if release.get("artifact_role") != "schema_bootstrap_only":
+    if release.get("artifact_role") not in RELEASE_ARTIFACT_ROLES:
         raise AtomicCutoverReceiptError("atomic_receipt_release_artifact_role_invalid")
     if not isinstance(recovery, Mapping):
         raise AtomicCutoverReceiptError("atomic_receipt_recovery_missing")
@@ -350,7 +381,8 @@ def build_cutover_receipt(
         "target_database_fingerprint_after": database_fingerprint,
         "idempotent_replay": bool(idempotent_replay),
         "writes": 0 if idempotent_replay else 1,
-        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
+        "forward_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
@@ -399,7 +431,7 @@ def validate_cutover_receipt(
         raise AtomicCutoverReceiptError("atomic_receipt_release_scope_invalid")
     if release.get("station_scope_mode") != "canonical_allowlist":
         raise AtomicCutoverReceiptError("atomic_receipt_release_scope_invalid")
-    if release.get("artifact_role") != "schema_bootstrap_only":
+    if release.get("artifact_role") not in RELEASE_ARTIFACT_ROLES:
         raise AtomicCutoverReceiptError("atomic_receipt_release_artifact_role_invalid")
     protected_before = receipt.get("protected_service_pids_before")
     protected_after = receipt.get("protected_service_pids_after")
@@ -546,8 +578,14 @@ def build_release_identity(
     schema_sha256: str,
     activation_sha256: str,
     artifact_sha256: str,
+    artifact_role: str = "schema_bootstrap_only",
 ) -> dict[str, Any]:
     scope = _normalize_scope(station_ids)
+    normalized_role = str(artifact_role or "").strip()
+    if normalized_role not in RELEASE_ARTIFACT_ROLES:
+        raise AtomicCutoverReceiptError(
+            "atomic_receipt_release_artifact_role_invalid"
+        )
     values = {
         "schema": "bayes_basket_target_m9_06_release_identity_v1",
         "station_ids": list(scope),
@@ -555,7 +593,7 @@ def build_release_identity(
         "schema_sha256": str(schema_sha256).lower(),
         "activation_sha256": str(activation_sha256).lower(),
         "artifact_sha256": str(artifact_sha256).lower(),
-        "artifact_role": "schema_bootstrap_only",
+        "artifact_role": normalized_role,
         "execution_mode": "production_no_live",
         "legacy_fallback_used": False,
     }
@@ -633,6 +671,7 @@ def source_stage_receipt(stage: str, path: Path | str) -> dict[str, Any]:
 __all__ = [
     "AtomicCutoverReceiptError",
     "FORWARD_OOS_BOUNDARY",
+    "HISTORICAL_OOS_BOUNDARY",
     "MAX_RECEIPT_BYTES",
     "MAX_RECOVERY_BYTES",
     "PROTECTED_SERVICES",

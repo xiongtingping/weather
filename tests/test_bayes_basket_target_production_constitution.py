@@ -70,7 +70,7 @@ def test_vertical_slice_and_delivery_state_authorities_are_unique() -> None:
     status = roadmap["delivery_status_authority"]
 
     assert slice_contract["station_id"] == "CANONICAL_45"
-    assert slice_contract["source_lane"] == "AMSC_AWC_ROUTED"
+    assert slice_contract["source_lane"] == "AWC_WORLDWIDE_RELAY"
     assert slice_contract["batch_expansion_requires"] == (
         "CANONICAL_45_BOUNDED_NO_LIVE_EXPANSION"
     )

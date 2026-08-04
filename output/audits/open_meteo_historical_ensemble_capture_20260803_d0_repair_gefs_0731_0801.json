@@ -1,0 +1,131 @@
+{
+  "schema": "open_meteo_historical_ensemble_capture_v1",
+  "captured_at_utc": "2026-08-03T01:33:13.984Z",
+  "start_date": "2026-07-31",
+  "end_date": "2026-08-01",
+  "stations": [
+    "NZWN",
+    "ZBAA",
+    "ZGGG",
+    "ZHHH",
+    "ZSQD"
+  ],
+  "systems": [
+    "NOAA_GEFS_05"
+  ],
+  "missing_dates_by_station": {
+    "NZWN": [
+      "2026-07-31",
+      "2026-08-01"
+    ],
+    "ZBAA": [
+      "2026-07-31",
+      "2026-08-01"
+    ],
+    "ZGGG": [
+      "2026-07-31",
+      "2026-08-01"
+    ],
+    "ZHHH": [
+      "2026-07-31",
+      "2026-08-01"
+    ],
+    "ZSQD": [
+      "2026-07-31",
+      "2026-08-01"
+    ]
+  },
+  "missing_systems_by_station": {
+    "NZWN": [
+      "NOAA_GEFS_05"
+    ],
+    "ZBAA": [
+      "NOAA_GEFS_05"
+    ],
+    "ZGGG": [
+      "NOAA_GEFS_05"
+    ],
+    "ZHHH": [
+      "NOAA_GEFS_05"
+    ],
+    "ZSQD": [
+      "NOAA_GEFS_05"
+    ]
+  },
+  "fetch_station_count": 5,
+  "response_receipts": [
+    {
+      "station_id": "NZWN",
+      "response_sha256": "4159bb2ea8064f934a0b3c22602e8e11c8eccc555de1b1e8d6e692cfc7337e28",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=-41.331&longitude=174.806&daily=temperature_2m_max&models=ncep_gefs05&timezone=Pacific%2FAuckland&start_date=2026-07-31&end_date=2026-08-01",
+      "response_bytes": 2629,
+      "model_day_counts": {
+        "NOAA_GEFS_05": 2
+      },
+      "captured_at_utc": "2026-08-03T01:33:13.984Z",
+      "unavailable": []
+    },
+    {
+      "station_id": "ZBAA",
+      "response_sha256": "f79cbe6fcc88fc602f0f87fccb5f3fc7a72e601fe111458c17ece044f5b38a7b",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.082&longitude=116.603&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-31&end_date=2026-08-01",
+      "response_bytes": 2655,
+      "model_day_counts": {
+        "NOAA_GEFS_05": 2
+      },
+      "captured_at_utc": "2026-08-03T01:33:13.984Z",
+      "unavailable": []
+    },
+    {
+      "station_id": "ZGGG",
+      "response_sha256": "aad9130ccaf605d01a4352a68eaa674b27f15f288a8aaf415242ab1d9158fc39",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=23.392&longitude=113.307&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-31&end_date=2026-08-01",
+      "response_bytes": 2655,
+      "model_day_counts": {
+        "NOAA_GEFS_05": 2
+      },
+      "captured_at_utc": "2026-08-03T01:33:13.984Z",
+      "unavailable": []
+    },
+    {
+      "station_id": "ZHHH",
+      "response_sha256": "9779a6fe85e8c0f3bf9f7795fce567f47a94cd2c0c25225466951d9af38abd30",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.783&longitude=114.205&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-31&end_date=2026-08-01",
+      "response_bytes": 2656,
+      "model_day_counts": {
+        "NOAA_GEFS_05": 2
+      },
+      "captured_at_utc": "2026-08-03T01:33:13.984Z",
+      "unavailable": []
+    },
+    {
+      "station_id": "ZSQD",
+      "response_sha256": "d10d3c5425dae5c4d098e4aa26dc8f668b48c0f286bacefc7aa5b5ca534ba24f",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=36.362&longitude=120.087&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-31&end_date=2026-08-01",
+      "response_bytes": 2655,
+      "model_day_counts": {
+        "NOAA_GEFS_05": 2
+      },
+      "captured_at_utc": "2026-08-03T01:33:13.984Z",
+      "unavailable": []
+    }
+  ],
+  "raw_paths": [
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/4159bb2ea8064f934a0b3c22602e8e11c8eccc555de1b1e8d6e692cfc7337e28.json",
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/f79cbe6fcc88fc602f0f87fccb5f3fc7a72e601fe111458c17ece044f5b38a7b.json",
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/aad9130ccaf605d01a4352a68eaa674b27f15f288a8aaf415242ab1d9158fc39.json",
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/9779a6fe85e8c0f3bf9f7795fce567f47a94cd2c0c25225466951d9af38abd30.json",
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/d10d3c5425dae5c4d098e4aa26dc8f668b48c0f286bacefc7aa5b5ca534ba24f.json"
+  ],
+  "failures": [],
+  "candidate_member_row_count": 310,
+  "inserted_member_row_count": 310,
+  "commit": true,
+  "production_no_live": true,
+  "future_event_count": 0,
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "native_arrival_index_written": false,
+  "p1_authority_written": false,
+  "calls_order_gateway": false,
+  "orders_submitted": 0
+}

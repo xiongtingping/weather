@@ -1,0 +1,40 @@
+{
+  "boundary": {
+    "activates_p0": false,
+    "member_raw_fanout": false,
+    "network_request_count": 2,
+    "official_native_coordinate_asset": true,
+    "writes_target_database": false
+  },
+  "content_sha256": "9b3f3240be9b9d040fe47329437daae63e7542fb46eb89b80a4b999f8bef29e2",
+  "curl_exit_code": 0,
+  "decompressed_bytes": 464495344,
+  "grid_cell_count": 737280,
+  "grid_filename": "icon_grid_0036_R03B06_G.nc.bz2",
+  "grid_uuid": "ae487d14fe2e11e4af85e50a2a56a360",
+  "http_method": "HEAD",
+  "metadata_request_count": 1,
+  "network_request_count": 2,
+  "object_download_request_count": 1,
+  "provider_published_at_utc": "2022-11-16T08:37:54Z",
+  "raw_object_ref": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_eps_official/grid_r03b06/raw/047ff78a7896ca6830369f918ca92bbd6ac8a4e19a73716979de6656067b3f37.nc.bz2",
+  "raw_sha256": "047ff78a7896ca6830369f918ca92bbd6ac8a4e19a73716979de6656067b3f37",
+  "resource_guard": {
+    "max_grid_decompressed_bytes": 2147483648,
+    "max_grid_response_bytes": 268435456,
+    "min_free_bytes": 2147483648,
+    "retained_compressed_grid_objects": 1
+  },
+  "response_bytes": 216240634,
+  "response_completed_at_utc": "2026-08-01T07:56:27.004Z",
+  "response_headers": {
+    "content-length": "216240634",
+    "date": "Sat, 01 Aug 2026 07:55:50 GMT",
+    "etag": "\"6374a162-ce391fa\"",
+    "last-modified": "Wed, 16 Nov 2022 08:37:54 GMT"
+  },
+  "schema": "bayes_basket_target_icon_eps_official_grid_capture_v1",
+  "source_url": "https://opendata.dwd.de/weather/lib/cdo/icon_grid_0036_R03B06_G.nc.bz2",
+  "state": "OFFICIAL_DWD_R03B06_GRID_CAPTURED",
+  "transport": "prior_bounded_get_adopted_after_official_head"
+}

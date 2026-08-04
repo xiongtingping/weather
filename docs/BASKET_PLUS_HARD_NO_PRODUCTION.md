@@ -1,15 +1,19 @@
 ---
-status: accepted
-authority: L1
+status: superseded
+authority: L3
 owner: weather-system
 effective_from: 2026-07-19
 ---
 
-# Basket + Hard NO 生产策略
+# 旧 Basket + Hard NO 策略（已退役）
 
 ## 生产身份
 
-生产唯一执行服务仍是 `com.weather.reported_trajectory_no`，内部包含两条互相独立的执行腿：
+本文档所述 hard-NO 与阶段式 4→3→2 策略已退役，不得用作生产合同。当前唯一策略服务为 `com.weather.weather_basket_yes`，与 `com.weather.market_ws`、`com.weather.clob_order_service` 同在用户域运行；旧 `com.weather.reported_trajectory_no` label 已退役。
+
+当前生产合同以 `data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.md` 为准：只允许纯 YES 篮子，官方 AWC 硬事实只排除数学不可能的 YES 桶，不创建 BUY NO intent。
+
+<!-- 以下内容只保留为历史设计记录。 -->
 
 1. `weather_basket_plus_hard_no_v2`：读取已物化的 P0/P1 市场桶概率、已物化 regime 和官方 CLOB WebSocket 盘口，按后验覆盖率从 4→3→2 连续精确温度 YES 分阶段等份 FOK；每阶段严格要求所有 YES ask 加总小于 1，持有至结算；新 checkpoint/盘口签名且资金未耗尽时允许只增不减的窄阶段补仓。
 2. `reported_trajectory_no_v1`：只读取 AMSC/AWC 官方 METAR/SPECI，买入最近一个已数学排除桶的 NO，FAK ≤ 0.99，沿用原 GTC 0.99 退出。

@@ -21,8 +21,10 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .future_temperature_curve import build_native_family_temperature_curve
 from .native_ensemble_store import _insert_content_addressed
 from .open_meteo_ensemble import ENSEMBLE_SYSTEMS
+from official_nwp_https_transport import official_nwp_proxy_url
 from .p0_producer import bucket_intervals_from_registry_rows
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
@@ -42,7 +44,11 @@ ECCODES_GRIB_GET = Path("/opt/homebrew/bin/grib_get")
 ECCODES_LIBRARY = Path("/opt/homebrew/lib/libeccodes.dylib")
 MAX_INDEX_BYTES = 2 * 1024 * 1024
 MAX_MESSAGE_BYTES = 1024 * 1024
-MAX_TOTAL_RESPONSE_BYTES = 64 * 1024 * 1024
+# A complete 45-station GEFS d2 extraction currently consumes about 70 MiB
+# across its bounded index/range requests.  Keep the single-station legacy
+# capture compatible with the same official field set without weakening its
+# per-request (1 MiB), bounded-stream, free-space, or RSS guards.
+MAX_TOTAL_RESPONSE_BYTES = 128 * 1024 * 1024
 MAX_MULTISTATION_TOTAL_RESPONSE_BYTES = 128 * 1024 * 1024
 MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_FIELD_RECEIPTS = 31 * 25
@@ -398,8 +404,14 @@ def capture_gefs_station_day(
     total_bytes = 0
     run_day = run_init.strftime("%Y%m%d")
     cycle = run_init.strftime("%H")
+    # Official NWP transport is deliberately explicit: use the configured
+    # research proxy (currently 127.0.0.1:1082) and never inherit ambient
+    # desktop proxy variables.  This keeps the provider lineage auditable and
+    # makes the capture command behave identically from launchd or a shell.
     with httpx.Client(
         headers={"User-Agent": "weather-gefs-history/1"},
+        proxy=official_nwp_proxy_url() or None,
+        trust_env=False,
         follow_redirects=False,
         limits=httpx.Limits(
             max_connections=2,
@@ -550,7 +562,7 @@ def _build_station_capture(
     run_init: datetime,
     query_at: datetime,
     forecast_hours: Sequence[int],
-    member_values: Mapping[str, Sequence[float]],
+    member_values: Mapping[str, Sequence[float] | Mapping[int, float]],
     field_receipts: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     intervals = bucket_intervals_from_registry_rows(registry_rows)
@@ -565,20 +577,31 @@ def _build_station_capture(
         member_id: member_role
         for member_id, member_role, _object_member in _member_objects()
     }
+    values_by_member = {
+        member_id: (
+            {int(hour): float(value) for hour, value in values.items()}
+            if isinstance(values, Mapping)
+            else {
+                int(hour): float(value)
+                for hour, value in zip(forecast_hours, values)
+            }
+        )
+        for member_id, values in member_values.items()
+    }
     member_rows = [
         {
             "ensemble_system_id": SYSTEM_ID,
             "member_id": member_id,
             "member_role": member_roles[member_id],
-            "raw_tmax_c": max(float(value) for value in values),
+            "raw_tmax_c": max(values.values()),
         }
-        for member_id, values in sorted(member_values.items())
+        for member_id, values in sorted(values_by_member.items())
     ]
     if (
         len(member_rows) != 31
         or any(
-            len(member_values[row["member_id"]])
-            != len(forecast_hours)
+            set(values_by_member[row["member_id"]])
+            != set(forecast_hours)
             for row in member_rows
         )
     ):
@@ -602,6 +625,25 @@ def _build_station_capture(
     receipt_set_sha = content_sha256(receipts)
     run_day = run_init.strftime("%Y%m%d")
     cycle = run_init.strftime("%H")
+    family_curve = build_native_family_temperature_curve({
+        "station_id": station_id,
+        "event_date": event_date,
+        "settlement_timezone": settlement_timezone,
+        "ensemble_system_id": SYSTEM_ID,
+        "independence_family_id": "NOAA_GEFS",
+        "available_at_utc": query_at.isoformat().replace("+00:00", "Z"),
+        "source_field_receipt_set_sha256": receipt_set_sha,
+        "points": [
+            {
+                "valid_time_utc": (run_init + timedelta(hours=hour)).isoformat().replace("+00:00", "Z"),
+                "temperature_c": sum(
+                    values_by_member[member_id][hour]
+                    for member_id in values_by_member
+                ) / len(values_by_member),
+            }
+            for hour in forecast_hours
+        ],
+    })
     identity = {
         "schema": SCHEMA,
         "station_id": station_id,
@@ -617,6 +659,7 @@ def _build_station_capture(
         "member_count": len(member_rows),
         "members": member_rows,
         "member_set_sha256": member_set_sha,
+        "family_temperature_curve": family_curve,
         "bucket_intervals": frozen_intervals,
         "bucket_contract_sha256": content_sha256(frozen_intervals),
         "raw_bucket_probabilities": {
@@ -722,9 +765,9 @@ def capture_gefs_station_days(
     })
     if not union_hours or len(union_hours) > 17:
         raise ContractError("gefs_archive_multistation_grid_invalid")
-    member_values: dict[str, dict[str, list[float]]] = {
+    member_values: dict[str, dict[str, dict[int, float]]] = {
         station: {
-            member_id: []
+            member_id: {}
             for member_id, _role, _object in _member_objects()
         }
         for station in scopes
@@ -735,6 +778,8 @@ def capture_gefs_station_days(
     cycle = run_init.strftime("%H")
     with httpx.Client(
         headers={"User-Agent": "weather-gefs-history/1"},
+        proxy=official_nwp_proxy_url() or None,
+        trust_env=False,
         follow_redirects=False,
         limits=httpx.Limits(
             max_connections=MAX_DOWNLOAD_WORKERS,
@@ -806,7 +851,7 @@ def capture_gefs_station_days(
                         points=active,
                     )
                     for station, value in decoded.items():
-                        member_values[station][member_id].append(value)
+                        member_values[station][member_id][forecast_hour] = value
                     receipts.append(receipt)
                     assert_process_memory_budget(
                         projected_bytes=(

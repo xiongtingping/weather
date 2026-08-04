@@ -265,7 +265,9 @@ def build_settlement_version_evidence_packet(
             ),
         },
         "promotion_boundary": {
-            "forward_oos_blocks_formal_promotion": True,
+            "future_data_counts_as_oos": False,
+            "forward_oos_blocks_formal_promotion": False,
+            "historical_strict_oos_blocks_formal_promotion": True,
             "online_parameter_tuning_allowed": False,
             "live_promotion_allowed": False,
         },
@@ -313,6 +315,16 @@ def validate_settlement_version_evidence_packet(
         )
     ):
         return None, "settlement_evidence_no_live_boundary_invalid"
+    promotion_boundary = packet.get("promotion_boundary")
+    if not isinstance(promotion_boundary, Mapping) or any(
+        promotion_boundary.get(key) != value
+        for key, value in (
+            ("future_data_counts_as_oos", False),
+            ("forward_oos_blocks_formal_promotion", False),
+            ("historical_strict_oos_blocks_formal_promotion", True),
+        )
+    ):
+        return None, "settlement_evidence_historical_oos_boundary_invalid"
     fill_evidence = packet.get("actual_fill_evidence")
     if not isinstance(fill_evidence, Mapping):
         return None, "settlement_evidence_actual_fill_evidence_missing"

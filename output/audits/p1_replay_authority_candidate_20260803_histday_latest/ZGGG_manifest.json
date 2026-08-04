@@ -1,0 +1,43 @@
+{
+  "archive_database": "/Users/xiong/weather/data/archive.db",
+  "boundary": {
+    "calls_network": false,
+    "candidate_only": true,
+    "formal_promoted_created": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "writes_archive_database": false,
+    "writes_target_database": false
+  },
+  "canonical_input": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_canonical_observation_evidence.json",
+  "content_sha256": "8174595770ff0bcbb148fc9e381cdef4ad8c14f093e83e3b760ce681240e0317",
+  "event_date": "2026-08-01",
+  "reports": [
+    {
+      "blockers": [
+        "formal_source_row_unbindable:histobs_95c16250961b5e0e1c2a4edc6ff4cf42",
+        "source_receipt_after_root_decision"
+      ],
+      "content_sha256": "fa3e4385a7946da1419f736f61ecb11770b5943fd3faf670a82617b080523ff6",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 21,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_histday_latest/ZGGG/ZGGG_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "BLOCKED_FAIL_CLOSED",
+      "station_id": "ZGGG",
+      "strict_asof_bindable_observation_count": 21
+    }
+  ],
+  "root_decision_at_utc": "2026-08-01T10:03:38.209Z",
+  "schema": "bayes_basket_target_p1_replay_authority_candidate_manifest_v1",
+  "state": "CANDIDATE_ONLY",
+  "station_count": 1,
+  "summary": {
+    "blocked_count": 1,
+    "candidate_ready_count": 0,
+    "formal_observations": 21,
+    "pointer_repairs": 0,
+    "strict_asof_bindings": 21
+  },
+  "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db"
+}

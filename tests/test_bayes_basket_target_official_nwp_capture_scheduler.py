@@ -15,6 +15,8 @@ def _binding(
     *,
     run_cycle: str = "00Z",
     lead_bucket: str = "d2",
+    selected_provider_by_model: dict[str, str] | None = None,
+    aifs_provider_oos_binding: bool = False,
 ) -> dict:
     mask = model_set_hash(models)
     ensemble_identity = {
@@ -81,6 +83,37 @@ def _binding(
         "activation_sha256": activation["content_sha256"],
         "authority_scope": activation["authority_scope"],
     }
+    if selected_provider_by_model is not None:
+        binding_identity["selected_provider_by_model"] = dict(
+            selected_provider_by_model
+        )
+    if aifs_provider_oos_binding:
+        provider_oos_identity = {
+            "schema": scheduler.AIFS_PROVIDER_OOS_BINDING_SCHEMA,
+            "provider_id": "ecmwf_aifs025_official",
+            "model_id": "ECMWF",
+            "independence_family_id": "ECMWF",
+            "strict_oos_state": "FORMAL_P0_READY",
+            "strict_oos_artifact_sha256": "d" * 64,
+            "formal_p0_eligible": True,
+            "native_arrival_index_eligible": True,
+            "provider_lineage": {
+                "publication_authority": "official_native",
+                "independence_family_id": "ECMWF",
+                "same_independence_family_as_ifs": True,
+                "counts_as_distinct_independence_family": False,
+            },
+            "activation_id": activation["activation_id"],
+            "activation_sha256": activation["content_sha256"],
+            "ensemble_artifact_id": ensemble["ensemble_artifact_id"],
+            "ensemble_artifact_sha256": ensemble["content_sha256"],
+        }
+        binding_identity["provider_strict_oos_binding_by_model"] = {
+            "ECMWF": {
+                **provider_oos_identity,
+                "content_sha256": content_sha256(provider_oos_identity),
+            }
+        }
     return {
         "activation_binding": {
             **binding_identity,
@@ -708,7 +741,11 @@ def test_capture_falls_back_until_exact_selected_mask_is_complete(
     assert result["selected_run_initialization_utc"] == "2026-07-25T18:00:00Z"
     assert result["attempts"][0]["complete_provider_count"] == 1
     assert result["attempts"][1]["complete_provider_count"] == 2
+    # Missing provider-selection evidence pins the ECMWF role to IFS.  An IFS
+    # failure moves to the next activated run; it never selects AIFS by
+    # availability.
     assert len(calls) == 4
+    assert all(provider != "ecmwf_aifs025_official" for _, provider in calls)
     assert calls[-1] == (
         "2026-07-25T18:00:00Z",
         "gfs_0p25_official",
@@ -721,6 +758,173 @@ def test_capture_falls_back_until_exact_selected_mask_is_complete(
     assert all(run != "2026-07-25T12:00:00Z" for run, _ in calls)
     assert result["calls_order_gateway"] is False
     assert result["orders_submitted"] == 0
+
+
+def test_ecmwf_role_uses_aifs_only_when_own_oos_binding_selects_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "a" * 64},
+    )
+    run = "2026-07-26T00:00:00Z"
+    calls: list[str] = []
+
+    def provider_runner(**kwargs):
+        provider = kwargs["provider_id"]
+        calls.append(provider)
+        path = kwargs["output_dir"] / "capture.json"
+        write_bounded_json_if_changed(path, {"provider": provider})
+        return {
+            "blocked_count": 0,
+            "records": [{"status": "CAPTURED", "path": str(path)}],
+        }
+
+    result = scheduler.capture_scope(
+        registry_snapshot_path=registry_path,
+        scope={
+            "event_date": "2026-07-27",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["RKPK"],
+        },
+        as_of_utc="2026-07-26T02:00:00Z",
+        output_root=tmp_path / "capture",
+        activation_bindings_by_run={run: _binding(
+            ("ECMWF", "GFS"),
+            selected_provider_by_model={
+                "ECMWF": "ecmwf_aifs025_official",
+                "GFS": "gfs_0p25_official",
+            },
+            aifs_provider_oos_binding=True,
+        )},
+        run_initializations=[run],
+        provider_runner=provider_runner,
+    )
+
+    assert calls == [
+        "ecmwf_aifs025_official",
+        "gfs_0p25_official",
+    ]
+    assert result["state"] == "CAPTURED"
+    assert result["attempts"][0]["selected_models"] == ["ECMWF", "GFS"]
+    assert result["attempts"][0]["selected_provider_by_model"] == {
+        "ECMWF": "ecmwf_aifs025_official",
+        "GFS": "gfs_0p25_official",
+    }
+    ecmwf = next(
+        row for row in result["attempts"][0]["providers"]
+        if row["model_id"] == "ECMWF"
+    )
+    assert ecmwf["provider_id"] == "ecmwf_aifs025_official"
+    assert ecmwf["selected_provider_id"] == "ecmwf_aifs025_official"
+    assert [row["provider_id"] for row in ecmwf["attempts"]] == [
+        "ecmwf_aifs025_official",
+    ]
+    assert all("ecmwf_ifs025_official" not in path for path in result["capture_paths"])
+    assert any("ecmwf_aifs025_official" in path for path in result["capture_paths"])
+
+
+def test_ecmwf_aifs_selection_without_own_oos_binding_fails_before_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "a" * 64},
+    )
+    calls: list[str] = []
+    with pytest.raises(
+        scheduler.ContractError,
+        match="official_nwp_scheduler_aifs_oos_binding_missing",
+    ):
+        scheduler.capture_scope(
+            registry_snapshot_path=registry_path,
+            scope={
+                "event_date": "2026-07-27",
+                "settlement_timezone": "Asia/Seoul",
+                "station_ids": ["RKPK"],
+            },
+            as_of_utc="2026-07-26T02:00:00Z",
+            output_root=tmp_path / "capture",
+            activation_bindings_by_run={"2026-07-26T00:00:00Z": _binding(
+                ("ECMWF", "GFS"),
+                selected_provider_by_model={
+                    "ECMWF": "ecmwf_aifs025_official",
+                    "GFS": "gfs_0p25_official",
+                },
+            )},
+            run_initializations=["2026-07-26T00:00:00Z"],
+            provider_runner=lambda **kwargs: calls.append(kwargs["provider_id"]),
+        )
+    assert calls == []
+
+
+def test_ecmwf_aifs_adapter_failure_is_explicit_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        scheduler,
+        "load_market_registry_snapshot",
+        lambda _path: {"snapshot_sha256": "b" * 64},
+    )
+    run = "2026-07-26T00:00:00Z"
+
+    def provider_runner(**kwargs):
+        provider = kwargs["provider_id"]
+        if provider == "ecmwf_aifs025_official":
+            raise scheduler.ContractError(
+                "official_nwp_scheduler_aifs_adapter_unavailable"
+            )
+        if provider == "gfs_0p25_official":
+            path = kwargs["output_dir"] / "capture.json"
+            write_bounded_json_if_changed(path, {"provider": provider})
+            return {
+                "blocked_count": 0,
+                "records": [{"status": "CAPTURED", "path": str(path)}],
+            }
+        return {"blocked_count": 1, "records": []}
+
+    result = scheduler.capture_scope(
+        registry_snapshot_path=registry_path,
+        scope={
+            "event_date": "2026-07-27",
+            "settlement_timezone": "Asia/Seoul",
+            "station_ids": ["RKPK"],
+        },
+        as_of_utc="2026-07-26T02:00:00Z",
+        output_root=tmp_path / "capture",
+        activation_bindings_by_run={run: _binding(
+            ("ECMWF", "GFS"),
+            selected_provider_by_model={
+                "ECMWF": "ecmwf_aifs025_official",
+                "GFS": "gfs_0p25_official",
+            },
+            aifs_provider_oos_binding=True,
+        )},
+        run_initializations=[run],
+        provider_runner=provider_runner,
+    )
+
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    ecmwf = next(
+        row for row in result["attempts"][0]["providers"]
+        if row["model_id"] == "ECMWF"
+    )
+    assert ecmwf["selected_provider_id"] == ""
+    assert ecmwf["attempts"][-1]["provider_id"] == "ecmwf_aifs025_official"
+    assert "aifs_adapter_unavailable" in ecmwf["attempts"][-1]["reason"]
+    assert all("ecmwf_ifs025_official" not in path for path in result["capture_paths"])
+    assert all("ecmwf_aifs025_official" not in path for path in result["capture_paths"])
 
 
 def test_unselected_provider_is_not_fetched_or_substituted(

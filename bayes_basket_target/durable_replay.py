@@ -22,6 +22,11 @@ from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, canonical_json, content_sha256
 from .database import SHARED_LIVE_DB
+from .resource_bounds import (
+    MAX_TARGET_DB_BYTES,
+    MAX_TARGET_PROCESS_RSS_BYTES,
+    MAX_TARGET_WAL_BYTES,
+)
 
 
 SCHEMA = "bayes_basket_target_durable_replay_v1"
@@ -45,9 +50,9 @@ class ReplayLimits:
     max_payload_depth: int = 24
     max_payload_nodes: int = 250_000
     max_receipt_bytes: int = 16 * 1024 * 1024
-    max_sqlite_bytes: int = 256 * 1024 * 1024
-    max_wal_bytes: int = 64 * 1024 * 1024
-    max_rss_bytes: int = 512 * 1024 * 1024
+    max_sqlite_bytes: int = MAX_TARGET_DB_BYTES
+    max_wal_bytes: int = MAX_TARGET_WAL_BYTES
+    max_rss_bytes: int = MAX_TARGET_PROCESS_RSS_BYTES
     min_free_bytes: int = 512 * 1024 * 1024
 
     def __post_init__(self) -> None:

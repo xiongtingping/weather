@@ -1,0 +1,19 @@
+{
+  "schema": "official_awc_historical_metar_api_probe_receipt_v1",
+  "station_id": "KATL",
+  "event_date": "2026-06-18",
+  "request_url": "https://aviationweather.gov/api/data/metar?ids=KATL&format=json&date=20260619_0400&hours=24",
+  "transport": "direct_official_hostname_with_tls_and_bounded_connect_to",
+  "http_status": 400,
+  "response_bytes": 73,
+  "response_sha256": "72016e6e4f18b8d8afc29428ca271cc718fcf2faa99394067452de861b2a9fba",
+  "response": {
+    "status": "error",
+    "error": "Data is available for up to 30 days for date"
+  },
+  "historical_only": true,
+  "writes_target_database": false,
+  "writes_research_raw_archive": false,
+  "calls_order_gateway": false,
+  "orders_submitted": 0
+}

@@ -48,8 +48,12 @@ def test_bootstrap_materializes_no_live_before_oos_and_replays_zero_write(
     assert second["rows_written"] == 0
     assert first["maturity_bins"] == ["d1", "d2_fallback"]
     assert first["oos_gate_passed"] is False
-    assert first["forward_oos_blocks_production_no_live"] is False
-    assert first["forward_oos_blocks_live_or_parameter_promotion"] is True
+    assert first["future_data_counts_as_oos"] is False
+    assert first["future_data_blocks_production_no_live"] is False
+    assert first["future_data_blocks_live_or_parameter_promotion"] is False
+    assert first[
+        "historical_strict_oos_required_for_live_or_parameter_promotion"
+    ] is True
     assert first["live_submit_authorized"] is False
     assert first["calls_order_gateway"] is False
     with sqlite3.connect(db) as conn:
@@ -128,8 +132,12 @@ def test_global_no_live_bootstrap_resolves_new_station_without_claiming_oos(
 
     assert result["station_id"] == "*"
     assert result["oos_gate_passed"] is False
-    assert result["forward_oos_blocks_production_no_live"] is False
-    assert result["forward_oos_blocks_live_or_parameter_promotion"] is True
+    assert result["future_data_counts_as_oos"] is False
+    assert result["future_data_blocks_production_no_live"] is False
+    assert result["future_data_blocks_live_or_parameter_promotion"] is False
+    assert result[
+        "historical_strict_oos_required_for_live_or_parameter_promotion"
+    ] is True
     with sqlite3.connect(db) as conn:
         for station_id in ("EDDM", "EPWA"):
             policy = resolve_delta_v2_policy(

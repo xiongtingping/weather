@@ -1,0 +1,16 @@
+{
+  "content_sha256": "e751a0fc28bd81b6a515c71a4db15097731d3bda23ee55499f151540b5f63778",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "a81f038b61e30e383126fa3a5093f1ad4e2724a7fd34f3d89b5e96aa8ae375f3",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/New_York",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KMIA"
+}

@@ -1,0 +1,468 @@
+{
+  "schema": "open_meteo_historical_ensemble_capture_v1",
+  "captured_at_utc": "2026-08-02T12:44:54.031Z",
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-26",
+  "stations": [
+    "RKPK"
+  ],
+  "systems": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL"
+  ],
+  "missing_dates_by_station": {
+    "RKPK": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ]
+  },
+  "missing_systems_by_station": {
+    "RKPK": [
+      "DWD_ICON_GLOBAL_EPS",
+      "ECCC_GEM_GLOBAL_ENS",
+      "ECMWF_AIFS_ENS_GLOBAL"
+    ]
+  },
+  "fetch_station_count": 1,
+  "response_receipts": [
+    {
+      "station_id": "RKPK",
+      "response_sha256": "56e7923c068c638bd769e34b584f9586048c15761c3eeba90e7b02426602f5ab",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=35.179&longitude=128.938&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble&timezone=Asia%2FSeoul&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 27152,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-02T12:44:54.031Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "raw_paths": [
+    "/Users/xiong/weather/data/research/bayes_basket_target/open_meteo_historical_ensemble/raw/56e7923c068c638bd769e34b584f9586048c15761c3eeba90e7b02426602f5ab.json"
+  ],
+  "failures": [],
+  "candidate_member_row_count": 0,
+  "inserted_member_row_count": 0,
+  "commit": false,
+  "production_no_live": true,
+  "future_event_count": 0,
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "native_arrival_index_written": false,
+  "p1_authority_written": false,
+  "calls_order_gateway": false,
+  "orders_submitted": 0
+}

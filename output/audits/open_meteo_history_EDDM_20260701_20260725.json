@@ -1,0 +1,759 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/ensemble-api",
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-08-02T02:35:09.705Z",
+  "bucket_contract_sha256": "288438162b6d87d7647bf6fd780ecd3315780a506b26441b470cc6ea9253d859",
+  "bucket_intervals": {
+    "27°C or below": [
+      null,
+      27.5
+    ],
+    "28°C": [
+      27.5,
+      28.5
+    ],
+    "29°C": [
+      28.5,
+      29.5
+    ],
+    "30°C": [
+      29.5,
+      30.5
+    ],
+    "31°C": [
+      30.5,
+      31.5
+    ],
+    "32°C": [
+      31.5,
+      32.5
+    ],
+    "33°C": [
+      32.5,
+      33.5
+    ],
+    "34°C": [
+      33.5,
+      34.5
+    ],
+    "35°C": [
+      34.5,
+      35.5
+    ],
+    "36°C": [
+      35.5,
+      36.5
+    ],
+    "37°C or higher": [
+      36.5,
+      null
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0b31a6d20cea84a2566b54d83d1ddbc6921f42bb70ee9c49618827e41d192803",
+      "event_date": "2026-07-01",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "10a59964943bc7ddfc278557deeda965370377f01af6c7b6a080aa9fa64d9df9",
+      "event_date": "2026-07-02",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3ebfa488215a2c1efed1f038f9c22f549b24889d568a750b91fd704c4eff6b01",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "61a5ae71bded289064bd580535841904855967f5cc20ccf4d506e662a371b0c1",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6cb516651ee8956c0bbf4d61908716985bcd7d357687cbdeb7073d372dae394c",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "3f39f76f7cf7621e33a9bb1f96ef129bf2554064aad715ed3d9cfc9b9f71e33a",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "c59037e33dfe5b03092a5549ed0d7b0c629bf4cc16e0906743e2de9fb31b42e1",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "d29efc58d4183c9181988527c55eec908903846c0da3219d1acc7c106be8cf9f",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6c445339ae4d912c118ff3022f698afc1e3c17aee9e4bfdfdfab7174c019104e",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f3a1baa854cb04723a6b28c6a1f438844c02574fbc521598dbd962c62d1033df",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1d57501d2ec1178971209b7930bc90723178d025b3a8b9fbd6fdba1ff57087b3",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "66abb831d834d9459209dba8cee5b9707f3ed6b0c4dd948b666b612d797e4588",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "87c23b0862c40b7e1b6aca6157373782a6037a7b06df8bacaa7efe151c765bc0",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "57f4ea8e9ef2fe8cddb1b69c464a7112fd9dcb77c9359866d204d1b5db7f9606",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "d499a4541420fb0fd89fd4e3b3d43787d05dab5748f32f69283e98cdd6ffc6e6",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "4a62d21fdac31fcb1a009414c3bc8797028c32552f3803e707ae2913e375afa4",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a25ab22bf907f0b413d792c08aabddb91749fd2e074e3f36915bb2dbc4a3bc9d",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "447dbb89c5812a5839b07edefad0c5b01fdb5b55b4e2e95bdd32a59e0c42146d",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "e8dfce9b3f63ec097f19a21a909dbf4cc0884908abafa6391afc196ddc46e89d",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "ef43709bf4eb8e175c44cc352a88b8702ca1588ac464f5ef41325e244c2410e6",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "c16a6113629ff5734e19be61d925f41146964e0f8485763e82284bab205a268c",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "bee77e7fbb17f175f5e1e36f87d65976900163381d135d6690a9d362a3b50dea",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f2bf3278c6aeb9d64b45d721e99c986ab297f88d5b7ac6740ed3f5a07327ac53",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f1d387aad6f7d5f8fb659fdfea69930071097e8aa84ad57baaec74ff5341a559",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "81f5957eb7e1ec29e17e373064ee3d6eb20129221934f3e02a9cf72e707544df",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "df0e78fd022cefc93e8262091cd7c5f06da7cc57bf44db03f148478bfebc229e",
+  "event_date_count": 25,
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25"
+  ],
+  "latitude": 48.348,
+  "live_submit_authorized": false,
+  "longitude": 11.813,
+  "orders_submitted": 0,
+  "request_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=48.348&longitude=11.813&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble%2Cukmo_global_ensemble_20km&timezone=Europe%2FBerlin&start_date=2026-07-01&end_date=2026-07-25",
+  "response_sha256": "594069e2d37a1f3a31c8ca5d1a9a9b6b707419783b46df3121432fc19b5b1f4f",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "selected_system_ids": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "UKMO_GLOBAL_ENS"
+  ],
+  "settlement_timezone": "Europe/Berlin",
+  "station_id": "EDDM",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 25
+}

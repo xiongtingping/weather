@@ -17,7 +17,7 @@ fi
 install -d "$DST_DIR" "$ROOT/data" "$ROOT/data/logs"
 
 DEFAULT_PLISTS=(
-  com.weather.reported_trajectory_no.plist
+  com.weather.weather_basket_yes.plist
   com.weather.market_ws.plist
   com.weather.clob_order_service.plist
 )
@@ -126,13 +126,13 @@ for name in plist_names:
     env.setdefault("LOGNAME", user)
     env.setdefault("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
     if label in {
-        "com.weather.reported_trajectory_no",
+        "com.weather.weather_basket_yes",
         "com.weather.market_ws",
         "com.weather.clob_order_service",
     }:
         env["WEATHER_SERVICE_DOMAIN"] = "user"
         env["PM_TARGET_EXECUTION_MODE"] = "production_no_live"
-    if label == "com.weather.reported_trajectory_no":
+    if label == "com.weather.weather_basket_yes":
         env["PM_TARGET_PRODUCTION_WRITER"] = "1"
     if label == "com.weather.clob_order_service":
         env["PM_CLOB_ORDER_SERVICE_READ_ONLY"] = "1"
@@ -156,9 +156,15 @@ fi
 # at the same time. Initial migration retires the root-owned jobs first; every
 # subsequent user-domain install remains passwordless.
 if [ "$BOOTSTRAP" = "1" ]; then
+  if launchctl print "system/com.weather.reported_trajectory_no" >/dev/null 2>&1; then
+    echo "[launchagent] retired system owner still loaded: com.weather.reported_trajectory_no" >&2
+    echo "[launchagent] run the one-time user-domain migration before installing" >&2
+    rm -f "$ENTRIES_FILE"
+    exit 3
+  fi
   while IFS=$'\t' read -r label _dest; do
     case "$label" in
-      com.weather.reported_trajectory_no|com.weather.market_ws|com.weather.clob_order_service)
+      com.weather.weather_basket_yes|com.weather.market_ws|com.weather.clob_order_service)
         if launchctl print "system/${label}" >/dev/null 2>&1; then
           echo "[launchagent] system owner still loaded: ${label}" >&2
           echo "[launchagent] user-domain bootstrap refused to prevent dual-active" >&2
@@ -178,6 +184,20 @@ for name in "${LEGACY_PLISTS[@]}"; do
   rm -f "$dest"
 done
 
+# The old no-strategy LaunchAgent must never coexist with the pure-YES owner.
+# This is intentionally repeated here (not only in the migration wrapper) so
+# every normal install/restart has the same single-owner invariant.
+retired_label="com.weather.reported_trajectory_no"
+launchctl disable "gui/${UID_VALUE}/${retired_label}" >/dev/null 2>&1 || true
+launchctl bootout "gui/${UID_VALUE}/${retired_label}" >/dev/null 2>&1 || true
+rm -f "${DST_DIR}/${retired_label}.plist"
+if launchctl print "gui/${UID_VALUE}/${retired_label}" >/dev/null 2>&1; then
+  echo "[launchagent] retired user-domain owner remained loaded: ${retired_label}" >&2
+  rm -f "$ENTRIES_FILE"
+  exit 4
+fi
+
+bootstrap_failed=0
 while IFS=$'\t' read -r label dest; do
   [ -z "$label" ] && continue
   [ -z "$dest" ] && continue
@@ -185,9 +205,22 @@ while IFS=$'\t' read -r label dest; do
   if [ "$BOOTSTRAP" = "1" ]; then
     launchctl enable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
     launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
+    teardown_deadline=$((SECONDS + 10))
+    while launchctl print "gui/${UID_VALUE}/${label}" >/dev/null 2>&1; do
+      if [ "$SECONDS" -ge "$teardown_deadline" ]; then
+        echo "[launchagent] previous instance did not leave launchd: ${label}" >&2
+        bootstrap_failed=1
+        break
+      fi
+      sleep 0.25
+    done
+    if [ "$bootstrap_failed" -ne 0 ]; then
+      continue
+    fi
     if ! launchctl bootstrap "gui/${UID_VALUE}" "$dest"; then
       echo "[launchagent] bootstrap failed: ${label} (${dest})" >&2
       launchctl print "gui/${UID_VALUE}/${label}" 2>/dev/null | head -n 20 >&2 || true
+      bootstrap_failed=1
       continue
     fi
     launchctl enable "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
@@ -199,6 +232,10 @@ while IFS=$'\t' read -r label dest; do
   fi
 done < "$ENTRIES_FILE"
 rm -f "$ENTRIES_FILE"
+
+if [ "$bootstrap_failed" -ne 0 ]; then
+  exit 5
+fi
 
 echo "Installed LaunchAgents for ${USER_NAME}."
 if [ "$BOOTSTRAP" != "1" ]; then

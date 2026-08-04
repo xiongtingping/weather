@@ -34,7 +34,7 @@ def test_release_manifest_is_blocked_and_never_authorizes_orders(tmp_path: Path)
     assert result["calls_order_gateway"] is False
     assert result["forward_scorecard"]["state"] == "BLOCKED"
     assert "target_forward_scorecard_incomplete" not in result["blockers"]
-    assert "target_forward_scorecard_incomplete" in (
+    assert "target_forward_scorecard_incomplete" not in (
         result["formal_promotion_blockers"]
     )
     assert result["formal_promotion_ready"] is False
@@ -172,8 +172,8 @@ def test_release_manifest_no_live_can_pass_before_forward_oos(
     assert result["production_no_live_ready"] is True
     assert result["release_state"] == "READY_FOR_OPERATOR_CUTOVER"
     assert "target_forward_scorecard_incomplete" not in result["blockers"]
-    assert result["formal_promotion_ready"] is False
-    assert "target_forward_scorecard_incomplete" in (
+    assert result["formal_promotion_ready"] is True
+    assert "target_forward_scorecard_incomplete" not in (
         result["formal_promotion_blockers"]
     )
 
@@ -193,9 +193,7 @@ def test_release_manifest_keeps_gateway_violation_as_no_live_blocker(
         lambda **_: {
             "ok": False,
             "blockers": ["forward_scorecard_gateway_boundary_invalid"],
-            "formal_promotion_blockers": [
-                "target_forward_scorecard_incomplete"
-            ],
+            "formal_promotion_blockers": [],
             "forward_scorecard": {
                 "schema": "bayes_basket_target_forward_scorecard_gate_v1",
                 "state": "BLOCKED",

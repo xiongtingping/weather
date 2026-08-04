@@ -1,0 +1,591 @@
+{
+  "archive_count": 9,
+  "archive_metadata": [
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "1286f4b09aebaa983d5b5aea63cf4da9f3813e76e82528cf916c87b5d1d62d5b",
+      "excluded_sample_count": 5,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 24,
+      "settlement_timezone": "America/Sao_Paulo",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_SBGR_20260701_20260729.json",
+      "station_id": "SBGR",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "78bd6dd1f810b9ec9704bba0036700a6e387884d6c3433485fdf3257c6766b9b",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZBAA_20260701_20260729.json",
+      "station_id": "ZBAA",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "c38e2a2b61b4bf6bf941db3a90b922b6e842ae5fca4987703f8ec868c787085c",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZGGG_20260701_20260729.json",
+      "station_id": "ZGGG",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "7e3e64d5470997ff406dbe0c11215e28be9d08f4d4d2633c00e1a25d9431d0b2",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZGSZ_20260701_20260729.json",
+      "station_id": "ZGSZ",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "6bbd0098792b8c2959d936b2d65c5366b9a6a0e62af28c0f1c03274f167948df",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZHHH_20260701_20260729.json",
+      "station_id": "ZHHH",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "fbbf05d62faa5ea2611fa314401d23d19ed40f5bf9d90f8b743e2c291c778944",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZSPD_20260701_20260729.json",
+      "station_id": "ZSPD",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "cfed008e1dd1998a7d8652637e7bd23a84b61e1605fcd43d6e681db9b644d0dc",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZSQD_20260701_20260729.json",
+      "station_id": "ZSQD",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "51656e17c02f2e54ad61ff631d2dff5791d1546f6604affe870b4a517b2b36b8",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZUCK_20260701_20260729.json",
+      "station_id": "ZUCK",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": true,
+      "content_sha256": "0f5874e87857e4f786e7ab519e3319d415cc7dfb9f73e59bc3d376734ba8c1c2",
+      "excluded_sample_count": 0,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 29,
+      "settlement_timezone": "Asia/Shanghai",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_formal_awc_v1/AWC_TAF_ZUUU_20260701_20260729.json",
+      "station_id": "ZUUU",
+      "strict_asof_skipped_sample_count": 0,
+      "unsettled_future_blocker_count": 0
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "production_p0m_materialized": false,
+    "strict_as_of": true,
+    "writes_database": false,
+    "writes_production_db": false
+  },
+  "candidate_state": "BLOCKED",
+  "content_sha256": "3e34471b818777728685849ef5cf393d0f340e9386598daa7c462af6214c18ef",
+  "ingest_receipts": [],
+  "minimum_taf_oos_sample_n": 24,
+  "results": [
+    {
+      "exact_join": {
+        "content_sha256": "e01100154e6015e2992569612324a8c579261b8870a674be321f06c775a2472a",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "6b54c95492c38edac9fd1e535a1f1414f8372062994cfdaaad07430fef1804fa",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "sample_count": 1,
+        "samples": [
+          {
+            "calibration_scope": {
+              "lead_bucket": "d2",
+              "run_cycle": "MIXED_NATIVE_CYCLES",
+              "season_bin": "JJA",
+              "settlement_definition": "official_daily_tmax_c"
+            },
+            "event_date": "2026-07-30",
+            "native_p0": {
+              "bucket_centers_c": {
+                "21°C or below": 21.0,
+                "22°C": 22.0,
+                "23°C": 23.0,
+                "24°C": 24.0,
+                "25°C": 25.0,
+                "26°C": 26.0,
+                "27°C": 27.0,
+                "28°C": 28.0,
+                "29°C": 29.0,
+                "30°C": 30.0,
+                "31°C or higher": 31.0
+              },
+              "decision_at_utc": "2026-07-28T18:00:00Z",
+              "ensemble_system_ids": [
+                "ECCC_GEM_GLOBAL_ENS",
+                "ECMWF_IFS_ENS_OPEN_PF50",
+                "NOAA_GEFS_05"
+              ],
+              "family_weight_caps": {
+                "ECCC_GEM": 0.75,
+                "ECMWF": 0.45,
+                "NOAA_GEFS": 0.75
+              },
+              "independence_family_ids": [
+                "ECCC_GEM",
+                "ECMWF",
+                "NOAA_GEFS"
+              ],
+              "prediction_content_sha256": "ab408b986c90aedccb816ef26051c8543f2fd47b11ac040724d0799444a1987f",
+              "prediction_oos": true,
+              "probabilities": {
+                "21°C or below": 0.1987232072920121,
+                "22°C": 0.07460938336917006,
+                "23°C": 0.09622162718668381,
+                "24°C": 0.10926105141611533,
+                "25°C": 0.12834676695496117,
+                "26°C": 0.1997987175459223,
+                "27°C": 0.09835897442413578,
+                "28°C": 0.08138012193957571,
+                "29°C": 0.0,
+                "30°C": 0.01330014987142375,
+                "31°C or higher": 0.0
+              },
+              "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+              "system_family_ids": {
+                "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+                "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+                "NOAA_GEFS_05": "NOAA_GEFS"
+              },
+              "system_weights": {
+                "ECCC_GEM_GLOBAL_ENS": 0.2632799104243853,
+                "ECMWF_IFS_ENS_OPEN_PF50": 0.3605374758625791,
+                "NOAA_GEFS_05": 0.3761826137130355
+              },
+              "trained_through_event_date": "2026-07-22"
+            },
+            "settlement_timezone": "America/Sao_Paulo",
+            "settlement_window": {
+              "end_utc": "2026-07-31T03:00:00Z"
+            },
+            "station_id": "SBGR",
+            "taf": {
+              "available_at_utc": "2026-07-30T02:31:11Z",
+              "capture_content_sha256": "b5491f83177fba4d15c36327f17c2be265fbc87b4c8ab6b92672d9cb02429013",
+              "cloud_cover_fraction": 0.5454545454545454,
+              "precipitation_probability": 0.05454545454545454,
+              "reference_only": false,
+              "source_class": "official_date_addressed_historical_replay",
+              "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+              "tx_c": 22.0,
+              "wind_speed_mps": 3.226966909090909
+            },
+            "taf_lineage": {
+              "capture_content_sha256": "b5491f83177fba4d15c36327f17c2be265fbc87b4c8ab6b92672d9cb02429013",
+              "enters_hard_no": false,
+              "enters_p1": false,
+              "enters_realtime_truth": false,
+              "reference_only": false,
+              "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+            },
+            "truth": {
+              "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+              "canonical_truth_id": "truth_e58fe9972d3351e509de58471e9d64614926c488",
+              "source_lane": "AWC",
+              "tmax_c": 22.0
+            }
+          }
+        ],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Sao_Paulo",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "SBGR"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "27388de2b8d813c8adf407422bea1d568d42474d3197ad960368b9a4a465cb6c",
+        "exact_join_content_sha256": "e01100154e6015e2992569612324a8c579261b8870a674be321f06c775a2472a",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "MIXED_NATIVE_CYCLES",
+      "season_bin": "JJA",
+      "station_id": "SBGR",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "212aa29773df58d96f2622510712252955e81313d7b4fa025087145a1c5e7ea0",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "81447476312341d5e6741cb2c10f6e195cda79ca00caf210d8be2932be4cd704",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZBAA"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "2ce5e760190d0a4ebe8f0a4194200e9717774a6085ee5e4127a00974ce87762f",
+        "exact_join_content_sha256": "212aa29773df58d96f2622510712252955e81313d7b4fa025087145a1c5e7ea0",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZBAA",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "b30c0a5d99b5f972349fb22c4af474bdd39d92583b44e7f2de761183f87969f6",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "c9aa8d1706c28f5efe37474a4a28c4314d7971034d83cd470e2f209302380281",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZGGG"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "3d170c341b5dcd8a1fa035b8a788b99a07dd0da2b2b7a169bf5e4ab1b4d021bd",
+        "exact_join_content_sha256": "b30c0a5d99b5f972349fb22c4af474bdd39d92583b44e7f2de761183f87969f6",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZGGG",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "89c1536ef309e91fa6bd65a5963101c2ef5f088bb8b37fa50d7f56e909c5de4f",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "ebb30d42a8fae7eb71896a9dede950371d26b3653b0de0ae0725c4db4f611c4f",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZGSZ"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "58f6f95795dc366b9ed90c92eb83c1c9b6ef730a9bf06318daeeba25bb81b620",
+        "exact_join_content_sha256": "89c1536ef309e91fa6bd65a5963101c2ef5f088bb8b37fa50d7f56e909c5de4f",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZGSZ",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "7624a20ceba45ae4514e51f63a6516760d9d9e65a1f211ab8eb7982124b0c642",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "3b34392a28c031dccdf0548b8a09dfb774e5a3529ff8d0279dd099201d0f042c",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZHHH"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "8469c4479051693ea3c4f4529edfb8353c9539cdff84ed6dd626ca1e8375fc5f",
+        "exact_join_content_sha256": "7624a20ceba45ae4514e51f63a6516760d9d9e65a1f211ab8eb7982124b0c642",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZHHH",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "1384ad53fcdf28d86e94ddf91e9afb9135c0dc7f236c38de6faf96d991e418a9",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "23b7491a854558a0b8dda556acf5f986b39cb52e40f32933f2c28d98ffef78a8",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZSPD"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "b9b6b498cb186c9507d1e6c32ddfd5d94f4ff7fe4eb6136ef634d29767ec5769",
+        "exact_join_content_sha256": "1384ad53fcdf28d86e94ddf91e9afb9135c0dc7f236c38de6faf96d991e418a9",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZSPD",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "ba189c98b30aa7db02789ee13f7b39a13dd9e493417a34ab45f0050d12790081",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "a1b0df726c47235e9102c22c28ef9eed00f82843f3297805f5a541b6654c13aa",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZSQD"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "111f7741af01ec9c3525809680fe294cf4635323cb2f84b5d6e1a8ab750adb37",
+        "exact_join_content_sha256": "ba189c98b30aa7db02789ee13f7b39a13dd9e493417a34ab45f0050d12790081",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZSQD",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "089a7d1232f699dd17ada4dfd2ff18e869604a75fe756cca17a2496a139c9c63",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "6ffc6cfa7b374f06e53f2d75e8c278b7683e783fc0b8c059c98f4577699ce8ad",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZUCK"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "a743f97116a768aec462083cf3b5bf8383e1e3858a45860c4b65b04603fff93e",
+        "exact_join_content_sha256": "089a7d1232f699dd17ada4dfd2ff18e869604a75fe756cca17a2496a139c9c63",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZUCK",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "212904393dad1ce3e9c0c2022fa0f6e554b03af6783bf1848efca9262e7853ff",
+        "lead_bucket": "d2",
+        "nwp_crossfit_prediction_artifact_sha256": "158160e99c99d0ce521c10b7f1a3debb342dd572daa14fd3d29c501cb7d491a1",
+        "run_cycle": "18Z",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "ZUUU"
+      },
+      "lead_bucket": "d2",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "7633f47e8e40013a9e742b2c0d4c76f1f63febaf86aa54f5397c11af8658da95",
+        "exact_join_content_sha256": "212904393dad1ce3e9c0c2022fa0f6e554b03af6783bf1848efca9262e7853ff",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "18Z",
+      "season_bin": "JJA",
+      "station_id": "ZUUU",
+      "taf_oos_report": null
+    }
+  ],
+  "schema": "historical_taf_native_p0m_exact_join_manifest_v1",
+  "scope_count": 9,
+  "state": "VALIDATED_NOT_COMMITTED",
+  "station_count": 9
+}

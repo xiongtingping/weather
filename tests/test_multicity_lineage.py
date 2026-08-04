@@ -2,7 +2,7 @@ import json
 import sqlite3
 
 from amsc_taf_revision_runtime import parse_taf_revision
-from reported_trajectory_no_schema import apply_reported_trajectory_no_schema
+from weather_basket_yes_schema import apply_weather_basket_yes_schema
 from ui.server import (
     _attach_production_posterior_display_contract,
     _build_china_airport_board_payload,
@@ -25,7 +25,7 @@ def test_multicity_board_prefers_persisted_taf_and_reports_health(tmp_path):
     db = tmp_path / "archive.db"
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.execute(
         """INSERT INTO amsc_taf_snapshots(
             source_revision_id,event_date,station_id,source_lane,forecast_revision_kind,

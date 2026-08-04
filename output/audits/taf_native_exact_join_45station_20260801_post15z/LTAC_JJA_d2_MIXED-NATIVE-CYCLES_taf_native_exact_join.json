@@ -1,0 +1,14 @@
+{
+  "content_sha256": "0a315db9a869f1baad3f4cac756b42ddba6fbc574ab011a5c6ad65683c444478",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "18e208043b3938418193b25cf0cef81fdff8f4c901e163619c599ec6bd8ebd29",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Istanbul",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LTAC"
+}

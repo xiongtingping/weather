@@ -1,0 +1,30 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_calibration": false,
+    "enters_settlement_join": false,
+    "places_orders": false,
+    "reference_only": true,
+    "writes_formal_observation_evidence": false,
+    "writes_production_db": false
+  },
+  "calibration_eligible": false,
+  "evidence_sha256": "d26cb21df5bc0d37c03e49fc48cf4a7bb2c3608259b57de0cbe63979251ee0d3",
+  "formal_truth_fallback_allowed": false,
+  "formal_truth_priority": {
+    "amsc_half_hour_metar": "reference_only",
+    "amsc_hourly_metar_for_amsc_station": "primary",
+    "awc_hourly_for_amsc_station": "reference_only",
+    "awc_hourly_precedence_over_amsc_hourly": false
+  },
+  "generated_at_utc": "2026-08-03T09:23:14Z",
+  "historical_only": true,
+  "reference_observation_count": 0,
+  "reference_observations": [],
+  "schema": "bayes_basket_target_truth_reference_evidence_v1",
+  "source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "target_timezone": "America/Mexico_City"
+}

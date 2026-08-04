@@ -1,0 +1,184 @@
+{
+  "as_of_utc": "2026-08-01T02:41:50.924Z",
+  "calls_order_gateway": false,
+  "content_sha256": "a51f564b7985b7d2217b0e5f6129da53ee3c8e2fc3ac8c8204f533581b1e706c",
+  "excluded_correction_review_required_scopes": [
+    "KBKF",
+    "KHOU",
+    "KMIA",
+    "SAEZ",
+    "VILK"
+  ],
+  "live_submit_authorized": false,
+  "materialization_receipt": {
+    "additional_scope_count": 5,
+    "blockers": [],
+    "calls_order_gateway": false,
+    "cursor_wrapped": false,
+    "has_more": true,
+    "live_submit_authorized": false,
+    "max_scopes": 5,
+    "orders_submitted": 0,
+    "results": [
+      {
+        "calls_order_gateway": false,
+        "content_sha256": "7852a7353cebf9d1eac6dc268a03f587507d5c3db73e8b435fc92487f98a2906",
+        "event_date": "2026-07-30",
+        "official_tmax_c": 14.0,
+        "orders_submitted": 0,
+        "revision_no": 0,
+        "schema": "bayes_basket_target_resident_settlement_truth_v1",
+        "settlement_timezone": "Pacific/Auckland",
+        "state": "committed",
+        "station_id": "NZWN",
+        "truth_id": "truth_713fd16b5dd317668cd4d0447df5181a4065c1cd",
+        "wrote": true
+      },
+      {
+        "calls_order_gateway": false,
+        "content_sha256": "97f801d8c9c9cb73fd643a70ddf32ec77b78dda4e57f05cf3f8caa8d072c9b65",
+        "event_date": "2026-07-30",
+        "official_tmax_c": 35.0,
+        "orders_submitted": 0,
+        "revision_no": 0,
+        "schema": "bayes_basket_target_resident_settlement_truth_v1",
+        "settlement_timezone": "Asia/Tokyo",
+        "state": "committed",
+        "station_id": "RJTT",
+        "truth_id": "truth_560a5149fb401ea7c3d3c4448c97bc0e807ffe4c",
+        "wrote": true
+      },
+      {
+        "calls_order_gateway": false,
+        "content_sha256": "b43a8a9553f92d8f2f990c427fe098e7090570305b872ca206c2a85ed47787cd",
+        "event_date": "2026-07-30",
+        "official_tmax_c": 30.0,
+        "orders_submitted": 0,
+        "revision_no": 0,
+        "schema": "bayes_basket_target_resident_settlement_truth_v1",
+        "settlement_timezone": "Asia/Seoul",
+        "state": "committed",
+        "station_id": "RKSI",
+        "truth_id": "truth_8e36025ff3d20aa61cac95827bc52e5bad883afd",
+        "wrote": true
+      },
+      {
+        "calls_order_gateway": false,
+        "content_sha256": "f679986d69011435a1d5daa272fed0223d7688a7e8e01516a3a852183e18174f",
+        "event_date": "2026-07-30",
+        "official_tmax_c": 33.0,
+        "orders_submitted": 0,
+        "revision_no": 0,
+        "schema": "bayes_basket_target_resident_settlement_truth_v1",
+        "settlement_timezone": "Asia/Kuala_Lumpur",
+        "state": "committed",
+        "station_id": "WMKK",
+        "truth_id": "truth_c2931eaba9da8674c3b0a04f9cb9d5514c8c11d6",
+        "wrote": true
+      },
+      {
+        "calls_order_gateway": false,
+        "content_sha256": "3c79d7a2e4ed72014828ff170479cfd47a16b7e3a99a32352b0ec8ed452e4f80",
+        "event_date": "2026-07-30",
+        "official_tmax_c": 30.0,
+        "orders_submitted": 0,
+        "revision_no": 0,
+        "schema": "bayes_basket_target_resident_settlement_truth_v1",
+        "settlement_timezone": "Asia/Singapore",
+        "state": "committed",
+        "station_id": "WSSS",
+        "truth_id": "truth_2017b111570159c1639cc19bb8022a248e484423",
+        "wrote": true
+      }
+    ],
+    "schema": "bayes_basket_target_resident_settlement_truth_batch_v1",
+    "scope_count": 5,
+    "source_cursor_after": 0,
+    "source_cursor_before": 0,
+    "state": "complete",
+    "training_fact_scope_count": 0,
+    "written_count": 5
+  },
+  "orders_submitted": 0,
+  "schema": "awc_formal_truth_increment_receipt_v1",
+  "scope": [
+    [
+      "NZWN",
+      "2026-07-30"
+    ],
+    [
+      "RJTT",
+      "2026-07-30"
+    ],
+    [
+      "RKSI",
+      "2026-07-30"
+    ],
+    [
+      "WMKK",
+      "2026-07-30"
+    ],
+    [
+      "WSSS",
+      "2026-07-30"
+    ]
+  ],
+  "source": "archive.db canonical AWC observations only",
+  "truth_rows": [
+    {
+      "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+      "content_sha256": "7852a7353cebf9d1eac6dc268a03f587507d5c3db73e8b435fc92487f98a2906",
+      "eligible_observation_count": 24,
+      "event_date": "2026-07-30",
+      "official_tmax_c": 14.0,
+      "source_lane": "AWC",
+      "source_payload_sha256": "45b687fa2afb1671513fc90a56f0afc6083199c5e1afeec5464dd355979ad37e",
+      "station_id": "NZWN",
+      "truth_id": "truth_713fd16b5dd317668cd4d0447df5181a4065c1cd"
+    },
+    {
+      "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+      "content_sha256": "97f801d8c9c9cb73fd643a70ddf32ec77b78dda4e57f05cf3f8caa8d072c9b65",
+      "eligible_observation_count": 24,
+      "event_date": "2026-07-30",
+      "official_tmax_c": 35.0,
+      "source_lane": "AWC",
+      "source_payload_sha256": "a64cf5abcc7db2699d44d4efaa2f96cd394d98a866779acd110f4ac527ca64a1",
+      "station_id": "RJTT",
+      "truth_id": "truth_560a5149fb401ea7c3d3c4448c97bc0e807ffe4c"
+    },
+    {
+      "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+      "content_sha256": "b43a8a9553f92d8f2f990c427fe098e7090570305b872ca206c2a85ed47787cd",
+      "eligible_observation_count": 24,
+      "event_date": "2026-07-30",
+      "official_tmax_c": 30.0,
+      "source_lane": "AWC",
+      "source_payload_sha256": "f4711750a3f21102cd2cac1fd3a047ea9c703385c938e9a0836e18b26f22e0e2",
+      "station_id": "RKSI",
+      "truth_id": "truth_8e36025ff3d20aa61cac95827bc52e5bad883afd"
+    },
+    {
+      "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+      "content_sha256": "f679986d69011435a1d5daa272fed0223d7688a7e8e01516a3a852183e18174f",
+      "eligible_observation_count": 24,
+      "event_date": "2026-07-30",
+      "official_tmax_c": 33.0,
+      "source_lane": "AWC",
+      "source_payload_sha256": "5795c2c28db47e725d2128a9240853098ff42312a8d3f3af2fadac430a054e2c",
+      "station_id": "WMKK",
+      "truth_id": "truth_c2931eaba9da8674c3b0a04f9cb9d5514c8c11d6"
+    },
+    {
+      "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+      "content_sha256": "3c79d7a2e4ed72014828ff170479cfd47a16b7e3a99a32352b0ec8ed452e4f80",
+      "eligible_observation_count": 26,
+      "event_date": "2026-07-30",
+      "official_tmax_c": 30.0,
+      "source_lane": "AWC",
+      "source_payload_sha256": "1a8199632856948e95dac426e8c4546a8b9369d94f80bd98b52e2d7b743e8cf7",
+      "station_id": "WSSS",
+      "truth_id": "truth_2017b111570159c1639cc19bb8022a248e484423"
+    }
+  ]
+}

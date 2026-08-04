@@ -14,7 +14,7 @@ from scripts.build_forecast_weak_context_captures import build_context_capture_e
 from sequential_bayes_public_ssot_shadow_writer import initialize_isolated_public_ssot_shadow_schema
 from sequential_bayes_schema_contract import apply_forward_schema
 from strict_asof_forecast_capture_runtime import classify_strict_asof_forecast_capture
-from strict_asof_forecast_p1_ingress_writer import persist_tier_a_forecast_p1_proposal
+from strict_asof_forecast_p1_ingress_writer import INSERT_COLUMNS, _row_from_tier_a_proposal
 from strict_asof_forecast_source_observation_runtime import build_tier_a_forecast_source_observation_proposal
 
 
@@ -95,7 +95,13 @@ def _persist_strict_gfs(conn: sqlite3.Connection) -> None:
         station_id="ZUUU",
         raw_ref="raw://gfs",
     )
-    persist_tier_a_forecast_p1_proposal(conn, proposal)
+    row, _observation = _row_from_tier_a_proposal(proposal)
+    columns = ",".join(f'"{name}"' for name in INSERT_COLUMNS)
+    placeholders = ",".join("?" for _ in INSERT_COLUMNS)
+    conn.execute(
+        f"INSERT INTO source_observations({columns}) VALUES({placeholders})",
+        tuple(row[name] for name in INSERT_COLUMNS),
+    )
 
 
 def test_event_envelope_reads_only_p1_and_isolated_final_labels(tmp_path: Path) -> None:

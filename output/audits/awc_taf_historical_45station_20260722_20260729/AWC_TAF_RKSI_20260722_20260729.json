@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "380049432d1880307a7ef23d0f727984a1fd78e5fdf11b32714ee4650440d382",
+  "content_sha256": "cd4e538736eb9d68c7fb945f71228fc7d4b9864b3df4edd749513976ea06ae25",
   "end_date": "2026-07-29",
   "excluded_sample_count": 0,
   "excluded_samples": [],
@@ -32,12 +37,14 @@
         "taf_response_sha256": "be34a77ee1850ecb6e9ceb157cc9c2f050f4c0ddc4e6009799fde826f7988a1b",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-21T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-ad656a1db4bfd426c99d3b6f0f199734",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-22T15:00:00Z",
         "start_utc": "2026-07-21T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-21T11:05:36Z",
@@ -391,8 +398,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 27.0
-      }
+        "tmax_c": 27.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-22T16:00:00Z",
@@ -403,12 +422,14 @@
         "taf_response_sha256": "763342a6feb776db3280741a395f28acae7b27aea6badd4a328e0382bce863a2",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-22T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-15847d8848a41ca5948a8f9adf756e99",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-23T15:00:00Z",
         "start_utc": "2026-07-22T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-22T14:22:05Z",
@@ -762,8 +783,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 30.0
-      }
+        "tmax_c": 30.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T16:00:00Z",
@@ -774,12 +807,14 @@
         "taf_response_sha256": "5611c60f60eff738a63b8085d10c5e13e4679a58840d6f6e4b6ec3bd276206cd",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-23T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-de8867725a6047b239ab7ceea5c984b8",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-24T15:00:00Z",
         "start_utc": "2026-07-23T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-23T11:05:30Z",
@@ -1133,8 +1168,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 31.0
-      }
+        "tmax_c": 31.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T16:00:00Z",
@@ -1145,12 +1192,14 @@
         "taf_response_sha256": "89164c47f091e66e1b1880346c7177a4c54b0e0895d8f4e41fd35c85276d2f2a",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-24T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-3350f70dfe90f08497e302edded3fe17",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-25T15:00:00Z",
         "start_utc": "2026-07-24T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-24T11:05:39Z",
@@ -1504,8 +1553,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 31.0
-      }
+        "tmax_c": 31.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-25T16:00:00Z",
@@ -1516,12 +1577,14 @@
         "taf_response_sha256": "bd5e516a5f685a6b468755d9a78abd4687c9344afb49c7148aca0f914cdcb895",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-25T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-1f3d827a4a66009657dca4c993157f41",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-26T15:00:00Z",
         "start_utc": "2026-07-25T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-25T11:05:50Z",
@@ -1875,8 +1938,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 31.0
-      }
+        "tmax_c": 31.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T16:00:00Z",
@@ -1887,12 +1962,14 @@
         "taf_response_sha256": "1bd5cf43d244687e4476571c08a4641946fc3da5ad503ddf86cc5136640643c8",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-26T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-4af603e818b88c495982f75813d326e2",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-27T15:00:00Z",
         "start_utc": "2026-07-26T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-26T11:05:47Z",
@@ -2246,8 +2323,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 31.0
-      }
+        "tmax_c": 31.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-27T16:00:00Z",
@@ -2258,12 +2347,14 @@
         "taf_response_sha256": "867484ea19f7e68ec7fba82b78ab24b8ff87d16603037888f1ecec6e71cb12d3",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-27T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-ed19d82b5634d6a161bdb560917922d1",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-28T15:00:00Z",
         "start_utc": "2026-07-27T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-27T11:05:32Z",
@@ -2617,8 +2708,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 30.0
-      }
+        "tmax_c": 30.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-28T16:00:00Z",
@@ -2629,12 +2732,14 @@
         "taf_response_sha256": "8003a566252eecd74736a2fc0a6454a85b6e83d7bf99ae4a84aa8401779dff59",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=RKSI&format=json&time=issue&date=2026-07-28T16%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-5ffc1fc7925fca5ffc4b9da66a815c66",
       "settlement_timezone": "Asia/Seoul",
       "settlement_window": {
         "end_utc": "2026-07-29T15:00:00Z",
         "start_utc": "2026-07-28T15:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "RKSI",
       "taf": {
         "available_time_utc": "2026-07-28T11:05:52Z",
@@ -2988,13 +3093,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 30.0
-      }
+        "tmax_c": 30.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "Asia/Seoul",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "RKSI"
+  "station_id": "RKSI",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

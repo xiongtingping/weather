@@ -23,6 +23,32 @@ CANONICAL_STATIONS = (
 )
 
 
+def test_read_only_connection_is_wal_safe_and_query_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resident WAL view must be readable without allowing writes.
+
+    ``immutable=1`` is unsafe here because it ignores the WAL sidecar.  Keep
+    an uncheckpointed WAL row visible and verify the runner sees it through
+    ``mode=ro`` while SQLite still rejects mutations.
+    """
+    target_db = tmp_path / "target.sqlite"
+    writer = sqlite3.connect(target_db)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("CREATE TABLE marker(value TEXT NOT NULL)")
+        writer.execute("INSERT INTO marker(value) VALUES ('wal-visible')")
+        writer.commit()
+        monkeypatch.setattr(runner, "TARGET_DB", target_db)
+        with runner._read_only_connection() as conn:
+            assert conn.execute("SELECT value FROM marker").fetchone()[0] == "wal-visible"
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                conn.execute("CREATE TABLE forbidden(value TEXT)")
+    finally:
+        writer.close()
+
+
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True), encoding="utf-8")
 

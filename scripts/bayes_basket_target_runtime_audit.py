@@ -24,7 +24,7 @@ from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
 
 SCHEMA = "bayes_basket_target_runtime_uniqueness_audit_v1"
 WORKER = "bayes_basket_target/production_worker.py"
-DAEMON = "scripts/reported_trajectory_no_daemon.py"
+DAEMON = "scripts/weather_basket_yes_daemon.py"
 FORBIDDEN_MODULE_ROOTS = frozenset({"adaptive_basket_shadow", "websocket", "websockets", "requests", "httpx", "aiohttp"})
 FORBIDDEN_CALLS = frozenset({"submit_order", "create_order", "post_order", "send_order", "place_order"})
 
@@ -144,4 +144,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

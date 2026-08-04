@@ -1,0 +1,25 @@
+{
+  "archive_count": 1,
+  "calls_order_gateway": false,
+  "correction_count": 1,
+  "orders_submitted": 0,
+  "receipts": [
+    {
+      "authority_scope": "CALIBRATION_TRAIN_ONLY",
+      "calls_order_gateway": false,
+      "correction_count": 1,
+      "live_submit_authorized": false,
+      "orders_submitted": 0,
+      "replay_count": 0,
+      "schema": "historical_taf_correction_quarantine_ingress_v1",
+      "source_artifact_sha256": "d80ba77feaeae4aaeb43b7e5aa2fc1dbe57e34c0598108eae7693293ba844121",
+      "source_lane": "AWC",
+      "station_id": "RKSI",
+      "wrote_count": 1
+    }
+  ],
+  "replay_count": 0,
+  "schema": "historical_taf_correction_quarantine_run_v1",
+  "state": "COMMITTED",
+  "wrote_count": 1
+}

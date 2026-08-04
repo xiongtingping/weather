@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build bounded strict-forward native-ensemble OOS readiness reports."""
+"""Build bounded historical native-ensemble OOS readiness reports.
+
+The filename is retained for artifact compatibility.  The manifest itself is
+historical-only: forward/未闭日 packets are observational candidates and can
+never be counted as train/holdout OOS or used for activation.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
     DEFAULT_MIN_HOLDOUT_DAYS,
     DEFAULT_MIN_TRAIN_DAYS,
+    OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS,
     build_native_ensemble_oos,
     persist_native_ensemble_oos,
 )
@@ -46,6 +52,24 @@ def main() -> int:
         "--min-holdout-days",
         type=int,
         default=DEFAULT_MIN_HOLDOUT_DAYS,
+    )
+    parser.add_argument(
+        "--max-event-date",
+        help=(
+            "Optional closed historical cutoff (YYYY-MM-DD).  Only rows on "
+            "or before this date are evaluated; no future row can enter OOS."
+        ),
+    )
+    parser.add_argument(
+        "--system-mask",
+        action="append",
+        default=[],
+        help=(
+            "Optional exact ensemble-system mask.  This is required for a "
+            "republisher bootstrap so the 2-train/1-holdout window cannot "
+            "be applied to unrelated official archives.  Repeat once per "
+            "system id; omitted means the registered official masks."
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -86,23 +110,115 @@ def main() -> int:
             raise RuntimeError(
                 "native_ensemble_oos_station_scope_invalid"
             )
-        reports = [
-            build_native_ensemble_oos(
-                conn,
-                station_id=station,
-                as_of_utc=as_of_utc,
-                min_train_days=args.min_train_days,
-                min_holdout_days=args.min_holdout_days,
+        registered_system_ids = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT ensemble_system_id "
+                "FROM calibration_native_ensemble_system"
             )
-            for station in stations
-        ]
+        }
+        requested_system_mask = tuple(sorted({
+            str(value).strip()
+            for value in args.system_mask
+            if str(value).strip()
+        }))
+        if args.system_mask and not requested_system_mask:
+            raise RuntimeError("native_ensemble_oos_system_mask_empty")
+        if requested_system_mask:
+            unknown = sorted(
+                set(requested_system_mask) - registered_system_ids
+            )
+            if unknown:
+                raise RuntimeError(
+                    "native_ensemble_oos_system_mask_unknown:"
+                    + ",".join(unknown)
+                )
+            masks = [requested_system_mask]
+        # Keep both pre-registered masks when all anchor systems are present:
+        # the ECMWF+GEFS pair remains a valid strict-OOS fallback, while the
+        # all-ready mask can add ECCC GEPS (or a future official family).  The
+        # two masks are availability-defined before looking at holdout scores;
+        # persistence can therefore activate whichever mask independently
+        # passes its own strict OOS gate without post-hoc model selection.
+        if not requested_system_mask:
+            masks = [None]
+            if OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS.issubset(
+                registered_system_ids
+            ):
+                masks = [
+                    tuple(sorted(OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS)),
+                    None,
+                ]
+        reports = []
+        for station in stations:
+            station_reports = [
+                build_native_ensemble_oos(
+                    conn,
+                    station_id=station,
+                    as_of_utc=as_of_utc,
+                    min_train_days=args.min_train_days,
+                    min_holdout_days=args.min_holdout_days,
+                    system_mask=mask,
+                    max_event_date=args.max_event_date,
+                )
+                for mask in masks
+            ]
+            # Pair and all-ready are identical when no third system is ready;
+            # retain one content-identical candidate rather than writing a
+            # duplicate activation receipt.
+            merged = dict(station_reports[0])
+            candidates = []
+            seen = set()
+            for report in station_reports:
+                for candidate in report["cross_candidates"]:
+                    key = content_sha256({
+                        "station_id": candidate["station_id"],
+                        "season_bin": candidate["season_bin"],
+                        "lead_bucket": candidate["lead_bucket"],
+                        "run_cycle_by_system": candidate[
+                            "run_cycle_by_system"
+                        ],
+                        "selected_system_ids": candidate[
+                            "selected_system_ids"
+                        ],
+                        "holdout_start_date": candidate[
+                            "holdout_start_date"
+                        ],
+                        "holdout_end_date": candidate[
+                            "holdout_end_date"
+                        ],
+                    })
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append(candidate)
+            merged["cross_candidates"] = candidates
+            merged["content_sha256"] = content_sha256({
+                key: value for key, value in merged.items()
+                if key != "content_sha256"
+            })
+            reports.append(merged)
     identity = {
         "schema": "native_ensemble_forward_oos_manifest_v1",
+        # The filename/schema are retained for immutable compatibility.  The
+        # actual data contract is historical-only: forward observations are
+        # registered separately as candidates and can never be promoted into
+        # this manifest or any OOS gate.
+        "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+        "future_data_policy": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+        "future_event_count": 0,
+        "historical_oos_contract_required_for_republisher": True,
         "database": str(db),
         "as_of_utc": as_of_utc,
         "station_count": len(stations),
         "min_train_days": args.min_train_days,
         "min_holdout_days": args.min_holdout_days,
+        "system_mask": (
+            list(requested_system_mask)
+            if requested_system_mask
+            else None
+        ),
+        "historical_event_date_cutoff": args.max_event_date,
         "reports": reports,
         "production_no_live": True,
         "calls_order_gateway": False,

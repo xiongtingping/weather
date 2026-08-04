@@ -9,6 +9,7 @@ an earlier P1 or revive a bucket eliminated by the observed running high.
 from __future__ import annotations
 
 import math
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
@@ -23,6 +24,13 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import CanonicalObservationEvent
+from .metar_path_state import (
+    HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
+    PATH_MODEL_COEFFICIENT_KEYS,
+    PATH_STATE_SCHEMA,
+    compile_conditional_metar_path_state,
+    condition_remaining_warming_distribution,
+)
 
 
 METAR_TRAJECTORY_ARTIFACT_SCHEMA = (
@@ -34,6 +42,12 @@ METAR_TRAJECTORY_OBSERVATION_SCHEMA = (
 )
 METAR_TRAJECTORY_METHOD_VERSION = (
     "canonical_full_root_recompute_remaining_warming_v1"
+)
+METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION = (
+    "canonical_conditional_remaining_path_v2"
+)
+METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION = (
+    "canonical_conditional_hourly_future_path_v3"
 )
 METAR_TRAJECTORY_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
 MAX_METAR_TRAJECTORY_OBSERVATIONS = 512
@@ -201,6 +215,9 @@ class MetarTrajectoryLikelihoodArtifact:
     max_missing_intervals: int
     missing_interval_strength_factor: float
     long_interval_strength_factor: float
+    path_feature_schema: str
+    path_model_coefficients: Mapping[str, float]
+    path_model_sigma_c: float | None
     remaining_warming_distribution: Mapping[float, float]
     hard_exclusion_baseline_distribution: Mapping[float, float]
     base_strength: float
@@ -231,7 +248,9 @@ class MetarTrajectoryLikelihoodArtifact:
             "feature_definitions", "missing_observation_policy",
             "expected_interval_minutes", "long_interval_minutes",
             "max_missing_intervals", "missing_interval_strength_factor",
-            "long_interval_strength_factor", "remaining_warming_distribution",
+            "long_interval_strength_factor", "path_feature_schema",
+            "path_model_coefficients", "path_model_sigma_c",
+            "remaining_warming_distribution",
             "hard_exclusion_baseline_distribution", "base_strength",
             "maturity_strength", "likelihood_ratio_floor",
             "likelihood_ratio_ceiling", "sample_n", "effective_sample_n",
@@ -284,6 +303,47 @@ class MetarTrajectoryLikelihoodArtifact:
             raise ContractError("metar_trajectory_max_missing_invalid")
         if sample_n < 1:
             raise ContractError("metar_trajectory_sample_n_invalid")
+        method_version = _text(
+            "metar_trajectory_method_version", raw.get("method_version")
+        )
+        coefficients_raw = raw.get("path_model_coefficients") or {}
+        if not isinstance(coefficients_raw, Mapping):
+            raise ContractError("metar_trajectory_path_coefficients_invalid")
+        path_coefficients = MappingProxyType({
+            str(key): _finite(
+                f"metar_trajectory_path_coefficient_{key}", value
+            )
+            for key, value in sorted(coefficients_raw.items())
+        })
+        path_feature_schema = str(raw.get("path_feature_schema") or "").strip()
+        path_sigma_raw = raw.get("path_model_sigma_c")
+        path_sigma = (
+            None
+            if path_sigma_raw in (None, "")
+            else _positive("metar_trajectory_path_model_sigma_c", path_sigma_raw)
+        )
+        if method_version == METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION:
+            if (
+                path_feature_schema != PATH_STATE_SCHEMA
+                or set(path_coefficients) != PATH_MODEL_COEFFICIENT_KEYS
+                or path_sigma is None
+            ):
+                raise ContractError("metar_trajectory_conditional_path_model_incomplete")
+        elif method_version == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION:
+            if (
+                path_feature_schema != PATH_STATE_SCHEMA
+                or set(path_coefficients)
+                != HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS
+                or path_sigma is None
+            ):
+                raise ContractError(
+                    "metar_trajectory_conditional_hourly_curve_model_incomplete"
+                )
+        elif method_version == METAR_TRAJECTORY_METHOD_VERSION:
+            if path_feature_schema or path_coefficients or path_sigma is not None:
+                raise ContractError("metar_trajectory_v1_path_model_forbidden")
+        else:
+            raise ContractError("metar_trajectory_method_version_invalid")
         metrics_raw = raw.get("oos_metrics")
         if not isinstance(metrics_raw, Mapping):
             raise ContractError("metar_trajectory_oos_metrics_missing")
@@ -366,6 +426,9 @@ class MetarTrajectoryLikelihoodArtifact:
                 0.0,
                 1.0,
             ),
+            path_feature_schema=path_feature_schema,
+            path_model_coefficients=path_coefficients,
+            path_model_sigma_c=path_sigma,
             remaining_warming_distribution=_probability_mapping(
                 "metar_trajectory_remaining_warming_distribution",
                 raw.get("remaining_warming_distribution"),
@@ -407,15 +470,11 @@ class MetarTrajectoryLikelihoodArtifact:
                 "metar_trajectory_authority_scope", raw.get("authority_scope")
             ).upper(),
             activated=raw.get("activated") is True,
-            method_version=_text(
-                "metar_trajectory_method_version", raw.get("method_version")
-            ),
+            method_version=method_version,
             content_sha256=_sha(
                 "metar_trajectory_content_sha256", raw.get("content_sha256")
             ),
         )
-        if value.method_version != METAR_TRAJECTORY_METHOD_VERSION:
-            raise ContractError("metar_trajectory_method_version_invalid")
         if value.authority_scope != METAR_TRAJECTORY_AUTHORITY_SCOPE:
             raise ContractError("metar_trajectory_authority_scope_invalid")
         identity = _artifact_hash_identity(
@@ -449,6 +508,9 @@ class MetarTrajectoryLikelihoodArtifact:
                 self.missing_interval_strength_factor
             ),
             "long_interval_strength_factor": self.long_interval_strength_factor,
+            "path_feature_schema": self.path_feature_schema,
+            "path_model_coefficients": dict(self.path_model_coefficients),
+            "path_model_sigma_c": self.path_model_sigma_c,
             "remaining_warming_distribution": _probability_to_dict(
                 self.remaining_warming_distribution
             ),
@@ -538,6 +600,23 @@ def build_metar_trajectory_likelihood_artifact(
             "metar_trajectory_long_interval_strength_factor",
             raw.get("long_interval_strength_factor"),
         ),
+        "path_feature_schema": str(raw.get("path_feature_schema") or "").strip(),
+        "path_model_coefficients": {
+            str(key): _finite(
+                f"metar_trajectory_path_coefficient_{key}", value
+            )
+            for key, value in sorted(
+                dict(raw.get("path_model_coefficients") or {}).items()
+            )
+        },
+        "path_model_sigma_c": (
+            None
+            if raw.get("path_model_sigma_c") in (None, "")
+            else _finite(
+                "metar_trajectory_path_model_sigma_c",
+                raw.get("path_model_sigma_c"),
+            )
+        ),
         "remaining_warming_distribution": _probability_to_dict(
             _probability_mapping(
                 "metar_trajectory_remaining_warming_distribution",
@@ -620,6 +699,7 @@ class MetarTrajectoryObservation:
     event: CanonicalObservationEvent
     canonical_committed_at_utc: str
     temperature_c: float
+    raw_text: str | None = None
 
     @classmethod
     def from_mapping(
@@ -630,6 +710,7 @@ class MetarTrajectoryObservation:
             "event",
             "canonical_committed_at_utc",
             "temperature_c",
+            "raw_text",
         }
         _strict_fields(raw, allowed=allowed, contract="metar_trajectory_observation")
         if raw.get("schema") not in {None, METAR_TRAJECTORY_OBSERVATION_SCHEMA}:
@@ -652,6 +733,9 @@ class MetarTrajectoryObservation:
             temperature_c=_finite(
                 "metar_trajectory_temperature_c", raw.get("temperature_c")
             ),
+            raw_text=(
+                str(raw.get("raw_text") or "").strip() or None
+            ),
         )
 
     @property
@@ -666,6 +750,7 @@ class MetarTrajectoryObservation:
                 self.canonical_committed_at_utc
             ),
             "temperature_c": self.temperature_c,
+            "raw_text": self.raw_text,
         }
 
 
@@ -794,6 +879,7 @@ class MetarTrajectoryUpdateProof:
     direction_skew: float
     direction: str
     positive_core_buckets: tuple[str, ...]
+    conditional_path_state_sha256: str | None
     content_sha256: str
 
     @classmethod
@@ -814,6 +900,7 @@ class MetarTrajectoryUpdateProof:
             "degradation_reasons", "posterior_probabilities",
             "center_bucket", "direction_skew", "direction",
             "positive_core_buckets", "content_sha256",
+            "conditional_path_state_sha256",
         }
         _strict_fields(raw, allowed=allowed, contract="metar_trajectory_proof")
         if raw.get("schema") not in {None, METAR_TRAJECTORY_PROOF_SCHEMA}:
@@ -981,6 +1068,14 @@ class MetarTrajectoryUpdateProof:
                     limit=MAX_METAR_TRAJECTORY_BUCKETS,
                 )
             ),
+            conditional_path_state_sha256=(
+                None
+                if raw.get("conditional_path_state_sha256") in (None, "")
+                else _sha(
+                    "metar_trajectory_conditional_path_state_sha256",
+                    raw.get("conditional_path_state_sha256"),
+                )
+            ),
             content_sha256=_sha(
                 "metar_trajectory_proof_content_sha256",
                 raw.get("content_sha256"),
@@ -1052,6 +1147,9 @@ class MetarTrajectoryUpdateProof:
             "direction_skew": self.direction_skew,
             "direction": self.direction,
             "positive_core_buckets": list(self.positive_core_buckets),
+            "conditional_path_state_sha256": (
+                self.conditional_path_state_sha256
+            ),
         }
         if include_content_sha256:
             result["content_sha256"] = self.content_sha256
@@ -1200,6 +1298,122 @@ def compile_metar_trajectory_update_proof(
     ):
         raise ContractError("metar_trajectory_bucket_geometry_invalid")
     running_high = max(item.temperature_c for item in ordered)
+    conditional_path_state = None
+    governed_remaining_distribution = governed.remaining_warming_distribution
+    if (
+        governed.method_version in {
+            METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+            METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+        }
+    ):
+        future_curve = None
+        if (
+            governed.method_version
+            == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+        ):
+            future_curve_raw = root.lineage.get(
+                "conditional_future_temperature_curve_json"
+            )
+            if not future_curve_raw:
+                raise ContractError(
+                    "metar_trajectory_root_future_curve_missing"
+                )
+            try:
+                future_curve = json.loads(str(future_curve_raw))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ContractError(
+                    "metar_trajectory_root_future_curve_invalid"
+                ) from exc
+            declared_curve_sha = str(
+                root.lineage.get(
+                    "conditional_future_temperature_curve_sha256"
+                )
+                or ""
+            ).strip().lower()
+            if (
+                len(declared_curve_sha) != 64
+                or any(
+                    char not in "0123456789abcdef"
+                    for char in declared_curve_sha
+                )
+                or not isinstance(future_curve, Mapping)
+                or str(future_curve.get("content_sha256") or "").lower()
+                != declared_curve_sha
+            ):
+                raise ContractError(
+                    "metar_trajectory_root_future_curve_sha256_mismatch"
+                )
+            curve_root_stage = str(
+                root.lineage.get(
+                    "conditional_future_temperature_curve_root_stage"
+                )
+                or root.stage
+            )
+            curve_root_checkpoint_id = str(
+                root.lineage.get(
+                    "conditional_future_temperature_curve_root_checkpoint_id"
+                )
+                or root.checkpoint_id
+            )
+            curve_root_probability_sha256 = str(
+                root.lineage.get(
+                    "conditional_future_temperature_curve_root_probability_sha256"
+                )
+                or root.posterior_sha256
+            )
+            direct_binding = (
+                curve_root_stage == root.stage
+                and curve_root_checkpoint_id == root.checkpoint_id
+                and curve_root_probability_sha256 == root.posterior_sha256
+            )
+            p0_ancestor_binding = (
+                root.stage == "P0-M"
+                and curve_root_stage == "P0"
+                and curve_root_checkpoint_id
+                == str(root.lineage.get("p0_root_checkpoint_id") or "")
+                and curve_root_probability_sha256
+                == str(root.lineage.get("p0_root_posterior_sha256") or "")
+            )
+            if not direct_binding and not p0_ancestor_binding:
+                raise ContractError(
+                    "metar_trajectory_root_future_curve_binding_invalid"
+                )
+        conditional_path_state = compile_conditional_metar_path_state(
+            [
+                {
+                    "observation_id": item.event.observation_id,
+                    "observed_at_utc": item.event.observed_at_utc,
+                    "temperature_c": item.temperature_c,
+                    "raw_text": item.raw_text,
+                }
+                for item in ordered
+            ],
+            as_of_utc=as_of,
+            settlement_timezone=root.settlement_timezone,
+            root_probabilities=root.probabilities,
+            bucket_centers_c=centers,
+            future_curve=future_curve,
+            root_checkpoint_id=(
+                curve_root_checkpoint_id
+                if future_curve is not None
+                else root.checkpoint_id
+            ),
+            root_probability_sha256=(
+                curve_root_probability_sha256
+                if future_curve is not None
+                else root.posterior_sha256
+            ),
+            station_id=root.station_id,
+            event_date=root.event_date,
+        )
+        governed_remaining_distribution = (
+            condition_remaining_warming_distribution(
+                governed.remaining_warming_distribution,
+                conditional_path_state,
+                coefficients=governed.path_model_coefficients,
+                sigma_c=float(governed.path_model_sigma_c),
+            )
+        )
     excluded = tuple(
         bucket for bucket in ordered_buckets
         if upper_bounds[bucket] < running_high - _EPS
@@ -1234,7 +1448,7 @@ def compile_metar_trajectory_update_proof(
         for bucket in ordered_buckets:
             increment = max(0.0, centers[bucket] - running_high)
             numerator = _nearest_distribution_probability(
-                governed.remaining_warming_distribution, increment
+                governed_remaining_distribution, increment
             )
             denominator = _nearest_distribution_probability(
                 governed.hard_exclusion_baseline_distribution, increment
@@ -1321,6 +1535,11 @@ def compile_metar_trajectory_update_proof(
         "positive_core_buckets": [
             bucket for bucket in ordered_buckets if posterior[bucket] > 0.0
         ],
+        "conditional_path_state_sha256": (
+            None
+            if conditional_path_state is None
+            else conditional_path_state.content_sha256
+        ),
     }
     digest = content_sha256(body)
     proof_body = {"proof_id": "metar-proof-" + digest[:32], **body}
@@ -1365,6 +1584,8 @@ def validate_metar_trajectory_update_proof(
 __all__ = [
     "METAR_TRAJECTORY_ARTIFACT_SCHEMA",
     "METAR_TRAJECTORY_AUTHORITY_SCOPE",
+    "METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION",
+    "METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION",
     "METAR_TRAJECTORY_METHOD_VERSION",
     "METAR_TRAJECTORY_OBSERVATION_SCHEMA",
     "METAR_TRAJECTORY_PROOF_SCHEMA",

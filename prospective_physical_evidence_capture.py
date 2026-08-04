@@ -36,9 +36,6 @@ from scripts.fetch_zuuu_metar_taf import (
     token_candidates,
     utc_now_iso,
 )
-from scripts.materialize_official_nwp_daily_peak_p1_ingress import (
-    materialize_official_nwp_daily_peak_p1,
-)
 from weather_fact_snapshot_writer import persist_source_observations_for_payload
 
 
@@ -80,13 +77,6 @@ def _capture_channel_summary(value: Mapping[str, Any]) -> dict[str, Any]:
         )
         if key in value
     }
-    materialization = _mapping(value.get("p1_materialization"))
-    if materialization:
-        summary["p1_materialization"] = {
-            key: materialization.get(key)
-            for key in ("ok", "state")
-            if key in materialization
-        }
     return summary
 
 
@@ -380,20 +370,14 @@ def _capture_official_nwp_tier_a_locked(
     }
     capture["next_provider_index"] = next_provider_index
     _atomic_json(status_path, capture)
-    materialization = materialize_official_nwp_daily_peak_p1(
-        db=db_path,
-        curve_source_root=curve_source_root,
-        station_id="ZUUU",
-        apply=True,
-    )
     provider_successes = sum(
         row.get("ok") is True for row in capture.get("provider_results") or []
     )
     return {
         "schema": SCHEMA_VERSION,
-        "ok": provider_successes > 0 and materialization.get("ok") is True,
-        "state": "official_nwp_tier_a_captured"
-        if provider_successes > 0 and materialization.get("ok") is True
+        "ok": provider_successes > 0,
+        "state": "official_nwp_curve_captured_for_p0"
+        if provider_successes > 0
         else "official_nwp_partial_or_blocked",
         "target_event_date": capture.get("target_event_date"),
         "provider_success_count": provider_successes,
@@ -401,7 +385,10 @@ def _capture_official_nwp_tier_a_locked(
         "selected_providers": selected_providers,
         "next_provider_index": next_provider_index,
         "capture": capture,
-        "p1_materialization": materialization,
+        "p1_materialization": {
+            "ok": False,
+            "state": "RETIRED_FORECAST_CANNOT_MATERIALIZE_P1",
+        },
         "writes_posterior": False,
         "places_orders": False,
     }

@@ -1,0 +1,39 @@
+{
+  "content_sha256": "18c92f135ca45615a7dca09229915e3cc045a3caee3db2ee2f4357ba5c454a84",
+  "excluded_correction_sample_count": 1,
+  "excluded_correction_samples": [
+    {
+      "corrections": [
+        {
+          "content_sha256": "977162bcbb299baf62cb9f901bceed5b49038dd1d14d291a7103660954c7dd0b",
+          "provider_available_at_utc": "2026-07-30T17:27:04Z",
+          "revision_id": "taf-revision-da97b96ac2ba52cfb607132dabbb5952",
+          "revision_kind": "COR",
+          "revision_sequence": 1
+        }
+      ],
+      "event_date": "2026-07-31",
+      "reason": "forward_taf_correction_requires_manual_review",
+      "station_id": "EDDM"
+    }
+  ],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "95b1a28cd87fd6162218a1db3ce5fe10d6139ad202f1bafab683f254b7da0f26",
+  "observational_forward_event_count": 5,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03",
+    "2026-08-04"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Berlin",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "EDDM"
+}

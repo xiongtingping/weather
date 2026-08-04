@@ -34,8 +34,10 @@ def test_cutover_keeps_no_live_and_oos_boundaries_explicit() -> None:
     assert "NO_LIVE_ACTIVATED" in text
     assert "oos_gate_passed=0" in text
     assert '"d2_fallback", "NO_LIVE_ACTIVATED", 0' in text
-    assert "forward_oos_blocks_production_no_live=false" in text
-    assert "forward_oos_blocks_live_or_parameter_promotion=true" in text
+    assert "future_data_counts_as_oos=false" in text
+    assert "future_data_blocks_production_no_live=false" in text
+    assert "future_data_blocks_live_or_parameter_promotion=false" in text
+    assert "historical_strict_oos_required_for_live_or_parameter_promotion=true" in text
     assert "economic_policy_schema" in text
     assert "economic_policy_artifact_sha256" in text
     assert "delta_v2_cutover_post_fill_v2_columns_missing" in text
@@ -59,6 +61,8 @@ def test_cutover_preserves_other_service_pids_and_writer_wiring() -> None:
     assert "delta_v2_cutover_error_path_market_pid_changed" in text
     assert "delta_v2_cutover_error_path_order_pid_changed" in text
     assert "delta_v2_cutover_current_maturity_not_covered" in text
+    assert "weather_basket_yes_pid=$target_pid_before->$target_pid_after" in text
+    assert "reported_trajectory_no_pid=" not in text
 
 
 def test_cutover_uses_v2_manifest_without_subminimum_clip() -> None:

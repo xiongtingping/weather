@@ -31,9 +31,13 @@ from bayes_basket_target.probability_bridge import (
 )
 from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
-    METAR_TRAJECTORY_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     build_metar_trajectory_likelihood_artifact,
 )
+from bayes_basket_target.future_temperature_curve import (
+    build_root_future_temperature_curve,
+)
+from bayes_basket_target.metar_path_state import PATH_STATE_SCHEMA
 from bayes_basket_target.native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
@@ -51,28 +55,112 @@ from bayes_basket_target.production_io import (
     load_materialized_probability_envelopes,
 )
 from bayes_basket_target.runtime_config import load_target_no_live_runtime_config
+from bayes_basket_target.market_registry import (
+    apply_target_market_registry_schema,
+)
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from bayes_basket_target.stages import select_current_stage
 from bayes_basket_target.taf_revision import (
     TAF_NWP_CROSSFIT_ARTIFACT_KIND,
     TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
 )
+from bayes_basket_target.taf_artifact_registry import (
+    build_taf_artifact_registry,
+)
 from scripts.initialize_bayes_basket_target_ssot import initialize
+
+
+def _seed_target_registry_source_lane(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    source_lane: str,
+) -> None:
+    """Create the smallest immutable target-registry authority fixture."""
+
+    apply_target_market_registry_schema(conn)
+    snapshot_sha = content_sha256(
+        {
+            "fixture": "target-registry-source-lane",
+            "station_id": station_id,
+            "event_date": event_date,
+            "source_lane": source_lane,
+        }
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO basket_target_market_registry_snapshot("
+        "snapshot_sha256,source_schema,source_scope,exported_at_utc,"
+        "source_database_path,row_count,ingested_at_utc,content_sha256"
+        ") VALUES(?,?,?,?,?,?,?,?)",
+        (
+            snapshot_sha,
+            "reported_trajectory_market_registry_v1",
+            "shared_live_registry_export_only",
+            "2026-07-26T12:00:00Z",
+            "/test/shared-live.db",
+            1,
+            "2026-07-26T12:00:00Z",
+            content_sha256({"snapshot_sha": snapshot_sha}),
+        ),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO basket_target_market_registry("
+        "snapshot_sha256,slug,event_date,outcome,city_slug,station_id,"
+        "settlement_timezone,settlement_unit,source_lane,source_eligible,"
+        "source_block_reason,resolution_url,rules_sha256,yes_token,no_token,"
+        "market_active,market_accepting_orders,registry_json,refreshed_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            snapshot_sha,
+            f"fixture-{station_id.lower()}-{event_date}",
+            event_date,
+            "fixture-outcome",
+            "fixture-city",
+            station_id,
+            settlement_timezone,
+            "C",
+            source_lane,
+            1,
+            "",
+            "",
+            "a" * 64,
+            "fixture-yes",
+            "fixture-no",
+            1,
+            1,
+            json.dumps({"market_id": "fixture-market"}),
+            "2026-07-26T12:00:00Z",
+        ),
+    )
 
 
 def _compiled_native_p0_source_packet(
     provider: str,
     *,
+    aggregator_fallback_p0_eligible: bool = False,
     packet_content_sha256: str | None = None,
 ) -> dict[str, object]:
+    lineage = {
+        "native_transport_provider": provider,
+    }
+    if provider == "OPEN_METEO":
+        lineage["aggregator_fallback_p0_eligible"] = (
+            "true" if aggregator_fallback_p0_eligible else "false"
+        )
+        lineage["republisher_fallback_p0_eligible"] = (
+            "true" if aggregator_fallback_p0_eligible else "false"
+        )
+        lineage["transport_lineage_class"] = "aggregator_republisher"
+        lineage["native_arrival_index_eligible"] = "false"
+        lineage["native_formal_p0_eligible"] = "false"
     packet = {
         "station_id": "RKPK",
         "event_date": "2026-08-01",
         "probability_pathway": P0_PROBABILITY_PATHWAY,
         "native_probability_envelope": {
-            "lineage": {
-                "native_transport_provider": provider,
-            },
+            "lineage": lineage,
         },
     }
     return {
@@ -85,6 +173,39 @@ def _compiled_native_p0_source_packet(
             else content_sha256(packet)
         ),
     }
+
+
+def test_current_stage_routes_p1_to_final_atomic_candidate_and_pre_p1_to_stage_zero() -> None:
+    worker = object.__new__(TargetProductionWorker)
+    calls: list[str] = []
+
+    def stage_zero(*_args, **_kwargs):
+        calls.append("stage_zero")
+        return {"state": "stage_zero"}
+
+    def final_candidate(*_args, **_kwargs):
+        calls.append("final_candidate")
+        return {"state": "final_candidate"}
+
+    worker._commit_stage_zero_execution_candidate = stage_zero
+    worker._commit_candidate = final_candidate
+
+    p0_result = worker._commit_current_stage_no_execution_candidate(
+        {"probability_envelope": {"stage": "P0"}},
+        station_id="RKPK",
+        event_date="2026-08-01",
+        created_at_utc="2026-07-31T18:00:00Z",
+    )
+    p1_result = worker._commit_current_stage_no_execution_candidate(
+        {"probability_envelope": {"stage": "P1"}},
+        station_id="RKPK",
+        event_date="2026-07-31",
+        created_at_utc="2026-07-31T18:00:00Z",
+    )
+
+    assert p0_result["state"] == "stage_zero"
+    assert p1_result["state"] == "final_candidate"
+    assert calls == ["stage_zero", "final_candidate"]
 
 
 def _selected_native_p0_provider(path: Path) -> str:
@@ -103,7 +224,10 @@ def test_native_p0_inbox_mixed_official_beats_aggregator_and_keeps_p0_fingerprin
     _upsert_native_p0_inbox(
         inbox_path,
         compiled_packets=[
-            _compiled_native_p0_source_packet("OPEN_METEO"),
+            _compiled_native_p0_source_packet(
+                "OPEN_METEO",
+                aggregator_fallback_p0_eligible=True,
+            ),
         ],
         generated_at_utc="2026-08-01T00:00:00Z",
     )
@@ -147,7 +271,10 @@ def test_native_p0_inbox_same_and_mixed_are_equal_official_priority_over_aggrega
         _upsert_native_p0_inbox(
             inbox_path,
             compiled_packets=[
-                _compiled_native_p0_source_packet("OPEN_METEO"),
+                _compiled_native_p0_source_packet(
+                    "OPEN_METEO",
+                    aggregator_fallback_p0_eligible=True,
+                ),
             ],
             generated_at_utc="2026-08-01T00:00:00Z",
         )
@@ -160,6 +287,118 @@ def test_native_p0_inbox_same_and_mixed_are_equal_official_priority_over_aggrega
         )
 
         assert _selected_native_p0_provider(inbox_path) == provider
+
+
+def test_native_p0_inbox_excludes_unproved_aggregator_and_expired_official_handoff_rows(
+    tmp_path: Path,
+) -> None:
+    inbox_path = tmp_path / "native-p0-inbox.json"
+    official = _compiled_native_p0_source_packet(
+        "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+    )
+    official["packet"]["native_probability_envelope"]["fresh_until_utc"] = (  # type: ignore[index]
+        "2026-08-01T02:00:00Z"
+    )
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[official],
+        generated_at_utc="2026-08-01T00:00:00Z",
+    )
+    # A subsequent update must remove both the expired official handoff
+    # packet and a republisher packet.  Neither can poison a fresh P0 batch.
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[
+            _compiled_native_p0_source_packet("OPEN_METEO"),
+        ],
+        generated_at_utc="2026-08-01T03:00:00Z",
+    )
+    inbox = json.loads(inbox_path.read_text(encoding="utf-8"))
+
+    assert inbox["packets"] == []
+
+
+def test_native_p0_inbox_keeps_proved_republisher_fallback_until_official(
+    tmp_path: Path,
+) -> None:
+    inbox_path = tmp_path / "native-p0-inbox.json"
+    fallback = _compiled_native_p0_source_packet(
+        "OPEN_METEO",
+        aggregator_fallback_p0_eligible=True,
+    )
+    fallback["packet"]["native_probability_envelope"]["fresh_until_utc"] = (  # type: ignore[index]
+        "2026-08-01T02:00:00Z"
+    )
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[fallback],
+        generated_at_utc="2026-08-01T00:00:00Z",
+    )
+
+    assert _selected_native_p0_provider(inbox_path) == "OPEN_METEO"
+
+    _upsert_native_p0_inbox(
+        inbox_path,
+        compiled_packets=[
+            _compiled_native_p0_source_packet(
+                "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+            ),
+        ],
+        generated_at_utc="2026-08-01T00:01:00Z",
+    )
+
+    assert _selected_native_p0_provider(inbox_path) == (
+        "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT"
+    )
+
+
+def test_materialize_resident_p0_rejects_unproved_open_meteo_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inbox_path = tmp_path / "native-p0-inbox.json"
+    row = _compiled_native_p0_source_packet("OPEN_METEO")
+    inbox_path.write_text(json.dumps({
+        "schema": "bayes_basket_target_p0_inbox_v1",
+        "packets": [row],
+    }), encoding="utf-8")
+    envelope = ProbabilityEnvelope.from_mapping({
+        "stage": "P0",
+        "checkpoint_id": "p0-open-meteo-marker-test",
+        "station_id": "RKPK",
+        "event_date": "2026-08-01",
+        "settlement_timezone": "Asia/Seoul",
+        "decision_at_utc": "2026-08-01T00:00:00Z",
+        "fresh_until_utc": "2026-08-01T02:00:00Z",
+        "bucket_ordinals": {"34": 0, "35": 1},
+        "probabilities": {"34": 0.4, "35": 0.6},
+        "posterior_version": "p0-native-test",
+        "posterior_sha256": "a" * 64,
+        "bridge_sha256": "b" * 64,
+        "lineage": {
+            "native_transport_provider": "OPEN_METEO",
+        },
+    })
+    monkeypatch.setattr(
+        production_worker_module,
+        "build_probability_envelope",
+        lambda _packet: envelope,
+    )
+    worker = object.__new__(TargetProductionWorker)
+    worker.commit_conn = sqlite3.connect(":memory:")
+    worker.p0_inbox_path = inbox_path
+
+    result = worker.materialize_resident_p0(
+        as_of_utc="2026-08-01T01:00:00Z",
+    )
+
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert any(
+        "resident_p0_native_transport_required"
+        in blocker["reason"]
+        for blocker in result["blockers"]
+    )
+    worker.commit_conn.close()
 
 
 def test_native_p0_inbox_old_same_cycle_replay_does_not_replace_selected_mixed(
@@ -217,6 +456,24 @@ def _activate_formal_trajectory_artifact(
         "max_missing_intervals": 2,
         "missing_interval_strength_factor": 0.7,
         "long_interval_strength_factor": 0.8,
+        "path_feature_schema": PATH_STATE_SCHEMA,
+        "path_model_coefficients": {
+            "base_distribution_mean": 0.3,
+            "root_expected_remaining_warming": 0.5,
+            "momentum_c_per_hour": 0.35,
+            "acceleration_c_per_hour2": 0.1,
+            "drawdown_from_high_c": -0.5,
+            "dewpoint_depression_c": 0.01,
+            "cloud_cover_fraction": -0.8,
+            "precipitation_present": -1.0,
+            "wind_speed_mps": -0.02,
+            "remaining_hours": 0.02,
+            "predicted_peak_remaining_warming_c": 0.35,
+            "minutes_to_predicted_peak": 0.02,
+            "next_curve_delta_from_high_c": 0.15,
+            "future_curve_slope_c_per_hour": 0.10,
+        },
+        "path_model_sigma_c": 0.8,
         "remaining_warming_distribution": {
             "0": 0.25,
             "1": 0.55,
@@ -245,7 +502,9 @@ def _activate_formal_trajectory_artifact(
         "promotion_state": "FORMAL_PROMOTED",
         "authority_scope": METAR_TRAJECTORY_AUTHORITY_SCOPE,
         "activated": True,
-        "method_version": METAR_TRAJECTORY_METHOD_VERSION,
+        "method_version": (
+            METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+        ),
     })
     scope_key = metar_trajectory_scope_key(
         source_lane="awc",
@@ -372,6 +631,35 @@ def _taf_live_compatibility_lineage() -> dict[str, str]:
             sort_keys=True,
             separators=(",", ":"),
         ),
+    }
+
+
+def _future_curve_lineage(
+    *,
+    checkpoint_id: str,
+    posterior_sha256: str,
+) -> dict[str, str]:
+    curve = build_root_future_temperature_curve({
+        "station_id": "RKPK",
+        "event_date": "2026-07-27",
+        "settlement_timezone": "Asia/Seoul",
+        "root_checkpoint_id": checkpoint_id,
+        "root_probability_sha256": posterior_sha256,
+        "available_at_utc": "2026-07-26T14:00:00Z",
+        "source_snapshot_sha256": "c" * 64,
+        "independence_family_ids": ["ECMWF_IFS", "NOAA_GEFS"],
+        "points": [
+            {"valid_time_utc": "2026-07-26T15:00:00Z", "temperature_c": 27.0},
+            {"valid_time_utc": "2026-07-26T18:00:00Z", "temperature_c": 29.0},
+            {"valid_time_utc": "2026-07-26T21:00:00Z", "temperature_c": 30.0},
+            {"valid_time_utc": "2026-07-27T00:00:00Z", "temperature_c": 29.0},
+        ],
+    })
+    return {
+        "conditional_future_temperature_curve_json": json.dumps(
+            curve.to_dict(), sort_keys=True, separators=(",", ":")
+        ),
+        "conditional_future_temperature_curve_sha256": curve.content_sha256,
     }
 
 
@@ -917,6 +1205,13 @@ def _retired_deterministic_nwp_skips_incompatible_scope_without_starving_next_st
 def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     conn = sqlite3.connect(":memory:")
     apply_production_ssot_schema(conn)
+    _seed_target_registry_source_lane(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        source_lane="awc",
+    )
     root = ProbabilityEnvelope.from_mapping({
         "stage": "P0",
         "checkpoint_id": "p0-rkpk-resident-taf",
@@ -1041,7 +1336,14 @@ def test_resident_taf_inbox_materializes_p0m_before_p1(tmp_path: Path) -> None:
     db = tmp_path / "target-read.db"
     with sqlite3.connect(db) as source:
         source.execute("CREATE TABLE marker(value TEXT)")
-    artifact = _bridged_taf_artifact(tmp_path)
+    source_artifact = _bridged_taf_artifact(tmp_path)
+    artifact = tmp_path / "taf-artifact-registry.json"
+    artifact.write_text(
+        json.dumps(build_taf_artifact_registry([
+            json.loads(source_artifact.read_text(encoding="utf-8")),
+        ])),
+        encoding="utf-8",
+    )
     worker = TargetProductionWorker(
         db,
         commit_conn=conn,
@@ -1351,6 +1653,13 @@ def test_resident_taf_revision_chain_rolls_back_on_second_write_failure(
 ) -> None:
     conn = sqlite3.connect(":memory:")
     apply_production_ssot_schema(conn)
+    _seed_target_registry_source_lane(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        source_lane="awc",
+    )
     root = ProbabilityEnvelope.from_mapping({
         "stage": "P0",
         "checkpoint_id": "p0-rkpk-taf-atomic",
@@ -3135,6 +3444,11 @@ def test_current_p1_supersedes_stale_optional_p0m_replay_blocker(
         "load_materialized_probability_envelopes",
         lambda *args, **kwargs: envelopes,
     )
+    monkeypatch.setattr(
+        production_worker_module,
+        "target_registry_source_lane",
+        lambda *_args, **_kwargs: "awc",
+    )
     try:
         assert worker._replay_root_mismatch_reason(
             station_id="RKPK",
@@ -3386,7 +3700,7 @@ def test_run_keeps_truth_and_labels_outside_official_ws_quote_lease(
     assert result["orders_submitted"] == 0
 
 
-def test_run_p1_blocker_allows_closed_scope_truth_label_but_blocks_market(
+def test_run_scoped_p1_blocker_allows_truth_label_and_does_not_global_block_market(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3450,9 +3764,9 @@ def test_run_p1_blocker_allows_closed_scope_truth_label_but_blocks_market(
 
     assert downstream_calls == ["truth", "label"]
     assert result["state"] == "blocked_fail_closed"
-    assert "resident_p1_blocked_before_current_scope_market" in (
-        result["reason"]
-    )
+    # The worker now reaches the market boundary; this fixture has no
+    # registry snapshot, so that independent evidence blocker is expected.
+    assert result["reason"] == "ContractError:target_market_registry_snapshot_empty"
     assert result["delta_v2_truth_ingress"]["written_count"] == 1
     assert result["delta_v2_label_ingress"]["appended_count"] == 1
     assert result["calls_order_gateway"] is False
@@ -3679,6 +3993,13 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
     commit_conn = sqlite3.connect(target_db)
     commit_conn.row_factory = sqlite3.Row
     apply_production_ssot_schema(commit_conn)
+    _seed_target_registry_source_lane(
+        commit_conn,
+        station_id="RKPK",
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        source_lane="awc",
+    )
     p0 = ProbabilityEnvelope.from_mapping({
         "stage": "P0",
         "checkpoint_id": "resident-p0",
@@ -3711,9 +4032,13 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
                         "30°C or higher": [29.5, None],
                     },
                     sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                **_taf_live_compatibility_lineage(),
+                        separators=(",", ":"),
+                    ),
+                    **_future_curve_lineage(
+                        checkpoint_id="resident-p0",
+                        posterior_sha256="a" * 64,
+                    ),
+                    **_taf_live_compatibility_lineage(),
             },
     })
     materialize_probability_bridge(
@@ -3749,19 +4074,26 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         )
     ]
     observations = [{
-        "observation_id": "resident-observation",
+        "observation_id": f"resident-observation-{index}",
         "station_id": "RKPK",
         "event_date_local": "2026-07-27",
-        "reported_temperature_c": 29.0,
-        "valid_at_utc": "2026-07-26T15:30:00Z",
-        "canonical_committed_at_utc": "2026-07-26T15:31:00Z",
-        "raw_sha256": "c" * 64,
+        "reported_temperature_c": temperature,
+        "valid_at_utc": f"2026-07-26T15:{minute}:00Z",
+        "canonical_committed_at_utc": f"2026-07-26T15:{int(minute) + 1:02d}:00Z",
+        "raw_sha256": f"{index:x}" * 64,
+        "raw_text": (
+            f"{report_type} RKPK 2615{minute}Z 18005KT CAVOK "
+            f"{int(temperature):02d}/20 Q1008"
+        ),
         "source_lane": "awc",
-        "report_type": "METAR",
+        "report_type": report_type,
         "evidence_role": "FORMAL",
         "qc_status": "ACCEPTED",
         "correction_suspected": False,
-    }]
+    } for index, (minute, temperature, report_type) in enumerate(
+        (("00", 27.0, "METAR"), ("15", 28.0, "SPECI"), ("30", 29.0, "SPECI")),
+        start=1,
+    )]
     monkeypatch.setattr(
         "bayes_basket_target.production_worker.load_started_registry_rows",
         lambda *_args, **_kwargs: registry_rows,
@@ -3823,6 +4155,13 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
     commit_conn = sqlite3.connect(target_db)
     commit_conn.row_factory = sqlite3.Row
     apply_production_ssot_schema(commit_conn)
+    _seed_target_registry_source_lane(
+        commit_conn,
+        station_id="RKPK",
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        source_lane="awc",
+    )
     p0 = ProbabilityEnvelope.from_mapping({
         "stage": "P0",
         "checkpoint_id": "resident-p0-stale-replay",
@@ -3848,22 +4187,30 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
                 "settlement_timezone": "Asia/Seoul",
                 "season_bin": "JJA",
                 "settlement_definition": "station_local_calendar_day_tmax",
-                "bucket_intervals_c_json": json.dumps(
+                    "bucket_intervals_c_json": json.dumps(
                     {
                         "28°C or below": [None, 28.5],
                         "29°C": [28.5, 29.5],
                         "30°C or higher": [29.5, None],
                     },
                     sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                **_taf_live_compatibility_lineage(),
+                        separators=(",", ":"),
+                    ),
+                    **_future_curve_lineage(
+                        checkpoint_id="resident-p0-stale-replay",
+                        posterior_sha256="a" * 64,
+                    ),
+                    **_taf_live_compatibility_lineage(),
             },
     })
     materialize_probability_bridge(
         commit_conn,
         p0,
         created_at_utc=p0.decision_at_utc,
+    )
+    _activate_formal_trajectory_artifact(
+        commit_conn,
+        local_time_bucket="NIGHT",
     )
     commit_conn.commit()
     registry_rows = [
@@ -3886,19 +4233,26 @@ def test_resident_p1_ingress_commits_stale_replay_cursor_once(
         )
     ]
     observations = [{
-        "observation_id": "delayed-new-high",
+        "observation_id": f"delayed-new-high-{index}",
         "station_id": "RKPK",
         "event_date_local": "2026-07-27",
-        "reported_temperature_c": 29.0,
-        "valid_at_utc": "2026-07-26T15:30:00Z",
-        "canonical_committed_at_utc": "2026-07-26T15:31:00Z",
-        "raw_sha256": "c" * 64,
+        "reported_temperature_c": temperature,
+        "valid_at_utc": f"2026-07-26T15:{minute}:00Z",
+        "canonical_committed_at_utc": f"2026-07-26T15:{int(minute) + 1:02d}:00Z",
+        "raw_sha256": f"{index + 3:x}" * 64,
+        "raw_text": (
+            f"{report_type} RKPK 2615{minute}Z 18005KT CAVOK "
+            f"{int(temperature):02d}/20 Q1008"
+        ),
         "source_lane": "awc",
-        "report_type": "METAR",
+        "report_type": report_type,
         "evidence_role": "FORMAL",
         "qc_status": "ACCEPTED",
         "correction_suspected": False,
-    }]
+    } for index, (minute, temperature, report_type) in enumerate(
+        (("00", 27.0, "METAR"), ("15", 28.0, "SPECI"), ("30", 29.0, "SPECI")),
+        start=1,
+    )]
     monkeypatch.setattr(
         "bayes_basket_target.production_worker.load_started_registry_rows",
         lambda *_args, **_kwargs: registry_rows,

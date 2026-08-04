@@ -1,7 +1,7 @@
 {
   "schema": "identifiable_physical_evidence_capture_config_v1",
   "state": "enabled",
-  "resident_service": "com.weather.reported_trajectory_no",
+  "resident_service": "com.weather.weather_basket_yes",
   "station_id": "ZUUU",
   "taf_amd": {
     "enabled": true,

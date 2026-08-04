@@ -1,0 +1,759 @@
+{
+  "archive_contract": {
+    "documentation_url": "https://open-meteo.com/en/docs/ensemble-api",
+    "formal_p0_eligible": false,
+    "holdout_eligible": false,
+    "native_arrival_index_eligible": false,
+    "native_publication_at_known": false,
+    "native_run_init_known": false,
+    "provider_describes_past_days_as_archived_forecasts": true,
+    "training_only": true
+  },
+  "archive_query_at_utc": "2026-08-02T02:35:06.820Z",
+  "bucket_contract_sha256": "846fba79dcd4a814fe3b1962096df6a388eabc14f35ae2be5adc544ba31fd593",
+  "bucket_intervals": {
+    "20°C or below": [
+      null,
+      20.5
+    ],
+    "21°C": [
+      20.5,
+      21.5
+    ],
+    "22°C": [
+      21.5,
+      22.5
+    ],
+    "23°C": [
+      22.5,
+      23.5
+    ],
+    "24°C": [
+      23.5,
+      24.5
+    ],
+    "25°C": [
+      24.5,
+      25.5
+    ],
+    "26°C": [
+      25.5,
+      26.5
+    ],
+    "27°C": [
+      26.5,
+      27.5
+    ],
+    "28°C": [
+      27.5,
+      28.5
+    ],
+    "29°C": [
+      28.5,
+      29.5
+    ],
+    "30°C or higher": [
+      29.5,
+      null
+    ]
+  },
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0ca1b97229c3b6cfc708c0a860b2520616f19f221d93567cce445963f00636bf",
+      "event_date": "2026-07-01",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "87e167a6c90dfc959ef25fe9a8e107a1472ed5532c5cf479f76ec5c37262a77d",
+      "event_date": "2026-07-02",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "487aa494e8039aea146a797bf22c2619b48e4e512e19be6d543d7fce8b0437c2",
+      "event_date": "2026-07-03",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "6eab689e584912713af4f2a3968c773dc576d9030f1fa3515698c01c08e3d024",
+      "event_date": "2026-07-04",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "bb12ae7e97e4e82e8d434d5150cbbcc894f46e3dd7ec34b96890ea3cc694a1e1",
+      "event_date": "2026-07-05",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "95834a8d931922b83243dcb4d4bfc3836608746d8a1b926dc0eead578643ec00",
+      "event_date": "2026-07-06",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "0266f783072e3d8c6a44d62486170910099bd1a4171503476ef8585968ebc2de",
+      "event_date": "2026-07-07",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "9ab7eb1d8bef36d4a224c63f6059684f1d9840dcf699bb17067c8bf473f7cadb",
+      "event_date": "2026-07-08",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "24ddac4893fef52bfcc762f3bf63e3a543487ccd908bf588177b48b6b0f5dc83",
+      "event_date": "2026-07-09",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "7d27492ebc305d714b70cc34866cd7bf5ae4e6fbab1448f54d8cf4896eddc9fe",
+      "event_date": "2026-07-10",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "77811214d17c4c9c4df2c042b5f528e874d18c6f3a497d0b920e1f0636b7e8e0",
+      "event_date": "2026-07-11",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1604fc85dddebcb28e9aae51dae6f81deb41e54a45abdce11eb1b60f53261101",
+      "event_date": "2026-07-12",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "2ec11d673f7b45108b5d42c12763876ad56e19f71385a077dc5d66a6e4260b73",
+      "event_date": "2026-07-13",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "8e2c1957b71621269d49b5bf167a6cc0561cd795f9acd279b98196ade6b91132",
+      "event_date": "2026-07-14",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "1a0c1d8176637b153b112f4e0d7b7f31fa1cd419d88972e7302038f3b14f179e",
+      "event_date": "2026-07-15",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "373c98eade875efd13ef2e528fcb56e8bbf9f0964cb8ad7b124046af68c826da",
+      "event_date": "2026-07-16",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "12127e04751b7d6849e3842f33750e5224263c47f207d5bc3ff228c2f3a565c4",
+      "event_date": "2026-07-17",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "d35403c019261d5164d784a5b2d060c84b4052b0512af2a0702fd2922f998c77",
+      "event_date": "2026-07-18",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "46345a8b5b8e5771823b80a70b2b6a4410831d596e719b1e15521950b4c4cab7",
+      "event_date": "2026-07-19",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "60d8973456ee30b53671a4e3e882553f10bc04cea31589bb32cad0995f4d6b78",
+      "event_date": "2026-07-20",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "a6d44b573b5fe9c5c7610e5616202aeefe2ec225d183b7bcbaf5bec870618e01",
+      "event_date": "2026-07-21",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "5cc97cc473dfe3ceb9637e3cca8075650e8300f194307489e2be8073b013fd23",
+      "event_date": "2026-07-22",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "7436fe7f675fe64aceb154769d3aace5a4e82a63c1da79cb62b2b93072a082c9",
+      "event_date": "2026-07-23",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "7a2038871b0418d956bcbfe2d7a3591d0338caff8fb9acb306ed64a1e9fbc903",
+      "event_date": "2026-07-24",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    },
+    {
+      "archive_valid_day_bucket": "d0",
+      "capture_content_sha256": "f33a59b323149701b613e9fb3eaac0c93f7cf05f3ed666906124f4cff332ca8c",
+      "event_date": "2026-07-25",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ",
+      "systems": [],
+      "unavailable_products": [
+        {
+          "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        },
+        {
+          "ensemble_system_id": "UKMO_GLOBAL_ENS",
+          "reason": "open_meteo_ensemble_member_set_incomplete"
+        }
+      ]
+    }
+  ],
+  "content_sha256": "c97b804f6cb4fd1793a75c5ee2312457b262a7fdda0d70074200d74d9ac9cf36",
+  "event_date_count": 25,
+  "event_dates": [
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08",
+    "2026-07-09",
+    "2026-07-10",
+    "2026-07-11",
+    "2026-07-12",
+    "2026-07-13",
+    "2026-07-14",
+    "2026-07-15",
+    "2026-07-16",
+    "2026-07-17",
+    "2026-07-18",
+    "2026-07-19",
+    "2026-07-20",
+    "2026-07-21",
+    "2026-07-22",
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25"
+  ],
+  "latitude": 43.679,
+  "live_submit_authorized": false,
+  "longitude": -79.629,
+  "orders_submitted": 0,
+  "request_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=43.679&longitude=-79.629&daily=temperature_2m_max&models=icon_global_eps%2Cgem_global_ensemble%2Cecmwf_aifs025_ensemble%2Cukmo_global_ensemble_20km&timezone=America%2FToronto&start_date=2026-07-01&end_date=2026-07-25",
+  "response_sha256": "eca9fb80024849d3e9c3a190d88119abc9710bf33eef741cdfc7242b6ece2796",
+  "schema": "open_meteo_native_ensemble_historical_archive_v1",
+  "selected_system_ids": [
+    "DWD_ICON_GLOBAL_EPS",
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "UKMO_GLOBAL_ENS"
+  ],
+  "settlement_timezone": "America/Toronto",
+  "station_id": "CYYZ",
+  "successful_event_date_count": 0,
+  "unavailable_event_date_count": 25
+}

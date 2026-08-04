@@ -3,6 +3,21 @@
   "state": "enabled_auxiliary_no_live_capture",
   "enabled": true,
   "scope": "canonical_45_station",
+  "selection_contract": {
+    "precedence": "official_native_first",
+    "fallback_when_native": [
+      "missing",
+      "invalid",
+      "late"
+    ],
+    "fallback_scope": "no_live_p0_p0m_candidate_only",
+    "native_arrival_index_eligible": false,
+    "p1_eligible": false,
+    "formal_live_authority": false,
+    "future_forward_oos": false,
+    "historical_oos_requires_closed_awc_truth": true,
+    "historical_oos_contract": "strict_asof_closed_historical_awc_truth_v1"
+  },
   "providers": {
     "gem_global_open_meteo": {
       "endpoint": "https://api.open-meteo.com/v1/gem",
@@ -21,6 +36,146 @@
       "native_update_frequency_hours": 6
     }
   },
+  "deterministic_fallback_providers": {
+    "ECMWF_AIFS_SINGLE_0P25": {
+      "endpoint": "https://api.open-meteo.com/v1/forecast",
+      "historical_endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+      "model": "ecmwf_aifs025_single",
+      "model_scope": "global",
+      "upstream_provider": "ECMWF",
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "DWD_ICON_GLOBAL_DETERMINISTIC": {
+      "endpoint": "https://api.open-meteo.com/v1/forecast",
+      "historical_endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+      "model": "dwd_icon_global",
+      "model_scope": "global",
+      "upstream_provider": "DWD",
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "DWD_ICON_EU_DETERMINISTIC": {
+      "endpoint": "https://api.open-meteo.com/v1/forecast",
+      "historical_endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+      "model": "icon_eu",
+      "model_scope": "regional",
+      "upstream_provider": "DWD",
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "DWD_ICON_D2_DETERMINISTIC": {
+      "endpoint": "https://api.open-meteo.com/v1/forecast",
+      "historical_endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+      "model": "icon_d2",
+      "model_scope": "regional",
+      "upstream_provider": "DWD",
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    }
+  },
+  "ensemble_providers": {
+    "DWD_ICON_GLOBAL_EPS": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "icon_global_eps",
+      "model_scope": "global",
+      "upstream_provider": "DWD",
+      "expected_member_count": 40,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "DWD_ICON_EU_EPS": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "icon_eu_eps",
+      "model_scope": "regional",
+      "upstream_provider": "DWD",
+      "expected_member_count": 40,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "DWD_ICON_D2_EPS": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "icon_d2_eps",
+      "model_scope": "regional",
+      "upstream_provider": "DWD",
+      "expected_member_count": 20,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "ECMWF_AIFS_ENS_GLOBAL": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "ecmwf_aifs025_ensemble",
+      "model_scope": "global",
+      "upstream_provider": "ECMWF",
+      "expected_member_count": 51,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "ECMWF_AIFS_ENS_EUROPE": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "ecmwf_aifs_europe_ensemble",
+      "model_scope": "regional",
+      "upstream_provider": "ECMWF",
+      "expected_member_count": 51,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    },
+    "ECCC_GEM_GLOBAL_ENS": {
+      "endpoint": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "historical_endpoint": "https://previous-runs-api.open-meteo.com/v1/forecast",
+      "model": "gem_global_ensemble",
+      "model_scope": "global",
+      "upstream_provider": "ECCC",
+      "expected_member_count": 21,
+      "source_class": "aggregator_republisher",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_p0_eligible": false,
+      "no_live_fallback_eligible": true,
+      "requires_historical_oos_activation": true
+    }
+  },
   "forecast_days": 7,
   "batch_size": 15,
   "retention_count_per_provider": 4,
@@ -37,7 +192,8 @@
     "hard_no_eligible": false,
     "formal_calibration_eligible": false,
     "production_activation_eligible": false,
-    "requires_separate_forward_oos_artifact": true
+    "requires_separate_historical_oos_artifact": true,
+    "forward_evidence_role": "observational_candidate_not_oos"
   },
   "boundary": {
     "writes_target_database": false,

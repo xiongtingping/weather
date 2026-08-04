@@ -22,6 +22,7 @@ from .taf_revision import (
     TAF_METHOD_VERSION,
     TafRevisionArtifact,
 )
+from .taf_oos_contract import assert_historical_taf_oos
 
 
 TAF_CALIBRATION_SCORECARD_SCHEMA = "bayes_basket_taf_calibration_scorecard_v1"
@@ -86,6 +87,10 @@ class TafCalibrationSample:
     precipitation_probability: float
     wind_speed_mps: float
     nwp_combined_tmax_c: float
+    oos_event_temporal_scope: str = ""
+    historical_oos_eligible: bool | None = None
+    historical_oos_contract_id: str = ""
+    future_event_count: int = 0
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "TafCalibrationSample":
@@ -98,7 +103,9 @@ class TafCalibrationSample:
             "taf_issued_at_utc", "taf_available_at_utc", "truth_closed_at_utc",
             "tx_c", "truth_tmax_c", "cloud_cover_fraction",
             "precipitation_probability", "wind_speed_mps",
-            "nwp_combined_tmax_c",
+            "nwp_combined_tmax_c", "oos_event_temporal_scope",
+            "historical_oos_eligible", "historical_oos_contract_id",
+            "future_event_count",
         }
         unknown = set(raw) - allowed
         if unknown:
@@ -145,6 +152,13 @@ class TafCalibrationSample:
             raise ContractError(
                 "taf_calibration_nwp_combination_oos_required"
             )
+        assert_historical_taf_oos(
+            raw,
+            event_date=text["event_date"],
+            truth_closed_at=closed,
+            transport_values=(),
+            name="taf_calibration",
+        )
         cloud = _finite("cloud_cover_fraction", raw.get("cloud_cover_fraction"))
         precip = _finite("precipitation_probability", raw.get("precipitation_probability"))
         wind = _finite("wind_speed_mps", raw.get("wind_speed_mps"))
@@ -178,6 +192,18 @@ class TafCalibrationSample:
                 "nwp_combined_tmax_c",
                 raw.get("nwp_combined_tmax_c"),
             ),
+            oos_event_temporal_scope=str(
+                raw.get("oos_event_temporal_scope") or ""
+            ),
+            historical_oos_eligible=(
+                raw.get("historical_oos_eligible")
+                if "historical_oos_eligible" in raw
+                else None
+            ),
+            historical_oos_contract_id=str(
+                raw.get("historical_oos_contract_id") or ""
+            ),
+            future_event_count=int(raw.get("future_event_count") or 0),
         )
 
 

@@ -1,0 +1,19 @@
+{
+  "blockers": [
+    "aifs_readiness_deterministic_artifact_bundle_incomplete"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "downloads_ifs_or_gefs": false,
+    "live_submit_authorized": false,
+    "network_access": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "read_only": true,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "7b34b5adb8053b740f58f747f673b7f0872551fe7d152c40cec6b6737220255e",
+  "schema": "aifs_official_strict_oos_readiness_audit_v1",
+  "state": "AUDIT_ERROR_FAIL_CLOSED"
+}

@@ -18,7 +18,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parent
@@ -40,6 +40,16 @@ AMSC_TOKEN_CACHE_TTL_SEC = 300.0
 AMSC_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 AMSC_RESPONSE_CHUNK_BYTES = 64 * 1024
 AWC_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+# The global AWC cache is compressed.  Its wire-size cap alone cannot bound a
+# highly-compressible response, so account for the expanded byte stream before
+# CSV decoding.  This deliberately remains separate from the 4 MiB response
+# cap above: both limits must pass.
+# A full worldwide cache can legitimately exceed the former 64 MiB allowance.
+# Keep the guard finite, streamed and fail-closed, but leave enough room for
+# the official 45-station production lane without treating a normal cache as
+# an oversized response.
+AWC_MAX_DECOMPRESSED_CACHE_BYTES = 256 * 1024 * 1024
+AWC_MAX_CACHE_LINE_BYTES = 1024 * 1024
 
 
 def _amsc_intermediate_ca_path() -> Path:
@@ -97,6 +107,45 @@ def _read_bounded_response(
         "utf-8",
         "replace",
     )
+
+
+def _iter_bounded_awc_cache_lines(compressed: bytes) -> Iterator[str]:
+    """Expand the AWC gzip cache incrementally under strict byte limits.
+
+    ``gzip.decompress`` materializes the complete expanded cache before the
+    caller can inspect its size.  The cache fallback is a production input, so
+    an expansion or a pathological CSV row beyond its bound is a fail-closed
+    source error rather than a reason to continue to another transport.
+    """
+
+    total = 0
+    pending = bytearray()
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb") as stream:
+            while True:
+                chunk = stream.read(AMSC_RESPONSE_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > AWC_MAX_DECOMPRESSED_CACHE_BYTES:
+                    raise RuntimeError("awc_cache_decompressed_too_large")
+                pending.extend(chunk)
+                while True:
+                    newline = pending.find(b"\n")
+                    if newline < 0:
+                        break
+                    if newline + 1 > AWC_MAX_CACHE_LINE_BYTES:
+                        raise RuntimeError("awc_cache_line_too_large")
+                    yield bytes(pending[: newline + 1]).decode("utf-8", "replace")
+                    del pending[: newline + 1]
+                if len(pending) > AWC_MAX_CACHE_LINE_BYTES:
+                    raise RuntimeError("awc_cache_line_too_large")
+    except RuntimeError:
+        raise
+    except (EOFError, OSError) as exc:
+        raise RuntimeError("awc_cache_gzip_invalid") from exc
+    if pending:
+        yield bytes(pending).decode("utf-8", "replace")
 
 
 def _curl_official_get(
@@ -540,7 +589,7 @@ def fetch_awc_temperature_reports(
             )
         station_set = set(stations)
         reports: list[dict[str, str]] = []
-        reader = csv.DictReader(io.StringIO(gzip.decompress(compressed).decode("utf-8", "replace")))
+        reader = csv.DictReader(_iter_bounded_awc_cache_lines(compressed))
         for row in reader:
             station = str(row.get("station_id") or "").strip().upper()
             raw_text = str(row.get("raw_text") or "").strip()
@@ -562,6 +611,16 @@ def fetch_awc_temperature_reports(
             "taf_requested": False,
             "transport": transport,
         }
+    except RuntimeError as exc:
+        # Resource-limit violations are not transport failures.  Falling back
+        # after an oversized expansion would defeat the required fail-closed
+        # boundary for the same source poll.
+        if str(exc) in {
+            "awc_cache_decompressed_too_large",
+            "awc_cache_line_too_large",
+        }:
+            raise
+        cache_error = f"awc_cache:{type(exc).__name__}"
     except Exception as exc:
         cache_error = f"awc_cache:{type(exc).__name__}"
     batches = [stations[index : index + max(1, int(batch_size))] for index in range(0, len(stations), max(1, int(batch_size)))]

@@ -1,0 +1,99 @@
+{
+  "all_retained_source_rows_bindable": true,
+  "archive_database": "/Users/xiong/weather/data/archive.db",
+  "authority_validation": {
+    "blockers": [],
+    "content_sha256": "f146580579c5aa4ab4fd2f80f36dd55bd8beb3e432d7bd63ec41049d8a190b17",
+    "state": "AUTHORITY_OBJECT_VALID"
+  },
+  "blockers": [],
+  "boundary": {
+    "archive_database_mode": "read_only_query_only",
+    "calls_order_gateway": false,
+    "creates_replay_authority": false,
+    "fetches_weather_data": false,
+    "materializes_p1": false,
+    "orders_submitted": 0,
+    "writes_archive_database": false,
+    "writes_canonical_evidence": false,
+    "writes_target_database": false
+  },
+  "canonical_evidence": {
+    "path": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803/RKSI_2026-08-01_p1_replay_authority_candidate.json",
+    "receipt_sha256": "3effe66f3b359dca4b5c9f002f32afa109c32a0d283c462a7557cfcff9aa1c2b"
+  },
+  "content_sha256": "d95bd184609db972a5557878f74f810d45772d3521ee446b87277ed652d52995",
+  "decision_at_utc": "2026-07-31T17:44:47.361Z",
+  "event_date": "2026-08-01",
+  "formal_observation_count": 3,
+  "p1_replay_authority_eligible": true,
+  "schema": "bayes_basket_target_p1_historical_replay_authority_audit_v1",
+  "source_rows": [
+    {
+      "blockers": [],
+      "canonical_source_poll_id": "rtpoll_2eaf20e07aae19ffb23ebd18a030becc",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T15:49:31.798Z",
+          "poll_content_sha256": "10e0106edfbf73376de41536c118049311d391a3a235424592efc387e37f6963",
+          "raw_sha256": "e56912f60ac324d64c59ce6979cdd7e3f3087d249974b769a0b6e6db615a3804",
+          "received_at_utc": "2026-07-31T15:49:31.665Z",
+          "source_observation_id": "rtobs_ce0b7aed2d5b3079feae4705019939a9",
+          "source_poll_id": "rtpoll_2eaf20e07aae19ffb23ebd18a030becc",
+          "source_report_issued_at_utc": "2026-07-31T15:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T15:00:00.000Z"
+        }
+      ],
+      "observation_id": "rtobs_ce0b7aed2d5b3079feae4705019939a9",
+      "raw_sha256": "e56912f60ac324d64c59ce6979cdd7e3f3087d249974b769a0b6e6db615a3804",
+      "state": "RETAINED_AWC_SOURCE_BINDABLE"
+    },
+    {
+      "blockers": [],
+      "canonical_source_poll_id": "rtpoll_9b79f02b1f82e35e6bd601e4725021e7",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T16:05:37.684Z",
+          "poll_content_sha256": "6a03fb649dc79186bf1855978fe835ac1f3e1db57246cb5cac148c854168c014",
+          "raw_sha256": "e2aa467815dce0386cda9c128931611eae92469073a34a4323999f7d0b6977dc",
+          "received_at_utc": "2026-07-31T16:05:36.485Z",
+          "source_observation_id": "rtobs_ad60f1391d8c1cde780f6233e6077a11",
+          "source_poll_id": "rtpoll_9b79f02b1f82e35e6bd601e4725021e7",
+          "source_report_issued_at_utc": "2026-07-31T16:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T16:00:00.000Z"
+        }
+      ],
+      "observation_id": "rtobs_ad60f1391d8c1cde780f6233e6077a11",
+      "raw_sha256": "e2aa467815dce0386cda9c128931611eae92469073a34a4323999f7d0b6977dc",
+      "state": "RETAINED_AWC_SOURCE_BINDABLE"
+    },
+    {
+      "blockers": [],
+      "canonical_source_poll_id": "rtpoll_d94ff726933b25ce2bc0413c2876ba34",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T17:06:31.965Z",
+          "poll_content_sha256": "c931f9d3ff68b91cb3b5aafdf4004de5b86ebf75b42fe0a333c9d12195481b0f",
+          "raw_sha256": "a0ecb37ea182fec809440a72c2b8b24592ecd1ea411d2e7f4a3c6ea28ddcef5c",
+          "received_at_utc": "2026-07-31T17:06:31.888Z",
+          "source_observation_id": "rtobs_6edc32a6b6ce1a69b767984036e2c2b7",
+          "source_poll_id": "rtpoll_d94ff726933b25ce2bc0413c2876ba34",
+          "source_report_issued_at_utc": "2026-07-31T17:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T17:00:00.000Z"
+        }
+      ],
+      "observation_id": "rtobs_6edc32a6b6ce1a69b767984036e2c2b7",
+      "raw_sha256": "a0ecb37ea182fec809440a72c2b8b24592ecd1ea411d2e7f4a3c6ea28ddcef5c",
+      "state": "RETAINED_AWC_SOURCE_BINDABLE"
+    }
+  ],
+  "state": "FORMAL_AWC_HISTORICAL_REPLAY_AUTHORITY_VALID",
+  "station_id": "RKSI",
+  "strict_asof_bindable_observation_count": 3
+}

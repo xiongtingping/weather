@@ -3,7 +3,7 @@
 
 This coordinator does not implement probability, market, basket, decision, or
 reconciliation logic.  It proves the post-migration prerequisites and then
-invokes the existing ``reported_trajectory_no --once production`` entrypoint,
+invokes the existing ``weather_basket_yes --once production`` entrypoint,
 whose ``TargetProductionWorker`` remains the sole target writer/compiler.
 
 The command can never authorize live submission or call the order gateway.
@@ -34,23 +34,31 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.activation import load_target_activation  # noqa: E402
 from bayes_basket_target.atomic_cutover_receipt import (  # noqa: E402
-    FORWARD_OOS_BOUNDARY as ATOMIC_FORWARD_OOS_BOUNDARY,
+    HISTORICAL_OOS_BOUNDARY as ATOMIC_HISTORICAL_OOS_BOUNDARY,
     build_release_identity,
     seal_stage,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
-from bayes_basket_target.resource_bounds import load_bounded_json, write_bounded_json  # noqa: E402
-from bayes_basket_target.ssot import production_ssot_schema_status  # noqa: E402
+from bayes_basket_target.native_ensemble_authority import (  # noqa: E402
+    DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST,
+    NativeOosSnapshot,
+    load_native_oos_snapshot_manifest,
+    pointer_activation_mismatch_reasons,
+    pointer_for_station,
+)
+from bayes_basket_target.resource_bounds import (  # noqa: E402
+    MAX_TARGET_PROCESS_RSS_BYTES,
+    load_bounded_json,
+    write_bounded_json,
+)
+from bayes_basket_target.ssot import (  # noqa: E402
+    native_ensemble_foundation_schema_status,
+    production_ssot_schema_status,
+)
 from bayes_basket_target.station_registry import (  # noqa: E402
     coordinate_registry_manifest,
 )
-from scripts.ingest_bayes_basket_target_artifacts import (  # noqa: E402
-    packet_binding_counts,
-    validate_packet_sha256,
-)
-
-
 SCHEMA = "bayes_basket_target_post_migration_no_live_run_v1"
 EXECUTION_MODE = "production_no_live"
 CANONICAL_STATION_IDS = tuple(
@@ -65,53 +73,61 @@ DEFAULT_ACTIVATION = (
     ROOT
     / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
 )
-DEFAULT_PACKET = (
-    ROOT / "output/audits/bayes_basket_target_no_live_candidate_artifacts_v2.json"
-)
 DEFAULT_MARKET_MANIFEST = (
     ROOT / "data/bayes_basket_target_official_ws_manifest.json"
 )
+DEFAULT_NATIVE_OOS_SNAPSHOT = DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST
+DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST = DEFAULT_NATIVE_OOS_SNAPSHOT
 DEFAULT_STATUS = (
     ROOT / "output/audits/bayes_basket_target_post_migration_worker_status.json"
 )
 DEFAULT_RECEIPT = (
     ROOT / "output/audits/bayes_basket_target_post_migration_no_live_run.json"
 )
-WORKER_ENTRYPOINT = ROOT / "scripts/reported_trajectory_no_daemon.py"
+WORKER_ENTRYPOINT = ROOT / "scripts/weather_basket_yes_daemon.py"
 
 MAX_INPUT_BYTES = 16 * 1024 * 1024
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 MAX_TARGET_DB_BYTES = 4096 * 1024 * 1024
-MAX_TARGET_WAL_BYTES = 64 * 1024 * 1024
+MAX_TARGET_WAL_BYTES = 512 * 1024 * 1024
 MAX_CHILD_FILE_BYTES = MAX_TARGET_DB_BYTES + MAX_TARGET_WAL_BYTES
-MAX_RSS_BYTES = 768 * 1024 * 1024
+MAX_RSS_BYTES = MAX_TARGET_PROCESS_RSS_BYTES
 MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 600
-FORWARD_OOS_BOUNDARY = {
-    "blocks_production_no_live": False,
-    "blocks_formal_promotion_or_live": True,
-}
+# A timed-out no-live child must become an explicit fail-closed receipt rather
+# than escaping as a coordinator exception.  The value is deliberately a
+# non-zero shell-style sentinel and is never interpreted as a successful run.
+WORKER_TIMEOUT_RETURN_CODE = 124
+HISTORICAL_OOS_BOUNDARY = dict(ATOMIC_HISTORICAL_OOS_BOUNDARY)
+# Import-compatible alias for older callers; the value is historical-only and
+# explicitly says future data is neither OOS nor a gate.
+FORWARD_OOS_BOUNDARY = HISTORICAL_OOS_BOUNDARY
 
 PROTECTED_PROCESS_PATTERNS = {
-    "reported_trajectory_no": "scripts/reported_trajectory_no_daemon.py",
+    "weather_basket_yes": "scripts/weather_basket_yes_daemon.py",
     "market_ws": "scripts/market_ws_listener.py",
     "clob_order_service": "scripts/clob_order_service.mjs",
 }
 RESIDENT_CORE_SERVICE_LABELS = frozenset(
     {
-        "com.weather.reported_trajectory_no",
+        "com.weather.weather_basket_yes",
         "com.weather.market_ws",
         "com.weather.clob_order_service",
     }
 )
-PACKET_BINDING_KEYS = (
-    "cash_phase_policies",
-    "cash_phase_authority_manifests",
-    "calibration_artifacts",
-    "ensemble_selection_evidence",
-    "ensemble_artifacts",
-    "calibration_activations",
-)
+NATIVE_P0_PATHWAY = "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE"
+NATIVE_STRICT_OOS_PROFILE = "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT"
+NATIVE_MIN_TRAIN_DAYS = 20
+NATIVE_MIN_HOLDOUT_DAYS = 8
+NATIVE_AUTHORITY_SCOPES = frozenset({
+    "PRODUCTION_NO_LIVE_ONLY",
+    "FORMAL_PROMOTED",
+})
+OFFICIAL_NATIVE_TRANSPORTS = frozenset({
+    "NOAA_GEFS_PDS_S3",
+    "ECMWF_OPEN_DATA_S3",
+    "ECCC_DD_WEATHER",
+})
 PROBABILITY_ACCEPTANCE_TABLES = (
     "basket_probability_evidence_artifact",
     "basket_probability_evidence_promotion",
@@ -477,8 +493,9 @@ def verify_two_round_resident_receipts(
 ) -> dict[str, Any]:
     """Verify bounded canonical/allowlisted two-round resident acceptance.
 
-    Forward OOS is intentionally not read here.  It is a promotion/live gate,
-    never a production_no_live gate.
+    Forward observations are intentionally not read here.  They are diagnostic
+    only: never OOS, never a production_no_live gate, and never a
+    formal-promotion input.  Historical strict-as-of evidence owns promotion.
     """
 
     scope = normalize_station_scope(station_ids)
@@ -644,7 +661,7 @@ def verify_two_round_resident_receipts(
             dict((after_snapshot or {}).get("outside_scope_counts") or {})
         ),
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
@@ -764,7 +781,7 @@ def verify_migration_two_round_resident_receipts(
             (after_snapshot or {}).get("outside_scope_counts") or {}
         ),
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
         "production_no_live": True,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
@@ -797,14 +814,15 @@ def _release_identity(
     *,
     station_ids: Sequence[str],
     activation_path: Path,
-    packet_sha256: str,
+    native_authority_sha256: str,
     schema_status: Mapping[str, Any],
 ) -> dict[str, Any]:
     return build_release_identity(
         station_ids=station_ids,
         schema_sha256=content_sha256(dict(schema_status)),
         activation_sha256=_sha256_file(activation_path),
-        artifact_sha256=packet_sha256,
+        artifact_sha256=native_authority_sha256,
+        artifact_role="native_ensemble_ssot_authority",
     )
 
 
@@ -870,21 +888,40 @@ def _manifest_scope(
     return sorted(stations), sorted(event_dates)
 
 
+def _validate_manifest_station_scope(
+    *,
+    station_ids: Sequence[str],
+    manifest: Mapping[str, Any],
+) -> list[str]:
+    """Require official WS evidence to remain inside the frozen scope."""
+
+    expected = set(normalize_station_scope(station_ids))
+    manifest_stations, _ = _manifest_scope(manifest)
+    if not manifest_stations or not set(manifest_stations).issubset(expected):
+        return ["market_manifest_outside_station_scope"]
+    return []
+
+
 def _validate_exact_station_scope(
     *,
     station_ids: Sequence[str],
     packet: Mapping[str, Any],
     manifest: Mapping[str, Any],
 ) -> list[str]:
+    """Validate a bounded legacy-shaped scope fixture.
+
+    The production coordinator no longer consumes an artifact packet, but
+    retaining this pure validator keeps old audit fixtures useful without
+    reintroducing packet binding into the runtime path.
+    """
+
     expected = list(normalize_station_scope(station_ids))
     blockers: list[str] = []
-    packet_stations = sorted(
-        {
-            str(value or "").strip().upper()
-            for value in packet.get("station_ids") or []
-            if str(value or "").strip()
-        }
-    )
+    packet_stations = sorted({
+        str(value or "").strip().upper()
+        for value in packet.get("station_ids") or []
+        if str(value or "").strip()
+    })
     if packet_stations != expected:
         blockers.append("artifact_packet_not_exact_station_scope")
     for key, rows in packet.items():
@@ -895,17 +932,620 @@ def _validate_exact_station_scope(
                 continue
             row_station = str(row.get("station_id") or "").strip().upper()
             if row_station and row_station not in expected:
-                blockers.append(
-                    f"artifact_packet_outside_station_scope:{key}"
-                )
+                blockers.append(f"artifact_packet_outside_station_scope:{key}")
                 break
     manifest_stations, _ = _manifest_scope(manifest)
-    if (
-        not manifest_stations
-        or not set(manifest_stations).issubset(set(expected))
-    ):
+    if not manifest_stations or not set(manifest_stations).issubset(set(expected)):
         blockers.append("market_manifest_outside_station_scope")
     return blockers
+
+
+def _parse_utc(value: Any) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timezone_missing")
+    return parsed.astimezone(timezone.utc)
+
+
+def _sha256(value: Any) -> bool:
+    text = str(value or "").lower()
+    return len(text) == 64 and all(
+        character in "0123456789abcdef" for character in text
+    )
+
+
+def _native_json_list(value: Any) -> list[str]:
+    raw = json.loads(str(value))
+    if not isinstance(raw, list):
+        raise ValueError("list_required")
+    normalized = [str(item).strip() for item in raw]
+    if not normalized or any(not item for item in normalized):
+        raise ValueError("list_members_invalid")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("list_members_duplicate")
+    return normalized
+
+
+def _native_json_mapping(value: Any) -> dict[str, str]:
+    raw = json.loads(str(value))
+    if not isinstance(raw, Mapping):
+        raise ValueError("mapping_required")
+    normalized = {
+        str(key).strip(): str(item).strip()
+        for key, item in raw.items()
+    }
+    if not normalized or any(
+        not key or not item for key, item in normalized.items()
+    ):
+        raise ValueError("mapping_members_invalid")
+    return normalized
+
+
+def _native_authority_failure(
+    *,
+    code: str,
+    details: list[str],
+) -> None:
+    if code not in details:
+        details.append(code)
+
+
+def native_ensemble_authority_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_ids: Sequence[str],
+    as_of_utc: str,
+    native_oos_snapshot: NativeOosSnapshot | None = None,
+    native_oos_snapshot_error: str | None = None,
+) -> dict[str, Any]:
+    """Read the only admissible P0 calibration authority from SSOT.
+
+    A legacy deterministic artifact packet intentionally has no role here.
+    The worker consumes only calibrated native-member cross ensembles, so the
+    coordinator validates that same chain: strict-OOS selection evidence,
+    cross artifact, exact cross activation, every selected native system
+    calibration, and its eight or more actual OOS predictions.
+    """
+
+    scope = normalize_station_scope(station_ids)
+    status = native_ensemble_foundation_schema_status(conn)
+    identity: dict[str, Any] = {
+        "schema": "native_ensemble_preflight_authority_v1",
+        "as_of_utc": as_of_utc,
+        "station_scope": {
+            "mode": "allowlist",
+            "station_ids": list(scope),
+        },
+        "threshold_profile": NATIVE_STRICT_OOS_PROFILE,
+        "required_train_days": NATIVE_MIN_TRAIN_DAYS,
+        "required_holdout_days": NATIVE_MIN_HOLDOUT_DAYS,
+        "probability_pathway": NATIVE_P0_PATHWAY,
+        "accepted_authority_scopes": sorted(NATIVE_AUTHORITY_SCOPES),
+        "official_native_transports": sorted(OFFICIAL_NATIVE_TRANSPORTS),
+        "native_schema_status": status,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    if native_oos_snapshot is not None:
+        identity["native_oos_snapshot"] = {
+            "schema": str(native_oos_snapshot.payload.get("schema") or ""),
+            "path": (
+                str(native_oos_snapshot.path)
+                if native_oos_snapshot.path is not None
+                else None
+            ),
+            "content_sha256": native_oos_snapshot.content_sha256,
+            "station_ids": list(native_oos_snapshot.station_ids),
+        }
+    if native_oos_snapshot_error:
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": [
+                "native_oos_snapshot_manifest_invalid:"
+                + str(native_oos_snapshot_error),
+            ],
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+    if status.get("ok") is not True:
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": ["native_ensemble_foundation_schema_not_installed"],
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+
+    try:
+        now = _parse_utc(as_of_utc)
+    except (TypeError, ValueError):
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": ["native_ensemble_authority_as_of_invalid"],
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+
+    placeholders = ",".join("?" for _ in scope)
+    rows = conn.execute(
+        "SELECT "
+        "a.activation_id,a.artifact_id,a.station_id,a.season_bin,"
+        "a.lead_bucket,a.run_cycle,a.run_cycle_by_system_json,"
+        "a.run_cycle_by_system_sha256,a.settlement_definition,"
+        "a.available_system_set_hash_or_star,a.generation,"
+        "a.valid_from_utc,a.valid_until_utc,a.authority_scope,"
+        "a.content_sha256,"
+        "c.ensemble_system_ids_json,c.ensemble_system_count,"
+        "c.independent_family_count,c.selection_evidence_sha256,"
+        "c.probability_pathway,c.valid_from_utc,c.valid_until_utc,"
+        "c.run_cycle_by_system_json,c.run_cycle_by_system_sha256,"
+        "c.content_sha256,"
+        "s.selected_system_ids_json,s.selected_system_count,"
+        "s.independent_family_count,s.method_version,"
+        "s.rolling_origin_fold_count,s.effective_sample_n,"
+        "s.run_cycle_by_system_json,s.run_cycle_by_system_sha256,"
+        "s.content_sha256 "
+        "FROM calibration_native_ensemble_activation a "
+        "JOIN calibration_cross_native_ensemble_artifact c "
+        "ON c.cross_ensemble_artifact_id=a.artifact_id "
+        "JOIN calibration_cross_native_ensemble_selection_evidence s "
+        "ON s.content_sha256=c.selection_evidence_sha256 "
+        "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+        f"AND UPPER(a.station_id) IN ({placeholders}) "
+        "ORDER BY a.station_id,a.generation DESC,a.activation_id",
+        tuple(scope),
+    ).fetchall()
+    observed_by_station: dict[str, list[str]] = {station: [] for station in scope}
+    ready_by_station: dict[str, list[dict[str, Any]]] = {
+        station: [] for station in scope
+    }
+    failures_by_station: dict[str, list[str]] = {
+        station: [] for station in scope
+    }
+
+    for row in rows:
+        station = str(row[2]).strip().upper()
+        if station not in observed_by_station:
+            continue
+        activation_id = str(row[0])
+        observed_by_station[station].append(activation_id)
+        failures: list[str] = []
+        if native_oos_snapshot is not None:
+            binding = pointer_for_station(native_oos_snapshot, station)
+            if binding is None:
+                _native_authority_failure(
+                    code="native_current_pointer_binding_missing",
+                    details=failures,
+                )
+            else:
+                pointer_mismatches = pointer_activation_mismatch_reasons(
+                    binding,
+                    activation_id=activation_id,
+                    artifact_id=str(row[1]),
+                    activation_sha256=str(row[14]),
+                    artifact_sha256=str(row[24]),
+                    selection_evidence_sha256=str(row[33]),
+                    generation=int(row[10]),
+                    season_bin=str(row[3]),
+                    lead_bucket=str(row[4]),
+                    run_cycle=str(row[5]),
+                    run_cycle_by_system_json=str(row[6]),
+                    authority_scope=str(row[13]),
+                )
+                if pointer_mismatches:
+                    _native_authority_failure(
+                        code=(
+                            "native_current_pointer_binding_mismatch:"
+                            + ",".join(pointer_mismatches)
+                        ),
+                        details=failures,
+                    )
+        try:
+            systems = _native_json_list(row[15])
+            selected_systems = _native_json_list(row[25])
+            activation_cycles = _native_json_mapping(row[6])
+            artifact_cycles = _native_json_mapping(row[22])
+            selection_cycles = _native_json_mapping(row[31])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            _native_authority_failure(
+                code="native_authority_json_invalid", details=failures
+            )
+            systems = []
+            selected_systems = []
+            activation_cycles = {}
+            artifact_cycles = {}
+            selection_cycles = {}
+        if (
+            not _sha256(row[7])
+            or not _sha256(row[23])
+            or not _sha256(row[32])
+            or not _sha256(row[14])
+            or not _sha256(row[24])
+            or not _sha256(row[33])
+        ):
+            _native_authority_failure(
+                code="native_authority_sha_invalid", details=failures
+            )
+        if str(row[13]) not in NATIVE_AUTHORITY_SCOPES:
+            _native_authority_failure(
+                code="native_authority_scope_invalid", details=failures
+            )
+        if str(row[19]) != NATIVE_P0_PATHWAY:
+            _native_authority_failure(
+                code="native_p0_pathway_invalid", details=failures
+            )
+        if (
+            systems != selected_systems
+            or int(row[16]) != len(systems)
+            or int(row[26]) != len(selected_systems)
+            or len(systems) < 2
+            or str(row[9]) != content_sha256(systems)
+        ):
+            _native_authority_failure(
+                code="native_cross_system_mask_invalid", details=failures
+            )
+        if (
+            activation_cycles != artifact_cycles
+            or activation_cycles != selection_cycles
+            or set(activation_cycles) != set(systems)
+            or str(row[7]) != content_sha256(activation_cycles)
+            or str(row[23]) != content_sha256(artifact_cycles)
+            or str(row[32]) != content_sha256(selection_cycles)
+        ):
+            _native_authority_failure(
+                code="native_cross_cycle_mapping_invalid", details=failures
+            )
+        if (
+            str(row[18]) != str(row[33])
+            or int(row[17]) < 2
+            or int(row[27]) < 2
+            or int(row[17]) != int(row[27])
+            or NATIVE_STRICT_OOS_PROFILE not in str(row[28])
+            or int(row[29]) < NATIVE_MIN_HOLDOUT_DAYS
+            or float(row[30]) < NATIVE_MIN_HOLDOUT_DAYS
+        ):
+            _native_authority_failure(
+                code="native_strict_oos_selection_incomplete", details=failures
+            )
+        try:
+            active = (
+                _parse_utc(row[11]) <= now < _parse_utc(row[12])
+                and _parse_utc(row[20]) <= now < _parse_utc(row[21])
+            )
+        except (TypeError, ValueError):
+            active = False
+        if not active:
+            _native_authority_failure(
+                code="native_cross_activation_not_current", details=failures
+            )
+
+        family_by_system: dict[str, str] = {}
+        if systems:
+            family_rows = conn.execute(
+                "SELECT ensemble_system_id,independence_family_id "
+                "FROM calibration_native_ensemble_system "
+                "WHERE ensemble_system_id IN ("
+                + ",".join("?" for _ in systems)
+                + ")",
+                tuple(systems),
+            ).fetchall()
+            family_by_system = {
+                str(item[0]): str(item[1]) for item in family_rows
+            }
+        if (
+            set(family_by_system) != set(systems)
+            or len(set(family_by_system.values())) < 2
+            or len(set(family_by_system.values())) != int(row[17])
+        ):
+            _native_authority_failure(
+                code="native_independent_family_gate_failed", details=failures
+            )
+
+        prediction_rows = conn.execute(
+            "SELECT event_date,trained_through_event_date,station_id,"
+            "season_bin,lead_bucket,run_cycle,run_cycle_by_system_json,"
+            "run_cycle_by_system_sha256,settlement_definition,"
+            "prediction_oos,authority_scope,content_sha256 "
+            "FROM calibration_cross_native_ensemble_oos_prediction "
+            "WHERE cross_ensemble_artifact_id=? "
+            "ORDER BY event_date,prediction_id LIMIT 128",
+            (activation_id and str(row[1]),),
+        ).fetchall()
+        strict_prediction_dates: set[str] = set()
+        for prediction in prediction_rows:
+            try:
+                prediction_cycles = _native_json_mapping(prediction[6])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                prediction_cycles = {}
+            valid_prediction = (
+                str(prediction[2]).strip().upper() == station
+                and str(prediction[3]) == str(row[3])
+                and str(prediction[4]) == str(row[4])
+                and str(prediction[5]) == str(row[5])
+                and prediction_cycles == activation_cycles
+                and str(prediction[7]) == content_sha256(prediction_cycles)
+                and str(prediction[8]) == str(row[8])
+                and int(prediction[9]) == 1
+                and str(prediction[10]) in NATIVE_AUTHORITY_SCOPES
+                and str(prediction[1]) < str(prediction[0])
+                and _sha256(prediction[11])
+            )
+            if valid_prediction:
+                strict_prediction_dates.add(str(prediction[0]))
+        if len(strict_prediction_dates) < NATIVE_MIN_HOLDOUT_DAYS:
+            _native_authority_failure(
+                code="native_strict_oos_prediction_coverage_incomplete",
+                details=failures,
+            )
+
+        for system_id in systems:
+            expected_cycle = activation_cycles.get(system_id)
+            system_rows = conn.execute(
+                "SELECT sa.system_artifact_id,sa.ensemble_system_id,"
+                "sa.station_id,sa.season_bin,sa.lead_bucket,sa.run_cycle,"
+                "sa.reliability_parameters_json,sa.rolling_origin_fold_count,"
+                "sa.effective_sample_n,sa.valid_from_utc,sa.valid_until_utc,"
+                "sa.content_sha256,a.activation_id,a.run_cycle_by_system_json,"
+                "a.run_cycle_by_system_sha256,a.valid_from_utc,a.valid_until_utc,"
+                "a.authority_scope,a.content_sha256 "
+                "FROM calibration_native_ensemble_system_artifact sa "
+                "JOIN calibration_native_ensemble_activation a "
+                "ON a.artifact_id=sa.system_artifact_id "
+                "WHERE a.artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+                "AND a.station_id=? AND a.ensemble_system_id_or_star=? "
+                "AND a.season_bin=? AND a.lead_bucket=? AND a.run_cycle=? "
+                "ORDER BY a.generation DESC,a.activation_id LIMIT 16",
+                (
+                    station, system_id, str(row[3]), str(row[4]),
+                    str(expected_cycle or ""),
+                ),
+            ).fetchall()
+            system_ready = False
+            for system_row in system_rows:
+                try:
+                    system_cycles = _native_json_mapping(system_row[13])
+                    reliability = json.loads(str(system_row[6]))
+                    system_active = (
+                        _parse_utc(system_row[9]) <= now < _parse_utc(system_row[10])
+                        and _parse_utc(system_row[15]) <= now < _parse_utc(system_row[16])
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(reliability, Mapping):
+                    continue
+                if (
+                    str(system_row[1]) != system_id
+                    or str(system_row[2]).strip().upper() != station
+                    or str(system_row[3]) != str(row[3])
+                    or str(system_row[4]) != str(row[4])
+                    or str(system_row[5]) != str(expected_cycle or "")
+                    or system_cycles != {system_id: str(expected_cycle or "")}
+                    or str(system_row[14]) != content_sha256(system_cycles)
+                    or str(system_row[17]) not in NATIVE_AUTHORITY_SCOPES
+                    or not _sha256(system_row[11])
+                    or not _sha256(system_row[18])
+                    or not system_active
+                    or reliability.get("official_native_archive") is not True
+                    or str(reliability.get("transport_provider_id") or "")
+                    not in OFFICIAL_NATIVE_TRANSPORTS
+                    or str(reliability.get("oos_threshold_profile") or "")
+                    != NATIVE_STRICT_OOS_PROFILE
+                    or int(reliability.get("oos_min_train_days") or 0)
+                    < NATIVE_MIN_TRAIN_DAYS
+                    or int(reliability.get("oos_min_holdout_days") or 0)
+                    < NATIVE_MIN_HOLDOUT_DAYS
+                    or int(system_row[7]) < NATIVE_MIN_HOLDOUT_DAYS
+                    or float(system_row[8]) < NATIVE_MIN_TRAIN_DAYS
+                ):
+                    continue
+                system_ready = True
+                break
+            if not system_ready:
+                _native_authority_failure(
+                    code=f"native_system_calibration_invalid:{system_id}",
+                    details=failures,
+                )
+
+        if failures:
+            failures_by_station[station].extend(failures)
+            continue
+        ready_by_station[station].append({
+            "activation_id": activation_id,
+            "activation_sha256": str(row[14]),
+            "cross_ensemble_artifact_id": str(row[1]),
+            "cross_artifact_sha256": str(row[24]),
+            "selection_evidence_sha256": str(row[33]),
+            "season_bin": str(row[3]),
+            "lead_bucket": str(row[4]),
+            "run_cycle": str(row[5]),
+            "run_cycle_by_system": activation_cycles,
+            "ensemble_system_ids": systems,
+            "independence_family_ids": sorted(
+                set(family_by_system.values())
+            ),
+            "strict_oos_prediction_count": len(strict_prediction_dates),
+            "generation": int(row[10]),
+            "valid_until_utc": str(row[12]),
+        })
+
+    station_authority: dict[str, dict[str, Any]] = {}
+    ready_stations: list[str] = []
+    unready_stations: list[str] = []
+    blockers: list[str] = []
+    for station in scope:
+        candidates = ready_by_station[station]
+        if candidates:
+            selected = sorted(
+                candidates,
+                key=lambda item: (
+                    int(item["generation"]),
+                    str(item["valid_until_utc"]),
+                    str(item["activation_id"]),
+                ),
+                reverse=True,
+            )[0]
+            station_authority[station] = {
+                "state": "STRICT_OOS_READY",
+                "candidate_count": len(candidates),
+                "selected": selected,
+            }
+            ready_stations.append(station)
+            continue
+        unready_stations.append(station)
+        failures = sorted(set(failures_by_station[station]))[:16]
+        station_authority[station] = {
+            "state": "ACCUMULATING_STRICT_OOS",
+            "observed_cross_activation_count": len(observed_by_station[station]),
+            "failures": failures,
+        }
+        blockers.append(f"native_strict_oos_not_ready:{station}")
+    identity.update({
+        "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
+        "blockers": blockers,
+        "ready_station_ids": ready_stations,
+        "unready_station_ids": unready_stations,
+        "station_authority": station_authority,
+    })
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def cash_phase_authority_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    station_ids: Sequence[str],
+    as_of_utc: str,
+    authority_scope: str,
+) -> dict[str, Any]:
+    """Resolve the cash policy directly from its append-only SSOT tables."""
+
+    scope = normalize_station_scope(station_ids)
+    required_scope = str(authority_scope or "").strip().upper()
+    identity: dict[str, Any] = {
+        "schema": "cash_phase_preflight_authority_v1",
+        "as_of_utc": as_of_utc,
+        "station_scope": {"mode": "allowlist", "station_ids": list(scope)},
+        "required_authority_scope": required_scope,
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    if required_scope != "PRODUCTION_NO_LIVE_CANDIDATE":
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": ["cash_phase_authority_scope_invalid"],
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+    try:
+        now = _parse_utc(as_of_utc)
+    except (TypeError, ValueError):
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": ["cash_phase_authority_as_of_invalid"],
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+    tables = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    required_tables = {
+        "basket_cash_phase_policy_artifact",
+        "basket_cash_phase_authority_manifest",
+    }
+    missing = sorted(required_tables - tables)
+    if missing:
+        identity.update({
+            "state": "BLOCKED_FAIL_CLOSED",
+            "blockers": ["cash_phase_authority_tables_missing"],
+            "missing_tables": missing,
+            "ready_station_ids": [],
+            "unready_station_ids": list(scope),
+            "station_authority": {},
+        })
+        return {**identity, "content_sha256": content_sha256(identity)}
+    placeholders = ",".join("?" for _ in scope)
+    rows = conn.execute(
+        "SELECT m.station_id,m.policy_version,m.artifact_sha256,"
+        "m.station_timezone,m.valid_from_utc,m.valid_until_utc,"
+        "m.authority_scope,m.manifest_sha256,p.promoted,"
+        "p.evidence_status,p.content_sha256 "
+        "FROM basket_cash_phase_authority_manifest m "
+        "JOIN basket_cash_phase_policy_artifact p "
+        "ON p.policy_version=m.policy_version "
+        "AND p.content_sha256=m.artifact_sha256 "
+        "AND p.station_id=m.station_id "
+        "AND p.station_timezone=m.station_timezone "
+        "AND p.valid_from_utc=m.valid_from_utc "
+        "AND p.valid_until_utc=m.valid_until_utc "
+        f"WHERE UPPER(m.station_id) IN ({placeholders}) "
+        "AND m.authority_scope=? "
+        "ORDER BY m.station_id,m.valid_from_utc,m.manifest_sha256",
+        (*scope, required_scope),
+    ).fetchall()
+    by_station: dict[str, list[sqlite3.Row]] = {station: [] for station in scope}
+    for row in rows:
+        station = str(row[0]).strip().upper()
+        if station in by_station:
+            by_station[station].append(row)
+    station_authority: dict[str, dict[str, Any]] = {}
+    ready_stations: list[str] = []
+    unready_stations: list[str] = []
+    blockers: list[str] = []
+    for station in scope:
+        active: list[sqlite3.Row] = []
+        for row in by_station[station]:
+            try:
+                valid_now = _parse_utc(row[4]) <= now < _parse_utc(row[5])
+            except (TypeError, ValueError):
+                valid_now = False
+            if (
+                valid_now
+                and int(row[8]) == 0
+                and str(row[9]) != "PROMOTED"
+                and _sha256(row[2])
+                and _sha256(row[7])
+                and _sha256(row[10])
+            ):
+                active.append(row)
+        if len(active) != 1:
+            unready_stations.append(station)
+            station_authority[station] = {
+                "state": "NOT_READY",
+                "candidate_manifest_count": len(by_station[station]),
+                "active_exact_manifest_count": len(active),
+            }
+            blockers.append(f"cash_phase_authority_not_ready:{station}")
+            continue
+        row = active[0]
+        station_authority[station] = {
+            "state": "READY",
+            "policy_version": str(row[1]),
+            "artifact_sha256": str(row[2]),
+            "manifest_sha256": str(row[7]),
+            "valid_until_utc": str(row[5]),
+        }
+        ready_stations.append(station)
+    identity.update({
+        "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
+        "blockers": blockers,
+        "ready_station_ids": ready_stations,
+        "unready_station_ids": unready_stations,
+        "station_authority": station_authority,
+    })
+    return {**identity, "content_sha256": content_sha256(identity)}
 
 
 def _validate_boundary_tree(value: Any, *, path: str = "$") -> list[str]:
@@ -936,8 +1576,8 @@ def _build_preflight(
     station_ids: Sequence[str],
     db_path: Path,
     activation_path: Path,
-    packet_path: Path,
     market_manifest_path: Path,
+    native_oos_snapshot_path: Path = DEFAULT_NATIVE_OOS_SNAPSHOT,
     output_root: Path,
     process_snapshotter: Callable[[], dict[str, int]],
 ) -> dict[str, Any]:
@@ -947,23 +1587,36 @@ def _build_preflight(
 
     activation = load_target_activation(activation_path)
     blockers.extend(_validate_activation(activation))
-    packet = load_bounded_json(packet_path)
-    if not isinstance(packet, Mapping):
-        raise RuntimeError("artifact_packet_mapping_required")
-    packet_sha = validate_packet_sha256(packet, required=True)
-    blockers.extend(_validate_boundary_tree(packet, path="$.artifact_packet"))
     manifest = load_bounded_json(market_manifest_path)
     if not isinstance(manifest, Mapping):
         raise RuntimeError("market_manifest_mapping_required")
     blockers.extend(_validate_market_manifest(manifest))
-    blockers.extend(
-        _validate_exact_station_scope(
-            station_ids=station_ids,
-            packet=packet,
-            manifest=manifest,
-        )
-    )
+    blockers.extend(_validate_manifest_station_scope(
+        station_ids=station_ids,
+        manifest=manifest,
+    ))
     blockers.extend(_validate_boundary_tree(manifest, path="$.market_manifest"))
+    native_oos_snapshot: NativeOosSnapshot | None = None
+    native_oos_snapshot_error: str | None = None
+    try:
+        native_oos_snapshot = load_native_oos_snapshot_manifest(
+            native_oos_snapshot_path
+        )
+        outside_snapshot_scope = sorted(
+            set(native_oos_snapshot.station_ids)
+            - set(CANONICAL_STATION_IDS)
+        )
+        if outside_snapshot_scope:
+            raise RuntimeError(
+                "native_oos_snapshot_station_scope_invalid:"
+                + ",".join(outside_snapshot_scope)
+            )
+    except Exception as exc:
+        native_oos_snapshot = None
+        native_oos_snapshot_error = (
+            f"{type(exc).__name__}:{exc}"
+        )
+        blockers.append("native_oos_snapshot_manifest_invalid")
 
     with _open_read_only(db_path) as conn:
         schema_status = production_ssot_schema_status(conn)
@@ -972,21 +1625,91 @@ def _build_preflight(
             or schema_status.get("ledger_schema_ok") is not True
         ):
             blockers.append("target_production_ssot_schema_not_installed")
-            bindings = {key: -1 for key in PACKET_BINDING_KEYS}
-        else:
-            bindings = packet_binding_counts(conn, packet)
-            expected = {
-                key: len(packet.get(key) or [])
-                for key in PACKET_BINDING_KEYS
+            native_authority = {
+                "state": "BLOCKED_FAIL_CLOSED",
+                "blockers": ["target_production_ssot_schema_not_installed"],
+                "ready_station_ids": [],
+                "unready_station_ids": list(station_ids),
+                "content_sha256": content_sha256({
+                    "schema_status": schema_status,
+                    "station_ids": list(station_ids),
+                }),
             }
-            for key in PACKET_BINDING_KEYS:
-                if bindings.get(key) != expected[key]:
-                    blockers.append(f"artifact_binding_incomplete:{key}")
+            cash_phase_authority = {
+                "state": "BLOCKED_FAIL_CLOSED",
+                "blockers": ["target_production_ssot_schema_not_installed"],
+                "ready_station_ids": [],
+                "unready_station_ids": list(station_ids),
+                "content_sha256": content_sha256({
+                    "schema_status": schema_status,
+                    "station_ids": list(station_ids),
+                    "authority": "cash_phase",
+                }),
+            }
+        else:
+            as_of_utc = _now()
+            native_authority = native_ensemble_authority_snapshot(
+                conn,
+                station_ids=station_ids,
+                as_of_utc=as_of_utc,
+                native_oos_snapshot=native_oos_snapshot,
+                native_oos_snapshot_error=native_oos_snapshot_error,
+            )
+            cash_phase_authority = cash_phase_authority_snapshot(
+                conn,
+                station_ids=station_ids,
+                as_of_utc=as_of_utc,
+                authority_scope=str(
+                    activation.get("policy_authority_scope") or ""
+                ),
+            )
+            # Strict-OOS accumulation is a station-level fail-closed state,
+            # not a reason to stop the production_no_live worker.  Formal
+            # Promotion/live remains blocked until a historical strict-as-of
+            # OOS artifact exists; the worker records unready stations and
+            # emits no orders.
+            native_soft_blockers = [
+                str(value)
+                for value in native_authority.get("blockers") or []
+                if not str(value).startswith("native_strict_oos_not_ready:")
+            ]
+            # Ready stations expose their validated rows as ``candidate_count``
+            # while accumulating stations expose only
+            # ``observed_cross_activation_count``.  Counting only the latter
+            # made a fully activated native chain look empty (and blocked the
+            # whole no-live preflight) exactly when every ready station had a
+            # valid candidate.  Both are evidence of an observed cross
+            # activation; keep the per-station readiness gate unchanged.
+            observed_cross = sum(
+                int(
+                    (value or {}).get("candidate_count")
+                    or (value or {}).get("observed_cross_activation_count")
+                    or 0
+                )
+                for value in (native_authority.get("station_authority") or {}).values()
+                if isinstance(value, Mapping)
+            )
+            native_authority["production_no_live_soft_blockers"] = sorted(
+                set(native_authority.get("blockers") or [])
+            )
+            native_authority["observed_cross_activation_count"] = observed_cross
+            # A missing native foundation is hard; an empty/invalid native
+            # chain is also hard because it would make this coordinator a
+            # shell around a legacy fallback.  Accumulating station rows are
+            # deliberately retained as evidence, never promoted.
+            hard_native = [
+                code for code in native_soft_blockers
+                if code in {
+                    "native_ensemble_foundation_schema_not_installed",
+                    "native_ensemble_authority_as_of_invalid",
+                    "native_oos_snapshot_manifest_invalid",
+                }
+            ]
+            if observed_cross == 0:
+                hard_native.append("native_cross_ensemble_evidence_missing")
+            blockers.extend(hard_native)
+            blockers.extend(cash_phase_authority.get("blockers") or [])
         counts = _table_counts(conn)
-    expected = {
-        key: len(packet.get(key) or [])
-        for key in PACKET_BINDING_KEYS
-    }
     processes = process_snapshotter()
     return {
         "state": "PASS" if not blockers else "BLOCKED_FAIL_CLOSED",
@@ -998,12 +1721,23 @@ def _build_preflight(
         },
         "resources": resources,
         "schema_status": schema_status,
-        "artifact_packet": {
-            "path": str(packet_path),
-            "sha256": packet_sha,
-            "expected_counts": expected,
-            "binding_counts": bindings,
+        "native_ensemble_authority": native_authority,
+        "native_oos_snapshot": {
+            "path": str(native_oos_snapshot_path),
+            "state": "PASS" if native_oos_snapshot is not None else "BLOCKED_FAIL_CLOSED",
+            "content_sha256": (
+                native_oos_snapshot.content_sha256
+                if native_oos_snapshot is not None
+                else None
+            ),
+            "station_ids": (
+                list(native_oos_snapshot.station_ids)
+                if native_oos_snapshot is not None
+                else []
+            ),
+            "error": native_oos_snapshot_error,
         },
+        "cash_phase_authority": cash_phase_authority,
         "market_manifest": {
             "path": str(market_manifest_path),
             "sha256": _sha256_file(market_manifest_path),
@@ -1017,12 +1751,15 @@ def _build_preflight(
         },
         "protected_processes": processes,
         "table_counts": counts,
-        "forward_oos_boundary": dict(ATOMIC_FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(ATOMIC_HISTORICAL_OOS_BOUNDARY),
         "legacy_fallback_used": False,
         "release": _release_identity(
             station_ids=station_ids,
             activation_path=activation_path,
-            packet_sha256=packet_sha,
+            native_authority_sha256=content_sha256({
+                "native_ensemble_authority": native_authority["content_sha256"],
+                "cash_phase_authority": cash_phase_authority["content_sha256"],
+            }),
             schema_status=schema_status,
         ),
     }
@@ -1048,18 +1785,34 @@ def _default_worker_runner(
     stderr_path: Path,
     timeout_seconds: int,
 ) -> int:
+    """Run the resident worker with a bounded child lifetime.
+
+    ``subprocess.run`` raises ``TimeoutExpired`` after terminating the child.
+    Convert that condition into a deterministic non-zero return code so the
+    caller can still emit its content-addressed no-live receipt and preserve
+    the fail-closed boundary.
+    """
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
-        result = subprocess.run(
-            list(command),
-            cwd=ROOT,
-            env=dict(env),
-            stdin=subprocess.DEVNULL,
-            stdout=stdout,
-            stderr=stderr,
-            timeout=timeout_seconds,
-            check=False,
-            preexec_fn=_child_file_limit,
-        )
+        try:
+            result = subprocess.run(
+                list(command),
+                cwd=ROOT,
+                env=dict(env),
+                stdin=subprocess.DEVNULL,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=timeout_seconds,
+                check=False,
+                preexec_fn=_child_file_limit,
+            )
+        except subprocess.TimeoutExpired:
+            stderr.write(
+                f"worker_timeout_after_seconds={int(timeout_seconds)}\n".encode(
+                    "utf-8"
+                )
+            )
+            stderr.flush()
+            return WORKER_TIMEOUT_RETURN_CODE
     return int(result.returncode)
 
 
@@ -1069,11 +1822,11 @@ def run(
     db_path: Path = DEFAULT_TARGET_DB,
     canonical_db_path: Path = DEFAULT_CANONICAL_DB,
     activation_path: Path = DEFAULT_ACTIVATION,
-    packet_path: Path = DEFAULT_PACKET,
     market_manifest_path: Path = DEFAULT_MARKET_MANIFEST,
+    native_oos_snapshot_path: Path = DEFAULT_NATIVE_OOS_SNAPSHOT,
     status_path: Path = DEFAULT_STATUS,
     receipt_path: Path = DEFAULT_RECEIPT,
-    proxy_url: str = "http://127.0.0.1:7897",
+    proxy_url: str = "http://127.0.0.1:1082",
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     execute: bool = True,
     reuse_materialized_probability: bool = False,
@@ -1093,8 +1846,10 @@ def run(
         limit=32 * 1024 * 1024 * 1024,
     )
     activation = _bounded_file(activation_path, label="activation")
-    packet = _bounded_file(packet_path, label="artifact_packet")
     manifest = _bounded_file(market_manifest_path, label="market_manifest")
+    # Keep the pre-resolved path so the loader can reject a symlink rather
+    # than silently following it into an unbounded/replaceable authority.
+    native_oos_snapshot = native_oos_snapshot_path.expanduser()
     status = status_path.expanduser().resolve()
     receipt = receipt_path.expanduser().resolve()
     status.parent.mkdir(parents=True, exist_ok=True)
@@ -1104,8 +1859,8 @@ def run(
         station_ids=scope,
         db_path=db,
         activation_path=activation,
-        packet_path=packet,
         market_manifest_path=manifest,
+        native_oos_snapshot_path=native_oos_snapshot,
         output_root=receipt.parent,
         process_snapshotter=process_snapshotter,
     )
@@ -1120,7 +1875,7 @@ def run(
             "completed_at_utc": _now(),
             "preflight": preflight,
             "worker_invoked": False,
-            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -1142,7 +1897,7 @@ def run(
             "completed_at_utc": _now(),
             "preflight": preflight,
             "worker_invoked": False,
-            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -1168,6 +1923,7 @@ def run(
             "PM_TARGET_EXECUTION_MODE": EXECUTION_MODE,
             "PM_TARGET_ACTIVATION": str(activation),
             "PM_TARGET_MARKET_MANIFEST": str(manifest),
+            "PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST": str(native_oos_snapshot),
             "PM_TARGET_STATION_ALLOWLIST": ",".join(scope),
             "PM_TARGET_EVENT_DATE_ALLOWLIST": ",".join(event_dates),
             "PM_OFFICIAL_NWP_PROXY": proxy_url,
@@ -1219,6 +1975,8 @@ def run(
             worker_status,
             path="$.worker_status",
         )
+        if returncode == WORKER_TIMEOUT_RETURN_CODE:
+            boundary_blockers.append("worker_timeout")
         processes_after = process_snapshotter()
         if processes_after != preflight["protected_processes"]:
             boundary_blockers.append("protected_process_pid_changed")
@@ -1260,7 +2018,7 @@ def run(
             "protected_processes_after": processes_after,
             "table_counts_before": preflight["table_counts"],
             "table_counts_after": counts_after,
-            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+        "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -1289,13 +2047,17 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument("--canonical-db", type=Path, default=DEFAULT_CANONICAL_DB)
     parser.add_argument("--activation", type=Path, default=DEFAULT_ACTIVATION)
-    parser.add_argument("--artifact-packet", type=Path, default=DEFAULT_PACKET)
     parser.add_argument(
         "--market-manifest", type=Path, default=DEFAULT_MARKET_MANIFEST
     )
+    parser.add_argument(
+        "--native-oos-snapshot-manifest",
+        type=Path,
+        default=DEFAULT_NATIVE_OOS_SNAPSHOT,
+    )
     parser.add_argument("--status", type=Path, default=DEFAULT_STATUS)
     parser.add_argument("--receipt", type=Path, default=DEFAULT_RECEIPT)
-    parser.add_argument("--proxy-url", default="http://127.0.0.1:7897")
+    parser.add_argument("--proxy-url", default="http://127.0.0.1:1082")
     parser.add_argument(
         "--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS
     )
@@ -1319,8 +2081,8 @@ def main() -> int:
             db_path=args.db,
             canonical_db_path=args.canonical_db,
             activation_path=args.activation,
-            packet_path=args.artifact_packet,
             market_manifest_path=args.market_manifest,
+            native_oos_snapshot_path=args.native_oos_snapshot_manifest,
             status_path=args.status,
             receipt_path=args.receipt,
             proxy_url=args.proxy_url,
@@ -1336,7 +2098,7 @@ def main() -> int:
             "state": "BLOCKED_FAIL_CLOSED",
             "stage": "coordinator_exception",
             "reason": f"{type(exc).__name__}:{exc}",
-            "forward_oos_boundary": dict(FORWARD_OOS_BOUNDARY),
+            "historical_oos_boundary": dict(HISTORICAL_OOS_BOUNDARY),
             "execution_mode": EXECUTION_MODE,
             "calls_order_gateway": False,
             "places_orders": False,

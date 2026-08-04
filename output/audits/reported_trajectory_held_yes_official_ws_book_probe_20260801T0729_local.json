@@ -1,0 +1,54 @@
+{
+  "active_projection_unchanged": true,
+  "authorizes_order": false,
+  "calls_order_gateway": false,
+  "complete": false,
+  "evidence_only": true,
+  "fail_closed": true,
+  "inventory_active_projection_receipt_sha256": "145eaa84f61dde6e72a230897f37f8a51c21753562a5354ce470ed5b96f47856",
+  "inventory_active_projection_source": "official_local_clob_execution_guard_snapshot",
+  "inventory_path": "/Users/xiong/weather/data/reported_trajectory_held_yes_tokens.json",
+  "manifest_complete_book_token_ids": [],
+  "manifest_connection_observed_at": "2026-07-31T23:31:33.769Z",
+  "manifest_path": "/Users/xiong/weather/data/market_ws_held_yes_quotes.json",
+  "manifest_snapshot_sha256": "6c9e88f9f073c98e36df866903f59040ce1df1d22ff984bbb3e3d5bdb39ee589",
+  "manifest_state": "missing_evidence",
+  "observed_at": "2026-07-31T23:31:35.789Z",
+  "orders_submitted": 0,
+  "price_change_used_as_initial_book": false,
+  "receipt_sha256": "3b73715dde12d10630c3e30938589993f9855cab523973bcbbee29590a27b97e",
+  "rows": [
+    {
+      "blocking_reasons": [
+        "official_ws_initial_complete_book_not_received",
+        "official_ws_token_shard_missing_or_invalid",
+        "token_shard_read_failed"
+      ],
+      "complete_official_book": false,
+      "shard_path": "/Users/xiong/weather/data/market_ws_held_yes_quote_shards/27d9722d6379da724bb9da16e3bf60cefc71e8a64de1c2a41af5c4637f2d180b.json",
+      "shard_read_error": "FileNotFoundError:[Errno 2] No such file or directory: '/Users/xiong/weather/data/market_ws_held_yes_quote_shards/27d9722d6379da724bb9da16e3bf60cefc71e8a64de1c2a41af5c4637f2d180b.json'",
+      "shard_snapshot_sha256": null,
+      "token_id": "26826628166782414512001114740582464776923861408129881685672093367424420576140"
+    },
+    {
+      "blocking_reasons": [
+        "official_ws_initial_complete_book_not_received",
+        "official_ws_token_shard_missing_or_invalid",
+        "token_shard_read_failed"
+      ],
+      "complete_official_book": false,
+      "shard_path": "/Users/xiong/weather/data/market_ws_held_yes_quote_shards/3809fec3969427205e9f641842b10a9b6b8f8bc7a9350e234cafcc242863d346.json",
+      "shard_read_error": "FileNotFoundError:[Errno 2] No such file or directory: '/Users/xiong/weather/data/market_ws_held_yes_quote_shards/3809fec3969427205e9f641842b10a9b6b8f8bc7a9350e234cafcc242863d346.json'",
+      "shard_snapshot_sha256": null,
+      "token_id": "62525027256651515895588001202395213763922224789156242797594632851980474945111"
+    }
+  ],
+  "schema": "reported_trajectory_held_yes_official_ws_book_probe_v1",
+  "scope_sha256": "9903610a069b9ffa1bdd51b9e9d775a5ea336a4f55b0e3c250bbc53508960667",
+  "scope_token_ids": [
+    "26826628166782414512001114740582464776923861408129881685672093367424420576140",
+    "62525027256651515895588001202395213763922224789156242797594632851980474945111"
+  ],
+  "source": "official_polymarket_clob_websocket",
+  "state": "BLOCKED_FAIL_CLOSED"
+}

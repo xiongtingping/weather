@@ -123,7 +123,7 @@ def build(*, output_dir: Path) -> dict[str, Any]:
         "runtime_manifest_sha256": runtime,
         "activation_contract_sha256": next_activation["activation_contract_sha256"],
         "files": {name: {"sha256": _sha_bytes(raw), "size_bytes": len(raw)} for name, raw in sorted(files.items())},
-        "resident_service": "com.weather.reported_trajectory_no",
+        "resident_service": "com.weather.weather_basket_yes",
         "adds_fourth_service": False,
         "places_orders": False,
         "activates_production": False,

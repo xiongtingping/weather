@@ -1,0 +1,72 @@
+{
+  "active_artifact": {
+    "artifact_id": "taf-rkpk-summer-d2-00z-v4",
+    "content_sha256": "114d46734252c4268aec9e659801a44d311a7c69e2eb84bf987432dadfcdff47",
+    "lead_bucket": "d2",
+    "path": "config/artifacts/bayes_basket_target_taf_revision_active.json",
+    "run_cycle": "00Z",
+    "season_bin": "summer",
+    "settlement_timezone": "Asia/Seoul",
+    "station_id": "RKPK"
+  },
+  "as_of_utc": "2026-07-31T16:03:58Z",
+  "blockers": [
+    "strict_oos_taf_artifact_coverage_is_rkpk_only",
+    "rkpk_2026-08-01_native_taf_captures_have_no_committed_p0",
+    "fresh_p0_taf_receipts_are_epwa_lemd_fact_and_lack_exact_station_artifacts",
+    "multi_station_taf_artifact_build_requires_historical_native_p0_crossfit_predictions"
+  ],
+  "boundary": {
+    "activated": false,
+    "calls_order_gateway": false,
+    "candidate_only": true,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "writes_production_inputs": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "8f984e59d946cf9dd6f65c5f7ef56a0542e36b73e4748ee0c7f43506e88cc974",
+  "forward_taf_inbox": {
+    "all_captures_official_native_local_receipts": true,
+    "capture_count": 256,
+    "content_sha256": "a4c6e31251cd5b54e6057de5fdde331103c8deef573fe0c2908ef49d210b53cf",
+    "path": "data/bayes_basket_target_taf_revision_inbox.json",
+    "rkpk_captures": [
+      {
+        "content_sha256": "7c766a6241ac2cd43e1c5e81775e9fc8bea6e582a9964494e8b9b4aca2fce5fb",
+        "event_date": "2026-08-01",
+        "received_at_utc": "2026-07-31T05:09:09Z",
+        "tx_c": 40.0
+      },
+      {
+        "content_sha256": "69dc9755538f2f2bb057b76e57e5f428dc2536a1bf889e56f5cbb99ed3df7cc4",
+        "event_date": "2026-08-01",
+        "received_at_utc": "2026-07-31T11:29:45Z",
+        "tx_c": 40.0
+      }
+    ],
+    "scope_count": 84,
+    "station_count": 45
+  },
+  "p0m_scope_evidence": {
+    "captures_matching_active_artifact_station_and_timezone": 2,
+    "captures_with_all_exact_p0m_preconditions": 0,
+    "captures_with_fresh_p0_at_receipt": 6,
+    "committed_p0_count": 0,
+    "committed_p0m_count": 0,
+    "current_et_event_date": "2026-08-01"
+  },
+  "registry_candidate": {
+    "activated": false,
+    "artifact_count": 1,
+    "artifact_ids": [
+      "taf-rkpk-summer-d2-00z-v4"
+    ],
+    "content_sha256": "7ed87aea9ca990ce2df4393520a8c6c9cffad92b8ba7f06b2e68247bb33012f3",
+    "path": "output/audits/taf_artifact_registry_rkpk_20260731.json",
+    "schema": "bayes_basket_target_taf_revision_artifact_registry_v1"
+  },
+  "schema": "bayes_basket_target_taf_registry_candidate_evidence_v1",
+  "state": "BLOCKED_NO_EXACT_P0M_SCOPE"
+}

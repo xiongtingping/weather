@@ -1,4 +1,4 @@
-"""Production-candidate pure YES basket plus hard-report NO planner.
+"""Production-candidate pure YES basket planner.
 
 The package is deliberately plan-only.  It contains no order gateway,
 database writer, scheduler, or live activation path.
@@ -7,7 +7,7 @@ database writer, scheduler, or live activation path.
 from .runtime import (
     BASKET_STRATEGY_SCHEMA_VERSION,
     BasketStrategyConfig,
-    build_basket_plus_hard_no_plan,
+    build_basket_yes_plan,
     classify_regime_direction,
     extract_model_taf_inputs,
 )
@@ -41,7 +41,7 @@ from .settlement_floor_allocator import (
 __all__ = [
     "BASKET_STRATEGY_SCHEMA_VERSION",
     "BasketStrategyConfig",
-    "build_basket_plus_hard_no_plan",
+    "build_basket_yes_plan",
     "classify_regime_direction",
     "extract_model_taf_inputs",
     "extract_probability_projection",

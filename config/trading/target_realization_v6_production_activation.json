@@ -11,5 +11,5 @@
   "state": "disabled",
   "strategy_artifact_sha256": "ffbb89fbbb579f3d91fc263c85bb7c5ee822bf87d472a5b3b03b5a8bda5e9984",
   "v5_fallback_forbidden": true,
-  "superseded_by": "weather_basket_plus_hard_no_v2"
+  "superseded_by": "weather_basket_yes_v2"
 }

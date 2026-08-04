@@ -1170,7 +1170,7 @@ def _local_proxy_fallback_ports(scutil_output: str = "") -> List[int]:
     ports = _parse_port_list(os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS"))
     if ports:
         return ports
-    return [7897]
+    return [1082]
 
 
 def _detect_local_http_proxy_url(scutil_output: str = "") -> str:

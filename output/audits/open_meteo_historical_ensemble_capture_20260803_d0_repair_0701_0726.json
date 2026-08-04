@@ -1,0 +1,1626 @@
+{
+  "schema": "open_meteo_historical_ensemble_capture_v1",
+  "captured_at_utc": "2026-08-03T01:41:35.324Z",
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-26",
+  "stations": [
+    "NZWN",
+    "ZBAA",
+    "ZGGG",
+    "ZHHH",
+    "ZSQD"
+  ],
+  "systems": [
+    "ECMWF_AIFS_ENS_GLOBAL",
+    "NOAA_GEFS_05"
+  ],
+  "missing_dates_by_station": {
+    "NZWN": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ],
+    "ZBAA": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ],
+    "ZGGG": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ],
+    "ZHHH": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ],
+    "ZSQD": [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+      "2026-07-13",
+      "2026-07-14",
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+      "2026-07-18",
+      "2026-07-19",
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+      "2026-07-23",
+      "2026-07-24",
+      "2026-07-25",
+      "2026-07-26"
+    ]
+  },
+  "missing_systems_by_station": {
+    "NZWN": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ],
+    "ZBAA": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ],
+    "ZGGG": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ],
+    "ZHHH": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ],
+    "ZSQD": [
+      "ECMWF_AIFS_ENS_GLOBAL",
+      "NOAA_GEFS_05"
+    ]
+  },
+  "fetch_station_count": 5,
+  "response_receipts": [
+    {
+      "station_id": "NZWN",
+      "response_sha256": "ff465cb6fb14edb6da1e97dfa3053a7b18c2e169eb30c64ac19d420937806b9c",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=-41.331&longitude=174.806&daily=temperature_2m_max&models=ecmwf_aifs025_ensemble&timezone=Pacific%2FAuckland&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 10653,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "ECMWF_AIFS_ENS_GLOBAL"
+      ]
+    },
+    {
+      "station_id": "NZWN",
+      "response_sha256": "4810b1d5cb1196aeb0a092ce93fc1f9de58e8c3de8d140b7ae4e05744af06d4b",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=-41.331&longitude=174.806&daily=temperature_2m_max&models=ncep_gefs05&timezone=Pacific%2FAuckland&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 6691,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "NOAA_GEFS_05"
+      ]
+    },
+    {
+      "station_id": "ZBAA",
+      "response_sha256": "108b572db5bed5258b3fe41442f0fe3f8ae18dec9e8588b744c4985171bae0c0",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.082&longitude=116.603&daily=temperature_2m_max&models=ecmwf_aifs025_ensemble&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 10647,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "ECMWF_AIFS_ENS_GLOBAL"
+      ]
+    },
+    {
+      "station_id": "ZBAA",
+      "response_sha256": "9fa0cdb09f4c792b33c34bd016b10321f2efc506825faf1d1619ea02bcaca91e",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.082&longitude=116.603&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 6687,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "NOAA_GEFS_05"
+      ]
+    },
+    {
+      "station_id": "ZGGG",
+      "response_sha256": "63a04c317aae610b91039b6012c60bb404d00e6669de5675a55514e64992dec8",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=23.392&longitude=113.307&daily=temperature_2m_max&models=ecmwf_aifs025_ensemble&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 10648,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "ECMWF_AIFS_ENS_GLOBAL"
+      ]
+    },
+    {
+      "station_id": "ZGGG",
+      "response_sha256": "76c04391c4f82ede35e08adb4dc01e647a40f07755e67a00c68fc04eac8bb279",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=23.392&longitude=113.307&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 6687,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "NOAA_GEFS_05"
+      ]
+    },
+    {
+      "station_id": "ZHHH",
+      "response_sha256": "d4e76b521ed8da7504790912afffc24ed70548078a7ab0f957edcfd47c70f986",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.783&longitude=114.205&daily=temperature_2m_max&models=ecmwf_aifs025_ensemble&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 10650,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "ECMWF_AIFS_ENS_GLOBAL"
+      ]
+    },
+    {
+      "station_id": "ZHHH",
+      "response_sha256": "7163f69486186820b3b3434817eaff1edb2798875d4030df07591d0b7a486647",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.783&longitude=114.205&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 6687,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "NOAA_GEFS_05"
+      ]
+    },
+    {
+      "station_id": "ZSQD",
+      "response_sha256": "2ffeaa49ce17588115bc5e6f984e7f342514319d20f99ef8eae0e768393acc9f",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=36.362&longitude=120.087&daily=temperature_2m_max&models=ecmwf_aifs025_ensemble&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 10647,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "ECMWF_AIFS_ENS_GLOBAL",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "ECMWF_AIFS_ENS_GLOBAL"
+      ]
+    },
+    {
+      "station_id": "ZSQD",
+      "response_sha256": "63417c32d85fb83e986e3e3678696f64e2bdad7def858dd27f26e60373ad819e",
+      "response_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=36.362&longitude=120.087&daily=temperature_2m_max&models=ncep_gefs05&timezone=Asia%2FShanghai&start_date=2026-07-01&end_date=2026-07-26",
+      "response_bytes": 6686,
+      "model_day_counts": {},
+      "captured_at_utc": "2026-08-03T01:41:35.324Z",
+      "unavailable": [
+        {
+          "event_date": "2026-07-01",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-02",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-03",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-04",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-05",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-06",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-07",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-08",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-09",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-10",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-11",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-12",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-13",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-14",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-15",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-16",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-17",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-18",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-19",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-20",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-21",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-22",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-23",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-24",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-25",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        },
+        {
+          "event_date": "2026-07-26",
+          "system_id": "NOAA_GEFS_05",
+          "reason": "member_set_incomplete"
+        }
+      ],
+      "system_ids": [
+        "NOAA_GEFS_05"
+      ]
+    }
+  ],
+  "raw_paths": [],
+  "failures": [],
+  "candidate_member_row_count": 0,
+  "inserted_member_row_count": 0,
+  "commit": true,
+  "production_no_live": true,
+  "future_event_count": 0,
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "native_arrival_index_written": false,
+  "p1_authority_written": false,
+  "calls_order_gateway": false,
+  "orders_submitted": 0
+}

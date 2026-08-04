@@ -1,10 +1,10 @@
 {
   "schema": "bayes_basket_target_research_network_v1",
   "provider": "Clash Verge",
-  "proxy_url": "http://127.0.0.1:7897",
+  "proxy_url": "http://127.0.0.1:1082",
   "fallback_proxy_url": "",
   "proxy_candidates": [
-    "http://127.0.0.1:7897"
+    "http://127.0.0.1:1082"
   ],
   "scope": "bayes_basket_target_historical_research_only",
   "enabled": true,

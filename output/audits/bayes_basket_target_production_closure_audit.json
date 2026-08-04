@@ -8,6 +8,7 @@
     "legacy_runtime_dependency_absent": true,
     "no_forbidden_market_rest_or_tick_fallback": true,
     "production_no_live_and_mutation_flags_closed": true,
+    "retired_gateway_entry_closed": true,
     "runtime_config_isolation_closed": true,
     "service_domain_and_manifest_closed": true,
     "target_only_consumer_unique": true,
@@ -45,10 +46,11 @@
         "taf",
         "nwp",
         "metar",
-        "speċi",
+        "speci",
         "hard_lower_bound",
         "hard_no"
       ],
+      "basket_forbidden_tokens_observed": [],
       "basket_scope_files": [
         "bayes_basket_target/basket_kernel/__init__.py",
         "bayes_basket_target/basket_kernel/contracts.py",
@@ -58,7 +60,7 @@
         "bayes_basket_target/basket_kernel/support.py",
         "bayes_basket_target/runtime.py"
       ],
-      "hard_no_scope": "atomic_ledger+production+reported_trajectory_no_daemon"
+      "hard_no_scope": "atomic_ledger+production+weather_basket_yes_daemon"
     }
   },
   "ok": true,
@@ -82,14 +84,27 @@
     "opens_database": false,
     "writes_production_state": false
   },
-  "receipt_sha256": "d9803481104720993d0d417cf5fe70a0c16f3589d5887b8bc8b266e954782aaf",
+  "receipt_sha256": "c43e360250a3fec8063ad251e6fc526da373d17864993803eff20b2eeb1701de",
   "reference_graph": {
-    "content_sha256": "43fd7e4e4e47a51544c0bf360c03df5dc7d6fe2a5e9d83aac25c5571d585f14f",
+    "content_sha256": "0d1417b486eb5c7a23ea18aa1adf5393ea3e12a4ea8d173e6981c46ac190d477",
     "edge_count": 26,
     "node_count": 128
   },
+  "retired_gateway_closure": {
+    "checks": {
+      "copy_follow_gateway_denied_before_submit": true,
+      "copy_follow_parallel_gateway_lane_absent": true
+    },
+    "evidence": {
+      "denial_error": "retired_strategy_forbidden",
+      "denial_tokens_present": true,
+      "gateway_source": "scripts/clob_order_service.mjs",
+      "retired_parallel_lane_absent": true,
+      "retired_strategy_id": "weather_copy_follow_v1"
+    }
+  },
   "retired_runtime_candidates": {
-    "content_sha256": "f418cf5cb02a32cec4b71e9d5e8966e60472f329b7bb46371d972460de8135ca",
+    "content_sha256": "769b3b4eaff101145361c869a79ce1720689cd50ded810ddeffa694f6154268b",
     "count": 128,
     "deletion_authorized": false,
     "deletion_gate": "full_repository_dependency_and_worktree_audit_required",
@@ -198,23 +213,23 @@
       "target_source_scope_content_addressed": true
     },
     "evidence": {
-      "computed_manifest_sha256": "48b6840c0267d07e75a62e98af25382288ce15840b3bbabe3b00f118779f12fc",
+      "computed_manifest_sha256": "e93f4a926e6fb721e1b05826d319148dc5ba5a5542617110aa871c8a5ce7fb31",
       "forbidden_cross_read": [
         {
           "consumer_owner": "bayes_basket_target",
           "reason": "target_must_not_read_protected_l0_config",
-          "resource_path": "config/trading/basket_plus_hard_no_v1.json"
+          "resource_path": "config/trading/basket_yes_v1.json"
         }
       ],
       "manifest_path": "config/bayes_basket_target/runtime_config_isolation_v1.json",
-      "manifest_sha256": "48b6840c0267d07e75a62e98af25382288ce15840b3bbabe3b00f118779f12fc",
+      "manifest_sha256": "e93f4a926e6fb721e1b05826d319148dc5ba5a5542617110aa871c8a5ce7fb31",
       "protected_legacy_config": {
         "consumers": [
           "legacy_l0_runtime"
         ],
         "owner": "protected_l0_legacy",
-        "path": "config/trading/basket_plus_hard_no_v1.json",
-        "sha256": "94623db2d33322e5f01ead34374a073fd28d6355c0543a45f2635e30a97e075f"
+        "path": "config/trading/basket_yes_v1.json",
+        "sha256": "5f462ee5e193768e777d93409262bad7ee371ba62196ac2a85ff3d707a54779e"
       },
       "target_activation": {
         "consumers": [
@@ -222,7 +237,7 @@
         ],
         "owner": "bayes_basket_target",
         "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
-        "sha256": "c9ef50f3ba0438dba1412cdc284202fe96859aa9f0dafcdd97feba2450fc3c19"
+        "sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45"
       },
       "target_reference_graph": {
         "edge_count": 0,
@@ -231,22 +246,22 @@
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/atomic_ledger.py",
-            "sha256": "878e25db25b54b742b82e63b80b6bbf4c8c4aa8f3957da29be17d92e9c8fcd0b"
+            "sha256": "bda4db853cf5e5a346eabbd819b4486477ef2597c815f96e8c50ebb08fd2e45d"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/basket_kernel/__init__.py",
-            "sha256": "e6e0fb9952426391024b039dc85a1eccab3a9976689ded36d7f3d4cccf722fa2"
+            "sha256": "302b10478fafb487163825f03b95665d3cef734aa6866fc1c97cf8bd4f769732"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/basket_kernel/contracts.py",
-            "sha256": "aa0ad6f2ba5c84275bb6ff4be412921903ba6fba1e2f310f9cc04fed40bf8e94"
+            "sha256": "6885e4aff9de31f368837235b3e85aa63e9ce9144e369ddf1a34a1eb08a08fdb"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/basket_kernel/delta_v2.py",
-            "sha256": "969b8e6e38c27d5b6c40b88046cb09e5c29b4301ef07d7531d2236fde13840ca"
+            "sha256": "5fa9e0d978040cae86b77a6d65c8f7df0ba5e6f47e051d56448cded786b59d94"
           },
           {
             "owner": "bayes_basket_target",
@@ -261,52 +276,52 @@
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/basket_kernel/support.py",
-            "sha256": "ab3aa795df0a9e577e7dd27deb79dba247cdd33829e22e3a7feac5858744006d"
+            "sha256": "4c5afd1146fc24e56ac9da1478b986daf9350abe32091f8cd13cddefac299e41"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/cash_phase_forward_observation.py",
-            "sha256": "74151362af9f0463715d6d1194711547913064d21623fee841ea960a2de42897"
+            "sha256": "847a3425356bc6915a06030f2a4502dd90fb5936ada48c70ded418208d1c76d8"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/delta_v2_runtime.py",
-            "sha256": "c1b4fbff8b004253e21bb0d8335f62e26e1d7b71f9f9b82aa1d5fe83f947bcf6"
+            "sha256": "778ae16daabf8a4db9e661003ae8aa6235bc9db949c109af260ef679c4ef39f2"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/delta_v2_settlement_label.py",
-            "sha256": "d38bc783a9e259bbd676bc1c6c35623a9f44da47797b190d9dcc0dc40c506ba5"
+            "sha256": "68cd6affe57e84375ac9dbf4d69e05ed18893403a5e7db899e3945455a7cdea9"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/delta_v2_training.py",
-            "sha256": "721f51e4ccd7be8eb5b070f81757a80baf1ca1d3d3b1021572882a372e7e2831"
+            "sha256": "d0ea458db9fa4fa70682209226cf883ccccb5b347aea2193f2201d0562eaf715"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/execution_reconciliation.py",
-            "sha256": "d1546c6638f1166d53fbbfb22a68b7d5577a0b83a903a2a6852ac750d8bd969f"
+            "sha256": "072263e6bc8574eb41a953f524f205b923b0dc92193f69e2836cb7d1589923c6"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/execution_transition_runtime.py",
-            "sha256": "be7b1215bb5037db866ab42030a0d6e6b8879ae10da54ec827b0e78d4701f731"
+            "sha256": "0caa5feaa76768edda9225c49fe1d7a05ae2295e74c24c3a0a1ed484051bd488"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/forward_observation_store.py",
-            "sha256": "c0d99bdae0109eb9a5493105ef476f4d757955bf786f9c59e19b9048f955af25"
+            "sha256": "a1630ce3548d6259158e0c5f8fe502a77ea6b8e44bf20f120eb3c574d1e6fbea"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/forward_training_validation.py",
-            "sha256": "3c337cba707a500997f2fc5a0b4606bac1a7b9f9481d10a958e0db5f2637b503"
+            "sha256": "deb4b0da7ee2862f1e4f470d5c06b3aaed4d96714d31006a9f930698e2ba61e2"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/market_ingress.py",
-            "sha256": "671f7a3ca1dbc5092519d5d6db363deb98daf87efd2699b1855dfd1e99c0f269"
+            "sha256": "6dc2b46461b6f28ca291c9cf57384cc6a27738a894b73312f6249c3d86d58cef"
           },
           {
             "owner": "bayes_basket_target",
@@ -316,70 +331,70 @@
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/production.py",
-            "sha256": "318e03a9654995b3d587ecf319be9b1356cf5cb2ad4966c29a72d0ded0781e89"
+            "sha256": "2ee50f27c36908e94ce923419d52f3c9527ca1f071a1ddcd7cf100dbc11769f6"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/production_io.py",
-            "sha256": "b2011fb44759250c58d4d898213e3fe5b7beacaefd9e8eef725586d271ba9790"
+            "sha256": "6d97dedb5e0c9c3a26c88bd0445a44e769bcf6ba3cb27ad98970e641500d1dc6"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/production_worker.py",
-            "sha256": "62a0736cc1dc0417c8128d2a76a6393e005e6e085ac3980d4ee7e10e0dc96b13"
+            "sha256": "5ee3002be0b8387544a7b06b9bf253f00359db2472ab4cc1eea7f3fb8605fa00"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/resident_nwp_producer.py",
-            "sha256": "8a51b145b8c7de8a2628c47ba7010b29e9f69f595d9e3eb4fbd7518265110d6e"
+            "sha256": "3853b1fa07ee33ea061b17f96053cc20a05db2788321cf818f6280ba3a2243f6"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/runtime.py",
-            "sha256": "e8f49ab34e394cb1028369dc91c22541bb2670b234e04999d674d66c9051243f"
+            "sha256": "22cbb3adb30f90f0fb7b36e904871698ae2ec1f575e37370a65cd30e76211198"
           },
           {
             "owner": "bayes_basket_target",
             "path": "bayes_basket_target/settlement_truth.py",
-            "sha256": "86e34249f4e7c6b3a6e8850cd5e65c6135a46e9c303e667e958a84834498c9f6"
+            "sha256": "a00fd4b3f14641ce6dd057a7ffd236708d067835baeb8fa5d674892619f32dca"
           },
           {
             "owner": "bayes_basket_target",
             "path": "config/trading/bayes_basket_target_production_no_live_activation_v1.json",
-            "sha256": "c9ef50f3ba0438dba1412cdc284202fe96859aa9f0dafcdd97feba2450fc3c19"
+            "sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45"
           },
           {
             "owner": "bayes_basket_target",
             "path": "scripts/clob_order_service.mjs",
-            "sha256": "3d36b0a619676959f08c75f639593c5cdbd303cb345c683e42fc9f4e9518ab7c"
+            "sha256": "c632ced24de35516daed37d24ae8129aae2abb4ffae110c9dde54f12aefe59d2"
           },
           {
             "owner": "bayes_basket_target",
             "path": "scripts/clob_order_service.sh",
-            "sha256": "a5dd368fb05275226f66dcb93caa8f1c7d9634d03f01937aec5fb1929b0fe2e4"
+            "sha256": "b6fb895d03cf15243edcdb35e768b188f9c17c175328e6cc6cfb1f52a2068b14"
           },
           {
             "owner": "bayes_basket_target",
             "path": "scripts/market_ws_listener.py",
-            "sha256": "d3a26c7e64f69c78577e1eeb1aadd2814c5629679a1675cc01150178a51191a7"
+            "sha256": "ff51d70286bb9ab908f843947ae843bb7d6935048cd8f2870ed9903e60d22e5b"
           },
           {
             "owner": "bayes_basket_target",
             "path": "scripts/market_ws_listener.sh",
-            "sha256": "20d2e46397fe8ccd2f54a8c399ffc3adc7320ee21bfee290e993b85a8aa07980"
+            "sha256": "519fbd1350599be9ef642e2e82a4f7db893555a3b4aeff55e1dc418c81528862"
           },
           {
             "owner": "bayes_basket_target",
-            "path": "scripts/reported_trajectory_no_daemon.py",
-            "sha256": "9e4bf883a4bf741a0cbb098a5d2298c0d297a0dfe4fe1b4ec61153ab6d0cddb1"
+            "path": "scripts/weather_basket_yes_daemon.py",
+            "sha256": "19c40408afd59c70078554300367123e47519e77ac0281412d20a4eb93cb0752"
           },
           {
             "owner": "bayes_basket_target",
-            "path": "scripts/reported_trajectory_no_daemon.sh",
-            "sha256": "e45ca17ae198166e820ba7fd91503c8f17e28fe7591483058cb5d184181da5be"
+            "path": "scripts/weather_basket_yes_daemon.sh",
+            "sha256": "b62bff0e6eb62f2cceb384d04f5c9f78d26fa1f02b78c3fc639e1e0b88c4680b"
           }
         ],
-        "protected_resource": "config/trading/basket_plus_hard_no_v1.json"
+        "protected_resource": "config/trading/basket_yes_v1.json"
       },
       "target_source_closure": [
         {
@@ -387,16 +402,16 @@
             "target_runtime"
           ],
           "owner": "bayes_basket_target",
-          "path": "scripts/reported_trajectory_no_daemon.py",
-          "sha256": "9e4bf883a4bf741a0cbb098a5d2298c0d297a0dfe4fe1b4ec61153ab6d0cddb1"
+          "path": "scripts/weather_basket_yes_daemon.py",
+          "sha256": "19c40408afd59c70078554300367123e47519e77ac0281412d20a4eb93cb0752"
         },
         {
           "consumers": [
             "target_runtime"
           ],
           "owner": "bayes_basket_target",
-          "path": "scripts/reported_trajectory_no_daemon.sh",
-          "sha256": "e45ca17ae198166e820ba7fd91503c8f17e28fe7591483058cb5d184181da5be"
+          "path": "scripts/weather_basket_yes_daemon.sh",
+          "sha256": "b62bff0e6eb62f2cceb384d04f5c9f78d26fa1f02b78c3fc639e1e0b88c4680b"
         },
         {
           "consumers": [
@@ -404,7 +419,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "scripts/market_ws_listener.py",
-          "sha256": "d3a26c7e64f69c78577e1eeb1aadd2814c5629679a1675cc01150178a51191a7"
+          "sha256": "ff51d70286bb9ab908f843947ae843bb7d6935048cd8f2870ed9903e60d22e5b"
         },
         {
           "consumers": [
@@ -412,7 +427,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "scripts/market_ws_listener.sh",
-          "sha256": "20d2e46397fe8ccd2f54a8c399ffc3adc7320ee21bfee290e993b85a8aa07980"
+          "sha256": "519fbd1350599be9ef642e2e82a4f7db893555a3b4aeff55e1dc418c81528862"
         },
         {
           "consumers": [
@@ -420,7 +435,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "scripts/clob_order_service.mjs",
-          "sha256": "3d36b0a619676959f08c75f639593c5cdbd303cb345c683e42fc9f4e9518ab7c"
+          "sha256": "c632ced24de35516daed37d24ae8129aae2abb4ffae110c9dde54f12aefe59d2"
         },
         {
           "consumers": [
@@ -428,7 +443,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "scripts/clob_order_service.sh",
-          "sha256": "a5dd368fb05275226f66dcb93caa8f1c7d9634d03f01937aec5fb1929b0fe2e4"
+          "sha256": "b6fb895d03cf15243edcdb35e768b188f9c17c175328e6cc6cfb1f52a2068b14"
         },
         {
           "consumers": [
@@ -436,7 +451,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/production_worker.py",
-          "sha256": "62a0736cc1dc0417c8128d2a76a6393e005e6e085ac3980d4ee7e10e0dc96b13"
+          "sha256": "5ee3002be0b8387544a7b06b9bf253f00359db2472ab4cc1eea7f3fb8605fa00"
         },
         {
           "consumers": [
@@ -444,7 +459,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/market_ingress.py",
-          "sha256": "671f7a3ca1dbc5092519d5d6db363deb98daf87efd2699b1855dfd1e99c0f269"
+          "sha256": "6dc2b46461b6f28ca291c9cf57384cc6a27738a894b73312f6249c3d86d58cef"
         },
         {
           "consumers": [
@@ -452,7 +467,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/delta_v2_runtime.py",
-          "sha256": "c1b4fbff8b004253e21bb0d8335f62e26e1d7b71f9f9b82aa1d5fe83f947bcf6"
+          "sha256": "778ae16daabf8a4db9e661003ae8aa6235bc9db949c109af260ef679c4ef39f2"
         },
         {
           "consumers": [
@@ -460,7 +475,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/delta_v2_training.py",
-          "sha256": "721f51e4ccd7be8eb5b070f81757a80baf1ca1d3d3b1021572882a372e7e2831"
+          "sha256": "d0ea458db9fa4fa70682209226cf883ccccb5b347aea2193f2201d0562eaf715"
         },
         {
           "consumers": [
@@ -468,7 +483,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/delta_v2_settlement_label.py",
-          "sha256": "d38bc783a9e259bbd676bc1c6c35623a9f44da47797b190d9dcc0dc40c506ba5"
+          "sha256": "68cd6affe57e84375ac9dbf4d69e05ed18893403a5e7db899e3945455a7cdea9"
         },
         {
           "consumers": [
@@ -476,7 +491,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/settlement_truth.py",
-          "sha256": "86e34249f4e7c6b3a6e8850cd5e65c6135a46e9c303e667e958a84834498c9f6"
+          "sha256": "a00fd4b3f14641ce6dd057a7ffd236708d067835baeb8fa5d674892619f32dca"
         },
         {
           "consumers": [
@@ -484,7 +499,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/forward_training_validation.py",
-          "sha256": "3c337cba707a500997f2fc5a0b4606bac1a7b9f9481d10a958e0db5f2637b503"
+          "sha256": "deb4b0da7ee2862f1e4f470d5c06b3aaed4d96714d31006a9f930698e2ba61e2"
         },
         {
           "consumers": [
@@ -492,7 +507,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/resident_nwp_producer.py",
-          "sha256": "8a51b145b8c7de8a2628c47ba7010b29e9f69f595d9e3eb4fbd7518265110d6e"
+          "sha256": "3853b1fa07ee33ea061b17f96053cc20a05db2788321cf818f6280ba3a2243f6"
         },
         {
           "consumers": [
@@ -500,7 +515,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/production.py",
-          "sha256": "318e03a9654995b3d587ecf319be9b1356cf5cb2ad4966c29a72d0ded0781e89"
+          "sha256": "2ee50f27c36908e94ce923419d52f3c9527ca1f071a1ddcd7cf100dbc11769f6"
         },
         {
           "consumers": [
@@ -508,7 +523,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/production_io.py",
-          "sha256": "b2011fb44759250c58d4d898213e3fe5b7beacaefd9e8eef725586d271ba9790"
+          "sha256": "6d97dedb5e0c9c3a26c88bd0445a44e769bcf6ba3cb27ad98970e641500d1dc6"
         },
         {
           "consumers": [
@@ -516,7 +531,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/runtime.py",
-          "sha256": "e8f49ab34e394cb1028369dc91c22541bb2670b234e04999d674d66c9051243f"
+          "sha256": "22cbb3adb30f90f0fb7b36e904871698ae2ec1f575e37370a65cd30e76211198"
         },
         {
           "consumers": [
@@ -524,7 +539,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/cash_phase_forward_observation.py",
-          "sha256": "74151362af9f0463715d6d1194711547913064d21623fee841ea960a2de42897"
+          "sha256": "847a3425356bc6915a06030f2a4502dd90fb5936ada48c70ded418208d1c76d8"
         },
         {
           "consumers": [
@@ -532,7 +547,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/forward_observation_store.py",
-          "sha256": "c0d99bdae0109eb9a5493105ef476f4d757955bf786f9c59e19b9048f955af25"
+          "sha256": "a1630ce3548d6259158e0c5f8fe502a77ea6b8e44bf20f120eb3c574d1e6fbea"
         },
         {
           "consumers": [
@@ -548,7 +563,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/atomic_ledger.py",
-          "sha256": "878e25db25b54b742b82e63b80b6bbf4c8c4aa8f3957da29be17d92e9c8fcd0b"
+          "sha256": "bda4db853cf5e5a346eabbd819b4486477ef2597c815f96e8c50ebb08fd2e45d"
         },
         {
           "consumers": [
@@ -556,7 +571,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/execution_reconciliation.py",
-          "sha256": "d1546c6638f1166d53fbbfb22a68b7d5577a0b83a903a2a6852ac750d8bd969f"
+          "sha256": "072263e6bc8574eb41a953f524f205b923b0dc92193f69e2836cb7d1589923c6"
         },
         {
           "consumers": [
@@ -564,7 +579,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/execution_transition_runtime.py",
-          "sha256": "be7b1215bb5037db866ab42030a0d6e6b8879ae10da54ec827b0e78d4701f731"
+          "sha256": "0caa5feaa76768edda9225c49fe1d7a05ae2295e74c24c3a0a1ed484051bd488"
         },
         {
           "consumers": [
@@ -572,7 +587,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/basket_kernel/__init__.py",
-          "sha256": "e6e0fb9952426391024b039dc85a1eccab3a9976689ded36d7f3d4cccf722fa2"
+          "sha256": "302b10478fafb487163825f03b95665d3cef734aa6866fc1c97cf8bd4f769732"
         },
         {
           "consumers": [
@@ -580,7 +595,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/basket_kernel/contracts.py",
-          "sha256": "aa0ad6f2ba5c84275bb6ff4be412921903ba6fba1e2f310f9cc04fed40bf8e94"
+          "sha256": "6885e4aff9de31f368837235b3e85aa63e9ce9144e369ddf1a34a1eb08a08fdb"
         },
         {
           "consumers": [
@@ -604,7 +619,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/basket_kernel/support.py",
-          "sha256": "ab3aa795df0a9e577e7dd27deb79dba247cdd33829e22e3a7feac5858744006d"
+          "sha256": "4c5afd1146fc24e56ac9da1478b986daf9350abe32091f8cd13cddefac299e41"
         },
         {
           "consumers": [
@@ -612,7 +627,7 @@
           ],
           "owner": "bayes_basket_target",
           "path": "bayes_basket_target/basket_kernel/delta_v2.py",
-          "sha256": "969b8e6e38c27d5b6c40b88046cb09e5c29b4301ef07d7531d2236fde13840ca"
+          "sha256": "5fa9e0d978040cae86b77a6d65c8f7df0ba5e6f47e051d56448cded786b59d94"
         }
       ]
     }
@@ -626,11 +641,10 @@
   },
   "schema": "bayes_basket_target_production_closure_audit_v1",
   "scope": {
-    "authority_source_bytes": 86616,
-    "authority_source_files_included": [
-      "reported_trajectory_no_engine.py"
-    ],
-    "authority_source_files_requested": [
+    "authority_source_bytes": 0,
+    "authority_source_files_included": [],
+    "authority_source_files_requested": [],
+    "authority_source_files_retired": [
       "reported_trajectory_no_engine.py"
     ],
     "excluded_directories": [
@@ -643,7 +657,7 @@
       "tests",
       "tmp"
     ],
-    "launchd_bytes": 3873,
+    "launchd_bytes": 4275,
     "launchd_dir": "launchd",
     "max_file_bytes": 1000000,
     "max_files": 96,
@@ -654,7 +668,7 @@
       "count": 0,
       "sample": []
     },
-    "source_bytes": 1173750,
+    "source_bytes": 1582015,
     "source_files_included": [
       "bayes_basket_target/atomic_ledger.py",
       "bayes_basket_target/basket_kernel/__init__.py",
@@ -684,12 +698,12 @@
       "scripts/clob_order_service.sh",
       "scripts/market_ws_listener.py",
       "scripts/market_ws_listener.sh",
-      "scripts/reported_trajectory_no_daemon.py",
-      "scripts/reported_trajectory_no_daemon.sh"
+      "scripts/weather_basket_yes_daemon.py",
+      "scripts/weather_basket_yes_daemon.sh"
     ],
     "source_files_requested": [
-      "scripts/reported_trajectory_no_daemon.py",
-      "scripts/reported_trajectory_no_daemon.sh",
+      "scripts/weather_basket_yes_daemon.py",
+      "scripts/weather_basket_yes_daemon.sh",
       "scripts/market_ws_listener.py",
       "scripts/market_ws_listener.sh",
       "scripts/clob_order_service.mjs",
@@ -727,7 +741,7 @@
       "service_probe_or_snapshot_complete": true,
       "target_service_labels_unique": true,
       "target_service_manifests_present": true,
-      "target_services_system_only": true
+      "target_services_user_only": true
     },
     "declared_manifest_count": 3,
     "evidence": {
@@ -737,21 +751,21 @@
       "forbidden_declaration_sample": [],
       "forbidden_loaded_service_count": 0,
       "forbidden_loaded_service_sample": [],
-      "loaded_system": [
+      "loaded_system": [],
+      "loaded_user": [
         "com.weather.clob_order_service",
         "com.weather.market_ws",
-        "com.weather.reported_trajectory_no"
+        "com.weather.weather_basket_yes"
       ],
-      "loaded_user": [],
       "target_labels": [
-        "com.weather.reported_trajectory_no",
+        "com.weather.weather_basket_yes",
         "com.weather.market_ws",
         "com.weather.clob_order_service"
       ]
     },
-    "required_domain": "system",
+    "required_domain": "user",
     "target_services": [
-      "com.weather.reported_trajectory_no",
+      "com.weather.weather_basket_yes",
       "com.weather.market_ws",
       "com.weather.clob_order_service"
     ]
@@ -771,23 +785,14 @@
         "basket": "data/bayes_basket_target_ssot.db",
         "hard_no": "data/archive.db"
       },
-      "authority_sources": [
-        "reported_trajectory_no_engine.py"
-      ],
+      "authority_sources": [],
       "orchestrator": {
-        "hard_no_archive_binding": true,
-        "hard_no_call_arguments": [
-          "conn",
-          "self . conn",
-          "self . conn",
-          "self . conn",
-          "conn"
-        ],
-        "hard_no_first_argument": "conn",
-        "source": "scripts/reported_trajectory_no_daemon.py",
+        "hard_no_archive_binding": false,
+        "hard_no_call_arguments": [],
+        "hard_no_first_argument": null,
+        "source": "scripts/weather_basket_yes_daemon.py",
         "target_database_binding": true,
         "target_writer_call_arguments": [
-          "DEFAULT_TARGET_DB",
           "DEFAULT_TARGET_DB",
           "DEFAULT_TARGET_DB",
           "DEFAULT_TARGET_DB",
@@ -807,7 +812,8 @@
           "binding": "daemon archive connection (DEFAULT_DB/args.db)",
           "database": "data/archive.db",
           "source": "reported_trajectory_no_engine.py",
-          "writer_detected": true
+          "state": "RETIRED_ABSENT",
+          "writer_detected": false
         }
       }
     }

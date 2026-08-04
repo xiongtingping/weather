@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-fff0583863871e976f2a7cac",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "513516edfce05303303749754e2ae831472370fdf5c51c2807b8ccc926aa37f3",
+    "decision_at_utc": "2026-08-01T07:31:49Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ECMWF",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "ecmwf_aifs025_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-31T23:28:15Z",
+    "raw_payload_sha256s": [
+      "86b0fa36dd4397a21c196cf33e9657cd7de184d68fa5835d0159e4bd0275ecc2"
+    ],
+    "receipt_sha256": "a9fcac6874a3e9c84375a3805c0a3061ae451bac73539a45b4b9542b1dff4f46",
+    "received_at_utc": "2026-08-01T07:31:49Z",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20260731/18z/aifs-single/0p25/oper/20260731180000-6h-oper-fc.grib2",
+    "station_id": "ZHHH",
+    "target_local_date": "2026-08-01",
+    "target_timezone": "Asia/Shanghai",
+    "valid_time_utc": "2026-08-01T00:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-08-01T07:44:42.787Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/research/bayes_basket_target/aifs_incremental_20260801/ecmwf_aifs025_official/receipts/18e71a99a50b91ddff4b4511db143e510671060862f71ecbe90fcd09ff71f8bb.json"
+}

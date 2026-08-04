@@ -149,7 +149,7 @@ def test_amsc_half_hour_on_awc_station_is_cross_lane_blocked() -> None:
     assert blocked == [{"row_index": "0", "reason": "truth_source_lane_cross_fallback_forbidden"}]
 
 
-def test_amsc_non_hourly_metar_is_blocked_but_speci_and_awc_53_are_formal() -> None:
+def test_non_hourly_metar_is_blocked_but_speci_remains_formal() -> None:
     invalid = _observation(valid_at="2026-07-24T16:15:00Z")
     truth, blocked = build_et_truth_rows(
         [invalid],
@@ -171,6 +171,9 @@ def test_amsc_non_hourly_metar_is_blocked_but_speci_and_awc_53_are_formal() -> N
     assert not blocked
     assert truth[0]["official_tmax_c"] == 31
 
+    # The unified AWC truth lane accepts routine METAR only at :00; a
+    # non-hourly AWC METAR is retained as a bounded blocker.  SPECI remains
+    # valid at its effective minute/second above.
     awc = _observation(lane="awc", valid_at="2026-07-24T16:53:00Z")
     awc["first_seen_at_utc"] = "2026-07-24T16:54:00Z"
     awc["canonical_committed_at_utc"] = "2026-07-24T16:55:00Z"
@@ -179,8 +182,8 @@ def test_amsc_non_hourly_metar_is_blocked_but_speci_and_awc_53_are_formal() -> N
         station_lane_map={"ZUUU": "awc"},
         as_of_utc="2026-07-26T00:00:00Z",
     )
-    assert not blocked
-    assert truth[0]["official_tmax_c"] == 31
+    assert truth == []
+    assert blocked == [{"row_index": "0", "reason": "awc_metar_timing_invalid"}]
 
 
 def test_truth_event_date_uses_explicit_settlement_timezone_not_operational_default() -> None:

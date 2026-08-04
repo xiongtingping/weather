@@ -1,0 +1,30 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "database_replaced": false,
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "target_database_only": true,
+    "vacuum_performed": false,
+    "writer_quiescence_required": true
+  },
+  "busy": 0,
+  "checkpointed_frames": 0,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes_after": 3320238080,
+  "free_bytes_before": 24781389824,
+  "log_frames": 0,
+  "max_postcheckpoint_wal_bytes": 536870912,
+  "max_precheckpoint_wal_bytes": 4294967296,
+  "mode": "TRUNCATE",
+  "quick_check": "ok",
+  "requires_fresh_post_checkpoint_quiescence_receipt": true,
+  "rss_bytes": 41795584,
+  "schema": "bayes_basket_target_wal_checkpoint_v1",
+  "shm_bytes_after": 32768,
+  "shm_bytes_before": 0,
+  "state": "CHECKPOINTED",
+  "wal_bytes_after": 0,
+  "wal_bytes_before": 0
+}

@@ -73,13 +73,30 @@ CANONICAL_TARGET_STATIONS = frozenset(
 MAX_FRAME_BYTES = 8 * 1024 * 1024
 TEXT_PING_SECONDS = 1.0
 RECEIVE_TIMEOUT_SECONDS = 2.0
-SCOPE_REFRESH_SECONDS = 2.0
+SCOPE_REFRESH_SECONDS = 5.0
+# The target manifest is a complete, inline 45-scope snapshot.  Rebuilding it
+# for every price-change frame makes the resident task spend its entire event
+# loop encoding the same 2–3 MB JSON document.  Keep the official socket and
+# in-memory books live, but publish at a bounded cadence well inside the
+# 60-second quote freshness policy.  A separate liveness cadence lets a quiet
+# socket advance transport evidence without manufacturing economic quote time.
+MANIFEST_WRITE_INTERVAL_SECONDS = 2.0
+MANIFEST_LIVENESS_WRITE_INTERVAL_SECONDS = 5.0
+# A quiet token does not emit price_change frames.  Recycle the complete
+# official subscription before the 60s economic quote lease can expire, so a
+# fresh initial book is obtained for every leg without treating transport
+# liveness as a new economic observation.
+CONNECTION_REFRESH_SECONDS = 45.0
 RETRY_MAX_SECONDS = 10.0
 _STAGE_PRIORITY = {"P0": 0, "P0-M": 1, "P1": 2}
 
 
 class ScopeCatalogChanged(RuntimeError):
     """Reconnect the entire shard generation for an exact catalog."""
+
+
+class ConnectionRefreshRequired(RuntimeError):
+    """Planned full resubscription before a quiet book becomes stale."""
 
 
 def _apply_no_live_boundary(manifest: dict[str, Any]) -> None:
@@ -220,14 +237,20 @@ def _scope(
     # boundary explicit.
     with closing(_open_target_read_only(db_path)) as conn:
         probability_rows = conn.execute(
-            "SELECT envelope_id,stage,station_id,event_date,"
+            "SELECT envelope_id,stage,checkpoint_id,station_id,event_date,"
             "settlement_timezone,decision_at_utc,fresh_until_utc "
             "FROM basket_probability_envelope "
             "WHERE state='COMMITTED' "
             "AND stage IN ('P0','P0-M','P1') "
             "ORDER BY station_id,event_date,decision_at_utc,stage,envelope_id"
         ).fetchall()
-        current_probability: dict[tuple[str, str], sqlite3.Row] = {}
+        # Match ``select_current_stage`` exactly without loading the full
+        # probability vectors: first select the latest submitted checkpoint
+        # within each stage, then select the highest submitted stage.  A
+        # newer raw P0/P0-M must never replace an already-visible P1.
+        current_by_stage: dict[
+            tuple[str, str], dict[str, sqlite3.Row]
+        ] = {}
         for row in probability_rows:
             decision_at = _parse_utc(str(row["decision_at_utc"]))
             if decision_at > as_of:
@@ -239,22 +262,32 @@ def _scope(
             if station_id not in CANONICAL_TARGET_STATIONS:
                 continue
             key = (station_id, event_date)
-            previous = current_probability.get(key)
+            stage = str(row["stage"] or "").strip().upper()
+            if stage not in _STAGE_PRIORITY:
+                raise ContractError("resident_target_ws_probability_stage_invalid")
+            candidates = current_by_stage.setdefault(key, {})
+            previous = candidates.get(stage)
             if previous is None:
-                current_probability[key] = row
+                candidates[stage] = row
                 continue
-            previous_rank = (
-                _parse_utc(str(previous["decision_at_utc"])),
-                _STAGE_PRIORITY.get(str(previous["stage"]), -1),
-                str(previous["envelope_id"]),
+            previous_decision_at = _parse_utc(
+                str(previous["decision_at_utc"])
             )
-            candidate_rank = (
-                decision_at,
-                _STAGE_PRIORITY.get(str(row["stage"]), -1),
-                str(row["envelope_id"]),
-            )
-            if candidate_rank > previous_rank:
-                current_probability[key] = row
+            if decision_at > previous_decision_at:
+                candidates[stage] = row
+            elif decision_at == previous_decision_at:
+                # The materialized stage chain has no deterministic basis for
+                # resolving two checkpoints in the same stage at the same
+                # decision clock.  Mirror ``select_current_stage`` and stop
+                # the publisher rather than selecting by envelope ID.
+                raise ContractError(
+                    "resident_target_ws_probability_stage_checkpoint_ambiguous"
+                )
+
+        current_probability = {
+            key: rows[max(rows, key=lambda stage: _STAGE_PRIORITY[stage])]
+            for key, rows in current_by_stage.items()
+        }
 
         active_rows = load_active_registry_rows(conn)
         rows_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -769,6 +802,12 @@ async def _publish_connection(
         for shard in shards
     }
     next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
+    connection_refresh_deadline = (
+        time.monotonic() + CONNECTION_REFRESH_SECONDS
+    )
+    last_manifest_write = 0.0
+    economic_dirty = False
+    liveness_dirty = False
     try:
         while True:
             for shard_id, task in tasks.items():
@@ -810,6 +849,8 @@ async def _publish_connection(
                     confirmed = _apply_price_changes(
                         quotes, message, observed_at=observed_at
                     )
+                    if parsed is not None or confirmed:
+                        economic_dirty = True
                     for token_id in confirmed:
                         if token_id not in shard_tokens:
                             raise ContractError(
@@ -824,14 +865,44 @@ async def _publish_connection(
                     shard_tokens,
                     observed_at=observed_at,
                 )
+                liveness_dirty = True
+            elif shard_id in tokens_by_shard:
+                # The receive task emits a bounded timeout heartbeat even
+                # when the official socket has no price frame.  Refresh only
+                # the transport lease in memory; the periodic manifest write
+                # below keeps this separate from economic quote timestamps.
+                _confirm_shard_stream(
+                    quotes,
+                    tokens_by_shard[shard_id],
+                    observed_at=observed_at,
+                )
+                liveness_dirty = True
             if _future_probability_expired(catalog, observed_at_utc=observed_at):
                 raise ScopeCatalogChanged("resident_target_ws_probability_expired")
+            if time.monotonic() >= connection_refresh_deadline:
+                raise ConnectionRefreshRequired(
+                    "resident_target_ws_planned_refresh"
+                )
             if time.monotonic() >= next_scope_probe:
                 refreshed = _scope(db_path=db_path, as_of_utc=observed_at)
                 if refreshed["catalog_sha256"] != catalog["catalog_sha256"]:
                     raise ScopeCatalogChanged("resident_target_ws_catalog_changed")
                 next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
             if raw is None or len(quotes) != len(tokens):
+                continue
+            now = time.monotonic()
+            write_due = (
+                last_manifest_write <= 0.0
+                or (
+                    economic_dirty
+                    and now - last_manifest_write >= MANIFEST_WRITE_INTERVAL_SECONDS
+                )
+                or (
+                    liveness_dirty
+                    and now - last_manifest_write >= MANIFEST_LIVENESS_WRITE_INTERVAL_SECONDS
+                )
+            )
+            if not write_due:
                 continue
             # Recheck immediately before the sole write.  A closed or failed
             # shard never permits a partial or cross-generation publication.
@@ -848,6 +919,9 @@ async def _publish_connection(
             _assert_output_disk_budget(output_path)
             write_bounded_json(output_path, manifest, limit=MAX_JSON_OUTPUT_BYTES)
             assert_process_memory_budget()
+            last_manifest_write = now
+            economic_dirty = False
+            liveness_dirty = False
     finally:
         for task in tasks.values():
             task.cancel()
@@ -880,6 +954,9 @@ async def run_resident_target_ws_publisher(
             backoff = 1.0
         except asyncio.CancelledError:
             raise
+        except ConnectionRefreshRequired:
+            backoff = 1.0
+            continue
         except ScopeCatalogChanged:
             backoff = 1.0
             continue

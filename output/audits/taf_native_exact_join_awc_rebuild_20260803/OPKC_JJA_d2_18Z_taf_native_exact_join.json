@@ -1,0 +1,23 @@
+{
+  "content_sha256": "5dcfaee05059d39465cfc3437e33a62e17ec6b125b9fcd023231d65d98eb2ebb",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "78f52ae2fde17d893e29c0eb5381a769ab9a202f15c5a5e1a330c3289e513dc3",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Karachi",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "OPKC"
+}

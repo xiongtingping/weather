@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -31,6 +32,8 @@ from bayes_basket_target.contracts import (
 )
 from bayes_basket_target.resource_bounds import load_bounded_json, write_bounded_json
 from bayes_basket_target.source_policy import normalize_station_lane_map
+from bayes_basket_target.strict_asof_replay import maturity_key_for_model_run
+from bayes_basket_target.historical_model_rows import select_preferred_model_rows
 
 
 DEFAULT_OUTPUT = ROOT / "output/audits/bayes_basket_target_calibration_evidence.json"
@@ -76,11 +79,11 @@ def _settlement_timezone(
             "calibration_registry_settlement_timezone_missing:" + ",".join(missing)
         )
     timezones = {by_station[station] for station in selected}
-    if len(timezones) != 1:
-        raise ContractError(
-            "calibration_packet_mixed_settlement_timezones_forbidden"
-        )
-    return next(iter(timezones)), {
+    # A full 45-station packet is intentionally multi-timezone.  Keep a valid
+    # scalar compatibility value for legacy builders; the explicit map is the
+    # authority passed to any station-aware stage.
+    scalar_timezone = next(iter(timezones)) if len(timezones) == 1 else "UTC"
+    return scalar_timezone, {
         station: by_station[station] for station in selected
     }
 
@@ -122,7 +125,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _native_complete_model_rows(payload: object) -> list[dict[str, object]]:
+def _native_complete_model_rows(
+    payload: object,
+    *,
+    station_timezone_map: Mapping[str, str] | None = None,
+) -> list[dict[str, object]]:
     """Flatten only complete native daily curves into strict-as-of rows.
 
     The decoder evidence deliberately exposes incomplete curves as blocked;
@@ -153,10 +160,21 @@ def _native_complete_model_rows(payload: object) -> list[dict[str, object]]:
         for point in item.get("temperature_points") or []:
             if not isinstance(point, dict):
                 raise ContractError("native_model_decode_temperature_point_invalid")
+            station = str(item.get("station_id") or "").strip().upper()
+            expected_timezone = str((station_timezone_map or {}).get(station) or item.get("target_timezone") or payload.get("target_timezone") or "").strip()
+            event_date = str(item.get("event_date") or "").strip()
+            valid_time = str(point.get("valid_time_utc") or "").strip()
+            if station_timezone_map and expected_timezone and valid_time:
+                try:
+                    parsed = datetime.fromisoformat(valid_time.replace("Z", "+00:00"))
+                    derived = parsed.astimezone(ZoneInfo(expected_timezone)).date().isoformat()
+                    event_date = derived
+                except (TypeError, ValueError):
+                    pass
             rows.append({
-                "station_id": item.get("station_id"),
-                "event_date": item.get("event_date"),
-                "target_timezone": item.get("target_timezone"),
+                "station_id": station,
+                "event_date": event_date,
+                "target_timezone": expected_timezone,
                 "provider_id": item.get("provider_id"),
                 "model_run_initialization_utc": item.get("model_run_initialization_utc"),
                 "valid_time_utc": point.get("valid_time_utc"),
@@ -278,6 +296,233 @@ def _output_scope(
     }
 
 
+def _partition_model_rows_by_registry_scope(
+    native_rows: list[dict[str, object]],
+    historical_rows: list[dict[str, Any]],
+    *,
+    station_timezone_map: Mapping[str, str],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Partition rows by the immutable registry timezone and maturity key.
+
+    ``evaluate_strict_asof_replay`` intentionally accepts one maturity scope
+    per packet.  A full 45-station refresh can contain both a D-1 packet and a
+    same-UTC-date 00Z packet (and, independently, multiple settlement zones).
+    Keeping those rows in one replay would turn a valid packet into the
+    misleading ``strict_asof_maturity_not_uniform`` blocker.  This helper only
+    partitions already-loaded rows; it never drops or rewrites a row.
+    """
+
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for source_name, rows in (
+        ("native_model_rows", native_rows),
+        ("historical_model_rows", historical_rows),
+    ):
+        for row in rows:
+            station = str(row.get("station_id") or "").strip().upper()
+            timezone_name = str(station_timezone_map.get(station) or "").strip()
+            event_date = str(
+                row.get("event_date") or row.get("target_local_date") or ""
+            ).strip()
+            run_initialization = str(
+                row.get("model_run_initialization_utc")
+                or row.get("run_initialization_utc")
+                or ""
+            ).strip()
+            if not station or not timezone_name or not event_date or not run_initialization:
+                raise ContractError("calibration_model_scope_identity_missing")
+            maturity = maturity_key_for_model_run(
+                run_initialization,
+                event_date,
+                target_timezone=timezone_name,
+            )
+            key = (timezone_name, maturity)
+            packet = groups.setdefault(
+                key,
+                {
+                    "native_model_rows": [],
+                    "historical_model_rows": [],
+                    "station_ids": set(),
+                },
+            )
+            packet[source_name].append(row)
+            packet["station_ids"].add(station)
+    return groups
+
+
+def _aggregate_multi_timezone_evidence(
+    grouped: list[Mapping[str, Any]],
+    *,
+    as_of_utc: str,
+    station_timezone_map: Mapping[str, str],
+    station_scope: set[str] | None,
+    input_artifacts: Mapping[str, Mapping[str, Any]],
+    canonical_evidence: Mapping[str, Any] | None,
+    et_history_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Combine station-timezone calibration packets without mixed-clock joins."""
+
+    list_keys = (
+        "station_registry", "truth_evidence", "calibration_model_rows",
+        "model_arrival_evidence", "residual_evidence", "calibration_artifacts",
+        "ensemble_artifacts", "ensemble_selection_evidence",
+        "ensemble_selection_reports", "oos_reports", "promotion_decisions",
+        "calibration_activations",
+    )
+    merged_lists = {
+        key: [
+            item
+            for packet in grouped
+            for item in (packet.get(key) or [])
+            if isinstance(item, Mapping)
+        ]
+        for key in list_keys
+    }
+    windows = [packet.get("calibration_window") or {} for packet in grouped]
+    scope_counts: dict[str, int] = {}
+    for window in windows:
+        raw_counts = window.get("scope_sample_counts")
+        if isinstance(raw_counts, Mapping):
+            scope_counts.update({str(key): int(value or 0) for key, value in raw_counts.items()})
+    states = [str(window.get("state") or "BLOCKED_EVIDENCE") for window in windows]
+    if any(state == "CANDIDATE_SAMPLE_READY" for state in states):
+        window_state = "CANDIDATE_SAMPLE_READY"
+    elif any(state in {"PARTIAL_SCOPE_CANDIDATE_READY", "INSUFFICIENT_SCOPE_SAMPLES"} for state in states):
+        window_state = "PARTIAL_SCOPE_CANDIDATE_READY"
+    else:
+        window_state = "INSUFFICIENT_CLOSED_SETTLEMENT_HISTORY"
+    checks_by_group = [packet.get("checks") or {} for packet in grouped]
+    checks = {
+        "strict_asof_replay_pass": bool(checks_by_group) and all(item.get("strict_asof_replay_pass") is True for item in checks_by_group),
+        "model_lineage_complete": bool(checks_by_group) and all(item.get("model_lineage_complete") is True for item in checks_by_group),
+        "truth_lineage_complete": bool(checks_by_group) and all(item.get("truth_lineage_complete") is True for item in checks_by_group),
+        "residual_count_positive": bool(merged_lists["residual_evidence"]),
+        "calibration_window_sufficient": any(item.get("calibration_window_sufficient") is True for item in checks_by_group),
+        "candidate_artifact_count_positive": bool(merged_lists["calibration_artifacts"]),
+        "all_candidates_unpromoted": all(item.get("all_candidates_unpromoted", True) for item in checks_by_group),
+        "published_receive_timestamps_complete": bool(merged_lists["calibration_model_rows"]) and all(item.get("published_receive_timestamps_complete") is True for item in checks_by_group),
+        "truth_source_canonical_ingress": canonical_evidence is not None,
+        "multi_model_available": any(item.get("multi_model_available") is True for item in checks_by_group),
+        "candidate_model_pool": sorted({str(model) for item in checks_by_group for model in (item.get("candidate_model_pool") or [])}),
+        "model_provider_set_complete": all(item.get("model_provider_set_complete") is True for item in checks_by_group) if checks_by_group else False,
+        "oos_promotion_gate_complete": False,
+        "promotion_allowed": False,
+        "writes_production_db": False,
+        "calls_order_gateway": False,
+        "orders_submitted": sum(int(item.get("orders_submitted") or 0) for item in checks_by_group),
+    }
+    failure_reasons = sorted({
+        str((packet.get("source_quality") or {}).get("failure_reason") or "")
+        for packet in grouped
+        if str((packet.get("source_quality") or {}).get("failure_reason") or "")
+    })
+    source_quality_rows = [
+        packet.get("source_quality") or {}
+        for packet in grouped
+        if isinstance(packet.get("source_quality") or {}, Mapping)
+    ]
+    model_arrival_sources = {
+        str(item.get("model_arrival_source") or "").strip()
+        for item in source_quality_rows
+        if str(item.get("model_arrival_source") or "").strip()
+    }
+    scope = _output_scope(
+        station_scope=station_scope,
+        canonical_evidence=canonical_evidence,
+    )
+    if station_scope is None:
+        scope["mode"] = "full_lane_map"
+        scope["included_station_ids"] = sorted(station_timezone_map)
+    group_receipts = [
+        dict(packet.get("_packet_scope") or {})
+        for packet in grouped
+        if isinstance(packet.get("_packet_scope"), Mapping)
+    ]
+    identity = {
+        "schema": "bayes_basket_target_calibration_evidence_v1",
+        "as_of_utc": as_of_utc,
+        "target_timezone": "REGISTRY_BOUND_PER_STATION",
+        "station_timezones": dict(sorted(station_timezone_map.items())),
+        "settlement_definition": "official_daily_tmax_c",
+        "strict_asof_replay_sha256": content_sha256({
+            "group_replay_sha256": [str(packet.get("strict_asof_replay_sha256") or "") for packet in grouped],
+        }),
+        "input_artifacts": dict(input_artifacts),
+        "packet_groups": group_receipts,
+        **merged_lists,
+        "calibration_window": {
+            "closed_settlement_event_day_count": sum(int(item.get("closed_settlement_event_day_count") or 0) for item in windows),
+            "closed_settlement_event_dates": sorted({str(date) for item in windows for date in (item.get("closed_settlement_event_dates") or [])}),
+            "joined_station_day_count": sum(int(item.get("joined_station_day_count") or 0) for item in windows),
+            "residual_count": len(merged_lists["residual_evidence"]),
+            "scope_count": len(scope_counts),
+            "scope_sample_counts": dict(sorted(scope_counts.items())),
+            "minimum_scope_sample_n": 4,
+            "minimum_bias_correction_sample_n": 20,
+            "eligible_scope_count": sum(1 for count in scope_counts.values() if count >= 4),
+            "bias_correction_eligible_scope_count": sum(1 for count in scope_counts.values() if count >= 20),
+            "insufficient_scope_count": sum(1 for count in scope_counts.values() if count < 4),
+            "insufficient_scope_keys": sorted(key for key, count in scope_counts.items() if count < 4),
+            "state": window_state,
+            "promotion_allowed": False,
+        },
+        "et_history_evidence": dict(et_history_summary),
+        "scope": scope,
+        "oos_reports": merged_lists["oos_reports"],
+        "checks": checks,
+        "source_quality": {
+            "observation_source": "CANONICAL_AMSC_AWC_INGRESS" if canonical_evidence is not None else "NOT_EVALUATED",
+            "model_source": "REGISTRY_SCOPED_MULTI_TIMEZONE_PACKETS",
+            "model_arrival_source": (
+                "NATIVE_MODEL_DECODE_EVIDENCE"
+                if "NATIVE_MODEL_DECODE_EVIDENCE" in model_arrival_sources
+                else "PROSPECTIVE_NATIVE_PROVIDER_RECEIPTS"
+                if merged_lists["model_arrival_evidence"]
+                else "NOT_CAPTURED"
+            ),
+            "model_arrival_audit": {
+                # Every packet references the same native decode receipt; do
+                # not multiply its source counts by the number of timezone /
+                # maturity packets.
+                "decoded_point_count": max(
+                    [
+                    int((item.get("model_arrival_audit") or {}).get("decoded_point_count") or 0)
+                    for item in source_quality_rows
+                    ]
+                    or [0]
+                ),
+                "complete_curve_count": max(
+                    [
+                    int((item.get("model_arrival_audit") or {}).get("complete_curve_count") or 0)
+                    for item in source_quality_rows
+                    ]
+                    or [0]
+                ),
+                "promotion_allowed": False,
+            },
+            "model_provider_set_blockers": [
+                blocker
+                for packet in grouped
+                for blocker in ((packet.get("source_quality") or {}).get("model_provider_set_blockers") or [])
+            ][:500],
+            "status": "CANONICAL_TRUTH_WITH_PROMOTION_CLOSED",
+            "failure_reasons": failure_reasons,
+            "canonical_observation_evidence_sha256": canonical_evidence.get("receipt_sha256") if isinstance(canonical_evidence, Mapping) else None,
+        },
+        "boundary": {
+            "offline_research_only": True,
+            "uses_production_database": False,
+            "writes_production_state": False,
+            "reads_probability_state": False,
+            "reads_market_state": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_order_authorized": False,
+        },
+    }
+    identity["evidence_sha256"] = content_sha256(identity)
+    return {**identity, "receipt_sha256": content_sha256(identity)}
+
+
 def run(*, output_path: Path = DEFAULT_OUTPUT, as_of_utc: str = "", canonical_evidence_path: Path | None = DEFAULT_CANONICAL, model_arrival_evidence_path: Path | None = None, native_model_decode_evidence_path: Path | None = None, et_history_evidence_path: Path | None = DEFAULT_ET_HISTORY, historical_rebuild_evidence_paths: list[Path] | None = None, station_ids: set[str] | None = None, timezone_registry_path: Path = DEFAULT_TIMEZONE_REGISTRY, station_lane_map_path: Path = DEFAULT_STATION_LANE_MAP) -> dict[str, object]:
     station_scope = _normalize_station_scope(station_ids)
     station_lane_map = _station_lane_map(station_lane_map_path)
@@ -291,6 +536,11 @@ def run(*, output_path: Path = DEFAULT_OUTPUT, as_of_utc: str = "", canonical_ev
         timezone_registry_path,
         station_scope,
     )
+    # Historical rebuild packets are retained at full 45-station scope.  A
+    # station-scoped calibration must decode them with the complete registry
+    # map first and only then apply the allowlist; otherwise a row for an
+    # excluded station is mistaken for a missing timezone authority.
+    _, _all_timezone_map = _settlement_timezone(timezone_registry_path, None)
     as_of = _resolve_as_of(as_of_utc, et_history_evidence_path)
     as_of = assert_timestamp_not_future(as_of)
     output = Path(output_path).expanduser().resolve()
@@ -330,7 +580,10 @@ def run(*, output_path: Path = DEFAULT_OUTPUT, as_of_utc: str = "", canonical_ev
             raise FileNotFoundError(str(native_path))
         native_model_decode_evidence = load_bounded_json(native_path)
         native_model_rows = _filter_model_rows(
-            _native_complete_model_rows(native_model_decode_evidence),
+            _native_complete_model_rows(
+                native_model_decode_evidence,
+                station_timezone_map=_timezone_map,
+            ),
             station_scope,
         )
         native_model_decode_input_artifact = {
@@ -351,6 +604,7 @@ def run(*, output_path: Path = DEFAULT_OUTPUT, as_of_utc: str = "", canonical_ev
                     historical_payload,
                     as_of_utc=as_of,
                     target_timezone=target_timezone,
+                    station_timezone_map=_all_timezone_map,
                 ),
                 station_scope,
             )
@@ -436,33 +690,132 @@ def run(*, output_path: Path = DEFAULT_OUTPUT, as_of_utc: str = "", canonical_ev
         output.parent.mkdir(parents=True, exist_ok=True)
         write_bounded_json(output, evidence)
         return {"schema": evidence["schema"], "output": str(output), "receipt_sha256": evidence["receipt_sha256"], "calibration_artifacts": 0, "ensemble_artifacts": 0, "promotion_allowed": False}
-    try:
-        # Canonical observations are parsed by the builder from the
-        # canonical evidence packet.  Do not pass those raw
-        # ``event_date_local`` rows again as legacy cross-check rows, whose
-        # contract requires ``event_date``; that would create a false
-        # event_date_missing blocker and double-count the same source.
-        cross_check_rows = []
-        evidence = build_calibration_evidence(
-            model_rows,
-            cross_check_rows,
+    def _build_packet(
+        packet_native_rows: list[dict[str, object]],
+        packet_historical_rows: list[dict[str, Any]],
+        *,
+        packet_timezone: str,
+        packet_maturity: str,
+        packet_stations: set[str],
+    ) -> dict[str, Any]:
+        """Build one immutable timezone/maturity calibration packet."""
+
+        packet_canonical = _scope_canonical_evidence(
+            canonical_evidence,
+            station_scope=packet_stations,
+            source_sha256=(canonical_input_artifact or {}).get("sha256", ""),
+        )
+        packet = build_calibration_evidence(
+            packet_native_rows,
+            [],
             as_of_utc=as_of,
-            target_timezone=target_timezone,
+            target_timezone=packet_timezone,
             input_artifacts=input_artifacts,
-            canonical_observation_evidence=canonical_evidence,
+            canonical_observation_evidence=packet_canonical,
             model_arrival_evidence=model_arrival_evidence,
-            historical_model_rows=historical_model_rows,
+            historical_model_rows=packet_historical_rows,
             station_lane_map=station_lane_map,
+            station_timezone_map={station: packet_timezone for station in sorted(packet_stations)},
         )
-        evidence["et_history_evidence"] = et_history_summary
-        evidence["scope"] = _output_scope(
-            station_scope=station_scope,
-            canonical_evidence=canonical_evidence,
+        packet["et_history_evidence"] = et_history_summary
+        packet["scope"] = _output_scope(
+            station_scope=packet_stations,
+            canonical_evidence=packet_canonical,
         )
-        _bind_native_source_quality(evidence, native_model_decode_evidence)
-        evidence["receipt_sha256"] = content_sha256(
-            {key: value for key, value in evidence.items() if key != "receipt_sha256"}
+        packet["_packet_scope"] = {
+            "target_timezone": packet_timezone,
+            "maturity_key": packet_maturity,
+            "station_ids": sorted(packet_stations),
+            "calibration_model_row_count": len(packet.get("calibration_model_rows") or []),
+            "residual_count": len(packet.get("residual_evidence") or []),
+            "state": str((packet.get("calibration_window") or {}).get("state") or "BLOCKED_EVIDENCE"),
+        }
+        _bind_native_source_quality(packet, native_model_decode_evidence)
+        packet["receipt_sha256"] = content_sha256(
+            {key: value for key, value in packet.items() if key != "receipt_sha256"}
         )
+        return packet
+
+    partition_error: ContractError | None = None
+    grouped_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    if model_rows or historical_model_rows:
+        try:
+            # The source packets intentionally retain every raw lineage, but
+            # strict replay must first apply the same deterministic preferred
+            # run selection used by the calibration builder.  Older retained
+            # runs can carry a maturity outside the current packet; passing
+            # those duplicates into the partitioner would create a false
+            # ``model_run_maturity_drift`` blocker before selection occurs.
+            preferred_rows = select_preferred_model_rows(
+                [*model_rows, *historical_model_rows]
+            )
+            grouped_rows = _partition_model_rows_by_registry_scope(
+                preferred_rows,
+                [],
+                station_timezone_map=_timezone_map,
+            )
+        except ContractError as exc:
+            # Do not drop malformed rows in order to make a packet appear
+            # uniform.  Fall through to the normal blocked receipt instead.
+            partition_error = exc
+
+    try:
+        if grouped_rows and partition_error is None:
+            packet_list: list[dict[str, Any]] = []
+            selected_stations = set(_timezone_map)
+            for (packet_timezone, packet_maturity), rows in sorted(grouped_rows.items()):
+                packet_stations = {
+                    station
+                    for station in selected_stations
+                    if _timezone_map.get(station) == packet_timezone
+                }
+                packet_stations.update(rows["station_ids"])
+                packet = _build_packet(
+                    list(rows["native_model_rows"]),
+                    list(rows["historical_model_rows"]),
+                    packet_timezone=packet_timezone,
+                    packet_maturity=packet_maturity,
+                    packet_stations=packet_stations,
+                )
+                packet_list.append(packet)
+            evidence = _aggregate_multi_timezone_evidence(
+                packet_list,
+                as_of_utc=as_of,
+                station_timezone_map=_timezone_map,
+                station_scope=station_scope,
+                input_artifacts=input_artifacts,
+                canonical_evidence=canonical_evidence,
+                et_history_summary=et_history_summary,
+            )
+        else:
+            # Canonical observations are parsed by the builder from the
+            # canonical evidence packet.  Do not pass those raw
+            # ``event_date_local`` rows again as legacy cross-check rows,
+            # whose contract requires ``event_date``; that would create a
+            # false event_date_missing blocker and double-count the source.
+            if partition_error is not None:
+                raise partition_error
+            evidence = build_calibration_evidence(
+                model_rows,
+                [],
+                as_of_utc=as_of,
+                target_timezone=target_timezone,
+                input_artifacts=input_artifacts,
+                canonical_observation_evidence=canonical_evidence,
+                model_arrival_evidence=model_arrival_evidence,
+                historical_model_rows=historical_model_rows,
+                station_lane_map=station_lane_map,
+                station_timezone_map=_timezone_map,
+            )
+            evidence["et_history_evidence"] = et_history_summary
+            evidence["scope"] = _output_scope(
+                station_scope=station_scope,
+                canonical_evidence=canonical_evidence,
+            )
+            _bind_native_source_quality(evidence, native_model_decode_evidence)
+            evidence["receipt_sha256"] = content_sha256(
+                {key: value for key, value in evidence.items() if key != "receipt_sha256"}
+            )
     except ContractError as exc:
         evidence = build_blocked_calibration_evidence(
             as_of_utc=as_of,

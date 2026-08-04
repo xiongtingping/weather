@@ -73,6 +73,24 @@ def _calibration_activation(
 def _activation_only_packet(
     *activations: dict[str, object],
 ) -> dict[str, object]:
+    stations = sorted({str(item["station_id"]) for item in activations})
+    bindings = []
+    for station in stations:
+        identity = {
+            "station_id": station,
+            "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+            "source_lane": "AWC",
+            "source_role": "AWC_HISTORICAL_REPLAY_INGRESS",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "settlement_timezone": "Asia/Seoul",
+            "reference_only": False,
+            "dataset_path": f"/bounded/{station}/truth.json",
+            "dataset_content_sha256": "d" * 64,
+        }
+        bindings.append({
+            **identity,
+            "content_sha256": content_sha256(identity),
+        })
     return {
         "schema": "bayes_basket_target_artifact_ingress_v1",
         "calibration_artifacts": [],
@@ -86,6 +104,13 @@ def _activation_only_packet(
         "cash_phase_policies": [],
         "cash_phase_authority_manifests": [],
         "policy_promotions": [],
+        "truth_authority_bindings": bindings,
+        "authority_receipt": {
+            "schema": "bayes_basket_target_no_live_calibration_authority_v1",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "formal_promotion_created": False,
+            "live_order_authorized": False,
+        },
     }
 
 
@@ -119,6 +144,26 @@ def test_calibration_activation_generation_is_monotonic_and_replay_safe() -> Non
         assert conn.execute(
             "SELECT COUNT(*) FROM calibration_activation"
         ).fetchone()[0] == 2
+
+
+def test_no_live_activation_cannot_bypass_truth_authority_binding() -> None:
+    activation = _calibration_activation(
+        activation_id="rkpk-ecmwf-generation-1",
+        artifact_id="rkpk-ecmwf-artifact-1",
+        generation=1,
+    )
+    packet = _activation_only_packet(activation)
+    packet["truth_authority_bindings"] = []
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        with pytest.raises(
+            ContractError, match="artifact_ingress_truth_binding_scope_mismatch"
+        ):
+            ingest_artifact_bundle(conn, packet, commit=True)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM calibration_activation"
+        ).fetchone()[0] == 0
 
 
 def test_calibration_activation_same_id_content_drift_fails_closed() -> None:

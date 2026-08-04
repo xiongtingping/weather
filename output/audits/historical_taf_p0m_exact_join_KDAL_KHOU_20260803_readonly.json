@@ -1,0 +1,156 @@
+{
+  "archive_count": 2,
+  "archive_metadata": [
+    {
+      "blocker_codes": [],
+      "blocker_count": 0,
+      "candidate_blocker_count": 0,
+      "candidate_input_complete": false,
+      "content_sha256": "7978b1a5dd723df598db5ab9569b940cf8e15f4ebdcc616d2398097a84c89599",
+      "excluded_sample_count": 3,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 0,
+      "settlement_timezone": "America/Chicago",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_merged_kdal_khou_proxy_20260803/AWC_TAF_KDAL_20260701_20260729.json",
+      "station_id": "KDAL",
+      "strict_asof_skipped_sample_count": 0,
+      "truth_only_manual_review_count": 18,
+      "truth_only_sample_count": 26,
+      "unsettled_future_blocker_count": 0
+    },
+    {
+      "blocker_codes": [
+        "ContractError:awc_taf_calibration_curl_failed_rc_16:curl: (16) Error in the HTTP2 framing layer"
+      ],
+      "blocker_count": 1,
+      "candidate_blocker_count": 1,
+      "candidate_input_complete": false,
+      "content_sha256": "332a1046d0c42c9c3a707af54315cd94c3848a5242d2068ad2964e7c5099724a",
+      "excluded_sample_count": 4,
+      "issue_after_availability_sample_count": 0,
+      "sample_count": 0,
+      "settlement_timezone": "America/Chicago",
+      "source": "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260701_20260729_merged_kdal_khou_proxy_20260803/AWC_TAF_KHOU_20260701_20260729.json",
+      "station_id": "KHOU",
+      "strict_asof_skipped_sample_count": 0,
+      "truth_only_manual_review_count": 10,
+      "truth_only_sample_count": 25,
+      "unsettled_future_blocker_count": 0
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "historical_replay_only": true,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "production_p0m_materialized": false,
+    "strict_as_of": true,
+    "writes_database": false,
+    "writes_production_db": false
+  },
+  "candidate_state": "BLOCKED",
+  "content_sha256": "0a90e82093345d92d0688b28d7187d9c95416ccbcd9032bf280cdcdb17afeb20",
+  "ingest_receipts": [],
+  "minimum_taf_oos_sample_n": 24,
+  "results": [
+    {
+      "exact_join": {
+        "content_sha256": "1a89710b1e8be985217d2ef8df200def1a8cfa433eab811525e501c73388be79",
+        "excluded_correction_sample_count": 0,
+        "excluded_correction_samples": [],
+        "lead_bucket": "d0",
+        "nwp_crossfit_prediction_artifact_sha256": "3ab173d0ac16c202e1d6f61b21b7b22b1eb8d06fb0bf4e658d55648c2403900e",
+        "observational_forward_event_count": 5,
+        "observational_forward_event_dates": [
+          "2026-07-30",
+          "2026-07-31",
+          "2026-08-01",
+          "2026-08-02",
+          "2026-08-03"
+        ],
+        "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "KDAL"
+      },
+      "lead_bucket": "d0",
+      "p0m_candidate": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "2c85a7b57f2f22e44de70d1a4e51e1f176a96d5544fc4480f13c64bd6f2d61cb",
+        "exact_join_content_sha256": "1a89710b1e8be985217d2ef8df200def1a8cfa433eab811525e501c73388be79",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+      "season_bin": "JJA",
+      "station_id": "KDAL",
+      "taf_oos_report": null
+    },
+    {
+      "exact_join": {
+        "content_sha256": "2c7f63ebb4e2c04a09f0f3513a2a6d6d241941acfaebcb622704851d0c5422fc",
+        "excluded_correction_sample_count": 0,
+        "excluded_correction_samples": [],
+        "lead_bucket": "d0",
+        "nwp_crossfit_prediction_artifact_sha256": "4ab40a1bef5aa44dd7760b594648df3b5a0c7bf8dce3eb1a82de4d572fc8a623",
+        "observational_forward_event_count": 5,
+        "observational_forward_event_dates": [
+          "2026-07-30",
+          "2026-07-31",
+          "2026-08-01",
+          "2026-08-02",
+          "2026-08-03"
+        ],
+        "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+        "sample_count": 0,
+        "samples": [],
+        "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago",
+        "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        "station_id": "KHOU"
+      },
+      "lead_bucket": "d0",
+      "p0m_candidate": {
+        "blockers": [
+          "historical_taf_archive_blocked",
+          "taf_native_oos_sample_n_insufficient",
+          "taf_revision_artifact_required"
+        ],
+        "calls_order_gateway": false,
+        "content_sha256": "e62fb41f7267c9bb06dc0ad1eed59aa24e805c93024e0cb437f610d7b3771951",
+        "exact_join_content_sha256": "2c7f63ebb4e2c04a09f0f3513a2a6d6d241941acfaebcb622704851d0c5422fc",
+        "minimum_sample_n": 24,
+        "orders_submitted": 0,
+        "production_p0m_materialized": false,
+        "sample_n": 0,
+        "schema": "historical_taf_p0m_candidate_v1",
+        "state": "BLOCKED",
+        "taf_oos_report_content_sha256": ""
+      },
+      "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+      "season_bin": "JJA",
+      "station_id": "KHOU",
+      "taf_oos_report": null
+    }
+  ],
+  "schema": "historical_taf_native_p0m_exact_join_manifest_v1",
+  "scope_count": 2,
+  "state": "VALIDATED_NOT_COMMITTED",
+  "station_count": 2
+}

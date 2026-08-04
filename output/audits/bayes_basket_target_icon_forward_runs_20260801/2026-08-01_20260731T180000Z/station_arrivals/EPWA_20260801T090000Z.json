@@ -1,0 +1,45 @@
+{
+  "arrival": {
+    "aggregator_or_republisher": false,
+    "arrival_id": "arrival-345ea824ea220774e7a61d7e",
+    "capture_mode": "prospective",
+    "capture_phase": "prospective_open_event",
+    "content_sha256": "fc8cc8c60722b7732c5ff7a89748dbc66548f081f95680b99cae30b780ea252e",
+    "decision_at_utc": "2026-08-01T05:46:40Z",
+    "historical_arrival_time_observed": true,
+    "live_order_authorized": false,
+    "model_id": "ICON",
+    "open_meteo": false,
+    "p0_consumption_eligible_at_capture": true,
+    "p1_consumption_eligible_at_capture": true,
+    "production_authority": false,
+    "provider_id": "icon_global_official",
+    "publication_time_source": "provider_http_last_modified",
+    "published_at_utc": "2026-07-31T20:48:24Z",
+    "raw_payload_sha256s": [
+      "c3e1c30ffbcf208fd9bf1e8a5f35ec2e19f068cd806c241186bf30d249145285"
+    ],
+    "receipt_sha256": "54915e23ee5b3a42ffe147d6c573f24a53bf79ebeb40ed45d28e502ea44f0e1a",
+    "received_at_utc": "2026-08-01T05:46:40Z",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_prospective_model_arrival_v1",
+    "source_url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_015_T_2M.grib2.bz2",
+    "station_id": "EPWA",
+    "target_local_date": "2026-08-01",
+    "target_timezone": "America/New_York",
+    "valid_time_utc": "2026-08-01T09:00:00Z"
+  },
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "orders_submitted": 0,
+    "p0_station_lineage_only": true,
+    "p1_probability_input_authorized": false,
+    "places_orders": false,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "formal_consumed_at_utc": "2026-08-01T05:53:33.495Z",
+  "status": "CAPTURED",
+  "transport_receipt_path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/icon_global_official_capture_20260801/icon_global_official/receipts/296bc72d1c302fcefebcf5554ed636222a59bffd2c1306800ecdceea44f30b91.json"
+}

@@ -41,6 +41,23 @@ def test_taf_catalog_deduplicates_buckets_and_excludes_closed_days() -> None:
     ]
 
 
+def test_taf_catalog_excludes_open_scope_after_its_physical_peak_window() -> None:
+    catalog = build_catalog(
+        [
+            _row("RKPK", "2026-07-31"),
+            _row("RKSI", "2026-08-01"),
+        ],
+        # 16:00 Seoul on July 31: RKPK's 06:00-15:00 forward physical
+        # window has elapsed, while the next local date remains actionable.
+        as_of_utc="2026-07-31T07:00:00Z",
+        station_ids=("RKPK", "RKSI"),
+    )
+
+    assert [scope_key(scope) for scope in catalog] == [
+        "RKSI|2026-08-01|Asia/Seoul",
+    ]
+
+
 def test_taf_rotation_crosses_end_and_wraps_repeatedly(tmp_path) -> None:
     catalog = [
         {

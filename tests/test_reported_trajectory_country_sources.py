@@ -12,6 +12,16 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
         sources._FETCH_CACHE.clear()
         sources._NOAA_STATION_CACHE.clear()
 
+    def _legacy_country_router_config(self) -> dict:
+        """Keep legacy-router unit cases isolated from the AWC-only SSOT map."""
+
+        config = sources.load_official_source_config()
+        config["station_routes"].update({
+            "EDDM": "de_dwd_pcmet",
+            "EFHK": "fi_fmi_aviation",
+        })
+        return config
+
     def test_current_market_station_routes_are_complete_and_valid(self) -> None:
         expected = {
             "CYYZ", "EDDM", "EFHK", "EGLC", "EHAM", "EPWA", "FACT",
@@ -26,6 +36,18 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
         self.assertEqual(expected - set(config["station_routes"]), set())
         self.assertTrue(
             all(provider_id in config["providers"] for provider_id in config["station_routes"].values())
+        )
+
+    def test_all_formal_station_routes_use_global_awc(self) -> None:
+        config = sources.load_official_source_config()
+        self.assertEqual(
+            set(config["station_routes"].values()),
+            {"global_noaa_awc_relay"},
+        )
+        self.assertEqual(config["providers"]["global_noaa_awc_relay"]["adapter"], "awc")
+        self.assertEqual(
+            config["production_route_policy"]["formal_source_lane"],
+            "awc",
         )
 
     def test_pagasa_blocks_never_swallow_the_next_report(self) -> None:
@@ -137,7 +159,7 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
                 "transport": "awc",
             }
 
-        with patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
+        with patch.object(sources, "load_official_source_config", return_value=self._legacy_country_router_config()), patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
             result = sources.fetch_country_routed_temperature_reports(
                 ["EFHK", "EDDM"], timeout=1, awc_hours=2,
             )
@@ -176,7 +198,7 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
                 "response_started_at": "2026-07-17T14:30:00.100Z", "transport": "fmi",
             }
 
-        with patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
+        with patch.object(sources, "load_official_source_config", return_value=self._legacy_country_router_config()), patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
             sources.fetch_country_routed_temperature_reports(
                 ["EFHK", "EDDM"], timeout=1, awc_hours=2,
                 on_provider_batch=batches.append,
@@ -211,7 +233,7 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
                 "response_started_at": "2026-07-17T14:20:00.100Z", "transport": "fmi",
             }
 
-        with patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
+        with patch.object(sources, "load_official_source_config", return_value=self._legacy_country_router_config()), patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
             result = sources.fetch_country_routed_temperature_reports(
                 ["EFHK"], timeout=1, awc_hours=2,
             )
@@ -246,7 +268,7 @@ class ReportedTrajectoryCountrySourceTests(unittest.TestCase):
                 "response_started_at": "2026-07-17T14:30:00.100Z", "transport": "fmi",
             }
 
-        with patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
+        with patch.object(sources, "load_official_source_config", return_value=self._legacy_country_router_config()), patch.object(sources, "_provider_fetch", side_effect=fake_fetch):
             result = sources.fetch_country_routed_temperature_reports(
                 ["EFHK"], timeout=1, awc_hours=2,
             )

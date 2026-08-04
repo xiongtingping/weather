@@ -37,6 +37,7 @@ from bayes_basket_target.cash_phase_forward_observation import (
 from bayes_basket_target.contracts import canonical_json, content_sha256
 from bayes_basket_target.forward_observation_store import (
     MAX_BATCH_ROWS,
+    ForwardObservationStoreError,
     append_forward_settlement_labels,
     commit_forward_observation_batch,
     initialize_forward_observation_store,
@@ -47,6 +48,9 @@ from bayes_basket_target.forward_observation_store import (
     tombstone_forward_observations,
 )
 from bayes_basket_target.resource_bounds import ResourceBoundError
+from bayes_basket_target.settlement_truth import (
+    CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+)
 
 
 def _inputs(decision_at: str = "2026-07-26T21:08:23.560Z") -> tuple[dict, dict]:
@@ -330,7 +334,9 @@ def _source_with_label(row: dict) -> tuple[sqlite3.Connection, str, str]:
         CREATE TABLE calibration_station_daily_high_truth(
           truth_id TEXT,station_id TEXT,local_date TEXT,revision_no INTEGER,
           content_sha256 TEXT,authority_scope TEXT,qc_status TEXT,
-          timestamps_complete INTEGER
+          timestamps_complete INTEGER,
+          source_lane TEXT NOT NULL DEFAULT 'AWC',
+          source_role TEXT NOT NULL DEFAULT 'CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1'
         );
         """
     )
@@ -361,7 +367,7 @@ def _source_with_label(row: dict) -> tuple[sqlite3.Connection, str, str]:
     def add_label(revision: int, truth_id: str, supersedes: str | None) -> str:
         truth_sha = f"{revision:x}" * 64
         source.execute(
-            "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 truth_id,
                 "RKPK",
@@ -371,6 +377,8 @@ def _source_with_label(row: dict) -> tuple[sqlite3.Connection, str, str]:
                 "FORMAL_NATIVE_ELIGIBLE",
                 "ACCEPTED",
                 1,
+                "AWC",
+                CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
             ),
         )
         identity = {
@@ -506,6 +514,45 @@ def test_settlement_labels_exact_join_revision_idempotency_and_latest_export(
     source.close()
 
 
+@pytest.mark.parametrize(
+    ("source_lane", "source_role"),
+    [
+        ("AMSC", CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1),
+        ("AWC", "CANONICAL_AMSC_AWC_INGRESS"),
+    ],
+)
+def test_settlement_label_rejects_noncanonical_truth_binding(
+    tmp_path: Path,
+    source_lane: str,
+    source_role: str,
+) -> None:
+    path, row = _seed_local_store(tmp_path)
+    source, _, _ = _source_with_label(row)
+    source.execute(
+        "UPDATE calibration_station_daily_high_truth "
+        "SET source_lane=?,source_role=? WHERE truth_id='truth-1'",
+        (source_lane, source_role),
+    )
+    source.commit()
+
+    with pytest.raises(
+        ForwardObservationStoreError,
+        match="forward_store_label_truth_missing_or_ambiguous",
+    ):
+        append_forward_settlement_labels(
+            path,
+            source,
+            expected_generation=1,
+            materialized_at_utc="2026-07-28T02:00:00Z",
+            allowed_root=path.parent,
+        )
+
+    assert read_forward_store_state(
+        path, allowed_root=path.parent
+    )["label_count"] == 0
+    source.close()
+
+
 def test_settlement_label_projection_skips_explicitly_ineligible_fact(
     tmp_path: Path,
 ) -> None:
@@ -525,7 +572,10 @@ def test_settlement_label_projection_skips_explicitly_ineligible_fact(
           'fact-ineligible','RKPK','2026-07-27','Asia/Seoul',
           'decision-ineligible','2026-07-26T21:09:00Z'
         );
-        INSERT INTO calibration_station_daily_high_truth VALUES(
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id,station_id,local_date,revision_no,content_sha256,
+          authority_scope,qc_status,timestamps_complete
+        ) VALUES(
           'truth-ineligible','RKPK','2026-07-27',1,
           '2222222222222222222222222222222222222222222222222222222222222222',
           'FORMAL_NATIVE_ELIGIBLE','ACCEPTED',1
@@ -672,8 +722,9 @@ def test_settlement_label_keyset_pages_more_than_one_batch_without_stall(
         truth_id = f"truth-{revision}"
         truth_sha = f"{revision % 16:x}" * 64
         source.execute(
-            "INSERT INTO calibration_station_daily_high_truth "
-            "VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO calibration_station_daily_high_truth("
+            "truth_id,station_id,local_date,revision_no,content_sha256,"
+            "authority_scope,qc_status,timestamps_complete) VALUES(?,?,?,?,?,?,?,?)",
             (
                 truth_id,
                 "RKPK",
@@ -774,7 +825,10 @@ def test_settlement_label_projection_revisits_lower_skipped_row_after_new_high_r
           'fact-ineligible','RKPK','2026-07-27','Asia/Seoul',
           'decision-ineligible','2026-07-26T21:09:00Z'
         );
-        INSERT INTO calibration_station_daily_high_truth VALUES(
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id,station_id,local_date,revision_no,content_sha256,
+          authority_scope,qc_status,timestamps_complete
+        ) VALUES(
           'truth-ineligible','RKPK','2026-07-27',1,
           '2222222222222222222222222222222222222222222222222222222222222222',
           'FORMAL_NATIVE_ELIGIBLE','ACCEPTED',1
@@ -841,7 +895,9 @@ def test_settlement_label_projection_revisits_lower_skipped_row_after_new_high_r
         ),
     )
     source.execute(
-        "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO calibration_station_daily_high_truth("
+        "truth_id,station_id,local_date,revision_no,content_sha256,"
+        "authority_scope,qc_status,timestamps_complete) VALUES(?,?,?,?,?,?,?,?)",
         (
             "truth-high",
             "RKPK",

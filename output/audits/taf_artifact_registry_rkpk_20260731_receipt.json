@@ -1,0 +1,21 @@
+{
+  "artifact_count": 1,
+  "artifact_ids": [
+    "taf-rkpk-summer-d2-00z-v4"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "offline_only": true,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "writes_target_database": false
+  },
+  "output_path": "/Users/xiong/weather/output/audits/taf_artifact_registry_rkpk_20260731.json",
+  "registry_content_sha256": "7ed87aea9ca990ce2df4393520a8c6c9cffad92b8ba7f06b2e68247bb33012f3",
+  "schema": "bayes_basket_target_taf_artifact_registry_build_receipt_v1",
+  "source_paths": [
+    "/Users/xiong/weather/config/artifacts/bayes_basket_target_taf_revision_active.json"
+  ],
+  "state": "updated"
+}

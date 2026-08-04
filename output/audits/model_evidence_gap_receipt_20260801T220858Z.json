@@ -1,0 +1,155 @@
+{
+  "schema": "model_evidence_gap_receipt_v1",
+  "as_of_utc": "2026-08-01T22:44:22Z",
+  "scope": {
+    "station_count": 45,
+    "scope_id": "global_45_station_model_evidence_closure"
+  },
+  "state": "NO_UNBOUND_SAFE_MODEL_EVIDENCE_POINTERS",
+  "formal_p0_eligible": false,
+  "boundary": {
+    "read_only_evidence_scan": true,
+    "downloads_raw": false,
+    "repolls_provider": false,
+    "writes_production_database": false,
+    "activates_p0": false,
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "orders_submitted": 0
+  },
+  "inputs": {
+    "aifs_strict_oos": {
+      "path": "/Users/xiong/weather/output/audits/aifs_deterministic_strict_oos_20260802_latest.json",
+      "content_sha256": "7b47a945e603ec30d1a31e3ad4b35d57a8dbd86224a6e83cb1a8fd6121528b15"
+    },
+    "icon_native_arrival_index": {
+      "path": "/Users/xiong/weather/output/audits/icon_global_eps_native_arrival_index_20260801T210352Z.json",
+      "content_sha256": "8a2f083f8d8a47a425ccff153bb1554771714254c566edcf28b761172e9c676a"
+    },
+    "native_activation_repair_audit": {
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_activation_repair_plan_20260802_latest.json",
+      "content_sha256": "0fb73dedd1638e937ffe0fe5d10a9844a079303bbfc280190f6918df889e08a9"
+    },
+    "native_activation_oos_linkage": {
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_activation_oos_linkage_20260802_latest.json",
+      "content_sha256": "1cf2d3d8f0ee83f910de9431da760131227a9af5dcbcad1e385ccb18e7769bdc"
+    },
+    "oos_gap_ledger": {
+      "path": "/Users/xiong/weather/output/audits/oos_gap_ledger_45station_20260802_latest.json",
+      "content_sha256": "7a08f2c39c4b09e2d783d2dce0982cb81bff7ddcd7dfbafc3218de45689ac16e"
+    },
+    "regional_candidate_closure": {
+      "path": "/Users/xiong/weather/output/audits/regional_model_candidate_closure_20260802_latest.json",
+      "content_sha256": "9b9e800d4333a41e241e7a5577b3b2bfe9f2693950ba345179aad09470ece8ab"
+    }
+  },
+  "findings": [
+    {
+      "model_id": "ECMWF_AIFS_SINGLE",
+      "geographic_scope": "global",
+      "source_class": "official_native",
+      "state": "PENDING_STRICT_OOS_SAMPLES",
+      "closed_truth_fact_count": 15,
+      "strict_oos_scope_count": 15,
+      "available_cases_per_scope": 1,
+      "required_train_cases": 20,
+      "required_holdout_cases": 8,
+      "missing_cases_per_scope": 27,
+      "blockers": [
+        "样本不足",
+        "deterministic_p0_role_promotion_authority_missing"
+      ],
+      "safe_reuse": "保留现有官方 AIFS Single raw 与 receipt；不得把同一起报的重复解码计作新样本。",
+      "prohibited": [
+        "重复抓取现有 AIFS raw",
+        "用 Open-Meteo AIFS republisher lineage 替代官方 native arrival",
+        "在未满足 20 train + 8 holdout 前生成正式 P0"
+      ]
+    },
+    {
+      "model_id": "DWD_ICON_GLOBAL_EPS",
+      "geographic_scope": "global",
+      "source_class": "official_native",
+      "state": "PARTIAL_NATIVE_ARRIVAL_INDEX_FAIL_CLOSED",
+      "verified_raw_cohort_receipt_object_count": 14,
+      "required_raw_cohort_receipt_object_count": 15,
+      "unresolved_object": {
+        "valid_time_utc": "2026-08-01T15:00:00Z",
+        "raw_sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+        "cohort_content_sha256": "88affc2477984d8e1a56d9011d2fbbe98f0102542127213efa12755d25cf7bd3",
+        "required_original_capture_receipt_content_sha256": "5481b05ba5fa78579760952f3068b9219dcac4bc911c763d34d9aaff6d6ec30d",
+        "blocker": "original_capture_receipt_content_missing"
+      },
+      "safe_reuse": "14 个已验证原生对象可保留；仅在恢复原始 capture receipt 后才可重建 arrival index。",
+      "prohibited": [
+        "用后续 DWD 轮询 receipt 回填原始 arrival",
+        "把 ICON-EU 或 ICON-D2 republisher 记录混作 ICON Global native evidence",
+        "在 arrival index 不完整时绑定 strict OOS 或正式 P0"
+      ]
+    },
+    {
+      "model_id": "ECCC_GEM_GLOBAL_ENS",
+      "geographic_scope": "global",
+      "source_class": "official_native",
+      "state": "EXISTING_EVIDENCE_REUSED_NO_NEW_POINTER",
+      "strict_oos_ready_scope_count": 115,
+      "accumulating_scope_count": 14,
+      "accumulating_scope_train_count": 19,
+      "accumulating_scope_holdout_count": 8,
+      "accumulating_scope_shortfall": "每个 scope 仅差 1 个独立训练日",
+      "existing_consumable_native_p0_artifact_pointer_count": 51,
+      "safe_write_state": "NO_SAFE_REPAIR_REQUIRED_CURRENT_PASS",
+      "safe_reuse": "已有通过 exact-OOS 的组合继续作为 no-live 可消费证据；不新建或重绑 pointer。",
+      "prohibited": [
+        "把 14 个 19+8 scope 降门槛为正式 OOS",
+        "重抓已保留 GEM raw",
+        "以同日重复档案伪造独立训练样本"
+      ]
+    },
+    {
+      "model_id": "CMA_AND_REGIONAL_REPUBLISHER_CANDIDATES",
+      "geographic_scope": "global_and_regional",
+      "source_class": "aggregator_republisher",
+      "state": "CANDIDATE_ONLY",
+      "model_count": 14,
+      "models": [
+        "CMA",
+        "ECMWF_AIFS_GLOBAL",
+        "ICON",
+        "ECMWF_AIFS_EUROPE",
+        "AROME-FR",
+        "HARMONIE-EU",
+        "HARMONIE-NL",
+        "HRRR",
+        "ICON-D2",
+        "ICON-EU",
+        "JMA-MSM",
+        "NAM",
+        "NBM",
+        "UKMO-2KM"
+      ],
+      "native_arrival_member_runs": 0,
+      "strict_oos_passes": 0,
+      "cross_ensemble_activation_absent_or_nonbinding": true,
+      "safe_reuse": "仅作为带 lineage 的 historical/forward calibration candidate。",
+      "prohibited": [
+        "称为官方 native publication 或 native arrival",
+        "用作 native arrival index",
+        "直接进入正式 P0"
+      ]
+    }
+  ],
+  "conclusion": {
+    "safe_new_or_unbound_activation_pointer_count": 0,
+    "existing_native_p0_evidence_is_reused": true,
+    "raw_refetch_required": false,
+    "formal_p0_promotion_permitted": false,
+    "next_evidence_actions": [
+      "补 AIFS 独立自然样本并在 20 train + 8 holdout 后执行 deterministic role authority 审计",
+      "恢复 ICON f015 的原始 capture receipt，不能以晚到轮询替代",
+      "为 ECCC 14 个 19+8 scope 等待各自独立闭日训练事实",
+      "对 regional/CMA 保持 republisher lineage，等待官方原生 arrival 与严格 OOS 证据"
+    ]
+  },
+  "content_sha256": "6907485b5f76c342ea5f5c8eaa1a6969e21b263bedde7cff68996109f302c420"
+}

@@ -34,7 +34,7 @@ CONSTITUTION_VERSION = "m1-11-execution-constitution-v1"
 # tests, data, output, source-account replay code, and old production lanes
 # are outside this gate.
 DEFAULT_RUNTIME_SCOPE: tuple[str, ...] = (
-    "scripts/reported_trajectory_no_daemon.py",
+    "scripts/weather_basket_yes_daemon.py",
     "bayes_basket_target/production_worker.py",
     "bayes_basket_target/delta_v2_runtime.py",
     "bayes_basket_target/delta_v2_training.py",

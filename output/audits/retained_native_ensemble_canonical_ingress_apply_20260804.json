@@ -1,0 +1,481 @@
+{
+  "adapter_receipt_set_sha256": "273fec5279175f1c9f2fc80f4dc35bb9ab5524195db34ccde924b191bc64bbf4",
+  "as_of_utc": "2026-08-04T00:00:00Z",
+  "blocker_detail": [
+    "NATIVE_PUBLICATION_TIMESTAMP_UNVERIFIED",
+    "NATIVE_RECEIVED_TIMESTAMP_UNVERIFIED",
+    "LEGACY_RUN_INIT_WAS_NOT_ARRIVAL_EVIDENCE"
+  ],
+  "blockers": [
+    "LINEAGE_MISMATCH"
+  ],
+  "builder_id": "retained-native-ensemble-candidate-adapter-v1",
+  "calls_order_gateway": false,
+  "canonical_member_fact_count": 87840,
+  "canonical_member_fact_count_by_system": {
+    "ECCC_GEM_GLOBAL_ENS": 26460,
+    "NOAA_GEFS_05": 61380
+  },
+  "canonical_native_arrival_fact_count": 0,
+  "changes_live_pause": false,
+  "content_sha256": "7b8f0c39154b96dc4eba218e18af8b9cd7c49474cc1942247e3e17710f9ba4ab",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "fact_type_counts_after": {
+    "ensemble_member": 87840,
+    "model": 12600,
+    "residual": 2845,
+    "truth": 596
+  },
+  "fact_type_counts_before": {
+    "model": 12600,
+    "residual": 2845,
+    "truth": 596
+  },
+  "formal_live_authority": false,
+  "ingress_receipt_set_sha256": "6ccb4cc2db20d58f4483511a674c306752c289d061fea0dc9b4010040b99589e",
+  "insertable_or_inserted_count": 87840,
+  "orders_submitted": 0,
+  "packet_count": 72,
+  "packet_inventory": [
+    {
+      "content_sha256": "a857c779894839210c31fa655f597acdb7e19afa50f023087f483b32126bcc3a",
+      "event_date": "2026-06-18",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260618_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "7c528bcacce2b74a957d92546c45a079cbe1c36c5830fab0dca2ea67dff795a0",
+      "event_date": "2026-06-19",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260619_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "9254ed437fb419655aa8c6c3699ded1f3598f9833b0fa10fca2d78e0ca84c50d",
+      "event_date": "2026-06-20",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260620_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "658f2c3acc31c64659a18f4c3f84c19d0f1034e7de669dd6b58ab0fd384ed468",
+      "event_date": "2026-06-21",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260621_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "e945ff2feb5f9426eb180d6423f81077c44e0f70ebaddd3b9d0f204a22d1f5e3",
+      "event_date": "2026-06-22",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260622_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "8387abb0763c5a9154875a52338425dcc3e1330d1b726736fa61c37787a26c90",
+      "event_date": "2026-06-23",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260623_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "cb3c87d49d39ae9886604b6c766aa339a93e2776539ec32975c2bff0c5ca7bb2",
+      "event_date": "2026-06-24",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260624_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "690a2d9c5d84a4071fe4b1b99a190b897e8954a49eff6adc0ea0e22a0e125a8b",
+      "event_date": "2026-06-25",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260625_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "c8c18a5cf899bcf9e0bd93815fe2799db6531830bd883474114f51f5d30921df",
+      "event_date": "2026-06-26",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260626_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "cc792b7fb54584ff334f1bc120d97f5b224211368441ed5cf910df36815f0070",
+      "event_date": "2026-06-27",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260627_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "d3db01f64cf67a92d1beb2349fd5063a4f199d00264dc9f052f178078971bb70",
+      "event_date": "2026-06-28",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260628_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "dd6e5926b8b51f6128ba8e4f0e9868e85ea85be17294bfaa581f58ffb001387e",
+      "event_date": "2026-06-29",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260629_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "9982a1e78222eb6aefb64fa394f570f9cf9710698f16aacacba30017ae956c5b",
+      "event_date": "2026-06-30",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260630_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "1e8a46d85187a932628992d82d11c386171b0aaba1fe6c79de317aa14594bd8e",
+      "event_date": "2026-07-01",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260701_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "d6e7a11a5e86b51921bc5e275433fd3db798e39211d4a154a4ac7e0799cf2560",
+      "event_date": "2026-07-02",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260702_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "8743db3cb03d8f250df4a1963402a9e4174e65c2710ba5b27fc3b94cd1684b0d",
+      "event_date": "2026-07-03",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260703_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "6bbcffd3b3bae4d4f4433f12a2069221c8e5c135d64f75b20b9944e735861959",
+      "event_date": "2026-07-04",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260704_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "79f5073f3ed0f8e5d61b5d720f29e4899ce54d634c22a6b3dd02ba96089a7700",
+      "event_date": "2026-07-05",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260705_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "d6a36e30385aceb0a1cd1e775665843996e52636f0f38c7854c55355371ffb1a",
+      "event_date": "2026-07-06",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260706_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "63e28f325cfdb36c6ed88ca1d78f2432d71f95b76af126528c37183e72c9126a",
+      "event_date": "2026-07-07",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260707_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "3cec630135d943169bae2986465422f97b40e3b398eb8a30c43e8aeef69868ba",
+      "event_date": "2026-07-08",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260708_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "a30945361bc9c5518a40c0852575a3b913bd0c453311a87094f90ed78044ff7c",
+      "event_date": "2026-07-09",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260709_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "badd8f6ceb1c8c6308ce2e8e31c642a0f47100c5ef3603ff36a526547ffbebc3",
+      "event_date": "2026-07-10",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260710_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "c539c315ff4e6762d3a1322e956cd760c6e67cfef875372d58acef371deb11b9",
+      "event_date": "2026-07-11",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260711_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "230f4113e93f293169174fa5e3a8a2d2598af916e3bc3a6de4c62b81079795d2",
+      "event_date": "2026-07-12",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260712_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "d8b2ce3f40d08062c181ec4fb495b9e11d4fe26e294199cbd8f271a71d766e37",
+      "event_date": "2026-07-13",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260713_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "049570f72535b7885b312db402930b5de75d3ab07fffd9db0ef12cf9f20c52d6",
+      "event_date": "2026-07-14",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260714_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "0946637f8edd0adb6c71fb38e8569a45e823e636e07c326aeadc67af3db4f786",
+      "event_date": "2026-07-15",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260715_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "29154d5a4914ea3550bbe3ced5c962c7b664ae78c22806b9acc01f80d14134be",
+      "event_date": "2026-07-16",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260716_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "56cfbc9ec129a3b297b5b71c4ce108a128d0b76932b876d2aca72c998da0e3d6",
+      "event_date": "2026-07-17",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260717_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "94103b5f0087f148b680a81791c469e602203c5de4a39a23e4fa1183c0659178",
+      "event_date": "2026-07-18",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260718_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "2f9fe57d31f64fb0f0fd536b81550923deb545ff7294cfd8e7711b5aa3c5536f",
+      "event_date": "2026-07-19",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260719_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "1aaeb59d477697f23f4981dc76825512e448bb4e1a1b581e72b0f582203b5502",
+      "event_date": "2026-07-20",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260720_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "3968e43195d015ac0da11a2e5a650f3934e4ff3a950a014f5358db05d72747b8",
+      "event_date": "2026-07-21",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260721_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "24ba70c766793d20bae604f2db2aa4734f78d8e1379182a55e9f49d142b4d231",
+      "event_date": "2026-07-22",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260722_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "c8c229b345d12e14132b6c6d02bc2dec54eab336e3329f9aa7c0c24df5fe1ee0",
+      "event_date": "2026-07-23",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260723_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "f72bb81d1bc20644e3c58cfc4ec8d861f12b175d42610e4365e0276d9f98a26d",
+      "event_date": "2026-07-24",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260724_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "aefe05d433b6badb18361204bb74c727010f0906c494b1f14184855166a55ba3",
+      "event_date": "2026-07-25",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260725_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "2105f13f73d58dc239c54a0b5df6eccba15af6b032179a3ab66172fa78ac06e7",
+      "event_date": "2026-07-26",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260726_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "00e1d3b47d9fd59bbad6afdf5f2afb66417cb829ec635a7919b73d6c098caf84",
+      "event_date": "2026-07-27",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260727_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "a3f7cd0e75d71450a0a50688249880925b1c4c1496a768c5ef8b28e67c029c40",
+      "event_date": "2026-07-28",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260728_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "3977ec6c5d3066326b7da64874d6d49c21c1dcce3f9c6af5cc9ecb93a09f4b71",
+      "event_date": "2026-07-29",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/GEFS_45station_20260729_official_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "5f3d65cb859ad4f07949c0433c7973a4a6aa85e44f7f117bd355c032109f926d",
+      "event_date": "2026-07-30",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260730_official_18z_d2.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "1e7f8d6e90c74719280d8ecf835a862a0061535a5dcbc06a622c70c5f933359b",
+      "event_date": "2026-07-31",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/NOAA_GEFS_45station_20260731_closed_candidate_full_20260801.json",
+      "schema": "noaa_gefs_official_historical_multistation_members_v2"
+    },
+    {
+      "content_sha256": "740222308bc7d829a2573f61731264ce0854b8a6311f3a7c932d6664d16bdf40",
+      "event_date": "2026-07-03",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260703_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "99ea3edac6b212ff7a34b95f1e0a0c1f10f71874542fe21792f8030f4fef3be2",
+      "event_date": "2026-07-04",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260704_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "22b6a08380aac441e5b394c581bc232939d50d6d748c220b4090946290d04df4",
+      "event_date": "2026-07-05",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260705_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "258b13c22d7041966dde7c6c1d7db4ef0d0af45817f1a9d252993089a785076c",
+      "event_date": "2026-07-06",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260706_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "aa4319abc0f72f57cd5368e18ef6638612e69378d44a0b43e1181942e03698db",
+      "event_date": "2026-07-07",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260707_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "f767fc472874d4eff3b0e456a4388e698b27f5707553b886c4cb3ec2e566cfd9",
+      "event_date": "2026-07-08",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260708_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "c17fd57347b430ee1650fa1c3af4e20d177a8c9b7d24eaea1d5c1d36452909c7",
+      "event_date": "2026-07-09",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260709_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "adee6eb913a88698f36088c40f0918b47a5d384bd6a854c90b76e1b1466a0b7d",
+      "event_date": "2026-07-10",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260710_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "c0b73c8bde510f25c89986203714c32d3f6e7da4fec7937bda45971020b39abb",
+      "event_date": "2026-07-11",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260711_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "44fb9fc12a588d02d6923001b695e9d248d2fd00463b8f6156b5fcc0274525fe",
+      "event_date": "2026-07-12",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260712_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "e3a49d91f56e1d18889dcb48c2f5425b6b7f1a8c61eef8c39a22d4320e946fc2",
+      "event_date": "2026-07-13",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260713_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "6625d33f24b62a737f02bc25ebf957c4d552f7870e3c909eb6aca4fbb3d67ee3",
+      "event_date": "2026-07-14",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260714_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "74a2d0f30740767979dfe064a513a2f257e681acb4488e1a1fc6b89982143ba7",
+      "event_date": "2026-07-15",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260715_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "fd43b3c0431010996e90bee688749cc319d50972010496c990f5e2a31c997615",
+      "event_date": "2026-07-16",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260716_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "94e1fc169552541b43b87f8e77b29edc0d1f3f7393940ed2cd74773708319aa3",
+      "event_date": "2026-07-17",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260717_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "ea062c023e1b355f7de032bfd813c024795126b491256e47fa27f9638568fb89",
+      "event_date": "2026-07-18",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260718_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "5a4900b31bde0f8514706a4902ae2da7534b2a9912e215931a157b11b8945c31",
+      "event_date": "2026-07-19",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260719_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "9891364e8b309bf55a644fcf34c699b0ce89dfd88100343efecbaae3d5c41e48",
+      "event_date": "2026-07-20",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260720_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "35e95ea3923633914f3e0431539f3af1fa39ad50c2c064fb862e3f5527377108",
+      "event_date": "2026-07-21",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260721_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "0ab416a42dba1e48575ea057bb20ac90ac9da294405dc5b0c307d86b369602bc",
+      "event_date": "2026-07-22",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260722_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "87a39edee05d9c5ea306d3330426c73861aaeb2db750af5b787b2e5b57187e9a",
+      "event_date": "2026-07-23",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260723_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "d057e45ea2a1e3261f3ab6ed6d563aa850d4d26bceb0392da179e17863e2abfb",
+      "event_date": "2026-07-24",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260724_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "32b7cdaee5dab6baa6acbb6b91ad36457380e92401984f2823340c9ae48ef146",
+      "event_date": "2026-07-25",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260725_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "1b748c0b164ffcedaebf2b410be6d938301e86af77ebb1f400d288f8be32453f",
+      "event_date": "2026-07-26",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260726_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "0d4f514d59afd9986f3955ee2072a7e16c17fdb7a88d431370fc73ad1e98edcc",
+      "event_date": "2026-07-27",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260727_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "b2429c547871b0bf99c7cc397516be5a9f4c3dd777f98487fa11e238db13b3d0",
+      "event_date": "2026-07-28",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260728_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "035b2a8ffe3580e23b663a44c09ac5c6b71299b2b4edb43ffec513046a444366",
+      "event_date": "2026-07-29",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260729_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    },
+    {
+      "content_sha256": "9b01d54c0bba2fd7230a13cc4762f7c079a9cb3aa729813065d4531e5501980f",
+      "event_date": "2026-07-30",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_history/ECCC_GEPS_45station_20260730_official_00z_d2.json",
+      "schema": "eccc_geps_official_historical_multistation_members_v1"
+    }
+  ],
+  "packet_inventory_sha256": "b3f9beba20000e61971dc333dd362163c4892f3cf35b1eedec2891e0988384f7",
+  "replayed_count": 0,
+  "schema": "retained_native_ensemble_canonical_ingress_manifest_v1",
+  "starts_services": false,
+  "state": "COMMITTED",
+  "strict_asof_member_count": 0,
+  "writer_quiescence_receipt_sha256": "ea6c8dfc1d3759406d1a50ca98b09a1f4dacecd6d400e5d1f529d6d4c481b0e6",
+  "writes_database": true
+}

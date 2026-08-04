@@ -85,7 +85,35 @@ def _sha(name: str, value: Any) -> str:
 
 
 def _event_date(valid_at: datetime, *, target_timezone: str) -> str:
-    return valid_at.astimezone(ZoneInfo(target_timezone)).date().isoformat()
+    try:
+        return valid_at.astimezone(ZoneInfo(target_timezone)).date().isoformat()
+    except Exception as exc:
+        raise ContractError("target_timezone_invalid") from exc
+
+
+def _station_timezone(
+    station: str,
+    *,
+    target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
+) -> str:
+    """Resolve the registry timezone per station without collapsing the scope.
+
+    ``target_timezone`` remains the compatibility fallback for single-zone
+    callers.  A full 45-station refresh supplies the explicit registry map so
+    each station's local settlement date is calculated independently.
+    """
+
+    if station_timezone_map is not None:
+        value = str(station_timezone_map.get(station) or "").strip()
+        if not value:
+            raise ContractError("station_timezone_missing:" + station)
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise ContractError("station_timezone_invalid:" + station) from exc
+        return value
+    return target_timezone
 
 
 def _slot_key(raw: Mapping[str, Any]) -> tuple[str, str, str, str] | None:
@@ -113,6 +141,7 @@ def _load_packet(
     wanted_dates: set[str] | None,
     *,
     target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     resolved = path.expanduser().resolve()
     payload = load_bounded_json(resolved, limit=MAX_JSON_INPUT_BYTES)
@@ -128,9 +157,15 @@ def _load_packet(
             continue
         raw = dict(row)
         try:
+            station = str(raw.get("station_id") or "").strip().upper()
+            station_timezone = _station_timezone(
+                station,
+                target_timezone=target_timezone,
+                station_timezone_map=station_timezone_map,
+            )
             local_date = _event_date(
                 _utc("valid_at_utc", raw.get("valid_at_utc", raw.get("valid_at"))),
-                target_timezone=target_timezone,
+                target_timezone=station_timezone,
             )
         except ContractError:
             # Validation is repeated by the materializer so malformed rows are
@@ -192,6 +227,12 @@ def _minimal_row(raw: Mapping[str, Any], *, valid_at: datetime, lane: str, stati
         "reported_temperature_c": raw.get("reported_temperature_c", raw.get("temperature_c")),
         "raw_sha256": raw_sha,
         "source_poll_id": str(raw.get("source_poll_id") or "").strip(),
+        # Keep the registry-bound settlement timezone on every observation.
+        # The target canonical-fact ingress uses this field to re-check the
+        # station-day boundary; omitting it makes an otherwise valid
+        # historical packet impossible to ingest without guessing a global
+        # timezone.
+        "station_timezone": target_timezone,
         "first_seen_at_utc": _utc_text(first_seen),
         "canonical_committed_at_utc": _utc_text(committed),
         "qc_status": qc_status,
@@ -228,6 +269,36 @@ def _registry_timezone(
     )
 
 
+def _registry_timezone_map(
+    path: Path,
+    *,
+    station_ids: Sequence[str],
+) -> dict[str, str]:
+    """Load one invariant settlement timezone for every selected station."""
+
+    payload = load_bounded_json(path.expanduser().resolve(), limit=MAX_JSON_INPUT_BYTES)
+    rows = payload.get("rows") if isinstance(payload, Mapping) else None
+    if not isinstance(rows, list):
+        raise ValueError("historical_merge_timezone_registry_rows_missing")
+    grouped: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        station = str(row.get("station_id") or "").strip().upper()
+        timezone_name = str(row.get("settlement_timezone") or "").strip()
+        if station and timezone_name:
+            grouped[station].add(timezone_name)
+    result: dict[str, str] = {}
+    for station in sorted({str(item).strip().upper() for item in station_ids if str(item).strip()}):
+        values = grouped.get(station, set())
+        if len(values) != 1:
+            raise ContractError("market_registry_station_timezone_not_invariant:" + station)
+        result[station] = next(iter(values))
+    if not result:
+        raise ContractError("market_registry_settlement_scope_empty")
+    return result
+
+
 def merge(
     *,
     base: Path,
@@ -239,6 +310,7 @@ def merge(
     reference_paths: list[Path] | None = None,
     as_of_utc: str = "",
     target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Merge canonical packets and emit only formal truth candidates."""
 
@@ -256,6 +328,18 @@ def merge(
         unknown = sorted(station_scope - set(lane_map))
         if unknown:
             raise ValueError("station_scope_not_in_target_registry:" + ",".join(unknown))
+    timezone_by_station = {
+        str(station).strip().upper(): str(value).strip()
+        for station, value in (station_timezone_map or {}).items()
+        if str(station).strip()
+    }
+    if timezone_by_station:
+        selected_stations = station_scope or set(lane_map)
+        missing_timezones = sorted(selected_stations - set(timezone_by_station))
+        if missing_timezones:
+            raise ValueError(
+                "station_timezone_missing:" + ",".join(missing_timezones)
+            )
 
     explicit_dates = {str(item).strip() for item in (event_dates or []) if str(item).strip()}
     if len(explicit_dates) > MAX_EVENT_DATES:
@@ -268,6 +352,7 @@ def merge(
             path,
             wanted_dates,
             target_timezone=target_timezone,
+            station_timezone_map=timezone_by_station or None,
         )
         packets.append(rows)
         inputs.append(receipt)
@@ -323,10 +408,15 @@ def merge(
                 if report_type not in {"METAR", "SPECI"}:
                     raise ContractError("report_type_invalid")
                 expected_lane = lane_map[station]
+                station_timezone = _station_timezone(
+                    station,
+                    target_timezone=target_timezone,
+                    station_timezone_map=timezone_by_station or None,
+                )
                 valid_at = _utc("valid_at_utc", raw.get("valid_at_utc", raw.get("valid_at")))
                 local_date = _event_date(
                     valid_at,
-                    target_timezone=target_timezone,
+                    target_timezone=station_timezone,
                 )
                 if wanted_dates is not None and local_date not in wanted_dates:
                     continue
@@ -380,7 +470,7 @@ def merge(
                     raw_sha=raw_sha,
                     first_seen=first_seen,
                     committed=committed,
-                    target_timezone=target_timezone,
+                    target_timezone=station_timezone,
                     qc_status="QUARANTINED" if correction or qc_status != "ACCEPTED" else "ACCEPTED",
                     quarantine_reasons=("correction_suspected",) if correction else (("input_qc_not_accepted",) if qc_status != "ACCEPTED" else ()),
                 )
@@ -408,7 +498,11 @@ def merge(
                     continue
                 if wanted_dates is not None and _event_date(
                     valid_at,
-                    target_timezone=target_timezone,
+                    target_timezone=_station_timezone(
+                        station,
+                        target_timezone=target_timezone,
+                        station_timezone_map=timezone_by_station or None,
+                    ),
                 ) not in wanted_dates:
                     continue
                 raw_sha = _sha("raw_sha256", row.get("raw_sha256"))
@@ -456,6 +550,7 @@ def merge(
         station_lane_map=lane_map,
         as_of_utc=_utc_text(decision),
         target_timezone=target_timezone,
+        station_timezone_map=timezone_by_station or None,
         canonical_ingress=True,
     )
     for item in truth_blockers:
@@ -511,9 +606,13 @@ def merge(
         lane_map[station_id]
         for station_id in included_station_ids
     }
+    identity_timezone = target_timezone
+    if timezone_by_station and len(set(timezone_by_station.values())) > 1:
+        identity_timezone = "REGISTRY_BOUND_PER_STATION"
     identity = {
         "schema": SCHEMA,
-        "target_timezone": target_timezone,
+        "target_timezone": identity_timezone,
+        "station_timezones": dict(sorted(timezone_by_station.items())) if timezone_by_station else {},
         "historical_only": True,
         "canonical_ingress": True,
         "scope": {
@@ -607,6 +706,11 @@ def main() -> int:
     } or set(station_lane_map)
     if not args.event_date:
         raise ValueError("event_dates_required_for_settlement_timezone_resolution")
+    station_timezone_map = _registry_timezone_map(
+        args.timezone_registry,
+        station_ids=sorted(station_scope),
+    )
+    target_timezones = set(station_timezone_map.values())
     result = merge(
         base=args.base,
         additional=list(args.additional),
@@ -616,11 +720,8 @@ def main() -> int:
         station_ids=station_scope,
         reference_paths=list(args.reference_evidence or []),
         as_of_utc=args.as_of_utc,
-        target_timezone=_registry_timezone(
-            args.timezone_registry,
-            station_ids=sorted(station_scope),
-            event_dates=args.event_date,
-        ),
+        target_timezone=next(iter(target_timezones)) if len(target_timezones) == 1 else "UTC",
+        station_timezone_map=station_timezone_map,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0 if result["state"] == "EXPORTED" else 2

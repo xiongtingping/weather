@@ -24,8 +24,8 @@ from bayes_basket_target.correction_review import (
     assert_station_day_corrections_resolved,
 )
 from bayes_basket_target.settlement_time import settlement_day_window
-from reported_trajectory_no_schema import (
-    reported_trajectory_no_schema_status,
+from weather_basket_yes_schema import (
+    weather_basket_yes_schema_status,
 )
 
 
@@ -116,7 +116,7 @@ def apply_review(
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=FULL")
     try:
-        status = reported_trajectory_no_schema_status(conn)
+        status = weather_basket_yes_schema_status(conn)
         if status.get("ok") is not True:
             raise ContractError(
                 "correction_review_schema_not_migrated:"

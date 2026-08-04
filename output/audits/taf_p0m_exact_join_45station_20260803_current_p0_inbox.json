@@ -1,0 +1,2944 @@
+{
+  "blocker_counts": {
+    "current_p0_scope_missing": 3,
+    "exact_join_artifact_missing": 1,
+    "taf_native_oos_sample_n_insufficient": 44
+  },
+  "boundary": {
+    "amd_cor_station_day_quarantine_required": true,
+    "calls_order_gateway": false,
+    "forbids_forged_revisions": true,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "read_only": true,
+    "writes_database": false,
+    "writes_production_p0m": false
+  },
+  "canonical_station_count": 45,
+  "content_sha256": "f5c63f2c31dcd7750c5ad7e9bf6fb4647c98dc6e2e01f928dcf8595e1307d239",
+  "current_p0_station_count": 42,
+  "entries": [
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Toronto"
+      },
+      "exact_join": {
+        "content_sha256": "0c3d7235cc21beb7c3d87f8ee6b696af4559159a83288b6d9801196ec5ecffa7",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "0a89fac0f5bf305c87cada6907719adb9f6955f315967bc6886f5652642ba92a"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/CYYZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Toronto"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "CYYZ"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Berlin"
+      },
+      "exact_join": {
+        "content_sha256": "2fc9e6bad562ef52e997334e6618048bc071c6c90386b686dd8474befd642d71",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "977162bcbb299baf62cb9f901bceed5b49038dd1d14d291a7103660954c7dd0b"
+            ],
+            "event_date": "2026-07-31"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EDDM_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Berlin"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "EDDM"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Helsinki"
+      },
+      "exact_join": {
+        "content_sha256": "cb6a1435e6df70dcafc96e7ce81e9951927efe5db9c2b355f39c0327b812f058",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EFHK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Helsinki"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "EFHK"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/London"
+      },
+      "exact_join": {
+        "content_sha256": "7d7a00321cf20aafeca5d90d7392532ae29bfec1af81803c2575bb4a3408882b",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EGLC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/London"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "EGLC"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Amsterdam"
+      },
+      "exact_join": {
+        "content_sha256": "2243c28a64de482257b0755693defcb35466c6027eae3baa135dd9b36741f1c4",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EHAM_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Amsterdam"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "EHAM"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Warsaw"
+      },
+      "exact_join": {
+        "content_sha256": "4235054846c0ebc35d4870a605bce058d033e6ed35b0cd07e218ef2c3c26ebee",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "1ba91e55379bb2c10122bd8d7cfd35abd7f0ba780b326e76f6ea7b94adf30ba5",
+              "ad583904f3548b97eea249ef7dc7f54e5bbe29d39dc09e38e50bfbe4c921fcbd"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EPWA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Warsaw"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "EPWA"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Africa/Johannesburg"
+      },
+      "exact_join": {
+        "content_sha256": "a61330f4e89d39838f2b33e66ea9b4208700482d2e9bcf9b4bf596b1353d01c9",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "9d10fe5edbcfe09ac96a52cacaaa3bf062ed696a5e14dd40dc29c4dfef0aa321",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8f0f985a7425cac7e11a188f1edd47c1d5ea92708b8fe7783c70c2226ad16cfc",
+            "truth_id": "et-truth-8ce3d80daf54b7b2146a7bfb8c836b11"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "293260268899b67fa16aff835cc03519fbbf6db0dad79f5fdd39f80e8f755885",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "7e789171d89e58f48f437640d335c8912ca928caa6fa963b5696cff1d028cc23",
+            "truth_id": "et-truth-31f8d130bc4c2104fe1f61cac9beea49"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "80673b4a7967a523df12b32c0b3a13aedc6f6da99eda66d36957ffeb5a9c45f9",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "1f30d6c43b4e00bf0f9baf3ab9b84e517d7539553d240e3f9dccf72e5324961c",
+            "truth_id": "et-truth-81d8071825f21f92b4f75a4aa1d765df"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "7bbf5aa29fa5ab33d1734d55cb831cd35c4db0bffa1fbca2f7e89bb767a1d2ef",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "3ddbfbf1a2494289c8625d63bbd03a04f9f66ae917b211b7b3987465fdf3c789",
+            "truth_id": "et-truth-b174312254c9ead033e753cd6692820a"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "9775e41a4022c3bc2dc332695ccdbc149d7009b55697b620d76129f634d07dcc",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b099c477c8c1a86894324f43b5608c90bad93ed5cff49718aaf637ca8fb11323",
+            "truth_id": "rebuild29-truth-FACT-2026-07-25-r0-920985762dce"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "b5389f2c292f23492faee961d1ca0e03ec1b6d20b91b10e5be902007f3d4bfcb",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "04f6690650906e944689987a1521fb47719ddbd54ccb2f6f8645ec67be4a54d9",
+            "truth_id": "rebuild29-truth-FACT-2026-07-26-r0-61eb74a6c9ba"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "ce7f48e169357ccbdb55ba173e7efaa6b7d07b3e34515e931a639d1335c0ebc6",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "78100f734129f64d626b0a80ebd32619ddc8accdf6b3f9a4e264c2a95265e1c2",
+            "truth_id": "rebuild29-truth-FACT-2026-07-27-r0-6907eef4d594"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "ae16b9454b9cc0d9dcd7045eb181d6c8124b9abf9ae40d07b4e93b117bc0d790",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "30470a51a648fe45da143bb6e583995fe56fa30f8524056826260ef9f38619c4",
+            "truth_id": "rebuild29-truth-FACT-2026-07-28-r0-939402a6f109"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "fe5c16832dd1d43e822fd4e5ae5cdaa8a7c05b5a7aa14fb9b64307a8f848df31",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2a0bd600b9dfc7c6920a0d3e42f51b2babf7e6f94a5a52b4009589c1d2bba3dd",
+            "truth_id": "rebuild29-truth-FACT-2026-07-29-r0-71f936d3e136"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "74819bf9c276b4e700d9c982230fe7e17eb9b97ceb3a3992cd3fedacdc6a20c2",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "1afe3dfff1927b006fccf8b64bc7916565a37ccbe98715ca26684917ab95d7a5",
+            "truth_id": "truth_1a2d29b3d1fdf0b211a246e4452677befab21b88"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/FACT_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Africa/Johannesburg"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "FACT"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "exact_join": {
+        "content_sha256": "a8f3a98d5a510db13664d9b28a2050895b3c0e4c5e75a5d63cc4bcdeeddc100c",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KATL_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/New_York"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KATL"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "exact_join": {
+        "content_sha256": "d242f28acdb000fecb71369b2c87ae9acfe7b7b3c108fd6d484e68d0b51eb424",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KAUS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Chicago"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KAUS"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Denver"
+      },
+      "exact_join": {
+        "content_sha256": "614cc5448a0bec1e54fcf0de8330f40fcd1a58e50a3b94d07920193ac95ad8ea",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 7,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "ea0a8c2e02a05ebf554c7c750a902f0d9f294a083e6e0854f64a7f74cc9dd8eb",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d2718687c9f4c73a087d15b4d046e90879ce7cd8267e3ab6b24763128f16bbc2",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-22-r1-316682ff33e0"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "12e458e8617353e075751f97e3d56ceaf43f024ece75d6c8b5caf9ac8f0dd6ff",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5bd7b706722623e892477c06dc7e1fc79e20d67fb01c3ff9989cd432ce2f5861",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-23-r1-eda051914a3e"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "e82baa176d9cecd0ded8e18b6461eff5244e527e474b790b412b2be658f3f88a",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2886dde26129fcd4abbc88f13faa91c533c6fed1c1d61c8309e34140310c5f56",
+            "truth_id": "et-truth-240e18b5fcee48258d84cd73a4892dac"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "8985a5b4521abb3c0d2d8d624c8a46798c214b344608223a338d08c22e24f17a",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d879441b3e7adef5fdd4de8bf0a6755c6af16638913572e8e0022242bf9af0f1",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-25-r0-027df147da02"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "47b039cf9c2c6afd9256cc86793feb89e22539f9d4cf4ed0d932ac5be02216ae",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b0cc59a750b465a4913a0d6fa1be699e06d6830cf78003af21c5759efeea7386",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-26-r0-f4be32e642f5"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "ad92c8216bf665bb4aad4b403c56d39a6e3138a04e04f8931188b86eb4795829",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "7ac8cb7d5e20c7d32c83ca290ca593d9a614aeb264c40f5a3f6d46b66d0aee67",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-28-r0-d09db1fd5708"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "58ccaa6def61afe56e5126f96f33016074da3e2b770f7cab37488d14268b1f41",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "e5eb7e48f28942ba4476fd9afea44d774a1bdfa5ba7a0b8c5bc9b61d40b36eb7",
+            "truth_id": "rebuild29-truth-KBKF-2026-07-29-r0-8212e4274af9"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KBKF_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 7,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Denver"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 17,
+      "sample_count": 7,
+      "state": "BLOCKED",
+      "station_id": "KBKF"
+    },
+    {
+      "blockers": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "current_p0_scope": null,
+      "exact_join": null,
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KDAL"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "exact_join": {
+        "content_sha256": "86fad672c839b2548d5fa01e560dd013c3b2ccd0bcc962386d2bc2d1f0baa6ec",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KHOU_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Chicago"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KHOU"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "exact_join": {
+        "content_sha256": "6ee869dba5f0baf166755f59494807f54b701204ba7be936c2efb1ec46201b46",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLAX_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Los_Angeles"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KLAX"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "exact_join": {
+        "content_sha256": "0dcc9904e3537503e7ff4bc29fc393b88454c591589b4b09c690e2b84c363c1c",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLGA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/New_York"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KLGA"
+    },
+    {
+      "blockers": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": null,
+      "exact_join": {
+        "content_sha256": "8596e405fc058d34126190f62ca6bd7abfc1eed6b90bf758278a10ee74489904",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KMIA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/New_York"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KMIA"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "exact_join": {
+        "content_sha256": "fc254e1d78f6d704bb0637e416a5287f6b29d4fd7542b06a3f7d3018cbc894be",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KORD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Chicago"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KORD"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "exact_join": {
+        "content_sha256": "f8f00cdfaeb314bb2093d91ac24d73c4fcdde7ed15f98632204479a87b78efc8",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSEA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Los_Angeles"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KSEA"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "exact_join": {
+        "content_sha256": "1afd93778e69e0f00d8682e0a341a7ab11b777c782e83067bdbf5ed5bc77b90a",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSFO_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Los_Angeles"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "KSFO"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Madrid"
+      },
+      "exact_join": {
+        "content_sha256": "23e3036417238d940e8decc30e2c62186b6e747db9d982966437942fdf26b981",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "5a339f4ec3452c3959483be384f09c2b44c7bad95b165ed3853ee7b203c40b59",
+              "90285f1d965969476628ac3e859372eae5f37788a47a84d97ce8bc2b9416abba",
+              "d575e51befbafc260f108fe7b7351f6bef7c72f7231272f6410136c6792174c4"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LEMD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Madrid"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "LEMD"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Paris"
+      },
+      "exact_join": {
+        "content_sha256": "639c283532eb1bee7203d1191904c38f1c3acbbfe2c08bd0df32f7e37b2f3503",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LFPB_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Paris"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "LFPB"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Rome"
+      },
+      "exact_join": {
+        "content_sha256": "c43dff29f7db4a096251bb80f87d37feda57b4b44071057775756dacf4abc118",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LIMC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Rome"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "LIMC"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Istanbul"
+      },
+      "exact_join": {
+        "content_sha256": "41785f409ff82d4489d7aac63a6262e1c950182a3c9ec81ba2fe6d9ee00e310c",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LTAC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Europe/Istanbul"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "LTAC"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Mexico_City"
+      },
+      "exact_join": {
+        "content_sha256": "a84eab51cf8f14219e7ea9c626445aacb01593e0e3c6f57f7c0c0d3bd9b43340",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "897ff291acf61836526dfe72028d302ea4e27e59026ae4dca502aea46e316876",
+              "8e2943d41e58480c1c38cc639c773822f51be57a8a84619a71d56c722f08a296",
+              "a5237f4e80daba0ab19019974544251ac200b25116c179e29ecc9b57ac41d7a3",
+              "c4f979a327d72aaaacb90026c53e271715f6be83fe5ab97983beef2e3af76e55"
+            ],
+            "event_date": "2026-07-30"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 6,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "dfcc3ac8008e3c5679bf297d9371020bbbed31681522fb244eeccc28eddb3c6f",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "c9b0094aca5b1bee3b919571ce915b31b6308b477fa4caaa86468c353fc78333",
+            "truth_id": "et-truth-95f44258037da987eab64d6817956fc5"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "55048f9218b4a5d600909565b57712504150136d9bb357096eb10aef770d62c8",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "1c21531bea618a61127f73150420db8580bf750d4fb0a32b77f563b0c0d5e79e",
+            "truth_id": "et-truth-a2fc0ea16d27bbbb63c880a6ba44cd61"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "713510d4025d0eadd59254bac52c07524b976d303a95632aeefabef79c9dfb50",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "58c4d77d03cc3cb8b1871e4d146fc4a5a16bd4f2339bd423889b71b3b4798c0c",
+            "truth_id": "rebuild29-truth-MMMX-2026-07-25-r0-72736f0de36f"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "dab464a00f5536edb88995714344337758acb82146f214ac9440c232063fdac7",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "62666737f1f3bf13745f64e2d790150f0e126cc5152b2d9ceed404880b332f64",
+            "truth_id": "rebuild29-truth-MMMX-2026-07-26-r0-64cfcf7dbe5a"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "63ac5cb7f266a04fd30887a075c416872239fbbce3dcc7412881c6aa8b987912",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2224a787bb655074a632a8d029dfa685030d2252ff9d0c832fe959f85c5e77d8",
+            "truth_id": "rebuild29-truth-MMMX-2026-07-28-r0-fca753ea6f4d"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "6132cca7bf151670873513915bb86aa69a4e70db99653e88dd3869e2caec4ec5",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "14c423d8064fa23870cf1cc810bac493b941c60b927f7c4146bedb43dd2bc239",
+            "truth_id": "rebuild29-truth-MMMX-2026-07-29-r0-61ad8a62442a"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MMMX_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 6,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Mexico_City"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 18,
+      "sample_count": 6,
+      "state": "BLOCKED",
+      "station_id": "MMMX"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Panama"
+      },
+      "exact_join": {
+        "content_sha256": "d2380f05ccd4cd101c390525993f905c69d93c22e6980ecdda0af65c1cf63971",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MPMG_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Panama"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "MPMG"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Pacific/Auckland"
+      },
+      "exact_join": {
+        "content_sha256": "c9a12e9015c39aac34ad02c3b59b22f60f6f0a94fbb74b1125d5843a91b36942",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/NZWN_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Pacific/Auckland"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "NZWN"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Riyadh"
+      },
+      "exact_join": {
+        "content_sha256": "dd8b38a2fb90ac46346d77433a720749f822d9b0aa3ae6b7b7e2af89d5ac17f1",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OEJN_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Riyadh"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "OEJN"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Karachi"
+      },
+      "exact_join": {
+        "content_sha256": "5dcfaee05059d39465cfc3437e33a62e17ec6b125b9fcd023231d65d98eb2ebb",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OPKC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Karachi"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "OPKC"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Taipei"
+      },
+      "exact_join": {
+        "content_sha256": "d5d2d22eb27d342017e06a1bf922f9fb2a778dc5a125014a91e019db1dae8c0a",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RCSS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Taipei"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "RCSS"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Tokyo"
+      },
+      "exact_join": {
+        "content_sha256": "872632a2ae2869ab0ee2168dfadf211dc6daf0987499959ee8d5bbe2f65aac9a",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RJTT_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Tokyo"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "RJTT"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Seoul"
+      },
+      "exact_join": {
+        "content_sha256": "42ac34331aefcd833ca5b4ca837d62178fb1d08ceb6eade849d5dc148efa66dc",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 11,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "eec66e809ca91a42985b31f00ca388f9b7facbe6ed61b5ee26ea69a99f8a97ad",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8b59b285dc398c1e488bf8555bbe216a6e63d97c4c5b19d0592edee02e9d2726",
+            "truth_id": "rebuild29-truth-RKPK-2026-07-21-r1-049542d66628"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "43317bdc9bc7d217ac8741378bd737bce03905207a28c036aa31ccfacbabd434",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "da0ef673297a78a28ed61cb4bf6fe562c6b6e2a6dc596656cc8c7f1b4378bd68",
+            "truth_id": "et-truth-983536ecafc758eadaaa81323fae1e62"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "81409cd28352b56eb9627b07ef46a62767a8724928a72b5bf9a208dbf804cb30",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "568fc776e9a32aa5f99a155ae0102201f0e8f04d3b61c3402d446c5f5a499150",
+            "truth_id": "et-truth-47c26755d35f18558428f0c5945dd780"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "9a69e52d0fa94a6788b9815c8c61bf555aefeac29154dc5be2a130c4c65f7945",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "74b0f28e9a1a3839ebb1d40cdfef6f47bc363ac2bfd7e25da242216b94f247a9",
+            "truth_id": "et-truth-1f939478adde5c2a4cfa5b3b09813ffa"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "29d0a6fa3690e8c2b89d8be3ebc3a40755ceae07be02d089a5120bde5a4fea1a",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5c4b205c69876072967d00ab903755b63e4f0fd1d3c070896657dae5c79a5b01",
+            "truth_id": "rebuild29-truth-RKPK-2026-07-25-r0-6a809773eb57"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "7e9511957c8237487931463a64aede66dddb5ec1c12a8570659abf978850d998",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d9e839ed417556b87f76feedef9b40fd6cb64b0f66551a77629224e701d1ea97",
+            "truth_id": "rebuild29-truth-RKPK-2026-07-26-r0-c288772c556e"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "e224c74815df2602e5a2c48c58b04b401f63ff577dc62d5e6652fc03a57c42c6",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a63ac9e2421d87fa0199228ecbf2af01fba21061c1c48270893a78fea69a0cd3",
+            "truth_id": "rebuild29-truth-RKPK-2026-07-27-r0-d63ce30e328d"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "b540456ae0805e0f9f0be3be3bdfe1034bced7e7537f04abd854354c47ebdf7d",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5e87bd0a5ef5e899a02076a685c87669a2b7bd786e3c2844329a84726aa7c758",
+            "truth_id": "truth_8538d047b7fd61e5bd4dcb8033302b7d61c69951"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "a48293d951c5f29bb33b885de8bbafccbdd472f9c29f34d0f37398738f85f089",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "885e8b97372f6d95fb5aa71caf12a97f60e52baffff78756ad67fd9ab1fef697",
+            "truth_id": "truth_34d7ebea8edb6d54a659265883680f1197e1ff7c"
+          },
+          {
+            "event_date": "2026-07-30",
+            "taf_capture_content_sha256": "d2d36c51c517a6caf78febbc47e2cec906a6eeb5fd31172428d27ce4da06bf4f",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "65e79e4fc6fc0b05717030f03dbe370575ab177eccfb8f499022581509fa9f12",
+            "truth_id": "truth_b38c853477275d57ad14770454c299fe0a75f11d"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "1e703d13f81eb1912c91f953d9baf9ad17d370689770f96cc7eccd78647494c5",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2ac3b2af36d0a3b57e35f34ec22622024fafe0c01bd22ab68fffb6816a26c4d4",
+            "truth_id": "truth_e921729c64f0715f06eeede4e96d6a0b0795d0c2"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKPK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 11,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Seoul"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 13,
+      "sample_count": 11,
+      "state": "BLOCKED",
+      "station_id": "RKPK"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Seoul"
+      },
+      "exact_join": {
+        "content_sha256": "a120af292717f0a580d548b4757b94c698b9690af4c28f187194abfe0ca25c12",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 11,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "e60681b728ebaee12eb82e1b052539413a3a90b8e6094cf42db6e2eec126dbab",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b54b3137462cc0b81cbaf2937f8c8067b9ff46f9c5451c3cbe354cf01c1634a0",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-21-r1-d0fe24bcde3b"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "c19dcee143b6dbb743804238f01f025ef4dc7caef4bdcc094d7c07ce9252ca76",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a724437ddc3002d7524d3d28bfb58eca284ec01259cf689ee68a11b99042929d",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-22-r1-d7b041400b08"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "da474e1f6cc9ce48328da92eb7d352abbaaa2a418f982c7cf80a6f5742e03025",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "de1041633575fefa6eeda09f3af3322af2c9e646878e021f57969f42f4d5f1f8",
+            "truth_id": "et-truth-fdabea54364a36602e8882e0907378e6"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "b3d76093a3daecf54aff822d1698f9ff0b94cd65d5d7c7c4c3cff75524e77cdd",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "10ad1570b0cbeddc6da7885d3b486295e314fd593cfed9922fbd00929d19a8f7",
+            "truth_id": "et-truth-9abf256fad3cf4c0c4b80889270142f1"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "4b7f8ec3c28c0cf5638fd760b38152308fa93494618e07f8be2b5a8828d9e021",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "13b1b9afdcbecd22edd58ba63e8b7798784225adf83def44e3adb41981990b64",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-25-r0-25a73f1e840b"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "5ba9fdd0f238b9b760083cefbc5403c779e5e2a4838b1559a88f391374e74462",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "f4756b8d1955e706e97197ed15dce80db2698dba095bc67e9465c97425e6c57a",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-26-r0-575737f08c57"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "6bca360ca8e4cf443d33c240175817f955362f44ca327e5344a315369cedb9db",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "3f8ce2260a7946c728fdde94f0fae0174fa3e5b99e326974178cdac693f4b3b1",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-27-r0-4f2e99504f56"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "242f8ffb3a4443e8e9e8676e8df9dd37e71cf9a04c698b0f1a8011f254b5c8ae",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "ef1855450b7bfc20f6466584ce4f7ded5d206d512be5d3605c1fef8733736a29",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-28-r0-f0c541dc8940"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "44d77d306abece2c577b10df9cb9d647053bc32ee5a56d86918c6940b0367fb4",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "809aab28067385ea4513e8c27a7999189f2b42884a690c2c560d2a2fc1df66a1",
+            "truth_id": "rebuild29-truth-RKSI-2026-07-29-r0-05ddc303a45f"
+          },
+          {
+            "event_date": "2026-07-30",
+            "taf_capture_content_sha256": "6932f367e9fb9c1b293c7bc056f7ec64e45ed9ec3a2ca9d6813b7a91aacd32dd",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "3bdf0976ed6525952a4c38068e281fe23a1f04b13aafe848a7bfe21397263fb8",
+            "truth_id": "truth_8e36025ff3d20aa61cac95827bc52e5bad883afd"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "6fd560277601c5cbb89fdd0cbd6982f9169195f31de0751d2831f8abfba18ea4",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a0c33d5241d9ceba2e2d5ecdae8b5ca874c00a35107e8163aa6ba6dc13e00960",
+            "truth_id": "truth_ef02f004ab20b10dbefa87c2cedfbe4e66ba25be"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKSI_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 11,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Seoul"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 13,
+      "sample_count": 11,
+      "state": "BLOCKED",
+      "station_id": "RKSI"
+    },
+    {
+      "blockers": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": null,
+      "exact_join": {
+        "content_sha256": "5919b7e8e3918c5ea79fabff1a9ef0e5baf050007986ca859c9d0fda385376bc",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RPLL_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Manila"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "RPLL"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Argentina/Buenos_Aires"
+      },
+      "exact_join": {
+        "content_sha256": "3bd07adc3f0fad510546cd8022dbf43ae8e50517b30191d57e1a486d8c88bf57",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 8,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "55688cf508e68ee054ff5a83e3eb7cc92e135dac225f7f9a0c6051b3164a543c",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "76d89ee6996012c5f8df3c3ea03cc8d326998e9b8623270ce7eacc2bab064ff6",
+            "truth_id": "et-truth-007fcde2a840b16b969d60fee0d73be0"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "2b14aa2ac71f6d18ab28ed8e4b6cfc115938078d5f0df70e8a1b35b94c9c988e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "17c1644a154458874f98d78de04c90da61b8bea5b982eb37a43abcc43eeed465",
+            "truth_id": "et-truth-1ecaa85202d059ac3af2857ab1da906a"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "0da83fdfaac0bc6abaebb2d0e54e0c8c96995004858f8a909925564a10909156",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "83b5917b0ab0062545b12cd8c5c691a198610ad6d40f0865de14fdc69f7f9e70",
+            "truth_id": "et-truth-e15168066837f288fbf393c4296bf3df"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "34853d7ef48426ac0fa0897958342644ec0603cd221ba6da4b3c6810da3b4047",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "238c9941a5e3c504d71b2e03f2484a8e7e270ef21cfb50272e5c944af4fb15e3",
+            "truth_id": "et-truth-7a2d5cc36190472c37420538af06450a"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "c29f14a961c3efc434d604df727716fa5a6234aa43b017fbaa94f58048aa35f0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8df7ce0d5b55941ea82a28a34121160aeeffb4d4987d84b84b3176a80b84f0ad",
+            "truth_id": "rebuild29-truth-SAEZ-2026-07-26-r0-66f4cf180db4"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "95eca765e3ecb54c36f60075d1cc8d69980a399ec119fe1561df5f51679b02a6",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "23b3afe67a391753fe9b0616770ba9b85c98323fe95706ca86fa6a0954a3606f",
+            "truth_id": "rebuild29-truth-SAEZ-2026-07-27-r0-9f550afe8602"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "ae271a0d632d8c8df98765b2ede374eda216223277b824b96f1e3d8ddf9d1680",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "1244c218a297de4c702b92cf7a957b513fb48a6c5a3f5787560231ca23f25c0d",
+            "truth_id": "rebuild29-truth-SAEZ-2026-07-28-r0-6d3eefce7083"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "baf4a86a12d3974f2d27cfe9b82c6418e4659003cbac7f854c09770e6414f141",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "08e76ca7607da627f2abc591dfa850e9560ced87170ffd1177c3b9b2c276b20d",
+            "truth_id": "rebuild29-truth-SAEZ-2026-07-29-r0-ad5e04e0c2d2"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SAEZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 8,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Argentina/Buenos_Aires"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 16,
+      "sample_count": 8,
+      "state": "BLOCKED",
+      "station_id": "SAEZ"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Sao_Paulo"
+      },
+      "exact_join": {
+        "content_sha256": "07d6bd57d5198b9bbf3b5472fd5b004a5681506704c41015e24f16592e61a643",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 9,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "a3f926311ee8194054b18eb2dedd090edd190f3a03905d1801087031edaed5c8",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a826822cbdea9f4a3ff02d98208b04d5f745ac1a7bc327e8a04674268465f82c",
+            "truth_id": "et-truth-7417538c94cf6bf0ae2a570f99528267"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "45f8517e2540571e6b14ebd74808131cd084b8d773c3c0268ef74be3caa6d892",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a18064cd71370f742b88e719697714b2dffb76804f8f80039c94a3f985b78d02",
+            "truth_id": "et-truth-19e8359a1c777009f74f5725a5bec63d"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "48895be5b24ddf27955b8e5d294f4c952ca51725982518f78c6389d217c0f941",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "594000c16e454289a55915dc41df19599bc3c43b823c779cb970c6e949f44a90",
+            "truth_id": "et-truth-ee8b389075d6cf858dd87f30155ed107"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "e2d60acbc77f328b8136f1c4763a387bf0351de8ef0871e110f2279bed5139be",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "4915c15ae087d5931362823b6b4273bda6cc52466da120f01fd3cb0c69d8074e",
+            "truth_id": "et-truth-901a6e625bc1dde7fc81ecb9ed392be7"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "22b867f7dd169034699a227e55e8ed63ed876a0d1cb746cd2c125c065975f311",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b7ed41f47c20dba2b43985e5951c88708e9ccebff1dc6a5fc312cc4e6fcc6427",
+            "truth_id": "rebuild29-truth-SBGR-2026-07-25-r0-433bdbc7a799"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "64ff3643041a01278206501fd8123fe79a776cc8276a0b98174f758f34728e23",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8185fdc733f8ea662579f849321048a180446cd96eeb588658c020f384d17643",
+            "truth_id": "rebuild29-truth-SBGR-2026-07-26-r0-d34f2d3cb9b8"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "08bb6abc8fd8182d069b88ca5b37f1d1b6fe695a2533ec5d38c2f1687992fe9c",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "0e3e5f3c92cef8032c1ca430fe0a0adf3b2625944e5ba274b85ca1c6646f938f",
+            "truth_id": "rebuild29-truth-SBGR-2026-07-27-r0-51c0cbfa2820"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "f4f896e07d9e40b6d8c2148e2b7b9fa0ccff15ab6d6deb9a75409ce14d387de0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "e94eb05460eebc3b41adbfcd75e7b761d41d648ad4b425e53218bbf5be5ea1a4",
+            "truth_id": "rebuild29-truth-SBGR-2026-07-29-r0-7803aa4f3f4f"
+          },
+          {
+            "event_date": "2026-07-30",
+            "taf_capture_content_sha256": "b5491f83177fba4d15c36327f17c2be265fbc87b4c8ab6b92672d9cb02429013",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "6391748de417d0e2667f3d1bdbc84485d373cff74b02131a92c1a670ab25b7cf",
+            "truth_id": "truth_e58fe9972d3351e509de58471e9d64614926c488"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SBGR_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 9,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "America/Sao_Paulo"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 15,
+      "sample_count": 9,
+      "state": "BLOCKED",
+      "station_id": "SBGR"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Kolkata"
+      },
+      "exact_join": {
+        "content_sha256": "5bd7fbf1b231aad18eb4a00a43bc545a2e189e726c014ce7ffe15353e9734fdf",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/VILK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Kolkata"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "VILK"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Kuala_Lumpur"
+      },
+      "exact_join": {
+        "content_sha256": "d21ea640aedcead9d9f5b4f957b1c66e463c96b63cf49fc6df22f23f465bc332",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WMKK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Kuala_Lumpur"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "WMKK"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Singapore"
+      },
+      "exact_join": {
+        "content_sha256": "d48ae091827a16c2b7a7b377106df01c13867b3fefc324dd042f8b8569dcd06e",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 0,
+        "lineage_pointers": [],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WSSS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Singapore"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 24,
+      "sample_count": 0,
+      "state": "BLOCKED",
+      "station_id": "WSSS"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "7d8e27d7e42656f9340b60f42ac93d508c36932ac468c16d7cacc699caa21471",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "88e8742b67e8cea643a93eee4a2ecdde369e25e4726a57b100b7c90650c9fb7f"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "ac2474cdccc518eabd83bb2bd7e73ed7162860a364caec3b06359b65f3d38de0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b13198bbb2855f285168b3c79d597c1a7c8227e4e0e8d2dffcddf5350c8b9763",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "cfd9e7c90ff64548c578fef899377d767388a97f2311aa0e7dca08b606397e33",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "c23bab316b4c8c6444dc9ada276fd8a71ebdffe059b3179563a7c9f6a99c56c5",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "dcb02faec599f8ac14de80e89ad06cc6ca883a1e6a1399e54bd2041ceed3a716",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "c86ba12de7046ab3b9b9aa9b139c3bc8a6a360914228aa8b50a37d3f710f4437",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "73fa248d60361e64db6dc7d8cc11063a248ca6e8bc1081e34932bca1e131392e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "4c4bbaf393660c3613a511f8223e85685bec773bc36b3db42682ab0a90519ae9",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "309e9950abf3837340dcb5afeb8386544cdaf58e0db693f281681acab6c7be31",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "0d65d73f0acfb52c842e3e318024518399f3181710d37655ae363461c0739726",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "6f78df6324127149adb948336524552819a31aafae77570154c53b0e16b239d7",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "20e96411109311dba857eb0cda3af1f04294bb84534374ed89b75bf31690af2f",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "dee6273be4f06fc0e9deff0ff651ebe28f91f80a819db4bf9d31d7e2db3333cc",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a3c69596dce3fd5041c9cf3bb515acf79f6024567e322a580ff81e03c3d92723",
+            "truth_id": "temp-awc-truth-ZBAA-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "3ce79a4c6dec955029f88b0c524e9756d2654ca0166932d863ee2fdf7105406f",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "791b1afbc12c5b0ae758272b2152db4706aa58e4d5f71c6969cc52d7dccbeafa",
+            "truth_id": "rebuild29-truth-ZBAA-2026-07-28-r0-dabe4ec45d6b"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "26d8c284265f1d1d7bc100473aef2b3e53d32858d9b6a8d50f444c0b2d84b095",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "89cf4d7e3faf496c9f5d56cd6d1fa49d34175efaf2a19fb6022c72bc3c3b2928",
+            "truth_id": "rebuild29-truth-ZBAA-2026-07-29-r0-006f0aed92b7"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "7746c0fff0d0b467150a8f00e2d2fa92c00afa9ec4ca0aef4cbb1908ca708114",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "ecaa05cc48279baf623fac0cb999b7db4206a7e14d4bc1492cd88acf5119dd54",
+            "truth_id": "truth_d0044343edae698ea3e9a76936dc64d79486469b"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZBAA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZBAA"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "14aeaf727ec27397641e1d4abde1a7bd1c5cfcd4fcd9d312b1a37cd888b5fe5d",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "c5e3bb43fde7956a85dad97629ab04cea31fda3676909bd5643a975239defe5f",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "6836137a6116eb6e94152e5dcd8257e3a0dae59a52b3c1b71183ee3d4e3937fd",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "63b924929565bfd899514eafac2906e129d24d330aa0ecd8278e17e8f797643b",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "e5b7f35a5f765ae5a67f9fe5042010c0ee18d60ca6f72aeed796c2fa879687b1",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "13eb19ac94c13f541aec64704025f40c1327491ab4be4752a5a425db3769cd84",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "19203ef36635a00ff2de671bf5f006f94160a08c0440dc1e459e35b7c268a24a",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "d194b6451bde28c8243b5fea5eaa053e26816ae73e7527662c28626ec9c56664",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8469e4599a79971f375bbfff0f7cf4c768fb1d42ecbd97699ab3a9f8ac1faa97",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "f14b7aa73e81155efeeac19eefe9755bed3b2d91605b810925273032a9d079cd",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "4fc587457f55fe8fb832f5e1b1032f30ee338baf832f0733823cc7967f009966",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "7462fdd61bb39b52a6823276913e0970f9ff6b640b46ec6dd0a56673813a91af",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "770cdce4bb55f9314353f8a017c7e39ffcf79cd804d150c7edd00be4e8dc6f25",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "84ca049f16bddc775afc05e93f6d011aafbccb4e691984fa4458f2c8032aba11",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2e8cbc6f370fded3a1fe59b5a7e3b3fb143d9204148388b48aab2e7631074454",
+            "truth_id": "temp-awc-truth-ZGGG-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "e841359a7323e7a21afeb6379ba8aeee80a57e24b9fad143d693b4a1692fde92",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d18c7361746be00703a8c221761316bd522357d8fdc923787b193c2a1d4f6a20",
+            "truth_id": "rebuild29-truth-ZGGG-2026-07-28-r0-e5a157829496"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "c7addf82d086a06d897b194ba0830b9c8c449072dea927252205d4b5b7a5c795",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "996072bb459440aa9671094a1bf96b22a5d44e029ade713af2ab7762a4c60b6a",
+            "truth_id": "rebuild29-truth-ZGGG-2026-07-29-r0-63a80cf24328"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "25fad2ceffd4397f03c50987df7df4a439dcb8d3c00ab0bd391ca7146d66d1d1",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b3834fc5e43b897495e536af5a06c0974285e830c6e47f813e7796d248750e81",
+            "truth_id": "truth_e959fa25967ec5eedba8af58cab08a446d663ca1"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGGG_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZGGG"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "7ef070e21d89f1b8683e29fad712c705599ac9acebf15831cfafc2c7f364b54b",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "66afd8508ed3d2d9a7737a9c85649d81a7dfe5a46811e881c4fcc408ea17b475",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "aafd20cbd8bde8d84a1bfb780f9874327c458b69acd2ee1f74fe74f50097d7a2",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "42585133fc76375104b8279dbc3a7ec81cac87d2c4040eb8cb945bb6abedcc0e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b83dab3e3c403e085c43fc30f08a90dbd41bcfb06b09a2646fb98c92d3dcc409",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "ef4492771ecb74bafe90a474a17fe9f537156b1b2d2aca448dd1eb82e94a58c4",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2d3b00c53269ed4194c1698eaf822d02dbc4744841b9f68f705c9ec77b092230",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "6bc22db61a9062f209fe229b76830b5f6b0869f60584a8994a7bacef70666280",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "ed41d11ef7ddb6bc884dadfc354f72704ea0d5e4ba581713a8bf8f5cacce945a",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "1f590c01510556c38ae29688b281d1f7ba32534e5a693959045ba7d8f1fbb0df",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "76e6b2cdd77b7d5fac5345b230e66ae30fde77cb79af2c772b7373f62bff696d",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "449e4dba9108563e31299a723a5264c21b9be5ed40806d2c78cf8878b9fb4c84",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "b0d63eb584cb4ce85ac0e0e27f0d73de4fd2cd9cea4b3487dc5ea4a6d73da547",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "77e8982eb275eb7fca470ada74b3f083eabf1b390bd89d9916b41d9a9cf425f3",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "25671155975b7c01f378e131e243ef7f270a24e584605cbabeb49ba0f0b7674d",
+            "truth_id": "temp-awc-truth-ZGSZ-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "b09037e55a021be41a47ddfe3e2d5650228dfe8aa61f06f5b1f5e1f9915d0bc5",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "da8f43fcc1bb0ed8f3f1e38f0128a77d3c9c97f79aacb6c4354a658167afc341",
+            "truth_id": "rebuild29-truth-ZGSZ-2026-07-28-r0-b856afc0dea9"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "2898e7092b22f9393f2f33cf96fb88028b1862fd02ead75ca50163523d8328e8",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "912a6ceb736b6fb37a14e6c2f1023a932c30960630a6da68337d5c00e1d0ee28",
+            "truth_id": "rebuild29-truth-ZGSZ-2026-07-29-r0-68c55bda84f9"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "c970603b7435c7f86c35f3b602e0ea6160a97b240205ad1d3bb92b7783600e85",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "09a51f99f77dded32ed23d5936e04d8fb45a047dc80a58076bfdd7c607aea0f7",
+            "truth_id": "truth_466470744e66b8048ccf738d6d2272621951814e"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGSZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZGSZ"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "d1485254ff9be029878da62749cc02ee8e1bef027dffab1db63f0e080c002a8c",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "8395345b899f1ff84843ad3d8e1337ba5f1449ce95c2fe828e1f5bd50903b139",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "349b84eeda71f4b4279fa47ba402b167d87b290959e6678d1a8977110f366f62",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "4fc44bc7729e0d9430acf7281eae65317d2ff08144cfb5959bf3f0a46268e4c0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5e5319288226fc7e92897e793eb7fb30f5c95c6bf13eb6bef7805909b79d4855",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "32c5651df02196573ed3ced4233d077dffe5fcabc0520d50cffa7ad087f2f418",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "6585a9badd871233ee42fc99219f901e045b69183ddfbd75ccb293afba53eff7",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "f0ab8abac6641cbd8f2122b9e0432791f3df34b0d8c1930dd2b133b3ab8e16ab",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "9f2193bee4fda82be759358b3206a86146e240a9a42a60e78b58efc331c287e5",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "34ad67e6f2665943efb74acdc4ed6786ad30b6ea5a9a461be4fb23a3ff0a5eb9",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "7398a2f228df4d8379980e005bf402a129f8605ac079bc6af72ef80fc58a8609",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "27d68a6ce0aec59f7f94ffc9ec378a8604e07f51cd3ad35648983f3aeb0da735",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "89821c921ed109c22fb6e95e214609a0fcb61871aca6770248a31d2c867f9898",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "a680e971ebfaa95e68ec2d01e24c9de2ae4ea50d0f0bae83666a70ce9be416f3",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "737835711c329ab3a99d727d9d1af5559601103f234e716aa8b622a8dd7fff69",
+            "truth_id": "temp-awc-truth-ZHHH-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "067463a2b45f4f32a34ff6443342d1994cdf841bc49f1f180c25bfbc0a0a8c32",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "0c7dc9e36c8c286c102bc382b2c2b9dd51f29666f4183270cb3c33ea6641e9a1",
+            "truth_id": "rebuild29-truth-ZHHH-2026-07-28-r0-16c2959c72b8"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "eb722d6d010b5f8e9a9a85a174dbb9cd12e14e699b75f9b153a5c26335a63853",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8b8140979bf8887670ff6b1ea53c47361914dda142951b201c1c1c209ae7087a",
+            "truth_id": "rebuild29-truth-ZHHH-2026-07-29-r0-ed95b270b9c8"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "79f21deb0894cab4e3272a8660d12ba11e0fd327d25b454d990373b1566dc095",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "6ad64640d306e60f52159be20a45d42cc08fcdeadab61bae5b461b2cd5c35d7a",
+            "truth_id": "truth_ac5940d57166521bf01ada0e455621919a73ae0b"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZHHH_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZHHH"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "c164bda8b6cdfaf902d0132ec847a196d50dfe33dab17cc5b296b7488d334f5b",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "487e1e9804e0ceb7327e6776f41b7674ecdb79bc3ea7dc2f016ac7efe5013ae3"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "bb1cc31a36d4409fdcf8c2198065fb1641c0292239e44e0d903a2a97de51820b",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "14ea66e3ae5554feb3c6304553a80e59a5aa9e5ee4b84eddc6f79c249eb3c61c",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "685239445b716786aff041e6a9310a0c2f888f448b70a1a9dc3dbcba96a2990b",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "3701b5591395efc639a84de387b305cd81a4a5d23b00be9838dc037d837388e5",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "f032a974303b52f1311257ef16af1b6070090f485bb123f7c7d507bfd0ed02e1",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "bb69c1b9e3263cb9aaae20b238193b9ab618ac375dcd18f809bf741190f45ad0",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "f9dc95919185772039e87ba42c741dc1e8559565819627656d918f24e9be1415",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5bdb819058a17feab2713571149dea2171187453bcabf64b4b55db60c4f14fdb",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "9886db553ed3d8f9c0204b9c718ba24d392cb93b7bb847f1eba2d3f3223f37dc",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "351e3c0ff1cc3026e465c64cad6e83711e410297964d5ac73d5d4a8cf86c8b75",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "e935beb72364130e42400cd3d209f6bfa30b9c67edfa918c2911c4de8e1afc1b",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "2fa9f618826a61060c6c8916b83212ad6b91d100fe7e16256c7d579793dbe62f",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "7ccd1faf1e9f8c572d1774ea7fefa615e1210b8a9421d76f353753c0c4cd053a",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "af587a0f2fcdea8e2c5114f6218dbe337dcd8bb30e6d519cc035224ece4d91d9",
+            "truth_id": "temp-awc-truth-ZSPD-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "2399dfbe5ceef55fd588f78565cab391377ec4e5f903cb999389be3e9b19bbb7",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "533f2e463feb9a99fabbbf43284d868c6e58ed0f96d1dcb57190e96f7ed89d1c",
+            "truth_id": "rebuild29-truth-ZSPD-2026-07-28-r0-8ddec73fa9eb"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "cbb53f2133688a183ae4efa2da03b80fdddd052444b200a58b0d2ae3f73c4263",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "9025f9d9effeec3575049bfbf69bb229b679bdad355a51c78f363efc4b6ced2f",
+            "truth_id": "rebuild29-truth-ZSPD-2026-07-29-r0-7435ba0c2ca0"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "645351361192a0eea70b6b2f4fcdacaf2caa99b76066ef2292d908ade0566e7e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "a4b13b974b5256c1abe02b3bc22c8850b3a8f1011177188b11b943e174dab054",
+            "truth_id": "truth_7ae2fe185b719ca42e21b676d091301fb0377ee9"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSPD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZSPD"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "4c54850439ea0f7609de773b88ed5f6c667ab20fdb74d9afd1ed3b25bb60e4fb",
+        "errors": [],
+        "excluded_correction_pointers": [],
+        "excluded_correction_sample_count": 0,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "3f79aeaabf8c424b4713da7b5aa64bf1eba951402c7e52fc7fa1efe59d4766a4",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "7472f486ae2a3e7c9c83a0c45479561a74169ea2bf2cb6298a11c93cbe1112ab",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "d5b39c9690168c1a523a8d2e3f1fe40b637b9b94c2c0dcb43ba4cb79397e1199",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "4f2037356f6ffa8544acbbe43009150c9cd0b60e87158e7b9dd5354759c9cfaf",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "cb9858b2e0d4fb691db7f7742b33526badfe269dad4bb909a8997a691cc6316c",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "53b873a0c59ce0f62ac74b54994acc38ac42d4fde658db7b8d2450148e38edb1",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "c3f74909b95dcc689410da7d13aac4f96e8cddf16d9e9340581f0f934a42c4d2",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "f9dae203cf0a134896d77f042d7322c4fd5de70116c21900b5f8aa88c32ca358",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "7d0d92d47ab6b46df5a482b4ce0f6d576f66f452969a3026eb65375218b16bd0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "1026d2e3ac9780f76a0874fe23d9e6fdfdf243b84d0fb7691efcdbfd1320175b",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "fe00dd789873fbaf9bff6fec25528b0a450b1b99f61b1d66aeacf831ebeba712",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "9d547a2c3e7cfb83b15eabbd97b9207562ac4b0990fdd4364651266da3071346",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "c28204fd24c5ac97fb364b9b584b3a0109d323d1071faefd1840857c029cfe6d",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "c31f283e354073082e3e045b41fe64cf946f7e799f84ab968759c7821e591785",
+            "truth_id": "temp-awc-truth-ZSQD-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "9ba7b07b0c0104021599a40b1cf87e4ffc22bb12394c5a65ea01a68baa9974e8",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "698a7c52a6a7f2054d998bb66e32844e2fb3485abf6b4cc5e7ddeee7da257df3",
+            "truth_id": "rebuild29-truth-ZSQD-2026-07-28-r0-1f1bdb0b2d96"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "a4eba562af7117a8cef0677179053397b919d730a3792defb7f51b295792756e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "15668aaad07104c62f51cc3800ba16bd9c327977d185cd74e4cc048c67264966",
+            "truth_id": "rebuild29-truth-ZSQD-2026-07-29-r0-63002aa7a357"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "3d5d5675ed4748430fa8704caea5028677973f2de9573fcfd650eaae8d77cdb2",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d8ae94d846e2667d9290efd3c3d8ac07280cdb0e6e4834af74355b7efa30f7ba",
+            "truth_id": "truth_66751fc5ca469d307407726573616229a62c67ad"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSQD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 0,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZSQD"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "c18cef39256218ac5c61b3746c358f21d72bff3f079ff0dabadbac99c19f2001",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "1743103a22ba486d947f22775e18f8c340995c2928bc1cb1a862a0ef02d9644f",
+              "78bde86a66825e0441ab5684e1c33acf4e0792fdc36287f863e57d659aa21bc7",
+              "affb527fda46256241712194a277e72824dfeb26f2212068117aae8bd3f0910e"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 1,
+        "lineage_pointer_count": 10,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "537b0fbf01829eefd741c1fa48364ea3665bb237b508bcd700a30110e6f3421c",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d14ead91b7a2188e8c33372e5bf190be5faeada2dd0e41e6f611ce85dfd3e4f3",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "3a16910cc508f3cec778cf617cd918e3c6d93db33d0ced668cbc8ea340d88d5a",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d471f063094a2f1beefefe216f1a437671872d0843060873c426aafb628421e8",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "96161e4bd7cf3702d2332a9f960cb1094ee0e6af54c6b9eedf62d86afa842548",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "43bc210b2f63756b8c90d056a2f62632982960f4cfc2b1c37d112ab95493ef83",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "acfa10644163a8f77da5583bccad7c3cce1dafec3fde16a458e51417ac723b75",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "bf64c7cb5980148005034a4fedb9eebc011589af08cffde9a8d794a85066c62c",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "8fcd85160c730fc4c7482c7d7056c4cf7cc0babab98b6c738c97da4fc1334bdd",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "9178580fe439bd53c56d58eaf204a4d5a2071b7cf74f91969fd82cac0cd50a32",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "9b89dcad86d153eaaf75c6cad48c69e063afeec6bb1244bcc70ccb41dcc2f1ec",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "3fc61b3280225fcbc83496bd051a389086a3a43fc3f2a3a93cd5dab5fe368066",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "b5e46b160a493b12f4593c6851143213838546ab338372a26116e3fa86792482",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "03331ac7fe4c72ac04f721a35906af41344cd6cb713dd35a62b94a25acf970a5",
+            "truth_id": "temp-awc-truth-ZUCK-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "8ca138319d89072174fae850950b823ef50f34af75fce76c1ec68c939a50de53",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "81829b0c6e7a1dc391e75510aae63c183e24c3a55a07f0ca98d4fe45c7905619",
+            "truth_id": "rebuild29-truth-ZUCK-2026-07-28-r0-5dcd9f59d4ea"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "605042b5d3720baf4b30595f5a24c10e0223f0435825851ef8d4941c1b61a22d",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "bec7f40aa8a6182b66d63500d5009b51e7704066831961223239c2d760089f13",
+            "truth_id": "rebuild29-truth-ZUCK-2026-07-29-r0-278b9e225fa5"
+          },
+          {
+            "event_date": "2026-07-31",
+            "taf_capture_content_sha256": "0847a5bcd5cfbcfd331ac499166ff8dcb0093d8b1631ec18de8e7f1980171cf4",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "85cc035de4c26f23cff37844deb34a870739021375e2b518ec7e6440b962208b",
+            "truth_id": "truth_3aa10a9cfdd8c6e822ddd28a67402bbb44d35e8f"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUCK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 1,
+      "minimum_sample_n": 24,
+      "missing_to_24": 14,
+      "sample_count": 10,
+      "state": "BLOCKED",
+      "station_id": "ZUCK"
+    },
+    {
+      "blockers": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "current_p0_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai"
+      },
+      "exact_join": {
+        "content_sha256": "972f75f9c6351d3928d519513f24d9d1fab8f28d7a937f2403a0ceff7d8963bd",
+        "errors": [],
+        "excluded_correction_pointers": [
+          {
+            "correction_content_sha256": [
+              "5bc1299e2d3a823533332d753356cb271d7204cadd0f01532ef3022cef564d3c",
+              "77cec841cf3c66d3b34e9330be033cd60b457bc3b5e6e0ca874944a616389dfc",
+              "7c4f5bfa96c9047ae307b2d72e1a8bedab88ecacd14371d6e1a8f6bd2803aea1",
+              "7ddf6f4b1f7dcc51556f86c098eccc25b8926aa26af225ad03c2994fd0dec8c0"
+            ],
+            "event_date": "2026-07-31"
+          },
+          {
+            "correction_content_sha256": [
+              "4162bdefa25cf04dbe8c31d06b432eea432b34c2062c7551845338b265bd3ddc",
+              "5e90fd0783e39bfa11d5c5423f917b69247e49a82c94c2ddd7bb32c040c0ea15",
+              "7d4960898eb0c346e62e3a9780b644375fb26467a1cf66de0a7ba6640aad405b",
+              "8e6781afed73ed9d2a831e71cf96dde3e3fb125188285cbb822ce75b647462b0",
+              "b9de5c9a322ec4abe75d397022b881810ba0e3710732863ed396159f92f281a5",
+              "c0a06fcda7d8afee9508c0b8f8682cb57c8351dd150572f4dc9cbe21b0fd05a3",
+              "c4738ba85e820e28f205595312141fae2cf7a275ef882cb84f485491beb78d46"
+            ],
+            "event_date": "2026-08-01"
+          }
+        ],
+        "excluded_correction_sample_count": 2,
+        "lineage_pointer_count": 9,
+        "lineage_pointers": [
+          {
+            "event_date": "2026-07-21",
+            "taf_capture_content_sha256": "94da7853e0d3e6a7bde1d4a2522c292f9ffdb9a82a9663677f12aad998659c1d",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "d1d285cfd31bd10eb7f6a7d0a1f0dd42a8699194a00abbc149f57da5a08d2b7b",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-21"
+          },
+          {
+            "event_date": "2026-07-22",
+            "taf_capture_content_sha256": "e9e8639f4228678177c3e1c76aba4246eb5b3e3fd6ef8b8907e15cd699943c49",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "9bfc091302a3be51ed029bbfacb359276a14757611c33546cffc1c5690c5891e",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-22"
+          },
+          {
+            "event_date": "2026-07-23",
+            "taf_capture_content_sha256": "a3d8446b475edd2ff2a1a1b2f47069e0f062bc94afa72baf9db523b8dcb0c1d0",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "f736ffa9380ca7c1eb89b484298b84df4ea94c178755a28ab763da404ae6a44c",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-23"
+          },
+          {
+            "event_date": "2026-07-24",
+            "taf_capture_content_sha256": "e00b5317e0d716bc39108d9039672e146da750985a9460fe093319c5ddbbe4db",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "5082521266ce9f9a0a2a8a8390a06d5e7213d1189aa04ddf884b285ea4ec1137",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-24"
+          },
+          {
+            "event_date": "2026-07-25",
+            "taf_capture_content_sha256": "47685f820e5c333c8295c6691814fcf7f4a83f169836ef4689338c2fde1b45e2",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "8e088690863f9f594f6a6458094711268efa06e27a12d8c0c9ef50bece797d64",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-25"
+          },
+          {
+            "event_date": "2026-07-26",
+            "taf_capture_content_sha256": "f428340746939268315a7190e580730ed9cc02d644c94c97e58184b55bfbf71d",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "96c5a54a2bdb99cd041861a7d3da30c391752d858aa3fbf370b2ef3677e4e9ae",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-26"
+          },
+          {
+            "event_date": "2026-07-27",
+            "taf_capture_content_sha256": "d353f02734f17874116599d372817fe46abd6245339fc3ac14ff642251cd9062",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "749a85cfde1c269813c9e588583656d94873355181d3ec48f797d16df01f49e8",
+            "truth_id": "temp-awc-truth-ZUUU-2026-07-27"
+          },
+          {
+            "event_date": "2026-07-28",
+            "taf_capture_content_sha256": "331aad66732ada77d0ff506a9c3f684608aeb036e9675c08ac9841d3ba959278",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "464da54c05bd501ebc39cf77fdbb00634009c27af51842e0c7da5bc145f7d05f",
+            "truth_id": "rebuild29-truth-ZUUU-2026-07-28-r0-ed227f4428eb"
+          },
+          {
+            "event_date": "2026-07-29",
+            "taf_capture_content_sha256": "901ff59fff1fa070dbf98b094a8442c096b77c1680671fc33c14de214490912e",
+            "taf_revision_id": "",
+            "taf_revision_kind": "HISTORICAL",
+            "taf_source_object_sha256": "6cce9b355b6f015611b57dcd71288708870e001d8c26023feb34aae6fff3aee6",
+            "truth_id": "rebuild29-truth-ZUUU-2026-07-29-r0-4f9ac53c90ec"
+          }
+        ],
+        "non_oos_observational_event_count": 0,
+        "non_oos_observational_event_dates": [],
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUUU_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 9,
+        "scope": {
+          "lead_bucket": "d2",
+          "run_cycle": "18Z",
+          "season_bin": "JJA",
+          "settlement_definition": "official_daily_tmax_c",
+          "settlement_timezone": "Asia/Shanghai"
+        },
+        "unquarantined_correction_pointers": []
+      },
+      "excluded_amd_cor_station_day_count": 2,
+      "minimum_sample_n": 24,
+      "missing_to_24": 15,
+      "sample_count": 9,
+      "state": "BLOCKED",
+      "station_id": "ZUUU"
+    }
+  ],
+  "exact_join_artifact_count": 44,
+  "input_artifacts": {
+    "p0_inbox": {
+      "content_sha256": "036df58f2aca034046916226357040a74ad500f877c43c048a5e06438250f6fc",
+      "generated_at_utc": "2026-08-02T16:53:53.985Z",
+      "path": "/Users/xiong/weather/data/bayes_basket_target_p0_inbox.json"
+    }
+  },
+  "minimum_taf_native_oos_sample_n": 24,
+  "schema": "bayes_basket_target_taf_p0m_exact_join_45station_audit_v1",
+  "state": "BLOCKED",
+  "totals": {
+    "max_sample_count": 11,
+    "qualified_scope_count_at_24": 0,
+    "quarantined_station_day_count": 10,
+    "sample_count_total": 141
+  }
+}

@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .future_temperature_curve import build_native_family_temperature_curve
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import (
     ECCODES_GRIB_GET,
@@ -275,7 +276,7 @@ def _build_station_capture(
     scope: Mapping[str, Any],
     run_init: datetime,
     query_at: datetime,
-    member_values: Mapping[str, Sequence[float]],
+    member_values: Mapping[str, Sequence[float] | Mapping[int, float]],
     receipts: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     hours = list(scope["forecast_hours"])
@@ -286,6 +287,17 @@ def _build_station_capture(
     ]
     if len(station_receipts) != len(hours):
         raise ContractError("eccc_geps_archive_station_receipt_incomplete")
+    values_by_member = {
+        member_id: (
+            {int(hour): float(value) for hour, value in values.items()}
+            if isinstance(values, Mapping)
+            else {
+                int(hour): float(value)
+                for hour, value in zip(hours, values)
+            }
+        )
+        for member_id, values in member_values.items()
+    }
     members = [
         {
             "ensemble_system_id": SYSTEM_ID,
@@ -293,14 +305,14 @@ def _build_station_capture(
             "member_role": (
                 "CONTROL" if member_id == "control" else "PERTURBED"
             ),
-            "raw_tmax_c": max(float(value) for value in values),
+            "raw_tmax_c": max(values.values()),
         }
-        for member_id, values in sorted(member_values.items())
+        for member_id, values in sorted(values_by_member.items())
     ]
     if (
         len(members) != EXPECTED_MEMBER_COUNT
         or any(
-            len(member_values[row["member_id"]]) != len(hours)
+            set(values_by_member[row["member_id"]]) != set(hours)
             for row in members
         )
     ):
@@ -323,6 +335,26 @@ def _build_station_capture(
         }
         for row in members
     ]
+    receipt_set_sha = content_sha256(station_receipts)
+    family_curve = build_native_family_temperature_curve({
+        "station_id": station,
+        "event_date": event_date,
+        "settlement_timezone": scope["settlement_timezone"],
+        "ensemble_system_id": SYSTEM_ID,
+        "independence_family_id": INDEPENDENCE_FAMILY_ID,
+        "available_at_utc": query_at.isoformat().replace("+00:00", "Z"),
+        "source_field_receipt_set_sha256": receipt_set_sha,
+        "points": [
+            {
+                "valid_time_utc": (run_init + timedelta(hours=hour)).isoformat().replace("+00:00", "Z"),
+                "temperature_c": sum(
+                    values_by_member[member_id][hour]
+                    for member_id in values_by_member
+                ) / len(values_by_member),
+            }
+            for hour in hours
+        ],
+    })
     identity = {
         "schema": SCHEMA,
         "station_id": station,
@@ -342,6 +374,7 @@ def _build_station_capture(
         ),
         "members": members,
         "member_set_sha256": content_sha256(member_identity),
+        "family_temperature_curve": family_curve,
         "bucket_intervals": frozen_intervals,
         "bucket_contract_sha256": content_sha256(frozen_intervals),
         "raw_bucket_probabilities": {
@@ -360,7 +393,7 @@ def _build_station_capture(
             for bucket, bounds in frozen_intervals.items()
         },
         "field_receipt_count": len(station_receipts),
-        "field_receipt_set_sha256": content_sha256(station_receipts),
+        "field_receipt_set_sha256": receipt_set_sha,
         "field_receipts": station_receipts,
         "archive_query_at_utc": query_at.isoformat().replace(
             "+00:00", "Z"
@@ -447,8 +480,8 @@ def capture_geps_station_days(
         "control",
         *(f"perturbed_{number:02d}" for number in range(1, 21)),
     ]
-    member_values = {
-        station: {member_id: [] for member_id in member_ids}
+    member_values: dict[str, dict[str, dict[int, float]]] = {
+        station: {member_id: {} for member_id in member_ids}
         for station in scopes
     }
     receipts: list[dict[str, Any]] = []
@@ -510,7 +543,7 @@ def capture_geps_station_days(
                         points=active,
                     )
                     for station, value in decoded.items():
-                        member_values[station][member_id].append(value)
+                        member_values[station][member_id][hour] = value
                 receipts.append(receipt)
                 assert_process_memory_budget(
                     projected_bytes=(

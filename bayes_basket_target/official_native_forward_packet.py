@@ -86,6 +86,10 @@ def _verified_target_bucket_contract(
 ) -> dict[str, Any]:
     contract = dict(raw)
     intervals = contract.get("bucket_intervals")
+    authority_source_class = str(
+        contract.get("authority_source_class")
+        or "AUTHORITATIVE_MARKET_REGISTRY_STATION_DAY"
+    )
     if (
         contract.get("schema")
         != "official_native_forward_target_bucket_contract_v1"
@@ -97,6 +101,10 @@ def _verified_target_bucket_contract(
         or not intervals
         or len(str(contract.get("authority_content_sha256") or ""))
         != 64
+        or authority_source_class not in {
+            "AUTHORITATIVE_MARKET_REGISTRY_STATION_DAY",
+            "SOURCE_ARCHIVE_OFFLINE_CONTRACT_BRIDGE",
+        }
     ):
         raise ContractError(
             "official_native_forward_target_contract_invalid"
@@ -152,6 +160,7 @@ def _verified_target_bucket_contract(
         **contract,
         "station_id": station_id,
         "bucket_intervals": frozen,
+        "authority_source_class": authority_source_class,
     }
 
 
@@ -347,6 +356,19 @@ def build_official_native_forward_packet(
             "source_bucket_contract_sha256": str(
                 capture["bucket_contract_sha256"]
             ),
+            **(
+                {
+                    "family_temperature_curve_sha256": str(
+                        capture["family_temperature_curve"][
+                            "content_sha256"
+                        ]
+                    )
+                }
+                if isinstance(
+                    capture.get("family_temperature_curve"), Mapping
+                )
+                else {}
+            ),
         })
     timezones = {
         str(row.get("settlement_timezone") or "") for row in captures
@@ -391,7 +413,9 @@ def build_official_native_forward_packet(
             target_contract["bucket_contract_sha256"]
         )
         bucket_contract_authority = {
-            "source_class": "AUTHORITATIVE_MARKET_REGISTRY_STATION_DAY",
+            "source_class": str(
+                target_contract["authority_source_class"]
+            ),
             "authority_content_sha256": str(
                 target_contract["authority_content_sha256"]
             ),
@@ -485,6 +509,17 @@ def build_official_native_forward_packet(
                 capture["member_set_sha256"]
             ),
             "members": list(capture["members"]),
+            **(
+                {
+                    "family_temperature_curve": dict(
+                        capture["family_temperature_curve"]
+                    )
+                }
+                if isinstance(
+                    capture.get("family_temperature_curve"), Mapping
+                )
+                else {}
+            ),
         }
         for capture in sorted(
             captures,

@@ -1,0 +1,16 @@
+{
+  "content_sha256": "9a20acc6029a76135425a4fece0e8c34181260520d914eba2e03df923c255992",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "60c0729bb07bb5216ae10cd9f6d15edc0c1e1f3f475051ddbd4ed1694c17d5f2",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Amsterdam",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "EHAM"
+}

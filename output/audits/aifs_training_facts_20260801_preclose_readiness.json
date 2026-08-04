@@ -1,0 +1,42 @@
+{
+  "as_of_utc": "2026-08-01T11:21:03Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_formal_provider_binding": false,
+    "downloads_raw": false,
+    "formal_p0_eligible": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "reads_ssot_read_only": true,
+    "writes_production_database": false
+  },
+  "content_sha256": "af65962a3a0f9f433d4f3fe90707a06a96d993ff0d12f87555b0110a4255d464",
+  "curve_count_scanned": 45,
+  "fact_count": 0,
+  "inputs": {
+    "aifs_decode_audit_sha256": "374ea55e14e5eb4b0d090a61367a30310c675f89f8d9817e1a05172f2ee8272c",
+    "eligible_closed_awc_truth_content_sha256s": [],
+    "eligible_curve_sha256s": []
+  },
+  "readiness": {
+    "closed_truth_available_station_count": 0,
+    "closed_truth_missing_station_count": 0,
+    "closed_truth_missing_station_ids": [],
+    "curve_count": 45,
+    "downloads_required": false,
+    "next_action": "WAIT_FOR_SETTLEMENT_CLOSE",
+    "next_action_not_before_utc": "2026-08-01T12:00:00Z",
+    "next_settlement_close_station_ids": [
+      "NZWN"
+    ],
+    "next_settlement_close_utc": "2026-08-01T12:00:00Z",
+    "open_station_count": 45,
+    "reuses_retained_official_aifs_raw": true
+  },
+  "schema": "aifs_deterministic_training_facts_runner_receipt_v1",
+  "skipped_reason_counts": {
+    "station_local_day_not_closed": 45
+  },
+  "state": "NO_ELIGIBLE_CLOSED_AWC_TRUTH_NOOP",
+  "station_id": null
+}

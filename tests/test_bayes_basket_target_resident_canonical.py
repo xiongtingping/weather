@@ -12,8 +12,8 @@ from bayes_basket_target.correction_review import (
     CLEAR_REFERENCE_ONLY,
     append_correction_review,
 )
-from reported_trajectory_no_schema import (
-    apply_reported_trajectory_no_schema,
+from weather_basket_yes_schema import (
+    apply_weather_basket_yes_schema,
 )
 
 
@@ -23,7 +23,7 @@ def _source() -> sqlite3.Connection:
         "CREATE TABLE reported_trajectory_observations("
         "observation_id TEXT,source_lane TEXT,station_id TEXT,"
         "report_type TEXT,valid_at TEXT,reported_temperature_c REAL,"
-        "raw_sha256 TEXT,canonical_committed_at TEXT,"
+        "raw_sha256 TEXT,raw_text TEXT,canonical_committed_at TEXT,"
         "correction_suspected INTEGER)"
     )
     return conn
@@ -47,24 +47,28 @@ def _insert(
     temperature_c: float,
     correction: int = 0,
     report_type: str = "METAR",
+    source_lane: str = "awc",
+    station_id: str = "RKPK",
 ) -> None:
     conn.execute(
-        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
             observation_id,
-            "awc",
-            "RKPK",
+            source_lane,
+            station_id,
             report_type,
             valid_at,
             temperature_c,
             "a" * 64,
+            f"{report_type} {station_id} 261500Z 18005KT CAVOK "
+            f"{int(temperature_c):02d}/20 Q1008",
             committed_at,
             correction,
         ),
     )
 
 
-def test_resident_adapter_uses_registry_window_and_only_hourly_truth() -> None:
+def test_awc_formal_scope_preserves_native_metar_minutes() -> None:
     conn = _source()
     _insert(
         conn,
@@ -75,7 +79,7 @@ def test_resident_adapter_uses_registry_window_and_only_hourly_truth() -> None:
     )
     _insert(
         conn,
-        observation_id="half-hour-reference",
+        observation_id="half-hour-formal",
         valid_at="2026-07-26T15:30:00Z",
         committed_at="2026-07-26T15:31:00Z",
         temperature_c=30,
@@ -89,7 +93,10 @@ def test_resident_adapter_uses_registry_window_and_only_hourly_truth() -> None:
         as_of_utc="2026-07-26T16:00:00Z",
     )
 
-    assert [item["observation_id"] for item in rows] == ["hourly"]
+    assert [item["observation_id"] for item in rows] == [
+        "hourly",
+        "half-hour-formal",
+    ]
     assert rows[0]["settlement_timezone"] == "Asia/Seoul"
     assert rows[0]["evidence_role"] == "FORMAL"
 
@@ -150,7 +157,7 @@ def test_non_hourly_cor_speci_halts_before_hourly_truth_filter() -> None:
 
 def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None:
     conn = sqlite3.connect(":memory:")
-    apply_reported_trajectory_no_schema(conn)
+    apply_weather_basket_yes_schema(conn)
     conn.execute(
         """
         INSERT INTO reported_trajectory_market_registry(
@@ -225,7 +232,7 @@ def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None
     assert rows[0]["correction_review_ids"] == [review["review_id"]]
 
 
-def test_resident_adapter_rejects_cross_lane_registry() -> None:
+def test_resident_adapter_rejects_retired_or_mixed_amsc_registry_lane() -> None:
     conn = _source()
     rows = [
         *_registry(),
@@ -233,11 +240,29 @@ def test_resident_adapter_rejects_cross_lane_registry() -> None:
     ]
     with pytest.raises(
         ContractError,
-        match="resident_p1_source_lane_not_unique",
+        match="resident_p1_source_lane_not_awc",
     ):
         load_resident_formal_observations(
             conn,
             registry_rows=rows,
+            station_id="RKPK",
+            event_date="2026-07-27",
+            as_of_utc="2026-07-26T16:00:00Z",
+        )
+
+
+def test_resident_adapter_rejects_retired_amsc_registry_lane() -> None:
+    conn = _source()
+    with pytest.raises(
+        ContractError,
+        match="resident_p1_source_lane_not_awc",
+    ):
+        load_resident_formal_observations(
+            conn,
+            registry_rows=[{
+                **_registry()[0],
+                "source_lane": "amsc",
+            }],
             station_id="RKPK",
             event_date="2026-07-27",
             as_of_utc="2026-07-26T16:00:00Z",

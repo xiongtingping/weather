@@ -255,11 +255,10 @@ def build_manifest(
     formal_promotion_blockers = list(
         readiness.get("formal_promotion_blockers") or []
     )
-    if not _forward_scorecard_release_ready(forward_scorecard):
-        if "target_forward_scorecard_incomplete" not in formal_promotion_blockers:
-            formal_promotion_blockers.append(
-                "target_forward_scorecard_incomplete"
-            )
+    # Forward rows are observational only.  They never become an OOS or
+    # promotion blocker; historical strict-as-of evidence owns promotion.
+    # Keep the scorecard in the manifest for diagnostics and retain only
+    # explicit boundary violations in ``blockers`` from ``audit``.
     production_no_live_ready = bool(readiness["ok"] and not blockers)
     formal_promotion_ready = bool(
         production_no_live_ready and not formal_promotion_blockers

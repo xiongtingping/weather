@@ -1,0 +1,308 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "truth_days_closed": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "8a2e084d1598edb984c02e2713282df2991296c52158fee6af01076a072af6e1",
+  "end_date": "2026-07-31",
+  "excluded_sample_count": 0,
+  "excluded_samples": [],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 13574,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 268435456
+  },
+  "sample_count": 1,
+  "samples": [
+    {
+      "decision_anchor_utc": "2026-07-30T23:00:00Z",
+      "event_date": "2026-07-31",
+      "receipts": {
+        "metar_response_sha256": "3fc3ef7340a2c37f4b4afc8a3b0fa7594577db057a32fb375ad22af4c9fafaa4",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=FACT&format=json&taf=false&hours=24&date=20260731_2200",
+        "taf_response_sha256": "73ca8899914183041a715fd606299cb189ceed58bbf1b91b90d0ab89d414ff95",
+        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=FACT&format=json&time=issue&date=2026-07-30T23%3A00%3A00Z"
+      },
+      "reference_only": false,
+      "sample_id": "taf-sample-b2845a4a8eb754c415fdce5423e2702d",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_window": {
+        "end_utc": "2026-07-31T22:00:00Z",
+        "start_utc": "2026-07-30T22:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "FACT",
+      "taf": {
+        "available_time_utc": "2026-07-30T22:10:30Z",
+        "cloud_cover_fraction": 0.0,
+        "issue_time_utc": "2026-07-30T22:00:00Z",
+        "precipitation_probability": 0.0,
+        "raw_taf": "TAF FACT 302200Z 3100/0106 VRB03KT CAVOK TX23/3112Z TN07/3105Z BECMG 3111/3113 18010KT FM311600 VRB03KT CAVOK",
+        "raw_taf_sha256": "1afe3dfff1927b006fccf8b64bc7916565a37ccbe98715ca26684917ab95d7a5",
+        "tx_c": 23.0,
+        "tx_valid_at_utc": "2026-07-31T12:00:00Z",
+        "wind_speed_mps": 2.3435782222222223
+      },
+      "truth": {
+        "observation_count": 30,
+        "observations": [
+          {
+            "observed_at_utc": "2026-07-30T22:00:00Z",
+            "raw_report": "METAR FACT 302200Z 06003KT CAVOK 11/08 Q1024 NOSIG",
+            "received_at_utc": "2026-07-30T22:06:04.183Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-30T23:00:00Z",
+            "raw_report": "METAR FACT 302300Z VRB03KT CAVOK 09/08 Q1024 NOSIG",
+            "received_at_utc": "2026-07-30T23:05:15.930Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T00:00:00Z",
+            "raw_report": "METAR FACT 310000Z VRB02KT CAVOK 10/08 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T00:05:22.330Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T01:00:00Z",
+            "raw_report": "METAR FACT 310100Z 14004KT CAVOK 08/07 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T01:05:24.358Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T02:00:00Z",
+            "raw_report": "METAR FACT 310200Z VRB01KT CAVOK 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T02:05:30.100Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T03:00:00Z",
+            "raw_report": "METAR FACT 310300Z VRB02KT CAVOK 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T03:05:28.360Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T04:00:00Z",
+            "raw_report": "METAR FACT 310400Z VRB02KT CAVOK 09/07 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T04:05:26.056Z",
+            "report_type": "METAR",
+            "temperature_c": 9.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T05:00:00Z",
+            "raw_report": "METAR FACT 310500Z VRB01KT CAVOK 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T05:05:20.025Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T06:00:00Z",
+            "raw_report": "METAR FACT 310600Z 11003KT CAVOK 08/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T06:05:33.186Z",
+            "report_type": "METAR",
+            "temperature_c": 8.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T06:54:00Z",
+            "raw_report": "SPECI FACT 310654Z 09004KT CAVOK 12/09 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T06:59:55.351Z",
+            "report_type": "SPECI",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T07:00:00Z",
+            "raw_report": "METAR FACT 310700Z 09004KT CAVOK 12/09 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T07:05:30.126Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T07:21:00Z",
+            "raw_report": "SPECI FACT 310721Z VRB03KT CAVOK 14/10 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T07:25:55.132Z",
+            "report_type": "SPECI",
+            "temperature_c": 14.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T07:55:00Z",
+            "raw_report": "SPECI FACT 310755Z VRB02KT CAVOK 16/10 Q1024 NOSIG",
+            "received_at_utc": "2026-07-31T08:00:58.975Z",
+            "report_type": "SPECI",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T08:00:00Z",
+            "raw_report": "METAR FACT 310800Z VRB02KT CAVOK 16/10 Q1024 NOSIG",
+            "received_at_utc": "2026-07-31T08:05:11.188Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T08:30:00Z",
+            "raw_report": "SPECI FACT 310830Z VRB03KT CAVOK 18/10 Q1024 NOSIG",
+            "received_at_utc": "2026-07-31T08:36:38.950Z",
+            "report_type": "SPECI",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T08:56:00Z",
+            "raw_report": "SPECI FACT 310856Z 17004KT 120V190 CAVOK 20/07 Q1024 NOSIG",
+            "received_at_utc": "2026-07-31T09:01:33.107Z",
+            "report_type": "SPECI",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T09:00:00Z",
+            "raw_report": "METAR FACT 310900Z 17004KT 120V190 CAVOK 20/07 Q1024 NOSIG",
+            "received_at_utc": "2026-07-31T09:05:20.426Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T10:00:00Z",
+            "raw_report": "METAR FACT 311000Z 15004KT CAVOK 21/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T10:05:14.514Z",
+            "report_type": "METAR",
+            "temperature_c": 21.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T10:25:00Z",
+            "raw_report": "SPECI FACT 311025Z 16004KT 110V210 CAVOK 23/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T10:33:36.298Z",
+            "report_type": "SPECI",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T11:00:00Z",
+            "raw_report": "METAR FACT 311100Z 16004KT 120V210 CAVOK 23/06 Q1023 NOSIG",
+            "received_at_utc": "2026-07-31T11:05:10.946Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T12:00:00Z",
+            "raw_report": "METAR FACT 311200Z 18007KT 150V210 CAVOK 24/04 Q1022 NOSIG",
+            "received_at_utc": "2026-07-31T12:05:22.556Z",
+            "report_type": "METAR",
+            "temperature_c": 24.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T13:00:00Z",
+            "raw_report": "METAR FACT 311300Z 20008KT CAVOK 22/05 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T13:05:15.690Z",
+            "report_type": "METAR",
+            "temperature_c": 22.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T14:00:00Z",
+            "raw_report": "METAR FACT 311400Z 20006KT 170V240 CAVOK 23/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T14:05:10.036Z",
+            "report_type": "METAR",
+            "temperature_c": 23.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T15:00:00Z",
+            "raw_report": "METAR FACT 311500Z 21006KT CAVOK 20/09 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T15:05:19.120Z",
+            "report_type": "METAR",
+            "temperature_c": 20.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T16:00:00Z",
+            "raw_report": "METAR FACT 311600Z 21005KT CAVOK 18/09 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T16:05:10.631Z",
+            "report_type": "METAR",
+            "temperature_c": 18.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T17:00:00Z",
+            "raw_report": "METAR FACT 311700Z VRB03KT CAVOK 16/10 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T17:05:10.605Z",
+            "report_type": "METAR",
+            "temperature_c": 16.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T18:00:00Z",
+            "raw_report": "METAR FACT 311800Z 11003KT CAVOK 12/08 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T18:09:33.603Z",
+            "report_type": "METAR",
+            "temperature_c": 12.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T19:00:00Z",
+            "raw_report": "METAR FACT 311900Z 05004KT CAVOK 11/08 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T19:05:31.070Z",
+            "report_type": "METAR",
+            "temperature_c": 11.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T20:00:00Z",
+            "raw_report": "METAR FACT 312000Z 05005KT CAVOK 10/07 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T20:05:21.800Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          },
+          {
+            "observed_at_utc": "2026-07-31T21:00:00Z",
+            "raw_report": "METAR FACT 312100Z 06007KT CAVOK 10/06 Q1021 NOSIG",
+            "received_at_utc": "2026-07-31T21:06:00.976Z",
+            "report_type": "METAR",
+            "temperature_c": 10.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 24.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+    }
+  ],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "Africa/Johannesburg",
+  "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
+  "start_date": "2026-07-31",
+  "station_id": "FACT",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+}

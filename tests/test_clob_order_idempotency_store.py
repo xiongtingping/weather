@@ -315,6 +315,100 @@ def test_target_token_snapshot_survives_unrelated_shard_reconnect(tmp_path: Path
     }
 
 
+def test_registered_held_yes_uses_scope_bound_auxiliary_official_book(tmp_path: Path) -> None:
+    inventory = tmp_path / "held_yes.json"
+    manifest = tmp_path / "market_ws_held_yes_quotes.json"
+    shard_dir = tmp_path / "market_ws_held_yes_quote_shards"
+    script = f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import crypto from 'node:crypto';
+      process.env.PM_HELD_YES_INVENTORY_FILE = {json.dumps(str(inventory))};
+      process.env.PM_HELD_YES_WS_MANIFEST_PATH = {json.dumps(str(manifest))};
+      process.env.PM_HELD_YES_WS_SHARD_DIR = {json.dumps(str(shard_dir))};
+      const {{ ClobOrderService }} = await import({json.dumps(SERVICE.as_uri())});
+      const canonical = (value) => {{
+        if (Array.isArray(value)) return `[${{value.map(canonical).join(',')}}]`;
+        if (value && typeof value === 'object') return `{{${{Object.keys(value).sort().map(
+          key => `${{JSON.stringify(key)}}:${{canonical(value[key])}}`
+        ).join(',')}}}}`;
+        return JSON.stringify(value);
+      }};
+      const hashed = (core) => ({{...core, snapshot_sha256:crypto.createHash('sha256').update(canonical(core)).digest('hex')}});
+      const token = '123456';
+      const scope = [token];
+      const scopeSha = crypto.createHash('sha256').update(scope.join('\\0')).digest('hex');
+      const now = new Date().toISOString();
+      fs.writeFileSync({json.dumps(str(inventory))}, JSON.stringify({{
+        schema:'reported_trajectory_held_yes_inventory_v1', complete:true,
+        token_ids:scope, active_token_ids:scope,
+        active_token_ids_source:'official_local_clob_execution_guard_snapshot',
+        active_token_ids_observed_at:now, active_token_ids_receipt_sha256:'a'.repeat(64),
+      }}));
+      fs.mkdirSync({json.dumps(str(shard_dir))}, {{recursive:true}});
+      const manifestCore = {{
+        schema:'clob_ws_held_yes_quote_manifest_v1', state:'ready', connection_observed_at:now,
+        scope_token_ids:scope, scope_sha256:scopeSha,
+        complete_book_token_count:1, complete_book_token_ids:scope,
+        missing_complete_book_token_ids:[], quote_storage:'sha256_token_shards_v1',
+        quote_shard_dir:{json.dumps(str(shard_dir))}, source:'official_polymarket_clob_websocket',
+        evidence_only:true, authorizes_order:false, last_error:'',
+      }};
+      fs.writeFileSync({json.dumps(str(manifest))}, JSON.stringify(hashed(manifestCore)));
+      const quote = {{
+        token_id:token, source:'clob_ws', source_detail:'book',
+        bids:[{{price:.4,size:4}}], asks:[{{price:.5,size:5}}],
+        created_at:now, book_observed_at:now,
+      }};
+      const tokenCore = {{
+        schema:'clob_ws_held_yes_token_quote_snapshot_v1', token_id:token,
+        scope_sha256:scopeSha, scope_token_ids:scope, quote,
+        source:'official_polymarket_clob_websocket', evidence_only:true, authorizes_order:false,
+      }};
+      const filename = `${{crypto.createHash('sha256').update(token).digest('hex')}}.json`;
+      fs.writeFileSync(path.join({json.dumps(str(shard_dir))}, filename), JSON.stringify(hashed(tokenCore)));
+      const service = new ClobOrderService();
+      service.client = {{}};
+      service.registeredPositionTokens.add(token);
+      service.readLatestWsQuoteSnapshot = () => {{ throw new Error('primary must not be needed'); }};
+      service.getBalanceAllowanceForPrefetch = async () => ({{balance:'5000000',allowances:{{exchange:'5000000'}}}});
+      const result = await service.executionGuardSnapshot({{
+        token_id:token, side:'SELL', limit_price:.4, size:1, notional:0,
+      }});
+      if (!result.ok || result.ws_evidence_source !== 'held_yes_auxiliary_official_clob_ws'
+          || result.order_book.bids.length !== 1 || result.order_book.asks.length !== 1) {{
+        throw new Error(JSON.stringify(result));
+      }}
+      quote.book_observed_at = new Date(Date.now() - 121000).toISOString();
+      fs.writeFileSync(path.join({json.dumps(str(shard_dir))}, filename), JSON.stringify(hashed({{...tokenCore, quote}})));
+      let staleRejected = false;
+      try {{ service.readHeldYesWsQuoteSnapshot(1000, token); }} catch {{ staleRejected = true; }}
+      if (!staleRejected) throw new Error('stale held book accepted');
+      service.readLatestWsQuoteSnapshot = () => ({{parsed:{{connection_observed_at:now,quotes_by_token:{{
+        [token]:{{...quote,book_observed_at:now}}
+      }}}}}});
+      const fallback = await service.executionGuardSnapshot({{
+        token_id:token, side:'SELL', limit_price:.4, size:1, notional:0,
+      }});
+      if (!fallback.ok || fallback.ws_evidence_source !== 'primary_official_clob_ws') {{
+        throw new Error(JSON.stringify(fallback));
+      }}
+      console.log(JSON.stringify({{ok:true,source:result.ws_evidence_source,staleRejected,
+        fallback:fallback.ws_evidence_source}}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        text=True, capture_output=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {
+        "ok": True,
+        "source": "held_yes_auxiliary_official_clob_ws",
+        "staleRejected": True,
+        "fallback": "primary_official_clob_ws",
+    }
+
+
 def test_bulk_snapshot_loads_requested_tokens_from_shards(tmp_path: Path) -> None:
     manifest = tmp_path / "market_ws_latest_quotes.json"
     shard_dir = tmp_path / "market_ws_quote_shards"
@@ -554,6 +648,7 @@ def test_explicit_fak_buy_uses_local_limit_signing_before_post() -> None:
     """FAK is time-in-force; explicit price+size must not trigger market-info REST."""
 
     script = f"""
+      process.env.PM_CLOB_FORCE_PROXY = '0';
       import {{ ClobOrderService }} from {json.dumps(SERVICE.as_uri())};
       const zero = '0x0000000000000000000000000000000000000000';
       const bytes32 = `0x${{'00'.repeat(32)}}`;
@@ -608,6 +703,7 @@ def test_controlled_rebalance_sell_fak_uses_gateway_limit_signing_without_market
     """The rebalance shape is a protected limit FAK, not a naked market order."""
 
     script = f"""
+      process.env.PM_CLOB_FORCE_PROXY = '0';
       import {{ ClobOrderService }} from {json.dumps(SERVICE.as_uri())};
       const zero = '0x0000000000000000000000000000000000000000';
       const bytes32 = `0x${{'00'.repeat(32)}}`;

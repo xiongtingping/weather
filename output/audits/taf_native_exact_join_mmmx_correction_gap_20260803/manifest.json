@@ -1,0 +1,40 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "preserves_taf_24_sample_gate": true,
+    "production_p0m_materialized": false,
+    "read_only": true,
+    "writes_database": false
+  },
+  "content_sha256": "4cf93ad06a3ddd00e5752799aed76fa5bc2c04b27707e27439d1e76ae8b9c4ee",
+  "entries": [
+    {
+      "artifact_content_sha256": "3aa8a0e10b7877e03d75c22a8140f742ca52e81c7be5d9cd86b39c013a5dc063",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_native_exact_join_mmmx_correction_gap_20260803/MMMX_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 7,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "MMMX",
+      "wrote": true
+    }
+  ],
+  "future_event_count": 0,
+  "official_native_systems": [
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_IFS_ENS_OPEN_PF50",
+    "NOAA_GEFS_05"
+  ],
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "schema": "persisted_native_taf_exact_join_rebuild_v1",
+  "scope_count": 1,
+  "state": "REBUILT_READ_ONLY",
+  "station_count": 1
+}

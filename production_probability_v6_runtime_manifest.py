@@ -1,4 +1,4 @@
-"""Content-addressed runtime closure for the unique production v6 epoch."""
+"""Content-addressed closure for the actual weather-basket resident service."""
 
 from __future__ import annotations
 
@@ -11,40 +11,22 @@ from typing import Any
 
 SCHEMA_VERSION = "production_probability_v6_runtime_manifest_v1"
 ROOT = Path(__file__).resolve().parent
-RUNTIME_ROOTS = (
-    "physical_latent_state_contract.py",
-    "joint_forecast_weak_likelihood_runtime.py",
-    "weak_forecast_evidence_snapshot_runtime.py",
-    "physical_state_bayes_v6/__init__.py",
-    "physical_state_bayes_v6/contracts.py",
-    "physical_state_bayes_v6/core.py",
-    "physical_state_bayes_v6/artifact_contracts.py",
-    "physical_state_bayes_v6/forcing_adapter.py",
-    "physical_state_bayes_v6/observation_adapter.py",
-    "physical_state_bayes_v6/observation_model.py",
-    "physical_state_bayes_v6/transition_model.py",
-    "physical_state_bayes_v6/schema_contract.py",
-    "production_probability_v6_activation_contract.py",
-    "production_probability_v6_p0_runtime.py",
-    "production_probability_v6_p0_input_runtime.py",
-    "production_probability_v6_initial_writer.py",
-    "production_probability_v6_candidate_compiler.py",
-    "production_probability_v6_event_runtime.py",
-    "production_probability_v6_canonical_event_drain_runtime.py",
-    "production_probability_v6_amsc_archive_ingress.py",
-    "identifiable_physical_probability_worker.py",
-    "prospective_physical_evidence_capture.py",
-    "config/identifiable_physical_evidence_capture.json",
-    "production_probability_v6_public_ssot_writer.py",
-    "production_probability_v6_weak_revision_runtime.py",
-    "production_probability_v6_weak_revision_writer.py",
-    "production_probability_v6_weak_revision_event_runtime.py",
-    "production_probability_v6_live_route_contract.py",
+RUNTIME_ROOTS = ("scripts/weather_basket_yes_daemon.py",)
+FORBIDDEN_PRODUCTION_RUNTIME_FILES = frozenset(
+    {
+        "amsc_raw_history_archive.py",
+        "amsc_taf_revision_runtime.py",
+        "identifiable_physical_probability_worker.py",
+        "production_probability_v6_amsc_archive_ingress.py",
+        "production_probability_v6_weak_revision_event_runtime.py",
+        "scripts/apply_amsc_taf_forecast_revision_v6_from_plan.py",
+        "scripts/apply_current_weak_source_revisions_v6.py",
+        "scripts/fetch_zuuu_metar_taf.py",
+    }
 )
 RETIRED_V5_RUNTIME_FILES = frozenset(
     {
         "production_probability_p0_runtime.py",
-        "production_reported_x_amsc_archive_probability_ingress.py",
         "production_reported_x_canonical_event_drain_runtime.py",
         "production_reported_x_event_runtime.py",
         "production_reported_x_weak_revision_event_runtime.py",
@@ -145,6 +127,11 @@ def build_v6_runtime_manifest(root: Path = ROOT) -> dict[str, Any]:
     retired_reachable = sorted(set(runtime_files) & RETIRED_V5_RUNTIME_FILES)
     if retired_reachable:
         raise ValueError("retired_v5_runtime_reachable:" + ",".join(retired_reachable))
+    forbidden_reachable = sorted(set(runtime_files) & FORBIDDEN_PRODUCTION_RUNTIME_FILES)
+    if forbidden_reachable:
+        raise ValueError(
+            "forbidden_weather_basket_runtime_reachable:" + ",".join(forbidden_reachable)
+        )
     for relative in runtime_files:
         path = root / relative
         if not path.is_file():
@@ -157,6 +144,8 @@ def build_v6_runtime_manifest(root: Path = ROOT) -> dict[str, Any]:
         "reachable_local_python_file_count": len(runtime_files),
         "dependency_closure_complete": True,
         "retired_v5_runtime_reachable": False,
+        "forbidden_runtime_files_reachable": False,
+        "resident_service": "com.weather.weather_basket_yes",
         "production_route_targets": [
             {"path": path, "sha256": _sha_bytes(value)}
             for path, value in sorted(build_v6_live_route_targets(root).items())
@@ -198,6 +187,7 @@ def audit_v6_runtime_manifest_dependency_closure(root: Path = ROOT) -> dict[str,
 
 
 __all__ = [
+    "FORBIDDEN_PRODUCTION_RUNTIME_FILES",
     "RUNTIME_FILES",
     "RUNTIME_ROOTS",
     "RETIRED_V5_RUNTIME_FILES",

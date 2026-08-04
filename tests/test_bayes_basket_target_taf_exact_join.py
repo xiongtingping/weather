@@ -128,6 +128,24 @@ def test_exact_join_accepts_explicit_historical_publication_without_fake_arrival
     )
 
 
+def test_exact_join_accepts_explicit_republisher_replay_contract() -> None:
+    nwp = _nwp()
+    for model_row in nwp["predictions"][0]["model_rows"]:
+        model_row.update({
+            "availability_class": "historical_republisher_replay",
+            "available_at_utc": None,
+            "historical_replay_anchor_utc": "2026-07-19T00:00:00Z",
+            "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+            "historical_oos_contract_id": "model-contract-" + model_row["model_id"],
+            "historical_oos_eligible": True,
+        })
+    result = build_taf_exact_join(_taf(), nwp)
+    assert result["sample_count"] == 1
+    assert result["samples"][0]["nwp_combination"]["model_rows"][0][
+        "availability_class"
+    ] == "historical_republisher_replay"
+
+
 def test_exact_join_rejects_resource_overflow() -> None:
     taf = _taf()
     taf["samples"] = taf["samples"] * 2

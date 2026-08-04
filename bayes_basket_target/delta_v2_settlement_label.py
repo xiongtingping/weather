@@ -9,7 +9,11 @@ from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, canonical_json, content_sha256
-from .resource_bounds import assert_process_memory_budget
+from .resource_bounds import (
+    assert_connection_target_capacity,
+    assert_process_memory_budget,
+)
+from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 from .settlement_time import settlement_day_window
 from .settlement_evidence_packet import (
     SETTLEMENT_VERSION_BINDING_SCHEMA,
@@ -26,7 +30,13 @@ FACT_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_FORWARD"
 MAX_LABEL_BATCH = 64
 MAX_LABEL_OUTCOME_JSON_BYTES = 65_536
 MAX_LABEL_SOURCE_JSON_BYTES = 262_144
-MAX_LABEL_PAGE_SOURCE_JSON_BYTES = 2_097_152
+# A label page is capped at 64 facts and each fact retains independent
+# 256-KiB caps for policy and feature JSON.  The aggregate hard cap therefore
+# remains bounded (at most 32 MiB under the current per-fact limits); 64 MiB
+# gives a complete, valid page room to drain instead of deferring its tail at
+# the former 2-MiB threshold.  RSS, target DB/WAL and free-space probes remain
+# mandatory before the page is read or written.
+MAX_LABEL_PAGE_SOURCE_JSON_BYTES = 64 * 1024 * 1024
 MAX_LABEL_ENVELOPE_JSON_BYTES = 524_288
 MAX_LABEL_INTENTS = 64
 MAX_LABEL_INTENT_BUCKET_BYTES = 256
@@ -282,6 +292,11 @@ def materialize_delta_v2_settled_training_labels(
     if not 1 <= int(max_facts) <= MAX_LABEL_BATCH:
         raise ContractError("delta_v2_label_batch_limit_invalid")
     fact_limit = int(max_facts)
+    # File-backed target callers must re-check the DB/WAL/free-space bound at
+    # the exact label-ingress boundary.  ``:memory:`` focused tests have no
+    # backing path and are intentionally a no-op in this shared guard.
+    assert_connection_target_capacity(conn)
+    assert_process_memory_budget()
 
     def _metadata_page(
         *,
@@ -315,6 +330,8 @@ def materialize_delta_v2_settled_training_labels(
             + """
               AND f.fact_id LIKE 'd2fact_%'
               AND f.authority_scope=?
+              AND t.source_lane='AWC'
+              AND t.source_role=?
               AND t.qc_status='ACCEPTED' AND t.timestamps_complete=1
               AND t.canonical_committed_at_utc<=?
               AND t.revision_no=(
@@ -322,6 +339,8 @@ def materialize_delta_v2_settled_training_labels(
                 FROM calibration_station_daily_high_truth t2
                 WHERE t2.station_id=t.station_id
                   AND t2.local_date=t.local_date
+                  AND t2.source_lane='AWC'
+                  AND t2.source_role=?
                   AND t2.canonical_committed_at_utc<=?
               )
               AND NOT EXISTS(
@@ -334,7 +353,9 @@ def materialize_delta_v2_settled_training_labels(
             (
                 *rowid_params,
                 FACT_AUTHORITY_SCOPE,
+                CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
                 as_of,
+                CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
                 as_of,
                 int(limit),
             ),

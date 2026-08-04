@@ -1,0 +1,148 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-05",
+      "reason": "ContractError:awc_taf_calibration_curl_failed_rc_35:curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to aviationweather.gov:443"
+    },
+    {
+      "event_date": "2026-07-13",
+      "reason": "ContractError:awc_taf_calibration_curl_failed_rc_35:curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to aviationweather.gov:443"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "truth_days_closed": true,
+    "truth_only_enters_p0m": false,
+    "truth_only_samples_are_not_taf_samples": true,
+    "truth_only_writes_production_db": false,
+    "writes_production_db": false
+  },
+  "content_sha256": "0da11de9f3b78e12168028e744ae13441e55c25b9ba67d4ceaef393bcc4ada3b",
+  "end_date": "2026-07-21",
+  "excluded_sample_count": 17,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-03",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-04",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-06",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-07",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-08",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-09",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-10",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-11",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-12",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-14",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-15",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-16",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-17",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-18",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-19",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-20",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    },
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-21",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    }
+  ],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 223831,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 268435456
+  },
+  "sample_count": 0,
+  "samples": [],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "Asia/Manila",
+  "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
+  "start_date": "2026-07-03",
+  "station_id": "RPLL",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+  "truth_only_sample_count": 0,
+  "truth_only_samples": []
+}

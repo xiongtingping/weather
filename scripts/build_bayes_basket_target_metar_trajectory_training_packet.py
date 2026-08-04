@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 import sqlite3
 import sys
-from typing import Any
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.metar_path_state import (
+    PATH_STATE_SCHEMA,
+    compile_conditional_metar_path_state,
+)
+from bayes_basket_target.metar_trajectory import (
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+)
 from bayes_basket_target.resource_bounds import write_bounded_json
+from bayes_basket_target.settlement_time import settlement_day_window
 
 
 SCHEMA = "bayes_basket_metar_trajectory_training_packet_v1"
@@ -46,6 +54,67 @@ def _iso_utc(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(
         timespec="milliseconds"
     ).replace("+00:00", "Z")
+
+
+def _poll_receipt_verified(row: Mapping[str, Any]) -> bool:
+    """Require an immutable official AWC poll receipt for production folds.
+
+    Historical observation rows predate this guard and the small pure-domain
+    unit fixtures intentionally omit poll columns.  Callers opt in through
+    ``require_source_poll_receipt``; when enabled, a row is usable only when
+    its joined poll is an AWC HTTP-200 response, completed at a valid UTC
+    time, and contains the exact raw report/issue time already bound to the
+    observation.  No transport or report timestamp is inferred.
+    """
+
+    if str(row.get("source_lane") or "").strip().lower() != "awc":
+        return False
+    if str(row.get("poll_source_lane") or "").strip().lower() != "awc":
+        return False
+    try:
+        if int(row.get("poll_response_status")) != 200:
+            return False
+    except (TypeError, ValueError):
+        return False
+    completed = str(row.get("poll_response_completed_at") or "").strip()
+    try:
+        completed_at = _parsed_utc(completed)
+    except (TypeError, ValueError):
+        return False
+    raw_text = str(row.get("raw_text") or "")
+    if not raw_text:
+        return False
+    poll_json = row.get("poll_json")
+    try:
+        payload = json.loads(str(poll_json or ""))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    reports = payload.get("reports") if isinstance(payload, Mapping) else None
+    if not isinstance(reports, list):
+        return False
+    try:
+        valid_at = _parsed_utc(str(row.get("valid_at") or ""))
+    except (TypeError, ValueError):
+        return False
+    for report in reports:
+        if not isinstance(report, Mapping):
+            continue
+        if str(report.get("station_id") or "").strip().upper() != str(
+            row.get("station_id") or ""
+        ).strip().upper():
+            continue
+        if str(report.get("raw_text") or "") != raw_text:
+            continue
+        issue = str(report.get("source_report_time") or "").strip()
+        if not issue:
+            continue
+        try:
+            if _parsed_utc(issue) != valid_at:
+                continue
+        except (ContractError, TypeError, ValueError):
+            continue
+        return True
+    return False
 
 
 def _read_truth(
@@ -98,14 +167,20 @@ def _read_observations(
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT observation_id,source_lane,station_id,report_type,
-                   valid_at,reported_temperature_c,raw_sha256,
-                   canonical_committed_at,correction_suspected
-              FROM reported_trajectory_observations
-             WHERE station_id=?
-               AND lower(source_lane)='awc'
-               AND report_type IN ('METAR','SPECI')
-             ORDER BY valid_at,canonical_committed_at,observation_id
+            SELECT o.observation_id,o.source_lane,o.station_id,o.report_type,
+                   o.valid_at,o.reported_temperature_c,o.raw_sha256,o.raw_text,
+                   o.canonical_committed_at,o.correction_suspected,
+                   o.source_poll_id,p.source_lane AS poll_source_lane,
+                   p.response_status AS poll_response_status,
+                   p.response_completed_at AS poll_response_completed_at,
+                   p.poll_json
+              FROM reported_trajectory_observations o
+              LEFT JOIN reported_trajectory_source_polls p
+                ON p.poll_id=o.source_poll_id
+             WHERE o.station_id=?
+               AND lower(o.source_lane)='awc'
+               AND o.report_type IN ('METAR','SPECI')
+             ORDER BY o.valid_at,o.canonical_committed_at,o.observation_id
             """,
             (station_id,),
         ).fetchall()
@@ -129,7 +204,7 @@ def _read_probability_roots(
             """
             SELECT stage,checkpoint_id,station_id,event_date,
                    settlement_timezone,decision_at_utc,
-                   bucket_ordinals_json,probabilities_json,lineage_json,
+                   bucket_ordinals_json,probabilities_json,posterior_sha256,lineage_json,
                    content_sha256
               FROM basket_probability_envelope
              WHERE station_id=? AND stage IN ('P0','P0-M')
@@ -155,6 +230,8 @@ def build_training_packet(
     valid_from_utc: str,
     valid_until_utc: str,
     generation: int,
+    anchor_to_first_report: bool = False,
+    require_source_poll_receipt: bool = False,
 ) -> dict[str, Any]:
     station = station_id.strip().upper()
     bucket = local_time_bucket.strip().upper()
@@ -171,6 +248,12 @@ def build_training_packet(
         raise ContractError(
             "metar_trajectory_fold_parameter_invalid"
         )
+    # ``decided_at_utc`` is the strict historical evaluation cut.  A fold is
+    # OOS only when its target settlement day is already closed and its truth
+    # was committed by this cut.  Future/forward rows are retained below as
+    # observational diagnostics, but never enter ``folds`` or any training
+    # count.
+    evaluation_as_of = _parsed_utc(decided_at_utc)
     zone = ZoneInfo(settlement_timezone)
     observations_by_date: dict[str, list[dict[str, Any]]] = {}
     correction_dates: set[str] = set()
@@ -182,6 +265,7 @@ def build_training_packet(
             correction_dates.add(local_date)
     folds: list[dict[str, Any]] = []
     excluded: list[dict[str, str]] = []
+    observational_candidates: list[dict[str, str]] = []
     ordered_truth = sorted(
         truth_rows,
         key=lambda row: (
@@ -191,15 +275,72 @@ def build_training_packet(
     )
     for truth in ordered_truth:
         event_date = str(truth.get("local_date") or "")
-        local_cutoff = datetime.combine(
+        bucket_start = datetime.combine(
             datetime.fromisoformat(event_date).date(),
             time(BUCKET_START_HOUR[bucket], 0),
             tzinfo=zone,
         )
+        local_cutoff = bucket_start
         cutoff = local_cutoff.astimezone(timezone.utc)
         truth_settled = _parsed_utc(
             str(truth.get("canonical_committed_at_utc") or "")
         )
+        settlement_closed = _parsed_utc(
+            settlement_day_window(event_date, settlement_timezone)[
+                "target_day_end_utc"
+            ]
+        )
+        if settlement_closed > evaluation_as_of:
+            candidate = {
+                "truth_id": str(truth.get("truth_id") or ""),
+                "event_date": event_date,
+                "evaluation_as_of_utc": _iso_utc(evaluation_as_of),
+                "settlement_day_end_utc": _iso_utc(settlement_closed),
+                "truth_settled_at_utc": _iso_utc(truth_settled),
+                "training_cutoff_utc": _iso_utc(cutoff),
+                "evidence_role": "observational_candidate_not_oos",
+                "reason": "future_event_not_oos",
+            }
+            observational_candidates.append(candidate)
+            excluded.append({
+                "event_date": event_date,
+                "reason": "future_event_not_oos",
+            })
+            continue
+        if truth_settled > evaluation_as_of:
+            candidate = {
+                "truth_id": str(truth.get("truth_id") or ""),
+                "event_date": event_date,
+                "evaluation_as_of_utc": _iso_utc(evaluation_as_of),
+                "settlement_day_end_utc": _iso_utc(settlement_closed),
+                "truth_settled_at_utc": _iso_utc(truth_settled),
+                "training_cutoff_utc": _iso_utc(cutoff),
+                "evidence_role": "observational_candidate_not_oos",
+                "reason": "future_truth_not_oos",
+            }
+            observational_candidates.append(candidate)
+            excluded.append({
+                "event_date": event_date,
+                "reason": "future_truth_not_oos",
+            })
+            continue
+        if cutoff > evaluation_as_of:
+            candidate = {
+                "truth_id": str(truth.get("truth_id") or ""),
+                "event_date": event_date,
+                "evaluation_as_of_utc": _iso_utc(evaluation_as_of),
+                "settlement_day_end_utc": _iso_utc(settlement_closed),
+                "truth_settled_at_utc": _iso_utc(truth_settled),
+                "training_cutoff_utc": _iso_utc(cutoff),
+                "evidence_role": "observational_candidate_not_oos",
+                "reason": "future_training_cutoff_not_oos",
+            }
+            observational_candidates.append(candidate)
+            excluded.append({
+                "event_date": event_date,
+                "reason": "future_training_cutoff_not_oos",
+            })
+            continue
         if truth_settled <= cutoff:
             excluded.append({
                 "event_date": event_date,
@@ -221,6 +362,44 @@ def build_training_packet(
             )
             <= cutoff
         ]
+        if anchor_to_first_report:
+            # Runtime P1 is evaluated after a real report enters the AWC
+            # lane, not at an arbitrary local 00/06/12/18 boundary.  Anchor
+            # each historical fold to the first report whose valid time is at
+            # or after the bucket start and whose canonical receipt is already
+            # visible.  This remains strict-as-of and prevents the NIGHT
+            # bucket from requiring a report that cannot exist before 00:00.
+            candidates = [
+                row
+                for row in observations_by_date.get(event_date, ())
+                if _parsed_utc(str(row.get("valid_at") or "")) >= cutoff
+                and _parsed_utc(str(row.get("canonical_committed_at") or ""))
+                <= evaluation_as_of
+                and (
+                    not require_source_poll_receipt
+                    or _poll_receipt_verified(row)
+                )
+            ]
+            if candidates:
+                cutoff = min(
+                    _parsed_utc(str(row.get("canonical_committed_at") or ""))
+                    for row in candidates
+                )
+                prefix = [
+                    row
+                    for row in observations_by_date.get(event_date, ())
+                    if _parsed_utc(str(row.get("valid_at") or "")) <= cutoff
+                    and _parsed_utc(
+                        str(row.get("canonical_committed_at") or "")
+                    )
+                    <= cutoff
+                    and (
+                        not require_source_poll_receipt
+                        or _poll_receipt_verified(row)
+                    )
+                ]
+        elif require_source_poll_receipt:
+            prefix = [row for row in prefix if _poll_receipt_verified(row)]
         if not prefix:
             excluded.append({
                 "event_date": event_date,
@@ -263,6 +442,13 @@ def build_training_packet(
             ),
             "temperature_c": float(row["reported_temperature_c"]),
             "raw_sha256": str(row["raw_sha256"]),
+            "raw_text": str(row.get("raw_text") or ""),
+            "source_poll_id": str(row.get("source_poll_id") or ""),
+            "poll_source_lane": str(row.get("poll_source_lane") or ""),
+            "poll_response_status": row.get("poll_response_status"),
+            "poll_response_completed_at": str(
+                row.get("poll_response_completed_at") or ""
+            ),
         } for row in prefix]
         fold = {
             "fold_id": f"{station}-{bucket}-{event_date}",
@@ -272,6 +458,11 @@ def build_training_packet(
                 truth_settled
             ),
             "training_cutoff_utc": _iso_utc(cutoff),
+            "training_cutoff_policy": (
+                "FIRST_OFFICIAL_AWC_REPORT_RECEIPT_AFTER_BUCKET_START"
+                if anchor_to_first_report
+                else "LOCAL_BUCKET_START"
+            ),
             "trajectory_training_truths": [{
                 "truth_id": str(row["truth_id"]),
                 "target_local_date": str(row["local_date"]),
@@ -342,6 +533,72 @@ def build_training_packet(
                         key,
                     ),
                 )
+                future_curve = None
+                future_curve_raw = lineage.get(
+                    "conditional_future_temperature_curve_json"
+                )
+                if future_curve_raw:
+                    future_curve = json.loads(str(future_curve_raw))
+                    declared_curve_sha = str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_sha256"
+                        )
+                        or ""
+                    ).strip().lower()
+                    if (
+                        not isinstance(future_curve, dict)
+                        or str(
+                            future_curve.get("content_sha256") or ""
+                        ).lower()
+                        != declared_curve_sha
+                    ):
+                        raise ContractError(
+                            "metar_trajectory_fold_future_curve_sha256_mismatch"
+                        )
+                    curve_root_stage = str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_root_stage"
+                        )
+                        or root.get("stage")
+                        or ""
+                    )
+                    curve_root_checkpoint = str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_root_checkpoint_id"
+                        )
+                        or root.get("checkpoint_id")
+                        or ""
+                    )
+                    curve_root_probability = str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_root_probability_sha256"
+                        )
+                        or root.get("posterior_sha256")
+                        or ""
+                    )
+                    direct_binding = (
+                        curve_root_stage == str(root.get("stage") or "")
+                        and curve_root_checkpoint
+                        == str(root.get("checkpoint_id") or "")
+                        and curve_root_probability
+                        == str(root.get("posterior_sha256") or "")
+                    )
+                    p0_ancestor_binding = (
+                        str(root.get("stage") or "") == "P0-M"
+                        and curve_root_stage == "P0"
+                        and curve_root_checkpoint
+                        == str(
+                            lineage.get("p0_root_checkpoint_id") or ""
+                        )
+                        and curve_root_probability
+                        == str(
+                            lineage.get("p0_root_posterior_sha256") or ""
+                        )
+                    )
+                    if not direct_binding and not p0_ancestor_binding:
+                        raise ContractError(
+                            "metar_trajectory_fold_future_curve_binding_invalid"
+                        )
                 fold.update({
                     "root_checkpoint_id": str(
                         root.get("checkpoint_id") or ""
@@ -359,6 +616,41 @@ def build_training_packet(
                     "truth_bucket": truth_bucket,
                     "running_high_c": running_high,
                 })
+                path_state = compile_conditional_metar_path_state(
+                    [
+                        {
+                            "observation_id": str(row["observation_id"]),
+                            "observed_at_utc": str(row["valid_at"]),
+                            "temperature_c": float(
+                                row["reported_temperature_c"]
+                            ),
+                            "raw_text": str(row.get("raw_text") or ""),
+                        }
+                        for row in prefix
+                    ],
+                    as_of_utc=_iso_utc(cutoff),
+                    settlement_timezone=settlement_timezone,
+                    root_probabilities=probabilities,
+                    bucket_centers_c=centers,
+                    future_curve=future_curve,
+                    root_checkpoint_id=str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_root_checkpoint_id"
+                        )
+                        or root.get("checkpoint_id")
+                        or ""
+                    ),
+                    root_probability_sha256=str(
+                        lineage.get(
+                            "conditional_future_temperature_curve_root_probability_sha256"
+                        )
+                        or root.get("posterior_sha256")
+                        or ""
+                    ),
+                    station_id=station,
+                    event_date=event_date,
+                )
+                fold["conditional_path_state"] = path_state.to_dict()
                 break
         folds.append(fold)
     support = {str(value): 1.0 / 13.0 for value in range(13)}
@@ -383,7 +675,32 @@ def build_training_packet(
         "truth_row_count": len(truth_rows),
         "observation_row_count": len(observation_rows),
         "probability_root_row_count": len(probability_rows),
+        "evaluation_as_of_utc": _iso_utc(evaluation_as_of),
+        "training_cutoff_policy": (
+            "FIRST_OFFICIAL_AWC_REPORT_RECEIPT_AFTER_BUCKET_START"
+            if anchor_to_first_report
+            else "LOCAL_BUCKET_START"
+        ),
+        "source_poll_receipt_required": bool(require_source_poll_receipt),
         "eligible_fold_count": len(folds),
+        "v3_eligible_fold_count": sum(
+            bool(
+                fold.get("conditional_path_state", {}).get(
+                    "future_curve_complete"
+                )
+            )
+            for fold in folds
+        ),
+        "v3_incomplete_future_curve_fold_count": sum(
+            not bool(
+                fold.get("conditional_path_state", {}).get(
+                    "future_curve_complete"
+                )
+            )
+            for fold in folds
+        ),
+        "observational_candidate_count": len(observational_candidates),
+        "observational_candidates": observational_candidates,
         "excluded": excluded,
     }
     source_manifest["content_sha256"] = content_sha256(
@@ -417,6 +734,15 @@ def build_training_packet(
                 "remaining_warming_c": (
                     "final official tmax minus running high, nearest 1C"
                 ),
+                "conditional_path_state": (
+                    "strict-as-of remaining time, full-prefix temperature "
+                    "momentum and acceleration, METAR physical state, and "
+                    "model-root expected remaining warming"
+                ),
+                "conditional_future_temperature_curve": (
+                    "same-capture, content-addressed hourly curve combined "
+                    "from at least two activated independent model families"
+                ),
             },
             "missing_observation_policy": "DEGRADE_STRENGTH",
             "expected_interval_minutes": 60,
@@ -424,11 +750,32 @@ def build_training_packet(
             "max_missing_intervals": 4,
             "missing_interval_strength_factor": 0.8,
             "long_interval_strength_factor": 0.5,
+            "path_feature_schema": PATH_STATE_SCHEMA,
+            "path_model_coefficients": {
+                "base_distribution_mean": 0.3,
+                "root_expected_remaining_warming": 0.5,
+                "momentum_c_per_hour": 0.35,
+                "acceleration_c_per_hour2": 0.1,
+                "drawdown_from_high_c": -0.5,
+                "dewpoint_depression_c": 0.01,
+                "cloud_cover_fraction": -0.8,
+                "precipitation_present": -1.0,
+                "wind_speed_mps": -0.02,
+                "remaining_hours": 0.02,
+                "predicted_peak_remaining_warming_c": 0.35,
+                "minutes_to_predicted_peak": 0.02,
+                "next_curve_delta_from_high_c": 0.15,
+                "future_curve_slope_c_per_hour": 0.10,
+            },
+            "path_model_sigma_c": 0.8,
             "hard_exclusion_baseline_distribution": support,
             "base_strength": 0.8,
             "maturity_strength": 0.75,
             "likelihood_ratio_floor": 0.25,
             "likelihood_ratio_ceiling": 4.0,
+            "method_version": (
+                METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+            ),
             "trained_through_utc": _iso_utc(trained_through),
             "valid_from_utc": valid_from_utc,
             "valid_until_utc": valid_until_utc,
@@ -476,6 +823,23 @@ def main() -> int:
     parser.add_argument("--valid-from-utc", required=True)
     parser.add_argument("--valid-until-utc", required=True)
     parser.add_argument("--generation", type=int, default=1)
+    parser.add_argument(
+        "--anchor-to-first-report",
+        action="store_true",
+        help=(
+            "Anchor each historical fold to the first official AWC report "
+            "receipt after the bucket start instead of the nominal bucket "
+            "boundary."
+        ),
+    )
+    parser.add_argument(
+        "--require-source-poll-receipt",
+        action="store_true",
+        help=(
+            "Require the joined AWC HTTP-200 poll receipt and exact raw "
+            "report-time binding for every fold observation."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     packet = build_training_packet(
@@ -500,6 +864,8 @@ def main() -> int:
         valid_from_utc=args.valid_from_utc,
         valid_until_utc=args.valid_until_utc,
         generation=args.generation,
+        anchor_to_first_report=bool(args.anchor_to_first_report),
+        require_source_poll_receipt=bool(args.require_source_poll_receipt),
     )
     write_bounded_json(
         args.output.expanduser().resolve(),

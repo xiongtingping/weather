@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "8c8c162e559c9a92ffeff55d725e875a5e5ecc9ebbc99343157bf0552f943311",
+  "content_sha256": "7f41049512e08a493ab134a55795c9186eba06587ab436bf101b7f1053117d53",
   "end_date": "2026-07-29",
   "excluded_sample_count": 1,
   "excluded_samples": [
@@ -38,12 +43,14 @@
         "taf_response_sha256": "b5e0abd9b5dc15d806018cdacfd154337de3b3fa07b176c3f55fde623c571b38",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-22T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-7a19f46f04035110f12ce65ba4b9a279",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-23T06:00:00Z",
         "start_utc": "2026-07-22T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-22T02:10:15Z",
@@ -285,8 +292,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 34.5
-      }
+        "tmax_c": 34.5,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T07:00:00Z",
@@ -297,12 +316,14 @@
         "taf_response_sha256": "1fbf78e27ebd0fedfb40d90a7d3e7c33a15b205780aba0f44013fdcc883c887c",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-23T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-c0328df754485bfbb9d27671bf02aae6",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-24T06:00:00Z",
         "start_utc": "2026-07-23T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-23T01:07:40Z",
@@ -530,8 +551,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 29.5
-      }
+        "tmax_c": 29.5,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T07:00:00Z",
@@ -542,12 +575,14 @@
         "taf_response_sha256": "87b65e53181dc5a5ab7b9bb5ac5d72ed7898705fd922d2e7617a051f64a028aa",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-24T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-287a8165fe22d6f733c82e90c8bab80f",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-25T06:00:00Z",
         "start_utc": "2026-07-24T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-24T02:41:17Z",
@@ -754,8 +789,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.4
-      }
+        "tmax_c": 35.4,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-25T07:00:00Z",
@@ -766,12 +813,14 @@
         "taf_response_sha256": "bf7de1ab5371243131e0d9b029d9db1b658f3584faa8244273141d85856fbe6d",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-25T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-0e4bbc1df67184f389236bb403362b2c",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-26T06:00:00Z",
         "start_utc": "2026-07-25T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-25T01:57:18Z",
@@ -957,8 +1006,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 38.6
-      }
+        "tmax_c": 38.6,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T07:00:00Z",
@@ -969,12 +1030,14 @@
         "taf_response_sha256": "195535dbf300f719886250f189741df24f63123905d18d60c4a4220389b46e70",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-26T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-ee580207acc5ec0458329eb2e1095dda",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-27T06:00:00Z",
         "start_utc": "2026-07-26T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-26T01:07:14Z",
@@ -1174,8 +1237,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 38.2
-      }
+        "tmax_c": 38.2,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-28T07:00:00Z",
@@ -1186,12 +1261,14 @@
         "taf_response_sha256": "505f5ec2b3102631d49ec4ec35a0d63c402672aed92f01bd1c27755f465480f3",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-28T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-6281b88ada8a16ad95bffc3289373d2e",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-29T06:00:00Z",
         "start_utc": "2026-07-28T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-28T00:58:47Z",
@@ -1398,8 +1475,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 33.5
-      }
+        "tmax_c": 33.5,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-29T07:00:00Z",
@@ -1410,12 +1499,14 @@
         "taf_response_sha256": "8b1fb490c2dadd6b47e5683c20b05885d3f851e10e646dccc49a88eff6fa46c6",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=KBKF&format=json&time=issue&date=2026-07-29T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-abaa5fbd08474a88333a2b25a3f25693",
       "settlement_timezone": "America/Denver",
       "settlement_window": {
         "end_utc": "2026-07-30T06:00:00Z",
         "start_utc": "2026-07-29T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "KBKF",
       "taf": {
         "available_time_utc": "2026-07-29T01:08:31Z",
@@ -1643,13 +1734,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 32.2
-      }
+        "tmax_c": 32.2,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "America/Denver",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "KBKF"
+  "station_id": "KBKF",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

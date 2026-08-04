@@ -34,7 +34,7 @@ from basket_strategy.production import (
 from basket_strategy.runtime import (
     BasketStrategyConfig,
     _select_dynamic_basket_quotes,
-    build_basket_plus_hard_no_plan,
+    build_basket_yes_plan,
 )
 
 
@@ -269,11 +269,10 @@ def _precheck_market(
         "probability_projection": probability,
         "regime": regime,
         "report": None,
-        "held_yes_shares_by_token": {},
         "completed_tranche_widths": _completed_widths(conn, slug=slug, event_date=event_date),
         "config": config,
     }
-    plan = build_basket_plus_hard_no_plan(request)
+    plan = build_basket_yes_plan(request)
     direction = plan.get("direction_bias") if isinstance(plan.get("direction_bias"), Mapping) else {}
     basket = plan.get("basket") if isinstance(plan.get("basket"), Mapping) else {}
 
@@ -319,7 +318,7 @@ def _precheck_market(
             width=stage_width,
             probabilities=probability.get("probabilities"),
             config=quote_config,
-            hard_lower_bound=None,
+            reported_floor_c=None,
         )
         candidate["selected_buckets"] = [str(item.get("outcome") or "") for item in selected]
         candidate["coverage"] = coverage

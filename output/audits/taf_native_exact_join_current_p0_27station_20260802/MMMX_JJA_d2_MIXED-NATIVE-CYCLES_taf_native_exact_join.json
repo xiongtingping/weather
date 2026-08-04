@@ -1,0 +1,597 @@
+{
+  "content_sha256": "da95af4b1d37f15f95aa2b6d5422d2f20be81c0de632602fa502856e1b8f0720",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "f8e32cf86e892ea4de4271d8b9257bb133146ca5196b086336a194d48e8fe47e",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 6,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-24",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-22T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "79a7b53dc15e06f5d6f9a3ef393d1acb28141b91597e6551e50c2584f2786fa0",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.0,
+          "21°C": 0.0,
+          "22°C": 0.008872197741322158,
+          "23°C": 0.0492586949383832,
+          "24°C": 0.10351734985421784,
+          "25°C": 0.11364620893493724,
+          "26°C": 0.06576857063373266,
+          "27°C": 0.1306789810960421,
+          "28°C": 0.13433489785838423,
+          "29°C or higher": 0.39392309894298067
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-25T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-24T06:48:03Z",
+        "capture_content_sha256": "55048f9218b4a5d600909565b57712504150136d9bb357096eb10aef770d62c8",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 27.0,
+        "wind_speed_mps": 2.57222
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "55048f9218b4a5d600909565b57712504150136d9bb357096eb10aef770d62c8",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-a2fc0ea16d27bbbb63c880a6ba44cd61",
+        "source_lane": "AWC",
+        "tmax_c": 27.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-25",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-23T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "68c77cb256863e227b82750e9eb1eb38b44db4a7543815431e78f9505602fa62",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.003872237763870722,
+          "21°C": 0.007744475527741444,
+          "22°C": 0.01274443550519288,
+          "23°C": 0.057003170466124645,
+          "24°C": 0.11900630090970073,
+          "25°C": 0.11364620893493724,
+          "26°C": 0.06994146904284583,
+          "27°C": 0.1651747880241069,
+          "28°C": 0.16261607286604673,
+          "29°C or higher": 0.288250840959433
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-26T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-25T06:54:03Z",
+        "capture_content_sha256": "713510d4025d0eadd59254bac52c07524b976d303a95632aeefabef79c9dfb50",
+        "cloud_cover_fraction": 0.5795454545454546,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 27.0,
+        "wind_speed_mps": 1.8707054545454547
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "713510d4025d0eadd59254bac52c07524b976d303a95632aeefabef79c9dfb50",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-MMMX-2026-07-25-r0-72736f0de36f",
+        "source_lane": "AWC",
+        "tmax_c": 27.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "06fd0b730c8bbe4f34e5794358207f54be097917904fd77fa42e798e9a22b3f8",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.003872237763870722,
+          "21°C": 0.011616713291612166,
+          "22°C": 0.028233386560675765,
+          "23°C": 0.09261159704934899,
+          "24°C": 0.17655143708268461,
+          "25°C": 0.22254898128090503,
+          "26°C": 0.17978662543550672,
+          "27°C": 0.1965699140872523,
+          "28°C": 0.05199935957443455,
+          "29°C or higher": 0.036209747873709223
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-27T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-26T06:48:04Z",
+        "capture_content_sha256": "dab464a00f5536edb88995714344337758acb82146f214ac9440c232063fdac7",
+        "cloud_cover_fraction": 0.46875,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 25.0,
+        "wind_speed_mps": 2.7865716666666667
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "dab464a00f5536edb88995714344337758acb82146f214ac9440c232063fdac7",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-MMMX-2026-07-26-r0-64cfcf7dbe5a",
+        "source_lane": "AWC",
+        "tmax_c": 24.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-28",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-26T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "3e1ed2935636dd04e72af94e2fbc94eed06c733add82b44cb755501d40bcdab5",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.0,
+          "21°C": 0.0,
+          "22°C": 0.05066812432454648,
+          "23°C": 0.17186031619821807,
+          "24°C": 0.179809083365507,
+          "25°C": 0.32856230202066095,
+          "26°C": 0.12019975575123365,
+          "27°C": 0.12027818057596314,
+          "28°C": 0.022434737763870716,
+          "29°C or higher": 0.006187499999999999
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-29T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-28T06:48:03Z",
+        "capture_content_sha256": "63ac5cb7f266a04fd30887a075c416872239fbbce3dcc7412881c6aa8b987912",
+        "cloud_cover_fraction": 0.5,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 23.0,
+        "wind_speed_mps": 2.9151826666666665
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "63ac5cb7f266a04fd30887a075c416872239fbbce3dcc7412881c6aa8b987912",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-MMMX-2026-07-28-r0-fca753ea6f4d",
+        "source_lane": "AWC",
+        "tmax_c": 26.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "bc7cedf757495bdaf48d943d07fd6963414816c2b14288a7e1b9430baaa73362",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.0,
+          "21°C": 0.006187499999999999,
+          "22°C": 0.13189104295333665,
+          "23°C": 0.25415545237120196,
+          "24°C": 0.2830223838855859,
+          "25°C": 0.18512332063566256,
+          "26°C": 0.07487265416034682,
+          "27°C": 0.04538645717451248,
+          "28°C": 0.015488951055482886,
+          "29°C or higher": 0.0038722377638707216
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-30T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-29T06:51:04Z",
+        "capture_content_sha256": "6132cca7bf151670873513915bb86aa69a4e70db99653e88dd3869e2caec4ec5",
+        "cloud_cover_fraction": 0.59375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 25.0,
+        "wind_speed_mps": 2.1435166666666667
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "6132cca7bf151670873513915bb86aa69a4e70db99653e88dd3869e2caec4ec5",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-MMMX-2026-07-29-r0-61ad8a62442a",
+        "source_lane": "AWC",
+        "tmax_c": 26.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-30",
+      "native_p0": {
+        "bucket_centers_c": {
+          "19°C or below": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C or higher": 29.0
+        },
+        "decision_at_utc": "2026-07-28T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECCC_GEM_GLOBAL_ENS",
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECCC_GEM": 0.75,
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECCC_GEM",
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "547f2c775d5119a6c37d795e38a3a5d04ea95025335b425909de7b2d7d0cf1e2",
+        "prediction_oos": true,
+        "probabilities": {
+          "19°C or below": 0.0,
+          "20°C": 0.01191737393685461,
+          "21°C": 0.0,
+          "22°C": 0.09848131529930443,
+          "23°C": 0.11674700556830063,
+          "24°C": 0.19685500994873134,
+          "25°C": 0.24255189350170928,
+          "26°C": 0.1307171195782498,
+          "27°C": 0.11500593270225393,
+          "28°C": 0.06141737393685461,
+          "29°C or higher": 0.02630697552774144
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECCC_GEM_GLOBAL_ENS": 0.3753972790109202,
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.1746027209890798
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_window": {
+        "end_utc": "2026-07-31T06:00:00Z"
+      },
+      "station_id": "MMMX",
+      "taf": {
+        "available_at_utc": "2026-07-30T06:51:05Z",
+        "capture_content_sha256": "cd2fbb05cec6ee51beeeaae49df7a1d4164dfb92a170ae1724d44c37652c1a86",
+        "cloud_cover_fraction": 0.5625,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 25.0,
+        "wind_speed_mps": 2.829442
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "cd2fbb05cec6ee51beeeaae49df7a1d4164dfb92a170ae1724d44c37652c1a86",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "truth_df07f577c5086b5ce2c104a203295f50d872df5e",
+        "source_lane": "AWC",
+        "tmax_c": 27.0
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Mexico_City",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "MMMX"
+}

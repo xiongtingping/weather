@@ -1,0 +1,845 @@
+{
+  "content_sha256": "a534ef1d6140e975cd2254bae3ca4a8af66ed0bc6cfbc75f3b51f5ae3d868864",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "9e66feebf5847273cb1e54f5dcf255ae647560908b5d5a4270330c237c541a29",
+  "run_cycle": "18Z",
+  "sample_count": 9,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-22",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-20T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "335d178e0ea510d37613695fbead55e94f3a22b52dae4d6e49ee3e172f0eb441",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.09216589861751152,
+          "22°C": 0.030721966205837177,
+          "23°C": 0.015360983102918589,
+          "24°C": 0.04608294930875576,
+          "25°C": 0.0,
+          "26°C": 0.09157816758337049,
+          "27°C": 0.20859803775828745,
+          "28°C": 0.29061062385412023,
+          "29°C": 0.1639136316337149,
+          "30°C": 0.0487741935483871,
+          "31°C or higher": 0.012193548387096775
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.4500000000000002,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-21"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-23T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-22T01:43:22Z",
+        "capture_content_sha256": "45f8517e2540571e6b14ebd74808131cd084b8d773c3c0268ef74be3caa6d892",
+        "cloud_cover_fraction": 0.0,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 28.0,
+        "wind_speed_mps": 6.001846666666667
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "45f8517e2540571e6b14ebd74808131cd084b8d773c3c0268ef74be3caa6d892",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-19e8359a1c777009f74f5725a5bec63d",
+        "source_lane": "AWC",
+        "tmax_c": 23.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-23",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-21T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "6993139d0c0cab4d1c84a5b514a2d469afb3adfbf4e0fa6cd8725c4e1efc69ac",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.41598130498533725,
+          "22°C": 0.12051191348973608,
+          "23°C": 0.10194941348973607,
+          "24°C": 0.11650879765395894,
+          "25°C": 0.04295766129032258,
+          "26°C": 0.08156818181818182,
+          "27°C": 0.05498863636363636,
+          "28°C": 0.04078409090909091,
+          "29°C": 0.012374999999999999,
+          "30°C": 0.0,
+          "31°C or higher": 0.012374999999999999
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-24T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-22T22:12:52Z",
+        "capture_content_sha256": "48895be5b24ddf27955b8e5d294f4c952ca51725982518f78c6389d217c0f941",
+        "cloud_cover_fraction": 0.5625,
+        "precipitation_probability": 0.075,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 22.0,
+        "wind_speed_mps": 2.186387
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "48895be5b24ddf27955b8e5d294f4c952ca51725982518f78c6389d217c0f941",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-ee8b389075d6cf858dd87f30155ed107",
+        "source_lane": "AWC",
+        "tmax_c": 24.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-24",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-22T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "1798c0619222512e3985109890a39851eb4a88a3111e3da09fddb362c6c79d2e",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.669744443027753,
+          "22°C": 0.05144137022397892,
+          "23°C": 0.06380696162182839,
+          "24°C": 0.06506651366398912,
+          "25°C": 0.012545454545454549,
+          "26°C": 0.052700922266139656,
+          "27°C": 0.052071146245059284,
+          "28°C": 0.026350461133069828,
+          "29°C": 0.0,
+          "30°C": 0.0,
+          "31°C or higher": 0.0062727272727272744
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-25T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-23T22:10:49Z",
+        "capture_content_sha256": "e2d60acbc77f328b8136f1c4763a387bf0351de8ef0871e110f2279bed5139be",
+        "cloud_cover_fraction": 1.0,
+        "precipitation_probability": 1.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 17.0,
+        "wind_speed_mps": 4.115552
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "e2d60acbc77f328b8136f1c4763a387bf0351de8ef0871e110f2279bed5139be",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-901a6e625bc1dde7fc81ecb9ed392be7",
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-25",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-23T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "333a84bf97682780d1588b4c4fc253efb91395f3816215d84ea3976ec0a729d1",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.30970338730927793,
+          "22°C": 0.08244528029240512,
+          "23°C": 0.10735632623570915,
+          "24°C": 0.10843601513026478,
+          "25°C": 0.1612922776148583,
+          "26°C": 0.0962502868800204,
+          "27°C": 0.05816401037018148,
+          "28°C": 0.06380696162182839,
+          "29°C": 0.0062727272727272744,
+          "30°C": 0.0,
+          "31°C or higher": 0.0062727272727272744
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-26T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-25T02:40:27Z",
+        "capture_content_sha256": "22b867f7dd169034699a227e55e8ed63ed876a0d1cb746cd2c125c065975f311",
+        "cloud_cover_fraction": 0.7638888888888888,
+        "precipitation_probability": 0.05555555555555555,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 21.0,
+        "wind_speed_mps": 1.8291342222222224
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "22b867f7dd169034699a227e55e8ed63ed876a0d1cb746cd2c125c065975f311",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SBGR-2026-07-25-r0-433bdbc7a799",
+        "source_lane": "AWC",
+        "tmax_c": 21.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "58fc30e64a3e59b0f1840422567cdbe5664005f42d37e4f673345f35dc62b1e4",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.16686956521739127,
+          "22°C": 0.08280500658761528,
+          "23°C": 0.07025955204216075,
+          "24°C": 0.1152483318458073,
+          "25°C": 0.0869188660801564,
+          "26°C": 0.23263151855157466,
+          "27°C": 0.1508160142802499,
+          "28°C": 0.08208555399719494,
+          "29°C": 0.012365591397849462,
+          "30°C": 0.0,
+          "31°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-27T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-25T22:09:54Z",
+        "capture_content_sha256": "64ff3643041a01278206501fd8123fe79a776cc8276a0b98174f758f34728e23",
+        "cloud_cover_fraction": 0.2222222222222222,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 24.0,
+        "wind_speed_mps": 2.5722200000000006
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "64ff3643041a01278206501fd8123fe79a776cc8276a0b98174f758f34728e23",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SBGR-2026-07-26-r0-d34f2d3cb9b8",
+        "source_lane": "AWC",
+        "tmax_c": 25.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-27",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-25T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "84f80062b4dcf3b63ba05fef23abd1c3a14d7db7aee4928adf2ad373dacfe75d",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.07905138339920947,
+          "22°C": 0.026350461133069825,
+          "23°C": 0.03889591567852437,
+          "24°C": 0.10288274044795782,
+          "25°C": 0.05645454545454546,
+          "26°C": 0.15306455862977603,
+          "27°C": 0.2259088784053721,
+          "28°C": 0.13190764588380297,
+          "29°C": 0.17311827956989245,
+          "30°C": 0.012365591397849462,
+          "31°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-28T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-26T21:55:41Z",
+        "capture_content_sha256": "08bb6abc8fd8182d069b88ca5b37f1d1b6fe695a2533ec5d38c2f1687992fe9c",
+        "cloud_cover_fraction": 0.13636363636363635,
+        "precipitation_probability": 0.05454545454545454,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 26.0,
+        "wind_speed_mps": 2.9463610909090905
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "08bb6abc8fd8182d069b88ca5b37f1d1b6fe695a2533ec5d38c2f1687992fe9c",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SBGR-2026-07-27-r0-51c0cbfa2820",
+        "source_lane": "AWC",
+        "tmax_c": 28.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "cb52b133ad8755d2f10a167152dbe91ed007ecf6ffa96451984e33fb358adbe2",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.07905138339920947,
+          "22°C": 0.026350461133069825,
+          "23°C": 0.026350461133069825,
+          "24°C": 0.05270092226613965,
+          "25°C": 0.0,
+          "26°C": 0.05270092226613965,
+          "27°C": 0.051891283097454194,
+          "28°C": 0.06362709847422329,
+          "29°C": 0.14337341153470187,
+          "30°C": 0.1738377321603128,
+          "31°C or higher": 0.3301163245356794
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-30T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-28T22:02:55Z",
+        "capture_content_sha256": "f4f896e07d9e40b6d8c2148e2b7b9fa0ccff15ab6d6deb9a75409ce14d387de0",
+        "cloud_cover_fraction": 0.041666666666666664,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 29.0,
+        "wind_speed_mps": 4.858637777777778
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "f4f896e07d9e40b6d8c2148e2b7b9fa0ccff15ab6d6deb9a75409ce14d387de0",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SBGR-2026-07-29-r0-7803aa4f3f4f",
+        "source_lane": "AWC",
+        "tmax_c": 30.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-30",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-28T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "b58d6cff3fd0d587dc2d650ff76484ac9eb250ca7ee9951c72cc4def680de62a",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.17905529346763568,
+          "22°C": 0.04516864295125165,
+          "23°C": 0.10717646308810404,
+          "24°C": 0.13388665051638407,
+          "25°C": 0.1240156402737048,
+          "26°C": 0.21435292617620808,
+          "27°C": 0.11425882952951678,
+          "28°C": 0.06344723532661822,
+          "29°C": 0.0062727272727272744,
+          "30°C": 0.0,
+          "31°C or higher": 0.012365591397849464
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-07-31T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-30T02:31:11Z",
+        "capture_content_sha256": "b5491f83177fba4d15c36327f17c2be265fbc87b4c8ab6b92672d9cb02429013",
+        "cloud_cover_fraction": 0.5454545454545454,
+        "precipitation_probability": 0.05454545454545454,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 22.0,
+        "wind_speed_mps": 3.226966909090909
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "b5491f83177fba4d15c36327f17c2be265fbc87b4c8ab6b92672d9cb02429013",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "truth_e58fe9972d3351e509de58471e9d64614926c488",
+        "source_lane": "AWC",
+        "tmax_c": 22.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-31",
+      "native_p0": {
+        "bucket_centers_c": {
+          "21°C or below": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C": 24.0,
+          "25°C": 25.0,
+          "26°C": 26.0,
+          "27°C": 27.0,
+          "28°C": 28.0,
+          "29°C": 29.0,
+          "30°C": 30.0,
+          "31°C or higher": 31.0
+        },
+        "decision_at_utc": "2026-07-29T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "2804bd94fe5b1fef69b7ffe01fdfd70dea5a463bbf5acb265030463b10793d07",
+        "prediction_oos": true,
+        "probabilities": {
+          "21°C or below": 0.08532411067193675,
+          "22°C": 0.09499073483785968,
+          "23°C": 0.1138089166560415,
+          "24°C": 0.25198928981257174,
+          "25°C": 0.0870987292277615,
+          "26°C": 0.18944188023290406,
+          "27°C": 0.11389910323430659,
+          "28°C": 0.06344723532661822,
+          "29°C": 0.0,
+          "30°C": 0.0,
+          "31°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.5499999999999999
+        },
+        "trained_through_event_date": "2026-07-23"
+      },
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_window": {
+        "end_utc": "2026-08-01T03:00:00Z"
+      },
+      "station_id": "SBGR",
+      "taf": {
+        "available_at_utc": "2026-07-30T16:32:25Z",
+        "capture_content_sha256": "261ccdfe095819bc2befd34a3d401fd34fc98ac256b2bcb59c2bff8186fff1eb",
+        "cloud_cover_fraction": 0.3611111111111111,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_forward_native_receipt",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 24.0,
+        "wind_speed_mps": 5.030119111111111
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "261ccdfe095819bc2befd34a3d401fd34fc98ac256b2bcb59c2bff8186fff1eb",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "truth_7b28465b96952c2a54d2233ff37255ca4d0783fc",
+        "source_lane": "AWC",
+        "tmax_c": 23.0
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Sao_Paulo",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "SBGR"
+}

@@ -4,7 +4,7 @@
   "lane": "bayes_basket_target",
   "execution_mode": "production_no_live",
   "approval_scope": "bounded_read_only_audit_only",
-  "effective_date": "2026-07-24",
+  "effective_date": "2026-08-01",
   "live_submit_authorized": false,
   "places_orders": false,
   "writes_production_db": false,
@@ -16,9 +16,9 @@
     "resource_audit_p99_ms": 1000.0,
     "max_ws_snapshot_age_sec": 120.0,
     "max_writer_lock_wait_ms": 250.0,
-    "max_process_rss_bytes": 536870912,
+    "max_process_rss_bytes": 4294967296,
     "max_database_bytes": 4294967296,
-    "max_wal_bytes": 67108864,
+    "max_wal_bytes": 536870912,
     "max_raw_bytes": 1073741824,
     "min_free_bytes": 536870912
   }

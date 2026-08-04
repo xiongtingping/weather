@@ -1,0 +1,45 @@
+{
+  "activation_index_content_sha256": "0e1804dfb90526b4f37e8c808865c3e78128d0606bb46e4cfdd116738d9aaeea",
+  "activation_index_state": "CURRENT",
+  "activation_ready_count": 0,
+  "activation_scope_count": 0,
+  "as_of_utc": "2026-08-03T21:08:00Z",
+  "binding_content_sha256": "90a4692d72074723b65f50d9a6ea8bbcb46ae9472274bd3f00eb97efcfb48056",
+  "blockers": [
+    "ACTIVATION_BINDING_SCOPE_BLOCKED",
+    "ACTIVATION_ROOT_MISSING",
+    "INNER_OOS_SNAPSHOT_SCOPE_MISMATCH:native_linkage",
+    "INNER_OOS_SNAPSHOT_SCOPE_MISMATCH:p0_inbox",
+    "TYPED_SCOPE_BLOCKED"
+  ],
+  "builder_blocked_count": 1754,
+  "builder_blocker_counts": {
+    "ACTIVATION_ROOT_MISSING": 1664,
+    "OOS_SAMPLE_SHORT": 90
+  },
+  "builder_scope_count": 1754,
+  "calls_order_gateway": false,
+  "canonical_projection_content_sha256": "0f1e494772ef5773ba1b870096cdfb5d7dc68098bd05c135850ea2924d2c88de",
+  "consumable": false,
+  "content_sha256": "b0f2b4cb92a86c5f2177ee581c66f85ccae42e951e82353a53019721a67c4086",
+  "contract_projection_content_sha256": "c95d816ad98a9bf63110dad1adadc32e29706c21ae50efbeb4719ad80462b6f0",
+  "filesystem_release_applied": false,
+  "ledger_content_sha256": "97b71140aa98454d35384b4a73c93de7479f1eff4aa05f5161d4c9695c31c65b",
+  "oos_ready_count": 5690,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "record_blocker_counts": {
+    "ACTIVATION_ROOT_MISSING": 1664,
+    "DATA_MISSING": 6910
+  },
+  "record_count": 14264,
+  "schema": "bayes_basket_target_activation_release_preview_v1",
+  "source_mode": "CANONICAL_CONTRACT_TRUTH_GAP",
+  "state": "BLOCKED",
+  "supersession_projection_content_sha256": "14d375a327b7cc1c779ee70b55df38adc919cd37929ed983922a5e78c20b22e8",
+  "truth_gap_evidence_content_sha256": "b2143acc0b15027e262a1eb3c5f32c093c1c595730f3a9b00c48a8d689973193",
+  "typed_scope_coverage_complete": false,
+  "typed_scope_envelope_count": 4,
+  "writes_production_db": false,
+  "writes_target_database": false
+}

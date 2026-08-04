@@ -1,0 +1,117 @@
+{
+  "boundary": {
+    "activates_p0": false,
+    "calls_order_gateway": false,
+    "downloads_raw": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "4aaa47b3ef787fa2dbb324cb7aecbba69cd1a6551471fe0483b20e30026a9474",
+  "formal_p0_eligible": false,
+  "independence_family_id": "DWD_ICON_EPS",
+  "inspected_at_utc": "2026-08-01T22:52:54Z",
+  "native_arrival_index_eligible": false,
+  "product_id": "DWD_ICON_GLOBAL_EPS",
+  "provider_id": "icon_global_eps_official",
+  "schema": "dwd_icon_global_eps_native_arrival_index_repair_receipt_v1",
+  "state": "PARTIAL_NATIVE_ARRIVAL_INDEX_FAIL_CLOSED",
+  "unresolved_receipt_count": 1,
+  "unresolved_receipts": [
+    {
+      "capture_receipt_content_sha256": "5481b05ba5fa78579760952f3068b9219dcac4bc911c763d34d9aaff6d6ec30d",
+      "cohort_content_sha256": "88affc2477984d8e1a56d9011d2fbbe98f0102542127213efa12755d25cf7bd3",
+      "raw_sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+      "reason": "original_capture_receipt_content_missing",
+      "valid_time_utc": "2026-08-01T15:00:00Z"
+    }
+  ],
+  "verified_object_count": 14,
+  "verified_objects": [
+    {
+      "capture_receipt_content_sha256": "0aad94aa1af4fa15512a1eb6b25213159a553999cef2ec480c3453f9b4f47939",
+      "cohort_content_sha256": "1931f31de63707067e0cc5fcf62c134cd3589ce096df3ee1d3fae203fcfbce19",
+      "raw_sha256": "8f9343e1d9b531a925fe77880070e39864a124b0920b2652635e242a91f56ea1",
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "8c7b9f1b495aba9add7cce1613eb9e461f32d23c96d3912a1e9d0fd413e819d4",
+      "cohort_content_sha256": "19ed8b69d0768ff40199c1588ecd3cdb0b671da996903fa28e04793960235ce1",
+      "raw_sha256": "b8baddd1f1ad1bd66376ee23fa08676078f02b3d46339f9d267806ebad082a8d",
+      "valid_time_utc": "2026-08-01T18:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "bbcc5aad0dc97e14345e81923eeee5291a8365e702207c07528f34fe966cc206",
+      "cohort_content_sha256": "73c2139faf1acf2fd01761d8dfb774c16d413f27ca06083b9887fb4fada4756b",
+      "raw_sha256": "55cc83b3830c8aa2e926fde5de696d33d3b816766ac8c58585c3fa4dc0e89756",
+      "valid_time_utc": "2026-08-01T21:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "ace1751d9130f15650c1381e1d0760473fae429bba7a79b47c967db5c9b40009",
+      "cohort_content_sha256": "e41afc36035349fc21f3c7102a01490a6d5064e8446889da73d3000fe919cc4a",
+      "raw_sha256": "0d1f2c82d1e3e2f70022a752e78355fdc52c24d04b6ec8a86672415a6f0465e4",
+      "valid_time_utc": "2026-08-02T00:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "75ccc7e117f82e0ed9c087042a7f5e7902d6a79ceb091b0c65f687dd6f498ec5",
+      "cohort_content_sha256": "2fa24fdbd134e94f385fd66fbdd27459b0c0e25ec328bd3383c075e775bcf711",
+      "raw_sha256": "e8d57709ac796dd8e0a09053d113c2007772a2b79a4a592e5c9317223c544f20",
+      "valid_time_utc": "2026-08-02T03:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "9d1f540c2fe5610cd107c8db54b031f34fc45ba10e89ac4baae8e16bc9d4937a",
+      "cohort_content_sha256": "01a02e24fbeea7040c2b557d5d1a3a4ae3c81407abc764ed9f151f2661096e48",
+      "raw_sha256": "b11f1358ab75272a2157adcf6e8fdaf7202bf758cb51691cba71e607caf26edb",
+      "valid_time_utc": "2026-08-02T06:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "c4c595fd87fb08ee2d8fd5dfa219aba82c4c50bd0e743a9ccc7c16dee75a91e3",
+      "cohort_content_sha256": "2cc0d6d1e0fd99ecf8b970abb8f6d8b00539ee6d0e26fd06da201bb13015f2f1",
+      "raw_sha256": "6abd6673cc3b54a1db4cb0b7959049400f12df385b6adaaedd69af3f96ccd5a4",
+      "valid_time_utc": "2026-08-02T09:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "9910c71fef71236fdb9bca45b49b16782446a385a5e6ed45d8d5493a1775643c",
+      "cohort_content_sha256": "e4cfe8f8a0bae54f52a1c60185ea0321663998362d53ba39f77d9c1a6a366efe",
+      "raw_sha256": "f9656d90eee40a62aed73937b16c761a08549b1af4ea8ef6ab175310c3dcb5b8",
+      "valid_time_utc": "2026-08-02T12:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "48b745a99fa7fba9fbe3faf7468e993f69a7a484268efa41aa9576266d87c02a",
+      "cohort_content_sha256": "3e480407b2bf0b3186f1e2f7076991baa5f7cfd956de06980f9731f388a25582",
+      "raw_sha256": "39458b056dc98fd00dc4a48d56a16bb379d1976b6fd4c62e53f0929f6085eeb3",
+      "valid_time_utc": "2026-08-02T15:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "439acf17920b0f4fbc3d4b4f5553ae88642a44484dbe95ce0613fb7beaaff335",
+      "cohort_content_sha256": "9fc7c6b85aa9b4a9d1918f044a06a85b47f5e380d86e727074a5dae94675f0ff",
+      "raw_sha256": "6ed14f11a2c01d8348e097b3f4e176b13b336ea68b175897fb9f57f35d7cb3c7",
+      "valid_time_utc": "2026-08-02T18:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "a91069888a75b95fd04051c32a96a3a671f63090f5a1884af6dd56486bb56352",
+      "cohort_content_sha256": "13b1a6718eb9629e24a4e61239b25469360fb517949d34481f39b23e351076cc",
+      "raw_sha256": "ad2a5b4c9b7e3955ac434dfd79d55784e5f34c085aa41474164630eb24b1e0af",
+      "valid_time_utc": "2026-08-02T21:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "d4e410720edaf7793fdf65e7e3dd446451d1fb04e49a3258a34b8b8d909ca667",
+      "cohort_content_sha256": "b19d6a887827fe5d5249f9ad3a7ee071a0e81fd314aa2d2c0a44bacfed4335ca",
+      "raw_sha256": "3a62ad15aed0ea832ff8c15ddd65d50445e1246b2dfeb272082fc5362573fe70",
+      "valid_time_utc": "2026-08-03T00:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "0debb92725be6a07ab82f85dd8e5b8887998e37fec30d25b2b6a4d555088cdf0",
+      "cohort_content_sha256": "e70ed7d73d690e2b9862a1db309c757a6ffdacddfee7f8bccf66fdfc00fbb631",
+      "raw_sha256": "82fec01634f97c9f287a82d749916038394302975717c1946dced351b3ee9119",
+      "valid_time_utc": "2026-08-03T03:00:00Z"
+    },
+    {
+      "capture_receipt_content_sha256": "9d51ee1b8e048d976f28ae061e0b633258c7cbf83c979f19bd384534e58f174f",
+      "cohort_content_sha256": "7633f8356894d98c9f1f7e0d429d4f4d377967aa522ab0b9652bb6b4e9c31c77",
+      "raw_sha256": "d2ea61949d02ba55cdbdcc818195890d32d0c8bdcd01f1d78ad97822fdd51295",
+      "valid_time_utc": "2026-08-03T06:00:00Z"
+    }
+  ]
+}

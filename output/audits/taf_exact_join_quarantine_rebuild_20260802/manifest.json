@@ -1,0 +1,606 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "network_fetches": 0,
+    "old_artifacts_overwritten": false,
+    "orders_submitted": 0,
+    "preserves_24_sample_gate": true,
+    "read_only": true,
+    "writes_database": false,
+    "writes_production_p0m": false
+  },
+  "canonical_station_count": 45,
+  "canonical_station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "content_sha256": "0b26a59c41f1dddf12bb4d33d121b24250d4a7684d8f46713b8c7a1eb31d00e4",
+  "entries": [
+    {
+      "artifact_content_sha256": "c91a0dbb2ff963063c44220d41484adacf0e249ab37d77bcd3a54d4e16bb0756",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/CYYZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Toronto"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "CYYZ",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "265b90557193f927293b871710489dff6bc230d1c6154a524ee7a57cc230dcb9",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/EDDM_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 1,
+      "excluded_correction_samples": [
+        {
+          "corrections": [
+            {
+              "content_sha256": "977162bcbb299baf62cb9f901bceed5b49038dd1d14d291a7103660954c7dd0b",
+              "provider_available_at_utc": "2026-07-30T17:27:04Z",
+              "revision_id": "taf-revision-da97b96ac2ba52cfb607132dabbb5952",
+              "revision_kind": "COR",
+              "revision_sequence": 1
+            }
+          ],
+          "event_date": "2026-07-31",
+          "reason": "forward_taf_correction_requires_manual_review",
+          "station_id": "EDDM"
+        }
+      ],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Berlin"
+      },
+      "state": "QUARANTINED_DAYS_PRESENT",
+      "station_id": "EDDM",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "02f6dd266f9bf881264b28bdb4823656de325ece44073d8981b9e6315d6d1b10",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/EFHK_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Helsinki"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "EFHK",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "f7c331dc45508bad4373e306e8abc876f10c53fcfaadf63c8ebf9677818455d1",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/EGLC_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/London"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "EGLC",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "9a20acc6029a76135425a4fece0e8c34181260520d914eba2e03df923c255992",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/EHAM_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Amsterdam"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "EHAM",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "72dff8433a37b0af8b0069ea253c6dc4be6b1537eb3a70f5bf8c29dba48ff707",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/EPWA_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Warsaw"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "EPWA",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "16ff4bab89d29b4609e6c105da26dffc21b9a325d7d80e7f30c04ebe2f981ab7",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/FACT_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 9,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Africa/Johannesburg"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "FACT",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "7c0d02c80670efd9e1c308eba0db740e5ff42fc5357a5f1495617280a93cab50",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KATL_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KATL",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "c3b10324f194d0d3b34180831614569a0c90f06cca64dffec8e9b9354a4f422d",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KAUS_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KAUS",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "490d13d51960bd223f838326cb040d564aef69afabe8d6e3000451538c820611",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KBKF_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 8,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Denver"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KBKF",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "a7ef942118e1aee2e242c0a42ddffc1752cba5bcca92e6a2dd221dbf1b983770",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KLAX_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KLAX",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "3e3e17b0e12762630d9e01dd76a8ad546f489787c59ee26e20e9093187a6ab19",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KLGA_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KLGA",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "e751a0fc28bd81b6a515c71a4db15097731d3bda23ee55499f151540b5f63778",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KMIA_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/New_York"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KMIA",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "094fd7463d7dbae66ab142182c6e3bea8f34c6b354aaca6ffb90b22e56cdad96",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KORD_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Chicago"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KORD",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "2c0c407c24dd031cce512b82d6f48842e12c58e083b4da8580a810a6355d0e99",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KSEA_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KSEA",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "3ec5ce974e3a0424f36abc20bc72519cebc4f2f9a6a77e1ae63c3dcd7d0379cd",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/KSFO_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Los_Angeles"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "KSFO",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "72cc0317717d417e8e3e296bb61c951bd07b0a5b8848c7f149920161d7788aae",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/LEMD_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Madrid"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "LEMD",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "18c2a83bd6ef01d6bcab7413993c5f622cf57b575191d4d97c8d8e357a6b0394",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/LFPB_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Paris"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "LFPB",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "c33b7ee67930844817fb9e3c7fb34560ce9950fe7e95da0ca1483898fbfcca65",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/LIMC_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Rome"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "LIMC",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "d1d304a974ca08696c0137e28840bd6c71f96601e91f14776012d48db15f2e33",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/LTAC_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Europe/Istanbul"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "LTAC",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "9fca08072c143781047b1e6cfe012d70d00ee9fe573f0b2274e3de17e8fdc447",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/MMMX_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 1,
+      "excluded_correction_samples": [
+        {
+          "corrections": [
+            {
+              "content_sha256": "8e2943d41e58480c1c38cc639c773822f51be57a8a84619a71d56c722f08a296",
+              "provider_available_at_utc": "2026-07-30T19:51:03Z",
+              "revision_id": "taf-revision-9d0c182545abe077feee45dc74fd4b3f",
+              "revision_kind": "COR",
+              "revision_sequence": 2
+            },
+            {
+              "content_sha256": "a5237f4e80daba0ab19019974544251ac200b25116c179e29ecc9b57ac41d7a3",
+              "provider_available_at_utc": "2026-07-30T21:03:02Z",
+              "revision_id": "taf-revision-d5a3c3e7b56591a2ca83b4e71ebfafd4",
+              "revision_kind": "COR",
+              "revision_sequence": 3
+            },
+            {
+              "content_sha256": "c4f979a327d72aaaacb90026c53e271715f6be83fe5ab97983beef2e3af76e55",
+              "provider_available_at_utc": "2026-07-30T22:00:08Z",
+              "revision_id": "taf-revision-ecfa43787b6702087fa302eb8951414c",
+              "revision_kind": "COR",
+              "revision_sequence": 4
+            },
+            {
+              "content_sha256": "897ff291acf61836526dfe72028d302ea4e27e59026ae4dca502aea46e316876",
+              "provider_available_at_utc": "2026-07-30T22:57:05Z",
+              "revision_id": "taf-revision-2b78abe9c99bc409d5b497f15a2fa0fc",
+              "revision_kind": "COR",
+              "revision_sequence": 5
+            }
+          ],
+          "event_date": "2026-07-30",
+          "reason": "forward_taf_correction_requires_manual_review",
+          "station_id": "MMMX"
+        }
+      ],
+      "sample_count": 5,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Mexico_City"
+      },
+      "state": "QUARANTINED_DAYS_PRESENT",
+      "station_id": "MMMX",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "df752e1b02e9efb132461e9a6e7922b4f5c6cf342a8e2ee3b7a6d20b02f37281",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/MPMG_JJA_d2_MIXED_NATIVE_CYCLES_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "MIXED_NATIVE_CYCLES",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Panama"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "MPMG",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "7d6b82bf9b6ffccb920877523b03f42d44cee0075c071d9856d4de55ae8b6063",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/OEJN_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Riyadh"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "OEJN",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "243ced97d894b5c9d449adc30629564959f63899e1e2b3ad6733a1056f2c968f",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/OPKC_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Karachi"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "OPKC",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "494fc584954c8ebaa995782d987289af5e3d9cd1b4a64b6ffca00075bb2a6af8",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/SAEZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 7,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Argentina/Buenos_Aires"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "SAEZ",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "a534ef1d6140e975cd2254bae3ca4a8af66ed0bc6cfbc75f3b51f5ae3d868864",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/SBGR_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 9,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "America/Sao_Paulo"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "SBGR",
+      "wrote": false
+    },
+    {
+      "artifact_content_sha256": "28dae053c2a95dd8febf435b1281e9ebbeb776bc1c35ed8bb095060ebcb65f1b",
+      "artifact_path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/VILK_JJA_d2_18Z_taf_native_exact_join.json",
+      "excluded_correction_sample_count": 0,
+      "excluded_correction_samples": [],
+      "sample_count": 0,
+      "scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Kolkata"
+      },
+      "state": "NO_CORRECTION_DAYS_IN_JOIN",
+      "station_id": "VILK",
+      "wrote": false
+    }
+  ],
+  "exact_join_artifact_count": 27,
+  "missing_current_p0_station_count": 18,
+  "missing_current_p0_station_ids": [
+    "KDAL",
+    "KHOU",
+    "NZWN",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "p0_station_count": 27,
+  "quarantined_exact_join_count": 2,
+  "revision_quarantine_receipt": {
+    "content_sha256": "e4b7311400d5b407aefe980731e93c5a20aa28813a05d656cd62ce7052700085",
+    "correction_count": 97,
+    "path": "/Users/xiong/weather/output/audits/taf_exact_join_quarantine_rebuild_20260802/taf_revision_quarantine_receipt.json",
+    "station_day_count": 24,
+    "wrote": true
+  },
+  "schema": "bayes_basket_target_taf_exact_join_quarantine_rebuild_v1",
+  "state": "REBUILT_READ_ONLY"
+}

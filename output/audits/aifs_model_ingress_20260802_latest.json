@@ -1,0 +1,134 @@
+{
+  "authority": {
+    "independence_family_id": "ECMWF",
+    "official_aifs_native_adapter": "prospective_native_arrival_and_decode_integrated_oos_pending",
+    "official_aifs_single_formal_p0_eligible_without_strict_oos": false,
+    "official_aifs_single_native_arrival_index_eligible": true,
+    "official_aifs_single_source_role": "official_native",
+    "open_meteo_aifs_ensemble_candidate_only": true,
+    "open_meteo_aifs_ensemble_formal_p0_eligible": false,
+    "open_meteo_aifs_ensemble_native_arrival_index_eligible": false,
+    "open_meteo_aifs_ensemble_source_role": "aggregator_republisher",
+    "p1_or_hard_no_eligible": false
+  },
+  "blockers": [],
+  "calls_order_gateway": false,
+  "content_sha256": "861e12ade12e59145b11897171f75e86b5a01659cdb410dd03341937176ff05c",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "live_submit_authorized": false,
+  "model_scope_by_system": {
+    "ECMWF_AIFS_ENS_EUROPE": "regional",
+    "ECMWF_AIFS_ENS_GLOBAL": "global"
+  },
+  "official_native_single": {
+    "capture_path": "/Users/xiong/weather/output/audits/aifs_official_forward_capture_20260801_full45.json",
+    "captured_or_reused_valid_times": 7,
+    "complete_curve_count": 45,
+    "counts_as_independent_family_from_ifs": false,
+    "decode_path": "/Users/xiong/weather/output/audits/aifs_official_station_candidates_20260801.json",
+    "decoded_point_count": 179,
+    "evidence_verified": true,
+    "expected_raw_message_count": 7,
+    "expected_station_arrival_count": 179,
+    "fanout_captured_count": 179,
+    "formal_p0_eligible_without_strict_oos": false,
+    "independence_family_id": "ECMWF",
+    "native_arrival_index_eligible": true,
+    "product_id": "ECMWF_AIFS_SINGLE_0P25",
+    "provider_id": "ecmwf_aifs025_official",
+    "source_role": "official_native",
+    "state": "OFFICIAL_NATIVE_FORWARD_CAPTURED_OOS_PENDING",
+    "strict_oos_activation_present": false
+  },
+  "orders_submitted": 0,
+  "schema": "aifs_model_ingress_audit_v1",
+  "state": "OFFICIAL_NATIVE_FORWARD_CAPTURED_STRICT_OOS_PENDING",
+  "systems": {
+    "ECMWF_AIFS_ENS_EUROPE": {
+      "bucket_source_role_authority_counts": [
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "count": 41,
+          "source_role": "aggregator_republisher"
+        }
+      ],
+      "candidate_lineage_verified": true,
+      "candidate_only": true,
+      "catalog": {
+        "api_model": "ecmwf_aifs_europe_ensemble",
+        "candidate_only": true,
+        "canonical_name": "ECMWF AIFS Europe Ensemble",
+        "expected_member_count": 51,
+        "formal_p0_eligible": false,
+        "independence_family_id": "ECMWF",
+        "model_scope": "regional",
+        "native_arrival_index_eligible": false,
+        "official_native_arrival_status": "MISSING_FAIL_CLOSED",
+        "provider_id": "ECMWF"
+      },
+      "cross_oos_evaluation_count": 0,
+      "formal_p0_eligible": false,
+      "member_bucket_count": 41,
+      "member_run_count": 2091,
+      "native_arrival_evidence_count": 0,
+      "native_arrival_index_eligible": false,
+      "native_timestamps_complete_counts": {
+        "0": 2091
+      },
+      "product_catalog_registration": {
+        "canonical_name": "ECMWF AIFS Europe Ensemble",
+        "confers_transport_authority": false,
+        "expected_member_count": 51,
+        "independence_family_id": "ECMWF",
+        "provider_id": "ECMWF",
+        "source_class": "aggregator_republisher",
+        "source_role": "aggregator_republisher",
+        "transport_provider_id": "OPEN_METEO"
+      },
+      "transport_authority_source": "member_run_and_member_bucket_lineage"
+    },
+    "ECMWF_AIFS_ENS_GLOBAL": {
+      "bucket_source_role_authority_counts": [
+        {
+          "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+          "count": 184,
+          "source_role": "aggregator_republisher"
+        }
+      ],
+      "candidate_lineage_verified": true,
+      "candidate_only": true,
+      "catalog": {
+        "api_model": "ecmwf_aifs025_ensemble",
+        "candidate_only": true,
+        "canonical_name": "ECMWF AIFS 0.25 Ensemble",
+        "expected_member_count": 51,
+        "formal_p0_eligible": false,
+        "independence_family_id": "ECMWF",
+        "model_scope": "global",
+        "native_arrival_index_eligible": false,
+        "official_native_arrival_status": "MISSING_FAIL_CLOSED",
+        "provider_id": "ECMWF"
+      },
+      "cross_oos_evaluation_count": 0,
+      "formal_p0_eligible": false,
+      "member_bucket_count": 184,
+      "member_run_count": 9384,
+      "native_arrival_evidence_count": 0,
+      "native_arrival_index_eligible": false,
+      "native_timestamps_complete_counts": {
+        "0": 9384
+      },
+      "product_catalog_registration": {
+        "canonical_name": "ECMWF AIFS 0.25 Ensemble",
+        "confers_transport_authority": false,
+        "expected_member_count": 51,
+        "independence_family_id": "ECMWF",
+        "provider_id": "ECMWF",
+        "source_class": "aggregator_republisher",
+        "source_role": "aggregator_republisher",
+        "transport_provider_id": "OPEN_METEO"
+      },
+      "transport_authority_source": "member_run_and_member_bucket_lineage"
+    }
+  }
+}

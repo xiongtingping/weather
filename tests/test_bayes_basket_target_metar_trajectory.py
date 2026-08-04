@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 
 import pytest
 
 from bayes_basket_target.contracts import ContractError, ProbabilityEnvelope
 from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
+    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_METHOD_VERSION,
     MAX_METAR_TRAJECTORY_BUCKETS,
     MAX_METAR_TRAJECTORY_OBSERVATIONS,
@@ -18,6 +21,10 @@ from bayes_basket_target.metar_trajectory import (
     compile_metar_trajectory_update_proof,
     validate_metar_trajectory_update_proof,
 )
+from bayes_basket_target.future_temperature_curve import (
+    build_root_future_temperature_curve,
+)
+from bayes_basket_target.metar_path_state import PATH_STATE_SCHEMA
 
 
 BUCKET_CENTERS = {
@@ -150,6 +157,7 @@ def _observation(
     lane: str = "awc",
     station: str = "RKPK",
     event_date: str = "2026-07-29",
+    raw_text: str | None = None,
 ) -> MetarTrajectoryObservation:
     return MetarTrajectoryObservation.from_mapping({
         "event": {
@@ -167,7 +175,83 @@ def _observation(
         },
         "canonical_committed_at_utc": received or observed,
         "temperature_c": temperature_c,
+        "raw_text": raw_text,
     })
+
+
+def _conditional_artifact() -> MetarTrajectoryLikelihoodArtifact:
+    payload = _artifact().to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload.update({
+        "path_feature_schema": PATH_STATE_SCHEMA,
+        "path_model_coefficients": {
+            "base_distribution_mean": 0.3,
+            "root_expected_remaining_warming": 0.5,
+            "momentum_c_per_hour": 0.35,
+            "acceleration_c_per_hour2": 0.1,
+            "drawdown_from_high_c": -0.5,
+            "dewpoint_depression_c": 0.01,
+            "cloud_cover_fraction": -0.8,
+            "precipitation_present": -1.0,
+            "wind_speed_mps": -0.02,
+            "remaining_hours": 0.02,
+        },
+        "path_model_sigma_c": 0.8,
+        "method_version": METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+    })
+    return build_metar_trajectory_likelihood_artifact(payload)
+
+
+def _hourly_curve_artifact() -> MetarTrajectoryLikelihoodArtifact:
+    payload = _conditional_artifact().to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload["path_model_coefficients"].update({
+        "predicted_peak_remaining_warming_c": 0.35,
+        "minutes_to_predicted_peak": 0.02,
+        "next_curve_delta_from_high_c": 0.15,
+        "future_curve_slope_c_per_hour": 0.10,
+    })
+    payload["method_version"] = (
+        METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
+    return build_metar_trajectory_likelihood_artifact(payload)
+
+
+def _root_with_hourly_curve(
+    *,
+    available_at_utc: str = "2026-07-28T23:00:00Z",
+    curve_checkpoint_id: str = "p0-m-root",
+    declared_sha256: str | None = None,
+) -> ProbabilityEnvelope:
+    root = _root()
+    curve = build_root_future_temperature_curve({
+        "station_id": "RKPK",
+        "event_date": "2026-07-29",
+        "settlement_timezone": "Asia/Seoul",
+        "root_checkpoint_id": curve_checkpoint_id,
+        "root_probability_sha256": root.posterior_sha256,
+        "available_at_utc": available_at_utc,
+        "source_snapshot_sha256": "3" * 64,
+        "independence_family_ids": ["ECMWF_IFS", "NOAA_GEFS"],
+        "points": [
+            {"valid_time_utc": "2026-07-29T07:00:00Z", "temperature_c": 35.5},
+            {"valid_time_utc": "2026-07-29T09:00:00Z", "temperature_c": 36.5},
+            {"valid_time_utc": "2026-07-29T12:00:00Z", "temperature_c": 36.0},
+            {"valid_time_utc": "2026-07-29T14:00:00Z", "temperature_c": 35.0},
+        ],
+    })
+    raw = root.to_dict()
+    raw["lineage"].update({
+        "conditional_future_temperature_curve_json": json.dumps(
+            curve.to_dict(), sort_keys=True, separators=(",", ":")
+        ),
+        "conditional_future_temperature_curve_sha256": (
+            declared_sha256 or curve.content_sha256
+        ),
+    })
+    return ProbabilityEnvelope.from_mapping(raw)
 
 
 def _compile(
@@ -207,6 +291,88 @@ def test_artifact_is_content_addressed_and_deeply_immutable() -> None:
         ContractError, match="artifact_content_sha256_mismatch"
     ):
         MetarTrajectoryLikelihoodArtifact.from_mapping(tampered)
+
+
+def test_conditional_path_artifact_forecasts_beyond_running_high() -> None:
+    rising = [
+        _observation("r1", sequence=1, observed="2026-07-29T04:00:00Z", temperature_c=33.0, raw_text="METAR RKPK 290400Z 18005KT CAVOK 33/20 Q1008"),
+        _observation("r2", sequence=2, observed="2026-07-29T05:00:00Z", temperature_c=34.0, raw_text="METAR RKPK 290500Z 18005KT CAVOK 34/20 Q1008"),
+        _observation("r3", sequence=3, observed="2026-07-29T06:00:00Z", temperature_c=35.0, raw_text="METAR RKPK 290600Z 18005KT CAVOK 35/20 Q1008"),
+    ]
+    cooling = [
+        _observation("c1", sequence=1, observed="2026-07-29T04:00:00Z", temperature_c=35.0, raw_text="METAR RKPK 290400Z 18010KT OVC020 35/24 Q1008"),
+        _observation("c2", sequence=2, observed="2026-07-29T05:00:00Z", temperature_c=34.0, raw_text="METAR RKPK 290500Z 18010KT OVC020 -RA 34/24 Q1008"),
+        _observation("c3", sequence=3, observed="2026-07-29T06:00:00Z", temperature_c=33.0, raw_text="METAR RKPK 290600Z 18010KT OVC020 -RA 33/24 Q1008"),
+    ]
+    rising_proof = _compile(rising, artifact=_conditional_artifact())
+    cooling_proof = _compile(cooling, artifact=_conditional_artifact())
+    assert rising_proof.conditional_path_state_sha256 is not None
+    assert cooling_proof.conditional_path_state_sha256 is not None
+    assert rising_proof.posterior_probabilities["37C"] > cooling_proof.posterior_probabilities["37C"]
+    assert rising_proof.posterior_probabilities["35C"] < cooling_proof.posterior_probabilities["35C"]
+
+
+def _hourly_curve_observations() -> list[MetarTrajectoryObservation]:
+    return [
+        _observation(
+            "h1", sequence=1, observed="2026-07-29T04:00:00Z",
+            temperature_c=33.0,
+            raw_text="METAR RKPK 290400Z 18005KT CAVOK 33/20 Q1008",
+        ),
+        _observation(
+            "h2", sequence=2, observed="2026-07-29T05:00:00Z",
+            temperature_c=34.0,
+            raw_text="METAR RKPK 290500Z 18005KT CAVOK 34/20 Q1008",
+        ),
+        _observation(
+            "h3", sequence=3, observed="2026-07-29T06:00:00Z",
+            temperature_c=35.0,
+            raw_text="METAR RKPK 290600Z 18005KT CAVOK 35/20 Q1008",
+        ),
+    ]
+
+
+def test_hourly_curve_artifact_uses_strict_asof_root_bound_curve() -> None:
+    proof = _compile(
+        _hourly_curve_observations(),
+        artifact=_hourly_curve_artifact(),
+        root=_root_with_hourly_curve(),
+    )
+    assert proof.conditional_path_state_sha256 is not None
+    assert proof.posterior_probabilities["36C"] > 0.0
+    assert proof.posterior_probabilities["37C"] > 0.0
+
+
+@pytest.mark.parametrize(
+    ("root", "message"),
+    [
+        (_root(), "root_future_curve_missing"),
+        (
+            _root_with_hourly_curve(
+                available_at_utc="2026-07-29T07:00:00Z"
+            ),
+            "future_temperature_curve_not_strict_asof",
+        ),
+        (
+            _root_with_hourly_curve(curve_checkpoint_id="wrong-root"),
+            "future_curve_root_scope_mismatch",
+        ),
+        (
+            _root_with_hourly_curve(declared_sha256="4" * 64),
+            "root_future_curve_sha256_mismatch",
+        ),
+    ],
+)
+def test_hourly_curve_artifact_fails_closed_without_same_cutoff_curve(
+    root: ProbabilityEnvelope,
+    message: str,
+) -> None:
+    with pytest.raises(ContractError, match=message):
+        _compile(
+            _hourly_curve_observations(),
+            artifact=_hourly_curve_artifact(),
+            root=root,
+        )
 
 
 def test_artifact_sealing_is_stable_for_numeric_distribution_keys() -> None:

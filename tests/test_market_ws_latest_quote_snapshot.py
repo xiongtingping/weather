@@ -314,6 +314,46 @@ def test_sharded_snapshot_keeps_manifest_small_and_writes_only_target_quote(tmp_
     assert shard["shard_active"] is True
 
 
+def test_sharded_token_update_does_not_bypass_large_root_manifest_throttle(tmp_path, monkeypatch) -> None:
+    manifest = tmp_path / "latest.json"
+    shard_dir = tmp_path / "shards"
+    monkeypatch.setenv("PM_MARKET_WS_SHARDED_SNAPSHOT", "1")
+    monkeypatch.setenv("PM_MARKET_WS_QUOTE_SHARD_DIR", str(shard_dir))
+    state = LatestQuoteSnapshot(manifest, min_write_interval_sec=60)
+    token = "throttled-token"
+    state.connected(0, [token], expected_shards=1)
+    root_before = json.loads(manifest.read_text(encoding="utf-8"))
+
+    state.observe_market_message(
+        {
+            "event_type": "book", "asset_id": token,
+            "bids": [{"price": "0.40", "size": "2"}],
+            "asks": [{"price": "0.41", "size": "3"}],
+        },
+        observed_at="2026-08-01T12:00:00.000Z", depth_levels=5,
+    )
+    state.observe_with_shard(
+        [{
+            "token_id": token, "slug": "slug", "event_date": "2026-08-01",
+            "outcome": "30°C", "side": "NO", "best_bid": 0.4, "best_ask": 0.41,
+            "spread": 0.01, "bid_depth_topN": 2, "ask_depth_topN": 3,
+            "source": "clob_ws", "source_detail": "book",
+            "created_at": "2026-08-01T12:00:00.000Z",
+        }],
+        observed_at="2026-08-01T12:00:00.000Z", shard_index=0,
+    )
+
+    # The target shard is current immediately, while the shared root remains
+    # throttled instead of serialising a large pending-topology list per tick.
+    root_after = json.loads(manifest.read_text(encoding="utf-8"))
+    shard = json.loads(
+        (shard_dir / f"{hashlib.sha256(token.encode()).hexdigest()}.json").read_text()
+    )
+    assert root_after == root_before
+    assert shard["quote"]["book_observed_at"] == "2026-08-01T12:00:00.000Z"
+    assert shard["quote"]["asks"] == [{"price": 0.41, "size": 3}]
+
+
 def test_sharded_snapshot_removes_only_old_dead_writer_temps(tmp_path, monkeypatch) -> None:
     manifest = tmp_path / "latest.json"
     shard_dir = tmp_path / "shards"
@@ -723,6 +763,180 @@ def test_proxy_fallback_requires_explicit_direct_then_env(monkeypatch) -> None:
     assert listener._ws_proxy_candidates("env") == [
         ("http_proxy_env", "http://127.0.0.1:7890"),
     ]
+
+
+def test_clob_bound_held_yes_tokens_are_excluded_from_primary_registry_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "registry.db"
+    today = listener.datetime.now(listener.timezone.utc).date().isoformat()
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            """CREATE TABLE reported_trajectory_market_registry(
+                 slug TEXT,event_date TEXT,outcome TEXT,station_id TEXT,
+                 yes_token TEXT,no_token TEXT,
+                 settlement_timezone TEXT,source_lane TEXT,source_eligible INTEGER,
+                 market_active INTEGER,market_accepting_orders INTEGER,refreshed_at TEXT
+               )"""
+        )
+        conn.execute(
+            """INSERT INTO reported_trajectory_market_registry VALUES(
+                 'current',?,'30°C','TEST','yes-current','no-current','UTC','awc',1,1,1,
+                 '2026-08-01T00:00:00Z'
+               )""",
+            (today,),
+        )
+        conn.execute(
+            """INSERT INTO reported_trajectory_market_registry VALUES(
+                 'held','2000-01-01','31°C','TEST','456','no-held','UTC','awc',1,1,1,
+                 '2026-08-01T00:00:00Z'
+               )"""
+        )
+    inventory = tmp_path / "held_yes.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema": "reported_trajectory_held_yes_inventory_v1",
+                "complete": True,
+                "token_ids": ["123", "456"],
+                "active_token_ids": ["456"],
+                "active_token_ids_source": "official_local_clob_execution_guard_snapshot",
+                "active_token_ids_observed_at": "2026-08-01T00:00:00.000Z",
+                "active_token_ids_receipt_sha256": "a" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PM_MARKET_WS_DB_PATH", str(database))
+    monkeypatch.setattr(listener, "HELD_YES_INVENTORY_PATH", inventory)
+    monkeypatch.setattr(listener, "_target_yes_quotes_enabled", lambda: True)
+    listener._BINDINGS_CACHE.clear()
+    listener._BINDING_MARKER_CACHE.clear()
+
+    bindings = listener._load_token_bindings(days_ahead=0, max_assets=10)
+
+    assert set(bindings) == {"yes-current"}
+    assert {binding.side for binding in bindings.values()} == {"YES"}
+    assert listener._held_yes_active_token_scope()[0] == ("456",)
+
+    monkeypatch.setattr(listener, "_target_yes_quotes_enabled", lambda: False)
+    listener._BINDINGS_CACHE.clear()
+    listener._BINDING_MARKER_CACHE.clear()
+    bindings = listener._load_token_bindings(days_ahead=0, max_assets=10)
+
+    # The production market socket is pure-YES.  An invalid/disabled target
+    # activation fails closed to an empty catalog; it never falls back to a
+    # retired hard-NO token subscription.
+    assert bindings == {}
+    assert listener._held_yes_active_token_scope()[0] == ("456",)
+
+
+def test_invalid_or_over_cap_held_yes_scope_never_enters_primary_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inventory = tmp_path / "held_yes.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema": "reported_trajectory_held_yes_inventory_v1",
+                "complete": True,
+                "token_ids": ["123", "456"],
+                "active_token_ids": ["123", "456"],
+                "active_token_ids_source": "official_local_clob_execution_guard_snapshot",
+                "active_token_ids_observed_at": "2026-08-01T00:00:00.000Z",
+                "active_token_ids_receipt_sha256": "b" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(listener, "HELD_YES_INVENTORY_PATH", inventory)
+    listener._BINDINGS_CACHE.clear()
+    listener._BINDING_MARKER_CACHE.clear()
+
+    assert listener._held_yes_active_token_scope() == ((), "registry_unresolved")
+
+    class Cursor:
+        def fetchone(self):
+            return (0, "", "", "", "")
+
+        def fetchall(self):
+            return []
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args):
+            return Cursor()
+
+    monkeypatch.setattr(listener, "_open_registry_ro", lambda: Connection())
+    assert listener._load_token_bindings(days_ahead=0, max_assets=1) == {}
+
+    inventory.write_text("{not-json", encoding="utf-8")
+    assert listener._held_yes_active_token_scope() == ((), "invalid")
+
+
+def test_held_yes_auxiliary_requires_full_book_and_never_writes_empty_evidence(tmp_path: Path) -> None:
+    manifest = tmp_path / "held.json"
+    shard_dir = tmp_path / "held-shards"
+    state = listener.HeldYesQuoteSnapshot(manifest, shard_dir=shard_dir, depth_levels=5)
+    token = "456"
+    observed_at = "2026-08-01T12:00:00.000Z"
+
+    state.begin_connection([token], observed_at=observed_at)
+    token_path = shard_dir / f"{hashlib.sha256(token.encode()).hexdigest()}.json"
+    initial = json.loads(manifest.read_text(encoding="utf-8"))
+    assert initial["state"] == "missing_evidence"
+    assert initial["missing_complete_book_token_ids"] == [token]
+    assert not token_path.exists()
+
+    # A delta cannot establish depth before a complete official book.
+    assert state.observe_market_message(
+        {
+            "event_type": "price_change",
+            "price_changes": [{"asset_id": token, "side": "BUY", "price": "0.4", "size": "3"}],
+        },
+        observed_at="2026-08-01T12:00:01.000Z",
+    ) is False
+    assert not token_path.exists()
+
+    # Empty arrays are a real complete book, distinct from absent evidence.
+    assert state.observe_market_message(
+        {"event_type": "book", "asset_id": token, "bids": [], "asks": []},
+        observed_at="2026-08-01T12:00:02.000Z",
+    ) is True
+    ready = json.loads(manifest.read_text(encoding="utf-8"))
+    shard = json.loads(token_path.read_text(encoding="utf-8"))
+    assert ready["state"] == "ready"
+    assert ready["complete_book_token_ids"] == [token]
+    assert shard["schema"] == "clob_ws_held_yes_token_quote_snapshot_v1"
+    assert shard["quote"]["bids"] == []
+    assert shard["quote"]["asks"] == []
+    assert shard["quote"]["book_observed_at"] == "2026-08-01T12:00:02.000Z"
+
+
+def test_held_yes_auxiliary_scope_switch_invalidates_old_shard_before_new_book(tmp_path: Path) -> None:
+    manifest = tmp_path / "held.json"
+    shard_dir = tmp_path / "held-shards"
+    state = listener.HeldYesQuoteSnapshot(manifest, shard_dir=shard_dir)
+    old_token, new_token = "123", "456"
+    old_path = shard_dir / f"{hashlib.sha256(old_token.encode()).hexdigest()}.json"
+
+    state.begin_connection([old_token], observed_at="2026-08-01T12:00:00.000Z")
+    state.observe_market_message(
+        {"event_type": "book", "asset_id": old_token, "bids": [], "asks": []},
+        observed_at="2026-08-01T12:00:01.000Z",
+    )
+    assert old_path.exists()
+
+    state.begin_connection([new_token], observed_at="2026-08-01T12:01:00.000Z")
+    switched = json.loads(manifest.read_text(encoding="utf-8"))
+    assert switched["scope_token_ids"] == [new_token]
+    assert switched["state"] == "missing_evidence"
+    assert not old_path.exists()
 
 
 def test_initial_subscription_book_array_is_typed_as_book() -> None:

@@ -22,6 +22,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator, Mapping, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, canonical_json, content_sha256
 from .basket_kernel.state_machine import basket_lifecycle_projection
@@ -50,6 +51,9 @@ PLAN_SCHEMA = "basket_target_plan_v1"
 DECISION_SCHEMA = "basket_target_decision_fact_v1"
 INTENT_SCHEMA = "basket_target_order_intent_v1"
 RESERVATION_SCHEMA = "basket_target_capital_reservation_v1"
+STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
+    "basket_target_stage_zero_execution_anchor_v1"
+)
 
 TARGET_LEDGER_TABLES = (
     "basket_target_observation_facts",
@@ -67,20 +71,16 @@ TARGET_LEDGER_TABLES = (
 CYCLE_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "settled"})
 INTENT_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "filled", "cancelled", "failed"})
 RESERVATION_STATES = frozenset({"active", "released", "consumed", "expired"})
-LANES = frozenset({"basket", "hard_no"})
-_HARD_NO_FORBIDDEN_PLAN_KEY_FRAGMENTS = (
-    "probability",
-    "posterior",
-    "prior",
-    "likelihood",
-    "taf",
-    "nwp",
-    "regime",
-    "forecast",
-)
+# ``hard_no`` records may exist in historical SQLite files, but that is not a
+# production lane.  All target-lane writes are now the pure-YES basket.
+LANES = frozenset({"basket"})
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _HEX64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+# A target day should only have a small append-only chain per probability
+# stage.  Keep the stage-currentness check bounded even if a corrupt source
+# tries to fan out checkpoints for one station-day.
+_STAGE_ZERO_PROBABILITY_SCAN_LIMIT = 256
 
 
 class AtomicLedgerError(ContractError):
@@ -136,6 +136,30 @@ def _date(name: str, value: Any) -> str:
     return result
 
 
+def _settlement_timezone(name: str, value: Any) -> str:
+    """Require one exact, valid registry timezone without normalization.
+
+    The raw IANA name is immutable lineage: accepting an alias and silently
+    replacing it with another spelling would change the source fact.  We only
+    use ``ZoneInfo`` as a validity fence and return the supplied exact value.
+    """
+
+    result = _text(name, value)
+    try:
+        ZoneInfo(result)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise AtomicLedgerError(f"{name}_invalid") from exc
+    return result
+
+
+def _awc_source_lane(name: str, value: Any) -> str:
+    """Accept only the formal AWC lane and return its canonical spelling."""
+
+    if _text(name, value).upper() != "AWC":
+        raise AtomicLedgerError(f"{name}_must_be_awc")
+    return "AWC"
+
+
 def _timestamp(name: str, value: Any) -> str:
     result = _text(name, value)
     try:
@@ -145,6 +169,66 @@ def _timestamp(name: str, value: Any) -> str:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise AtomicLedgerError(f"{name}_timezone_required")
     return result
+
+
+def _timestamp_instant(name: str, value: Any) -> datetime:
+    """Parse an ISO-8601 timestamp to its UTC instant for CAS equality.
+
+    SSOT records preserve the publisher's textual precision (for example,
+    ``.309Z``), whereas a compile adapter can canonically render that same
+    instant as ``.309000Z``.  Version checks must bind to the instant, not to
+    an incidental fractional-second spelling.  Callers still bind the
+    immutable snapshot id and content hash separately.
+    """
+
+    raw = _timestamp(name, value)
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:  # _timestamp already validates; retain a fence.
+        raise AtomicLedgerError(f"{name}_invalid_iso8601") from exc
+    return parsed.astimezone(timezone.utc)
+
+
+def _stage_zero_visible_probability_rows(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    stage: str,
+    as_of: datetime,
+) -> list[tuple[str, datetime]]:
+    """Return bounded committed rows visible at ``as_of`` by UTC instant.
+
+    SQLite text ordering is not a time ordering once publishers retain
+    different RFC3339 fractional precision.  This deliberately parses each
+    bounded row in Python rather than accepting SQLite's permissive date
+    coercion: an invalid committed timestamp is a fail-closed condition.
+    """
+
+    rows = conn.execute(
+        "SELECT checkpoint_id,decision_at_utc FROM basket_probability_envelope "
+        "WHERE station_id=? AND event_date=? AND settlement_timezone=? "
+        "AND stage=? AND state='COMMITTED' LIMIT ?",
+        (
+            station_id,
+            event_date,
+            settlement_timezone,
+            stage,
+            _STAGE_ZERO_PROBABILITY_SCAN_LIMIT + 1,
+        ),
+    ).fetchall()
+    if len(rows) > _STAGE_ZERO_PROBABILITY_SCAN_LIMIT:
+        raise AtomicLedgerError("stage_zero_execution_probability_scan_limit")
+    parsed_rows: list[tuple[str, datetime]] = []
+    for raw_checkpoint_id, raw_decision_at in rows:
+        decision_at = _timestamp_instant(
+            "stage_zero_execution_visible_probability_decision_at",
+            raw_decision_at,
+        )
+        if decision_at <= as_of:
+            parsed_rows.append((str(raw_checkpoint_id), decision_at))
+    return parsed_rows
 
 
 def _sha(name: str, value: Any) -> str:
@@ -207,6 +291,22 @@ def _rows(name: str, value: Any) -> list[Mapping[str, Any]]:
     if len(result) != len(value):
         raise AtomicLedgerError(f"{name}_row_invalid")
     return result
+
+
+def _basket_lane(name: str, value: Any) -> str:
+    """Accept the sole production lane and make retired input explicit.
+
+    Historical rows remain readable by SQLite migrations.  This writer must
+    never turn a historical ``hard_no`` value into a new cycle, decision,
+    reservation, capital-arbitration request, or order intent.
+    """
+
+    lane = _text(name, value).lower()
+    if lane == "hard_no":
+        raise AtomicLedgerError("strategy_lane_hard_no_retired")
+    if lane != "basket":
+        raise AtomicLedgerError("strategy_lane_invalid")
+    return lane
 
 
 def _derive_id(prefix: str, identity: Mapping[str, Any]) -> str:
@@ -289,35 +389,14 @@ def _assert_plan_lane_contract(
     plan_lineage: Mapping[str, Any],
     commit_boundary: bool = False,
 ) -> None:
-    if lane == "basket":
-        if str(plan_lineage.get("probability_stage") or "") != "P1":
-            raise AtomicLedgerError(
-                "target_atomic_commit_requires_p1"
-                if commit_boundary
-                else "target_atomic_bundle_requires_p1"
-            )
-        return
-
-    def walk(value: Any, path: str) -> None:
-        if isinstance(value, Mapping):
-            for raw_key, nested in value.items():
-                key = str(raw_key).strip().lower()
-                if any(
-                    fragment in key
-                    for fragment in _HARD_NO_FORBIDDEN_PLAN_KEY_FRAGMENTS
-                ):
-                    raise AtomicLedgerError(
-                        "hard_no_plan_forbidden_probability_input:"
-                        + (f"{path}.{key}" if path else key)
-                    )
-                walk(nested, f"{path}.{key}" if path else key)
-        elif isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
-            for index, nested in enumerate(value):
-                walk(nested, f"{path}[{index}]")
-
-    walk(plan, "")
+    if lane != "basket":
+        raise AtomicLedgerError("strategy_lane_hard_no_retired")
+    if str(plan_lineage.get("probability_stage") or "") != "P1":
+        raise AtomicLedgerError(
+            "target_atomic_commit_requires_p1"
+            if commit_boundary
+            else "target_atomic_bundle_requires_p1"
+        )
 
 
 def build_target_atomic_bundle(
@@ -342,15 +421,19 @@ def build_target_atomic_bundle(
         "observation_id": _text("observation_id", observation.get("observation_id")),
         "station_id": _text("observation_station_id", observation.get("station_id")),
         "event_date": _date("observation_event_date", observation.get("event_date")),
-        "source_lane": _text("observation_source_lane", observation.get("source_lane")).upper(),
+        "settlement_timezone": _settlement_timezone(
+            "observation_settlement_timezone",
+            observation.get("settlement_timezone"),
+        ),
+        "source_lane": _awc_source_lane(
+            "observation_source_lane", observation.get("source_lane")
+        ),
         "report_type": _text("observation_report_type", observation.get("report_type")).upper(),
         "raw_sha256": _sha("observation_raw_sha256", observation.get("raw_sha256")),
         "canonical_committed_at": _timestamp(
             "observation_canonical_committed_at", observation.get("canonical_committed_at")
         ),
     }
-    if obs["source_lane"] not in {"AMSC", "AWC"}:
-        raise AtomicLedgerError("observation_source_lane_invalid")
     if obs["report_type"] not in {"METAR", "SPECI"}:
         raise AtomicLedgerError("observation_report_type_invalid")
     obs_sha = _content_hash(OBSERVATION_SCHEMA, obs)
@@ -381,25 +464,31 @@ def build_target_atomic_bundle(
     plan_lineage = plan_payload.get("lineage")
     if not isinstance(plan_lineage, Mapping):
         raise AtomicLedgerError("target_atomic_bundle_lineage_missing")
-    lane = _text(
+    plan_lineage = dict(plan_lineage)
+    plan_lineage["source_lane"] = _awc_source_lane(
+        "plan_lineage_source_lane", plan_lineage.get("source_lane")
+    )
+    plan_payload["lineage"] = plan_lineage
+    lane = _basket_lane(
         "strategy_lane",
         decision.get("strategy_lane", plan_payload.get("strategy_lane")),
-    ).lower()
-    if lane not in LANES:
-        raise AtomicLedgerError("strategy_lane_invalid")
+    )
     _assert_plan_lane_contract(
         lane=lane,
         plan=plan_payload,
         plan_lineage=plan_lineage,
     )
-    settlement_timezone = _text(
+    settlement_timezone = _settlement_timezone(
         "plan_settlement_timezone", plan_payload.get("settlement_timezone")
     )
-    lineage_timezone = _text(
+    lineage_timezone = _settlement_timezone(
         "plan_lineage_settlement_timezone",
         plan_lineage.get("settlement_timezone"),
     )
-    if settlement_timezone != lineage_timezone:
+    if (
+        settlement_timezone != lineage_timezone
+        or settlement_timezone != obs["settlement_timezone"]
+    ):
         raise AtomicLedgerError("plan_lineage_settlement_timezone_mismatch")
     _assert_plan_observation_bound_lineage(
         plan_lineage=plan_lineage,
@@ -532,10 +621,8 @@ def build_target_atomic_bundle(
             raise AtomicLedgerError(f"intent_{index}_side_or_action_invalid")
         if item["state"] not in INTENT_STATES:
             raise AtomicLedgerError(f"intent_{index}_state_invalid")
-        if lane == "basket" and (item["side"], item["order_action"]) != ("YES", "BUY"):
+        if (item["side"], item["order_action"]) != ("YES", "BUY"):
             raise AtomicLedgerError("basket_intent_must_be_yes_buy")
-        if lane == "hard_no" and (item["side"], item["order_action"]) != ("NO", "BUY"):
-            raise AtomicLedgerError("hard_no_intent_must_be_no_buy")
         identity = {"decision_id": decision_id, "ordinal": index, **item}
         item["order_intent_id"] = _verify_or_set_id(
             f"intent_{index}_order_intent_id", raw.get("order_intent_id"), _derive_id("intent", identity)
@@ -674,6 +761,12 @@ def target_ledger_schema_status(conn: sqlite3.Connection) -> dict[str, Any]:
         str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
     required_columns = {
+        "basket_target_observation_facts": {
+            "observation_fact_id", "observation_id", "station_id",
+            "event_date", "settlement_timezone", "source_lane",
+            "report_type", "raw_sha256", "canonical_committed_at",
+            "content_sha256",
+        },
         "auto_trade_decisions": {
             "decision_id", "cycle_id", "plan_id", "settlement_timezone",
             "decided_state", "will_order", "target_execution_hard_deadline_at",
@@ -1008,15 +1101,16 @@ def _assert_existing_blocked_no_execution_vector(
     cycle_id: str,
     decision_id: str,
     expected_policy: NoExecutionVersionPolicy,
+    expected_training_fact_id: str | None = None,
 ) -> None:
     """Verify the exact current NO_EXECUTION row at a blocked-cycle replay.
 
     The policy digest is the content address.  JSON key order/whitespace is
     not content, so it is parsed and revalidated before comparison.  The
-    schema/version and the complete NULL shape remain hard gates: an older
-    row without the current policy schema, an execution-shaped row, or a row
-    carrying hidden training/evidence data requires explicit offline
-    migration and cannot be silently replayed.
+    schema/version and the complete NULL execution shape remain hard gates:
+    an older row without the current policy schema, an execution-shaped row,
+    or a training-fact binding different from the exact requested fact
+    requires explicit offline migration and cannot be silently replayed.
     """
 
     rows = conn.execute(
@@ -1065,7 +1159,7 @@ def _assert_existing_blocked_no_execution_vector(
         order_intent_id is not None
         or stored_cycle_id != cycle_id
         or stored_decision_id != decision_id
-        or training_fact_id is not None
+        or training_fact_id != expected_training_fact_id
         or vector_policy != "NO_EXECUTION"
         or target_price_id is not None
         or quote_observed_at is not None
@@ -1116,6 +1210,89 @@ def _assert_existing_blocked_no_execution_vector(
         drift("policy_content")
     if vector_sha256.lower() != expected_policy.policy_sha256:
         drift("policy_sha256")
+
+
+def _build_stage_zero_training_fact(
+    conn: sqlite3.Connection,
+    *,
+    anchor: Mapping[str, Any],
+    cycle_id: str,
+    plan_id: str,
+    plan_sha256: str,
+    decision_id: str,
+    decision_sha256: str,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    no_execution_policy: NoExecutionVersionPolicy,
+    created_at_utc: str,
+) -> dict[str, Any]:
+    """Build the P0/P0-M fact that is bound to one zero-execution cycle.
+
+    This deliberately stays out of the P1 M5 observation/bound writer.  The
+    pre-final fact binds the complete compiled decision to its exact official
+    WS, inventory, order-state and NO_EXECUTION policy under the same SQLite
+    transaction which commits the blocked decision and its vector.
+    """
+
+    compiled_plan = _mapping(
+        "stage_zero_training_compiled_plan", anchor.get("compiled_plan")
+    )
+    if compiled_plan.get("schema") != "bayes_basket_production_plan_v1":
+        raise AtomicLedgerError("stage_zero_training_compiled_plan_schema_invalid")
+    audit = _mapping(
+        "stage_zero_training_delta_v2_audit",
+        compiled_plan.get("delta_v2_audit"),
+    )
+    if audit.get("authorized") is not True:
+        raise AtomicLedgerError("stage_zero_training_delta_v2_not_authorized")
+    market_snapshot = _mapping(
+        "stage_zero_training_market_snapshot",
+        compiled_plan.get("production_market_snapshot"),
+    )
+    plan_json = _mapping(
+        "stage_zero_training_plan", compiled_plan.get("plan")
+    )
+    atomic_bundle = {
+        "cycle": {
+            "cycle_id": cycle_id,
+            "plan_id": plan_id,
+            "station_id": station_id,
+            "event_date": event_date,
+            "settlement_timezone": settlement_timezone,
+            "strategy_lane": "basket",
+        },
+        "decision": {
+            "decision_id": decision_id,
+            "cycle_id": cycle_id,
+            "plan_id": plan_id,
+            "decision_sha256": decision_sha256,
+        },
+        # A stage-zero cycle's ledger plan is intentionally a small blocker
+        # record.  The full economic plan remains in the immutable compiled
+        # artifact used for features; its content-addressed blocker plan SHA
+        # is still the fact's exact decision-plan reference.
+        "plan": {
+            "plan_id": plan_id,
+            "plan_sha256": plan_sha256,
+            "plan_json": plan_json,
+        },
+        "intents": [],
+        "execution_version_vectors": [],
+        "no_execution_policy": no_execution_policy.to_dict(),
+    }
+    try:
+        from .delta_v2_training import build_stage_zero_delta_v2_training_fact
+
+        return build_stage_zero_delta_v2_training_fact(
+            conn,
+            compiled_plan=compiled_plan,
+            market_snapshot=market_snapshot,
+            atomic_bundle=atomic_bundle,
+            created_at_utc=created_at_utc,
+        )
+    except ContractError as exc:
+        raise AtomicLedgerError(str(exc)) from exc
 
 
 def _assert_training_fact_scope(
@@ -1223,12 +1400,13 @@ def _assert_existing_cycle_weather_fact_binding(
     """Fail closed if an idempotent replay has lost either immutable fact."""
 
     observation_row = conn.execute(
-        "SELECT observation_fact_id,content_sha256 FROM "
+        "SELECT observation_fact_id,settlement_timezone,content_sha256 FROM "
         "basket_target_observation_facts WHERE observation_id=?",
         (str(observation.get("observation_id") or ""),),
     ).fetchone()
     expected_observation = (
         str(observation.get("observation_fact_id") or ""),
+        str(observation.get("settlement_timezone") or ""),
         str(observation.get("content_sha256") or ""),
     )
     if (
@@ -1297,6 +1475,9 @@ def commit_target_atomic_bundle(
     if any(key not in bundle for key in required):
         raise AtomicLedgerError("atomic_bundle_incomplete")
     obs = dict(bundle["observation"])
+    obs["source_lane"] = _awc_source_lane(
+        "observation_source_lane", obs.get("source_lane")
+    )
     bound = dict(bundle["bound"])
     cycle = dict(bundle["cycle"])
     decision = dict(bundle["decision"])
@@ -1306,7 +1487,7 @@ def commit_target_atomic_bundle(
     if training_fact is not None and not isinstance(training_fact, Mapping):
         raise AtomicLedgerError("training_fact_mapping_required")
     created_at = _timestamp("bundle_created_at", bundle.get("created_at"))
-    cycle_timezone = _text(
+    cycle_timezone = _settlement_timezone(
         "cycle_settlement_timezone", cycle.get("settlement_timezone")
     )
     _assert_event_day_started(
@@ -1318,38 +1499,50 @@ def commit_target_atomic_bundle(
     # Do not trust a previously normalized mapping merely because it carries
     # a hash.  Recompute every content address at the write boundary so a
     # caller cannot mutate details after planning and still reuse a cycle ID.
+    observation_timezone = _settlement_timezone(
+        "observation_settlement_timezone", obs.get("settlement_timezone")
+    )
     obs_identity = {key: value for key, value in obs.items() if key not in {"observation_fact_id", "content_sha256"}}
     if obs.get("content_sha256") != _content_hash(OBSERVATION_SCHEMA, obs_identity):
         raise AtomicLedgerError("observation_content_address_drift")
+    if obs.get("observation_fact_id") != _derive_id("obsfact", obs_identity):
+        raise AtomicLedgerError("observation_fact_id_content_address_drift")
     bound_identity = {key: value for key, value in bound.items() if key not in {"bound_fact_id", "content_sha256"}}
     if bound.get("content_sha256") != _content_hash(BOUND_SCHEMA, bound_identity):
         raise AtomicLedgerError("bound_content_address_drift")
     plan_identity = {key: value for key, value in dict(bundle["plan"].get("plan_json") or {}).items() if key != "plan_id"}
-    if cycle.get("plan_sha256") != _content_hash(PLAN_SCHEMA, plan_identity):
-        raise AtomicLedgerError("plan_content_address_drift")
     plan_lineage = plan_identity.get("lineage")
     if not isinstance(plan_lineage, Mapping):
         raise AtomicLedgerError("target_atomic_commit_lineage_missing")
-    cycle_lane = _text("cycle_strategy_lane", cycle.get("strategy_lane")).lower()
-    if cycle_lane not in LANES:
-        raise AtomicLedgerError("strategy_lane_invalid")
+    plan_lineage = dict(plan_lineage)
+    plan_lineage["source_lane"] = _awc_source_lane(
+        "plan_lineage_source_lane", plan_lineage.get("source_lane")
+    )
+    plan_identity["lineage"] = plan_lineage
+    if cycle.get("plan_sha256") != _content_hash(PLAN_SCHEMA, plan_identity):
+        raise AtomicLedgerError("plan_content_address_drift")
+    cycle_lane = _basket_lane("cycle_strategy_lane", cycle.get("strategy_lane"))
     _assert_plan_lane_contract(
         lane=cycle_lane,
         plan=plan_identity,
         plan_lineage=plan_lineage,
         commit_boundary=True,
     )
-    plan_timezone = _text(
+    plan_timezone = _settlement_timezone(
         "plan_settlement_timezone", plan_identity.get("settlement_timezone")
     )
-    lineage_timezone = _text(
+    lineage_timezone = _settlement_timezone(
         "plan_lineage_settlement_timezone",
         plan_lineage.get("settlement_timezone"),
     )
     if (
         plan_timezone != lineage_timezone
+        or plan_timezone != observation_timezone
         or plan_timezone != cycle_timezone
-        or str(decision.get("settlement_timezone") or "").strip()
+        or _settlement_timezone(
+            "decision_settlement_timezone",
+            decision.get("settlement_timezone"),
+        )
         != cycle_timezone
     ):
         raise AtomicLedgerError("atomic_settlement_timezone_mismatch")
@@ -1595,12 +1788,25 @@ def commit_target_atomic_bundle(
                     "target_active_candidate_supersession_required"
                 )
 
-        if _assert_existing_or_absent(conn, "basket_target_observation_facts", "observation_id", obs["observation_id"], "content_sha256", obs["content_sha256"]):
-            pass
+        existing_observation = conn.execute(
+            "SELECT settlement_timezone,content_sha256 FROM "
+            "basket_target_observation_facts WHERE observation_id=?",
+            (obs["observation_id"],),
+        ).fetchone()
+        if existing_observation is not None:
+            if (
+                str(existing_observation[0] or "")
+                != obs["settlement_timezone"]
+                or str(existing_observation[1] or "")
+                != obs["content_sha256"]
+            ):
+                raise AtomicLedgerError(
+                    "basket_target_observation_facts_content_address_drift"
+                )
         else:
             conn.execute(
-                "INSERT INTO basket_target_observation_facts(observation_fact_id,observation_id,station_id,event_date,source_lane,report_type,raw_sha256,canonical_committed_at,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (obs["observation_fact_id"], obs["observation_id"], obs["station_id"], obs["event_date"], obs["source_lane"], obs["report_type"], obs["raw_sha256"], obs["canonical_committed_at"], obs["content_sha256"], created_at),
+                "INSERT INTO basket_target_observation_facts(observation_fact_id,observation_id,station_id,event_date,settlement_timezone,source_lane,report_type,raw_sha256,canonical_committed_at,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (obs["observation_fact_id"], obs["observation_id"], obs["station_id"], obs["event_date"], obs["settlement_timezone"], obs["source_lane"], obs["report_type"], obs["raw_sha256"], obs["canonical_committed_at"], obs["content_sha256"], created_at),
             )
         _fault(fault_after, "observation")
         if not _assert_existing_or_absent(conn, "basket_target_bound_facts", "bound_id", bound["bound_id"], "content_sha256", bound["content_sha256"]):
@@ -1676,6 +1882,8 @@ def commit_blocked_scope_decision(
     created_at_utc: str,
     strategy_lane: str = "basket",
     _pre_event_preselection_id: str = "",
+    _stage_zero_execution_anchor: Mapping[str, Any] | None = None,
+    _stage_zero_training_fact_authorized: bool = False,
 ) -> dict[str, Any]:
     """Persist a scope blocker without inventing execution facts.
 
@@ -1697,15 +1905,21 @@ def commit_blocked_scope_decision(
     timezone_name = _text(
         "blocked_settlement_timezone", settlement_timezone
     )
-    lane = _text("blocked_strategy_lane", strategy_lane).lower()
-    if lane not in LANES:
-        raise AtomicLedgerError("strategy_lane_invalid")
+    lane = _basket_lane("blocked_strategy_lane", strategy_lane)
     reasons = _reason_codes(reason_codes)
     if not reasons:
         raise AtomicLedgerError("blocked_decision_reason_missing")
     payload_details = _mapping("blocked_decision_details", details or {})
     created_at = _timestamp("created_at_utc", created_at_utc)
     preselection_id = str(_pre_event_preselection_id or "").strip()
+    stage_zero_anchor = _stage_zero_execution_anchor
+    stage_zero_training_authorized = _stage_zero_training_fact_authorized
+    if not isinstance(stage_zero_training_authorized, bool):
+        raise AtomicLedgerError("stage_zero_training_fact_authorization_invalid")
+    if preselection_id and stage_zero_anchor is not None:
+        raise AtomicLedgerError("blocked_decision_private_modes_conflict")
+    if stage_zero_training_authorized and stage_zero_anchor is None:
+        raise AtomicLedgerError("stage_zero_training_fact_anchor_missing")
     if preselection_id:
         if lane != "basket":
             raise AtomicLedgerError(
@@ -1802,6 +2016,12 @@ def commit_blocked_scope_decision(
     no_execution_json = canonical_json(no_execution_policy.to_dict())
 
     with _atomic_transaction(conn, operation="commit_blocked_scope_decision"):
+        if stage_zero_anchor is not None:
+            _assert_stage_zero_execution_anchor_current(
+                conn,
+                anchor=stage_zero_anchor,
+                created_at_utc=created_at,
+            )
         existing_cycle = conn.execute(
             "SELECT plan_id,plan_sha256,requested_reserve_usdc,state,settlement_timezone "
             "FROM basket_target_execution_cycles WHERE cycle_id=?",
@@ -1831,11 +2051,80 @@ def commit_blocked_scope_decision(
                 or existing_decision[5] is not None
             ):
                 raise AtomicLedgerError("blocked_cycle_decision_content_address_drift")
+            existing_training_fact = conn.execute(
+                "SELECT training_fact_id FROM basket_target_execution_version_vectors "
+                "WHERE cycle_id=?",
+                (cycle_id,),
+            ).fetchone()
+            if stage_zero_training_authorized and (
+                existing_training_fact is None
+                or existing_training_fact[0] is None
+            ):
+                # Historical stage-zero cycles were committed before the
+                # pre-final d2fact contract existed.  They are immutable;
+                # never attach a fact by UPDATE during a replay.
+                _assert_existing_blocked_no_execution_vector(
+                    conn,
+                    cycle_id=cycle_id,
+                    decision_id=decision_id,
+                    expected_policy=no_execution_policy,
+                )
+                return {
+                    "schema": SCHEMA,
+                    "state": "already_committed_legacy_no_training_fact",
+                    "idempotent": True,
+                    "cycle_id": cycle_id,
+                    "decision_id": decision_id,
+                    "intent_count": 0,
+                    "reserved_amount_usdc": 0.0,
+                    "orders_submitted": 0,
+                    "places_orders": False,
+                    "calls_order_gateway": False,
+                    "live_submit_authorized": False,
+                    "execution_version_vector_count": 1,
+                    "training_fact_state": "legacy_not_retrofitted",
+                }
+            training_fact = None
+            if stage_zero_training_authorized:
+                training_fact = _build_stage_zero_training_fact(
+                    conn,
+                    anchor=stage_zero_anchor,
+                    cycle_id=cycle_id,
+                    plan_id=plan_id,
+                    plan_sha256=plan_sha,
+                    decision_id=decision_id,
+                    decision_sha256=decision_sha,
+                    station_id=station,
+                    event_date=day,
+                    settlement_timezone=timezone_name,
+                    no_execution_policy=no_execution_policy,
+                    created_at_utc=created_at,
+                )
             _assert_existing_blocked_no_execution_vector(
                 conn,
                 cycle_id=cycle_id,
                 decision_id=decision_id,
                 expected_policy=no_execution_policy,
+                expected_training_fact_id=(
+                    str(training_fact.get("fact_id") or "")
+                    if training_fact is not None
+                    else None
+                ),
+            )
+            _assert_existing_cycle_training_fact_binding(
+                conn,
+                cycle_id=cycle_id,
+                decision_id=decision_id,
+                training_fact=training_fact,
+                vector_rows=[
+                    {
+                        "training_fact_id": (
+                            str(training_fact.get("fact_id") or "")
+                            if training_fact is not None
+                            else None
+                        ),
+                    }
+                ],
             )
             return {
                 "schema": SCHEMA,
@@ -1850,6 +2139,9 @@ def commit_blocked_scope_decision(
                 "calls_order_gateway": False,
                 "live_submit_authorized": False,
                 "execution_version_vector_count": 1,
+                "training_fact_state": (
+                    "already_committed" if training_fact is not None else None
+                ),
             }
 
         if preselection_id:
@@ -1880,6 +2172,54 @@ def commit_blocked_scope_decision(
         ).fetchone()
         if conflicting_plan is not None:
             raise AtomicLedgerError("blocked_plan_id_collision")
+        training_fact = None
+        if stage_zero_training_authorized:
+            # Build and compare before writing the cycle.  The v2 scope key
+            # intentionally excludes WS transport refreshes, so a new quote
+            # keepalive with the same economic decision must not become a
+            # second immutable d2 fact (nor a new no-execution tick row).
+            training_fact = _build_stage_zero_training_fact(
+                conn,
+                anchor=stage_zero_anchor,
+                cycle_id=cycle_id,
+                plan_id=plan_id,
+                plan_sha256=plan_sha,
+                decision_id=decision_id,
+                decision_sha256=decision_sha,
+                station_id=station,
+                event_date=day,
+                settlement_timezone=timezone_name,
+                no_execution_policy=no_execution_policy,
+                created_at_utc=created_at,
+            )
+            existing_scope = conn.execute(
+                "SELECT fact_id,content_sha256,cycle_id,decision_id "
+                "FROM basket_policy_training_fact WHERE decision_scope_key=?",
+                (str(training_fact.get("decision_scope_key") or ""),),
+            ).fetchone()
+            if existing_scope is not None:
+                expected_fact_id = str(training_fact.get("fact_id") or "")
+                expected_fact_sha = str(training_fact.get("content_sha256") or "")
+                if (
+                    str(existing_scope[0] or "") != expected_fact_id
+                    or str(existing_scope[1] or "") != expected_fact_sha
+                ):
+                    return {
+                        "schema": SCHEMA,
+                        "state": "already_committed_decision_scope",
+                        "idempotent": True,
+                        "cycle_id": str(existing_scope[2] or ""),
+                        "decision_id": str(existing_scope[3] or ""),
+                        "intent_count": 0,
+                        "reserved_amount_usdc": 0.0,
+                        "orders_submitted": 0,
+                        "places_orders": False,
+                        "calls_order_gateway": False,
+                        "live_submit_authorized": False,
+                        "execution_version_vector_count": 1,
+                        "training_fact_state": "already_committed_decision_scope",
+                        "training_fact_id": str(existing_scope[0] or ""),
+                    }
         conn.execute(
             "INSERT INTO basket_target_execution_cycles("
             "cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,"
@@ -1905,7 +2245,11 @@ def commit_blocked_scope_decision(
                 None,
                 cycle_id,
                 decision_id,
-                None,
+                (
+                    str(training_fact.get("fact_id") or "")
+                    if training_fact is not None
+                    else None
+                ),
                 "NO_EXECUTION",
                 None,
                 None,
@@ -1915,6 +2259,9 @@ def commit_blocked_scope_decision(
                 created_at,
             ),
         )
+        training_state = None
+        if training_fact is not None:
+            training_state = _insert_training_fact(conn, training_fact)
     return {
         "schema": SCHEMA,
         "state": "committed",
@@ -1928,7 +2275,461 @@ def commit_blocked_scope_decision(
         "calls_order_gateway": False,
         "live_submit_authorized": False,
         "execution_version_vector_count": 1,
+        "training_fact_state": training_state,
     }
+
+
+def _assert_stage_zero_execution_anchor_current(
+    conn: sqlite3.Connection,
+    *,
+    anchor: Mapping[str, Any],
+    created_at_utc: str,
+) -> None:
+    """Recheck no-execution probability and execution evidence under write lock."""
+
+    if anchor.get("schema") != STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA:
+        raise AtomicLedgerError("stage_zero_execution_anchor_schema_invalid")
+    supplied_sha = _sha(
+        "stage_zero_execution_anchor_sha256",
+        anchor.get("content_sha256"),
+    )
+    if supplied_sha != content_sha256({
+        key: value for key, value in anchor.items() if key != "content_sha256"
+    }):
+        raise AtomicLedgerError("stage_zero_execution_anchor_sha_mismatch")
+    evaluation_at = _timestamp_instant(
+        "stage_zero_execution_evaluation_at_utc",
+        anchor.get("evaluation_at_utc"),
+    )
+    created_at = _timestamp_instant(
+        "stage_zero_execution_created_at_utc", created_at_utc
+    )
+    if evaluation_at != created_at:
+        raise AtomicLedgerError("stage_zero_execution_clock_mismatch")
+    probability = _mapping(
+        "stage_zero_execution_probability_envelope",
+        anchor.get("probability_envelope"),
+    )
+    stage = _text(
+        "stage_zero_execution_probability_stage",
+        probability.get("stage"),
+    )
+    if stage not in {"P0", "P0-M"}:
+        raise AtomicLedgerError("stage_zero_execution_probability_stage_invalid")
+    checkpoint_id = _text(
+        "stage_zero_execution_checkpoint_id",
+        probability.get("checkpoint_id"),
+    )
+    envelope_id = _text(
+        "stage_zero_execution_envelope_id",
+        probability.get("envelope_id"),
+    )
+    if envelope_id != checkpoint_id:
+        raise AtomicLedgerError(
+            "stage_zero_execution_envelope_checkpoint_mismatch"
+        )
+    station_id = _text(
+        "stage_zero_execution_station_id", anchor.get("station_id")
+    )
+    event_date = _date(
+        "stage_zero_execution_event_date", anchor.get("event_date")
+    )
+    settlement_timezone = _text(
+        "stage_zero_execution_settlement_timezone",
+        anchor.get("settlement_timezone"),
+    )
+    try:
+        day_state = event_day_window(
+            event_date,
+            as_of_utc=created_at_utc,
+            target_timezone=settlement_timezone,
+        )["state"]
+    except Exception as exc:
+        raise AtomicLedgerError(
+            "stage_zero_execution_event_window_invalid"
+        ) from exc
+    if day_state != "open":
+        raise AtomicLedgerError("stage_zero_execution_event_day_not_open")
+    probability_sha = _sha(
+        "stage_zero_execution_probability_sha256",
+        probability.get("content_sha256"),
+    )
+    row = conn.execute(
+        "SELECT stage,station_id,event_date,settlement_timezone,"
+        "decision_at_utc,fresh_until_utc,content_sha256,state "
+        "FROM basket_probability_envelope "
+        "WHERE envelope_id=? AND checkpoint_id=?",
+        (envelope_id, checkpoint_id),
+    ).fetchone()
+    if row is None:
+        raise AtomicLedgerError("stage_zero_execution_probability_missing")
+    try:
+        anchor_decision_at = _timestamp_instant(
+            "stage_zero_execution_anchor_probability_decision_at",
+            probability.get("decision_at_utc"),
+        )
+        anchor_fresh_until = _timestamp_instant(
+            "stage_zero_execution_anchor_probability_fresh_until",
+            probability.get("fresh_until_utc"),
+        )
+        row_decision_at = _timestamp_instant(
+            "stage_zero_execution_row_probability_decision_at", row[4]
+        )
+        row_fresh_until = _timestamp_instant(
+            "stage_zero_execution_row_probability_fresh_until", row[5]
+        )
+    except AtomicLedgerError as exc:
+        raise AtomicLedgerError("stage_zero_execution_probability_drift") from exc
+    if (
+        str(row[0]) != stage
+        or str(row[1]) != station_id
+        or str(row[2]) != event_date
+        or str(row[3]) != settlement_timezone
+        or row_decision_at != anchor_decision_at
+        or row_fresh_until != anchor_fresh_until
+        or str(row[6]) != probability_sha
+        or str(row[7]) != "COMMITTED"
+        or row_decision_at > created_at
+        or created_at >= row_fresh_until
+    ):
+        raise AtomicLedgerError("stage_zero_execution_probability_drift")
+    # A P1 materialization is final authority even when its own freshness
+    # window has elapsed.  This check deliberately has no freshness/as-of
+    # predicate: it closes the P1-arrives-between-compile-and-commit race and
+    # forbids an old P0/P0-M anchor from reappearing after final authority.
+    p1 = conn.execute(
+        "SELECT 1 FROM basket_probability_envelope "
+        "WHERE station_id=? AND event_date=? AND settlement_timezone=? "
+        "AND stage='P1' AND state='COMMITTED' LIMIT 1",
+        (station_id, event_date, settlement_timezone),
+    ).fetchone()
+    if p1 is not None:
+        raise AtomicLedgerError("stage_zero_execution_higher_stage_visible")
+    if stage == "P0":
+        try:
+            p0m = _stage_zero_visible_probability_rows(
+                conn,
+                station_id=station_id,
+                event_date=event_date,
+                settlement_timezone=settlement_timezone,
+                stage="P0-M",
+                as_of=created_at,
+            )
+        except AtomicLedgerError as exc:
+            raise AtomicLedgerError(
+                "stage_zero_execution_higher_stage_visible"
+            ) from exc
+        if p0m:
+            raise AtomicLedgerError("stage_zero_execution_higher_stage_visible")
+    try:
+        same_stage = _stage_zero_visible_probability_rows(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            settlement_timezone=settlement_timezone,
+            stage=stage,
+            as_of=created_at,
+        )
+    except AtomicLedgerError as exc:
+        raise AtomicLedgerError("stage_zero_execution_not_current_stage") from exc
+    latest_same_stage_at = max(
+        (decision_at for _, decision_at in same_stage), default=None
+    )
+    current_same_stage = (
+        [
+            row_checkpoint_id
+            for row_checkpoint_id, decision_at in same_stage
+            if decision_at == latest_same_stage_at
+        ]
+        if latest_same_stage_at is not None
+        else []
+    )
+    if (
+        len(current_same_stage) != 1
+        or current_same_stage[0] != checkpoint_id
+    ):
+        raise AtomicLedgerError("stage_zero_execution_not_current_stage")
+
+    regime_sha = _sha(
+        "stage_zero_execution_regime_sha256",
+        anchor.get("regime_artifact_sha256"),
+    )
+    regime = conn.execute(
+        "SELECT valid_from_utc,valid_until_utc FROM basket_regime_artifact WHERE station_id=? "
+        "AND event_date=? AND stage=? AND checkpoint_id=? "
+        "AND probability_sha256=? AND content_sha256=? AND state='COMMITTED' "
+        "LIMIT 1",
+        (
+            station_id, event_date, stage, checkpoint_id,
+            probability_sha, regime_sha,
+        ),
+    ).fetchone()
+    try:
+        regime_valid_from = _timestamp_instant(
+            "stage_zero_execution_regime_valid_from",
+            regime[0] if regime is not None else None,
+        )
+        regime_valid_until = _timestamp_instant(
+            "stage_zero_execution_regime_valid_until",
+            regime[1] if regime is not None else None,
+        )
+    except AtomicLedgerError:
+        raise AtomicLedgerError("stage_zero_execution_regime_drift") from None
+    if (
+        regime is None
+        or regime_valid_from > created_at
+        or created_at >= regime_valid_until
+    ):
+        raise AtomicLedgerError("stage_zero_execution_regime_drift")
+
+    ws = _mapping(
+        "stage_zero_execution_official_ws",
+        anchor.get("official_ws_snapshot"),
+    )
+    ws_row = conn.execute(
+        "SELECT quote_source,quote_observed_at,quote_expires_at,state "
+        "FROM basket_official_ws_snapshot WHERE snapshot_id=? "
+        "AND station_id=? AND event_date=? AND content_sha256=?",
+        (
+            _text("stage_zero_execution_ws_id", ws.get("snapshot_id")),
+            station_id,
+            event_date,
+            _sha("stage_zero_execution_ws_sha", ws.get("content_sha256")),
+        ),
+    ).fetchone()
+    # ``quote_observed_at`` is publisher evidence and may retain millisecond
+    # precision in SQLite.  The compiler normalizes anchor timestamps through
+    # ``datetime.isoformat()``, which expands the same instant to microseconds.
+    # Compare instants here, while the immutable snapshot id/content hash
+    # above remain the exact evidence binding.  Do not downgrade this to a
+    # latest-snapshot lookup: a different WS generation must still fail.
+    try:
+        anchor_quote_observed_at = _timestamp_instant(
+            "stage_zero_execution_anchor_quote_observed_at",
+            ws.get("quote_observed_at"),
+        )
+        anchor_quote_expires_at = _timestamp_instant(
+            "stage_zero_execution_anchor_quote_expires_at",
+            ws.get("quote_expires_at"),
+        )
+        row_quote_observed_at = _timestamp_instant(
+            "stage_zero_execution_row_quote_observed_at",
+            ws_row[1] if ws_row is not None else None,
+        )
+        row_quote_expires_at = _timestamp_instant(
+            "stage_zero_execution_row_quote_expires_at",
+            ws_row[2] if ws_row is not None else None,
+        )
+    except AtomicLedgerError:
+        raise AtomicLedgerError("stage_zero_execution_official_ws_drift")
+    if (
+        ws_row is None
+        or str(ws_row[0]).upper() != "OFFICIAL_CLOB_WS"
+        or row_quote_observed_at != anchor_quote_observed_at
+        or row_quote_expires_at != anchor_quote_expires_at
+        or str(ws_row[3]) != "COMMITTED"
+        or row_quote_observed_at > created_at
+        or created_at >= row_quote_expires_at
+    ):
+        raise AtomicLedgerError("stage_zero_execution_official_ws_drift")
+
+    for name, table, id_column, anchor_key, completeness_column in (
+        (
+            "inventory", "basket_confirmed_inventory_snapshot",
+            "inventory_snapshot_id", "inventory_snapshot", "complete",
+        ),
+        (
+            "order_state", "basket_order_state_snapshot",
+            "order_state_snapshot_id", "order_state_snapshot", "known",
+        ),
+    ):
+        snapshot = _mapping(
+            f"stage_zero_execution_{name}", anchor.get(anchor_key)
+        )
+        found = conn.execute(
+            f"SELECT observed_at,{completeness_column},state FROM {table} "
+            f"WHERE {id_column}=? AND station_id=? AND event_date=? "
+            "AND content_sha256=?",
+            (
+                _text(
+                    f"stage_zero_execution_{name}_id",
+                    snapshot.get(id_column),
+                ),
+                station_id,
+                event_date,
+                _sha(
+                    f"stage_zero_execution_{name}_sha256",
+                    snapshot.get("content_sha256"),
+                ),
+            ),
+        ).fetchone()
+        try:
+            snapshot_observed_at = _timestamp_instant(
+                f"stage_zero_execution_{name}_anchor_observed_at",
+                snapshot.get("observed_at"),
+            )
+            found_observed_at = _timestamp_instant(
+                f"stage_zero_execution_{name}_row_observed_at",
+                found[0] if found is not None else None,
+            )
+        except AtomicLedgerError:
+            raise AtomicLedgerError(
+                f"stage_zero_execution_{name}_drift"
+            ) from None
+        if (
+            found is None
+            or found_observed_at != snapshot_observed_at
+            or int(found[1]) != 1
+            or str(found[2]) != "COMMITTED"
+            or found_observed_at > created_at
+        ):
+            raise AtomicLedgerError(
+                f"stage_zero_execution_{name}_drift"
+            )
+
+
+def commit_stage_zero_execution_scope_decision(
+    conn: sqlite3.Connection,
+    *,
+    anchor: Mapping[str, Any],
+    created_at_utc: str,
+    training_fact_authorized: bool = False,
+    forward_evidence_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Atomically commit one open-day NO_EXECUTION decision."""
+
+    if not isinstance(anchor, Mapping):
+        raise AtomicLedgerError("stage_zero_execution_anchor_mapping_required")
+    if not isinstance(training_fact_authorized, bool):
+        raise AtomicLedgerError("stage_zero_training_fact_authorization_invalid")
+    if forward_evidence_binding is not None and not isinstance(
+        forward_evidence_binding, Mapping
+    ):
+        raise AtomicLedgerError("stage_zero_forward_evidence_binding_mapping_required")
+    probability = _mapping(
+        "stage_zero_execution_probability_envelope",
+        anchor.get("probability_envelope"),
+    )
+    ws = _mapping(
+        "stage_zero_execution_official_ws_snapshot",
+        anchor.get("official_ws_snapshot"),
+    )
+    inventory = _mapping(
+        "stage_zero_execution_inventory_snapshot",
+        anchor.get("inventory_snapshot"),
+    )
+    order_state = _mapping(
+        "stage_zero_execution_order_state_snapshot",
+        anchor.get("order_state_snapshot"),
+    )
+    cash_phase = _mapping(
+        "stage_zero_execution_cash_phase", anchor.get("cash_phase")
+    )
+    details = {
+        "stage_zero_execution_version": 1,
+        "anchor_sha256": _sha(
+            "stage_zero_execution_anchor_sha256",
+            anchor.get("content_sha256"),
+        ),
+        "probability_stage": str(probability.get("stage") or ""),
+        "checkpoint_id": str(probability.get("checkpoint_id") or ""),
+        "probability_sha256": str(probability.get("content_sha256") or ""),
+        "regime_artifact_sha256": str(
+            anchor.get("regime_artifact_sha256") or ""
+        ),
+        "official_ws_snapshot_id": str(ws.get("snapshot_id") or ""),
+        "official_ws_snapshot_sha256": str(ws.get("content_sha256") or ""),
+        "inventory_snapshot_id": str(
+            inventory.get("inventory_snapshot_id") or ""
+        ),
+        "inventory_snapshot_sha256": str(
+            inventory.get("content_sha256") or ""
+        ),
+        "order_state_snapshot_id": str(
+            order_state.get("order_state_snapshot_id") or ""
+        ),
+        "order_state_snapshot_sha256": str(
+            order_state.get("content_sha256") or ""
+        ),
+        "station_policy_sha256": str(
+            anchor.get("station_policy_sha256") or ""
+        ),
+        "cash_policy_decision_sha256": str(
+            anchor.get("cash_policy_decision_sha256") or ""
+        ),
+        "cash_phase": str(cash_phase.get("phase") or ""),
+        "delta_v2_artifact_sha256": str(
+            anchor.get("delta_v2_artifact_sha256") or ""
+        ),
+        "delta_v2_evaluation_sha256": str(
+            anchor.get("delta_v2_evaluation_sha256") or ""
+        ),
+        "compiled_plan_sha256": str(
+            anchor.get("compiled_plan_sha256") or ""
+        ),
+        "stage_zero_execution_anchor": dict(anchor),
+        "final_authority": "P1",
+        "capital_authorized": False,
+        "intents_written": 0,
+        "reservations_written": 0,
+        "training_facts_written": int(training_fact_authorized),
+        "execution_mode": "production_no_live",
+        "calls_order_gateway": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+    if training_fact_authorized:
+        compiled_plan = _mapping(
+            "stage_zero_training_compiled_plan", anchor.get("compiled_plan")
+        )
+        audit = _mapping(
+            "stage_zero_training_delta_v2_audit",
+            compiled_plan.get("delta_v2_audit"),
+        )
+        if audit.get("authorized") is not True:
+            raise AtomicLedgerError("stage_zero_training_delta_v2_not_authorized")
+        if forward_evidence_binding is None:
+            raise AtomicLedgerError("stage_zero_forward_evidence_binding_missing")
+        binding = dict(forward_evidence_binding)
+        if (
+            binding.get("schema")
+            != "bayes_basket_target_forward_evidence_binding_v1"
+            or str(binding.get("station_id") or "")
+            != str(anchor.get("station_id") or "")
+            or str(binding.get("event_date") or "")
+            != str(anchor.get("event_date") or "")
+            or str(binding.get("settlement_timezone") or "")
+            != str(anchor.get("settlement_timezone") or "")
+            or str(binding.get("probability_stage") or "")
+            != str(probability.get("stage") or "")
+            or str(binding.get("decision_at_utc") or "")
+            != str(anchor.get("evaluation_at_utc") or "")
+        ):
+            raise AtomicLedgerError("stage_zero_forward_evidence_binding_drift")
+        supplied_binding_sha = _sha(
+            "stage_zero_forward_evidence_binding_sha256",
+            binding.get("content_sha256"),
+        )
+        if supplied_binding_sha != content_sha256({
+            key: value for key, value in binding.items()
+            if key != "content_sha256"
+        }):
+            raise AtomicLedgerError("stage_zero_forward_evidence_binding_sha_mismatch")
+        details["delta_v2_authorized"] = True
+        details["forward_observation_status"] = "ELIGIBLE"
+        details["forward_evidence_binding"] = binding
+    return commit_blocked_scope_decision(
+        conn,
+        station_id=str(anchor.get("station_id") or ""),
+        event_date=str(anchor.get("event_date") or ""),
+        settlement_timezone=str(anchor.get("settlement_timezone") or ""),
+        strategy_lane="basket",
+        reason_codes=["p1_final_authority_pending"],
+        details=details,
+        created_at_utc=created_at_utc,
+        _stage_zero_execution_anchor=anchor,
+        _stage_zero_training_fact_authorized=training_fact_authorized,
+    )
 
 
 def commit_preliminary_scope_decision(
@@ -2362,9 +3163,7 @@ def arbitrate_capital_requests(
         if request_id in seen:
             raise AtomicLedgerError("capital_request_duplicate")
         seen.add(request_id)
-        lane = _text(f"request_{index}_lane", raw.get("strategy_lane")).lower()
-        if lane not in LANES:
-            raise AtomicLedgerError("capital_request_lane_invalid")
+        lane = _basket_lane(f"request_{index}_lane", raw.get("strategy_lane"))
         amount = _number(f"request_{index}_amount", raw.get("amount_usdc"), positive=True)
         try:
             priority = float(raw.get("priority", 0.0))
@@ -2419,6 +3218,7 @@ __all__ = [
     "supersede_prepared_cycle_and_commit_bundle",
     "commit_blocked_scope_decision",
     "commit_preliminary_scope_decision",
+    "commit_stage_zero_execution_scope_decision",
     "commit_target_atomic_bundle",
     "initialize_capital_pool",
     "record_writer_lock_wait",

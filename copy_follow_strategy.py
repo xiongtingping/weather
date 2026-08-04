@@ -22,7 +22,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPSHandler, Request, ProxyHandler, build_opener, urlopen
 from zoneinfo import ZoneInfo
 
-from reported_trajectory_no_runtime import parse_bucket_interval
+from weather_basket_yes_runtime import parse_bucket_interval
 
 
 SCHEMA_VERSION = "weather_copy_follow_v1"
@@ -125,7 +125,7 @@ def _default_activity_opener(request: Request, *, timeout: float):
         context = ssl.create_default_context()
     # The interactive shell can retain a stale local proxy value after Clash
     # Verge changes ports. Resolve only the configured endpoint plus canonical
-    # mixed port 7897 and keep normal TLS verification; this is a transport
+    # mixed port 1082 and keep normal TLS verification; this is a transport
     # repair, not a data or selection fallback. Explicit non-local proxies
     # remain untouched.
     proxy_keys = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
@@ -138,7 +138,7 @@ def _default_activity_opener(request: Request, *, timeout: float):
     except (TypeError, ValueError):
         host, port = "", 0
     if host in {"127.0.0.1", "localhost", "::1"}:
-        candidates = [port, 7897]
+        candidates = [port, 1082]
         for candidate in dict.fromkeys(item for item in candidates if item > 0):
             try:
                 with socket.create_connection(("127.0.0.1", candidate), timeout=min(0.25, max(0.05, timeout / 10.0))):

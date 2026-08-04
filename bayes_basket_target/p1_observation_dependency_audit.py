@@ -47,6 +47,28 @@ def _lane_literals(node: ast.AST) -> set[str]:
     return values
 
 
+def _is_awc_global_gate(node: ast.Compare) -> bool:
+    """Allow only the deny-by-default global AWC production boundary.
+
+    The registry still supplies station scope and settlement time; the source
+    policy is now globally AWC-only.  A generic one-lane equality test remains
+    prohibited, but this exact set inequality is the explicit fail-closed
+    assertion that rejects AMSC or mixed registry rows before P1 reads them.
+    """
+
+    return (
+        isinstance(node.left, ast.Name)
+        and node.left.id == "lanes"
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.NotEq)
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Set)
+        and len(node.comparators[0].elts) == 1
+        and isinstance(node.comparators[0].elts[0], ast.Constant)
+        and str(node.comparators[0].elts[0].value).strip().upper() == "AWC"
+    )
+
+
 def audit_p1_observation_dependencies(
     *,
     project_root: Path | None = None,
@@ -62,6 +84,7 @@ def audit_p1_observation_dependencies(
     )
     station_hits: list[dict[str, object]] = []
     single_lane_hits: list[dict[str, object]] = []
+    awc_global_gate_hits: list[dict[str, object]] = []
     syntax_hits: list[dict[str, object]] = []
     missing_files: list[str] = []
     scanned: list[str] = []
@@ -114,9 +137,17 @@ def audit_p1_observation_dependencies(
                 continue
             literals = _lane_literals(node)
             # Validation against the complete formal lane set is required.
-            # A comparison naming only one lane is the forbidden hard-coded
-            # AMSC/AWC inclusion or exclusion gate.
+            # A comparison naming only one lane is normally the forbidden
+            # hard-coded source inclusion/exclusion gate.  The one exception
+            # is the explicit deny-by-default all-AWC production boundary.
             if len(literals) == 1:
+                if _is_awc_global_gate(node):
+                    awc_global_gate_hits.append({
+                        "file": relative,
+                        "line": int(getattr(node, "lineno", 0)),
+                        "expression": ast.unparse(node),
+                    })
+                    continue
                 single_lane_hits.append({
                     "file": relative,
                     "line": int(getattr(node, "lineno", 0)),
@@ -134,6 +165,7 @@ def audit_p1_observation_dependencies(
 
     station_hits = _dedupe(station_hits)
     single_lane_hits = _dedupe(single_lane_hits)
+    awc_global_gate_hits = _dedupe(awc_global_gate_hits)
     syntax_hits = _dedupe(syntax_hits)
     closed = not (
         station_hits
@@ -147,6 +179,8 @@ def audit_p1_observation_dependencies(
         "missing_files": sorted(missing_files),
         "hardcoded_station_hits": station_hits,
         "single_lane_filter_hits": single_lane_hits,
+        "awc_global_gate_hits": awc_global_gate_hits,
+        "awc_global_gate_enforced": bool(awc_global_gate_hits),
         "syntax_hits": syntax_hits,
         "registry_scoped_p1": closed,
         "writes_production_db": False,

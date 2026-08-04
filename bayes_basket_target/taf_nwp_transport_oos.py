@@ -33,12 +33,17 @@ from .contracts import (
     content_sha256,
 )
 from .resource_bounds import (
+    MIB,
     MAX_JSON_INPUT_BYTES,
     assert_process_memory_budget,
     load_bounded_json,
 )
 from .settlement_time import settlement_day_window
 from .taf_revision import TafRevisionArtifact
+from .taf_oos_contract import (
+    HISTORICAL_OOS_TEMPORAL_SCOPE,
+    assert_historical_taf_oos,
+)
 
 
 SCHEMA = "bayes_basket_taf_nwp_transport_oos_report_v1"
@@ -50,7 +55,7 @@ MIN_TRANSPORT_SAMPLE_N = 24
 NESTED_MIN_TRAIN_DAYS = 3
 MAX_ROWS = 366
 MAX_REFERENCE_FILES = 64
-MAX_TOTAL_INPUT_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_INPUT_BYTES = 256 * MIB
 MAX_REFERENCE_FILE_BYTES = 16 * 1024 * 1024
 MIN_PROBABILITY = 1e-12
 
@@ -756,6 +761,23 @@ def evaluate_transport_oos(
         if not all(isinstance(item, Mapping) for item in (truth, window, taf, nwp)):
             raise ContractError("transport_sample_fields_incomplete")
         truth_closed = _utc("transport_truth_closed_at", window.get("end_utc"))
+        temporal = assert_historical_taf_oos(
+            sample,
+            event_date=event_date,
+            truth_closed_at=truth_closed,
+            transport_values=tuple(
+                (nwp.get("transport_provider_ids") or [])
+                if isinstance(nwp.get("transport_provider_ids"), list)
+                else tuple(
+                    str(item.get("provider_id") or item.get("transport_provider_id") or "")
+                    for item in (nwp.get("model_rows") or [])
+                    if isinstance(item, Mapping)
+                )
+            ) + (taf.get("source_class"),),
+            name="transport",
+        )
+        if str(taf.get("source_class") or "") == "official_forward_native_receipt":
+            raise ContractError("transport_forward_taf_not_oos")
         prediction = predictions.get(key)
         if prediction is None:
             excluded.append({
@@ -811,6 +833,7 @@ def evaluate_transport_oos(
             "crossfit_base_mean_c": crossfit_base_mean,
             "historical_model_forecasts_c": forecasts,
             "taf": dict(taf),
+            **temporal,
         })
         assert_process_memory_budget()
 
@@ -1100,6 +1123,7 @@ def evaluate_transport_oos(
             "calls_order_gateway": False,
             "places_orders": False,
         },
+        "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
     }
     return {
         **report_identity,

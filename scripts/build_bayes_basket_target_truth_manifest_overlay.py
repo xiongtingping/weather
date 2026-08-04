@@ -75,10 +75,11 @@ def build(
                 f"truth_manifest_overlay_dataset_shape_invalid:{station}"
             )
         authority = str(dataset.get("label_authority") or "")
-        if authority not in {
-            "FORMAL_STATION_LANE_TRUTH",
-            "TEMPORARY_AWC_CALIBRATION_LABEL",
-        }:
+        if authority == "TEMPORARY_AWC_CALIBRATION_LABEL":
+            raise ContractError(
+                f"truth_manifest_overlay_temporary_awc_retired:{station}"
+            )
+        if authority != "FORMAL_STATION_LANE_TRUTH":
             raise ContractError(
                 f"truth_manifest_overlay_authority_invalid:{station}"
             )

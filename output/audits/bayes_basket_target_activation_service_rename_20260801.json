@@ -1,0 +1,73 @@
+{
+  "activated_at": "2026-08-01T11:05:09.585Z",
+  "activation_contract_sha256": "c0d294d288b82d93fdb5857116e64913337778e5f7f4af4b77599c6887ed2e61",
+  "activation_path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+  "activation_update_mode": "quiescent_writer",
+  "backup": {
+    "bytes": 1573072896,
+    "free_bytes_before": 37287673856,
+    "path": "/Users/xiong/weather/data/bayes_basket_target_ssot.activation_pre_service_rename_20260801.db",
+    "quick_check": "ok",
+    "source_bytes": 1552130048,
+    "source_wal_bytes": 138184832
+  },
+  "backup_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.activation_pre_service_rename_20260801.db",
+  "calls_order_gateway": false,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "execution_mode": "production_no_live",
+  "generation": 12,
+  "live_decision_write_authorized": false,
+  "live_submit_authorized": false,
+  "online_no_live_guard": null,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "receipt_sha256": "eb134daeff17ed5b3c1d5ea079898f01fa53c3338ff20e34cf9c969b115df345",
+  "schema": "bayes_basket_target_no_live_activation_apply_v1",
+  "writer_quiescence": {
+    "all_core_services_absent": null,
+    "approved_read_only_process_hits": [],
+    "boundary": {
+      "approved_read_only_handles_may_remain": true,
+      "calls_order_gateway": false,
+      "database_scope": "isolated_target_no_live",
+      "places_orders": false,
+      "read_only_probe": true,
+      "reported_service_loaded": false,
+      "reported_service_targets_database": false,
+      "reported_target_writer_absent": true,
+      "stops_services": false,
+      "system_service_residue_absent": true,
+      "target_database_handles_absent": true,
+      "unapproved_target_database_handles_absent": true,
+      "unrelated_core_services_may_run": true,
+      "writes_production_db": false
+    },
+    "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+    "database_identity": {
+      "device": 16777233,
+      "inode": 1235462603,
+      "mtime_ns": 1785581132730434584,
+      "size_bytes": 1552130048
+    },
+    "observed_at_utc": "2026-08-01T11:04:35Z",
+    "probe_errors": [],
+    "probe_mode": "isolated_target_database_scope",
+    "quiescent": true,
+    "receipt_sha256": "1a8e7fe11f2a6a06814787c0aa3974ce8566a1197aa360d449f882208df1bf2c",
+    "schema": "bayes_basket_target_writer_quiescence_receipt_v4",
+    "service_states": {
+      "system": {
+        "com.weather.clob_order_service": false,
+        "com.weather.market_ws": false,
+        "com.weather.weather_basket_yes": false
+      },
+      "user": {
+        "com.weather.clob_order_service": false,
+        "com.weather.market_ws": false,
+        "com.weather.weather_basket_yes": false
+      }
+    },
+    "writer_process_hits": []
+  },
+  "writes_orders": false
+}

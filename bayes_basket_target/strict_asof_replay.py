@@ -142,6 +142,26 @@ def _target_bounds(event_date: date, timezone_name: str) -> tuple[datetime, date
     return start, start + timedelta(days=1)
 
 
+def _station_timezone(
+    station_id: str,
+    *,
+    target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
+) -> str:
+    """Resolve registry settlement timezone without collapsing station scope."""
+
+    if station_timezone_map is not None:
+        value = str(station_timezone_map.get(station_id) or "").strip()
+        if not value:
+            raise ContractError("station_timezone_missing:" + station_id)
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ContractError("station_timezone_invalid:" + station_id) from exc
+        return value
+    return target_timezone
+
+
 def _maturity_key(run_initialization_utc: datetime, event_date: date, timezone_name: str) -> str:
     target_start, _ = _target_bounds(event_date, timezone_name)
     _, target_end = _target_bounds(event_date, timezone_name)
@@ -215,6 +235,7 @@ def materialize_model_station_days(
     hourly_rows: Iterable[Mapping[str, Any]],
     *,
     target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Aggregate official hourly model rows into strict-as-of station/day runs.
 
@@ -230,6 +251,11 @@ def materialize_model_station_days(
         if not isinstance(raw, Mapping):
             raise ContractError("model_row_mapping_required")
         station_id = _text("station_id", raw.get("station_id"))
+        station_timezone = _station_timezone(
+            station_id,
+            target_timezone=target_timezone,
+            station_timezone_map=station_timezone_map,
+        )
         event_date = _local_date("event_date", raw.get("event_date"))
         provider_id = _text("provider_id", raw.get("provider_id"))
         if provider_id not in ALLOWED_MODEL_PROVIDERS:
@@ -239,10 +265,10 @@ def materialize_model_station_days(
             raise ContractError("aggregator_prospective_not_allowed")
         run_init = _timestamp("model_run_initialization_utc", raw.get("model_run_initialization_utc"))
         valid_time = _timestamp("valid_time_utc", raw.get("valid_time_utc"))
-        target_start, target_end = _target_bounds(event_date, target_timezone)
+        target_start, target_end = _target_bounds(event_date, station_timezone)
         if not target_start <= valid_time < target_end:
             raise ContractError("forecast_valid_time_outside_target_local_day")
-        maturity_key = _maturity_key(run_init, event_date, target_timezone)
+        maturity_key = _maturity_key(run_init, event_date, station_timezone)
         _number("temperature_2m_c", raw.get("temperature_2m_c"))
         raw_sha = _sha("raw_message_sha256", raw.get("raw_message_sha256"))
         receipt_sha = _sha("receipt_sha256", raw.get("receipt_sha256"))
@@ -255,6 +281,7 @@ def materialize_model_station_days(
         grouped[(station_id, event_date, provider_id)].append(
             {
                 "station_id": station_id,
+                "target_timezone": station_timezone,
                 "event_date": event_date.isoformat(),
                 "provider_id": provider_id,
                 "run_initialization_utc": run_init.isoformat().replace("+00:00", "Z"),
@@ -294,6 +321,7 @@ def materialize_model_station_days(
         output.append(
             {
                 "station_id": station_id,
+                "target_timezone": str(rows[0].get("target_timezone") or target_timezone),
                 "event_date": event_date.isoformat(),
                 "season": _season(event_date),
                 "provider_id": provider_id,
@@ -523,6 +551,7 @@ def evaluate_strict_asof_replay(
     *,
     as_of_utc: str,
     target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
     fail_on_incomplete_model_set: bool = True,
 ) -> dict[str, Any]:
     """Evaluate strict-as-of windows and cross-season/cross-station evidence.
@@ -534,10 +563,21 @@ def evaluate_strict_asof_replay(
     """
 
     as_of = _timestamp("as_of_utc", as_of_utc)
+    timezone_by_station = {
+        str(station).strip().upper(): str(value).strip()
+        for station, value in (station_timezone_map or {}).items()
+        if str(station).strip()
+    }
     zone = ZoneInfo(target_timezone)
     anchor_local_date = as_of.astimezone(zone).date()
+    anchor_local_date_by_station = {
+        station: as_of.astimezone(ZoneInfo(value)).date()
+        for station, value in timezone_by_station.items()
+    }
     model_days, model_quality = materialize_model_station_days(
-        model_hourly_rows, target_timezone=target_timezone
+        model_hourly_rows,
+        target_timezone=target_timezone,
+        station_timezone_map=timezone_by_station or None,
     )
     observations, observation_quality = materialize_observation_station_days(observation_rows)
 
@@ -564,10 +604,18 @@ def evaluate_strict_asof_replay(
                 raise ContractError("model_published_after_received")
             if received_at > as_of:
                 raise ContractError("model_received_after_asof")
-            _, target_end = _target_bounds(event_date, target_timezone)
+            _, target_end = _target_bounds(
+                event_date,
+                _station_timezone(
+                    row["station_id"],
+                    target_timezone=target_timezone,
+                    station_timezone_map=timezone_by_station or None,
+                ),
+            )
             if not run_init < target_end:
                 raise ContractError("strict_asof_future_model_run")
-        if not event_date < anchor_local_date:
+        station_anchor = anchor_local_date_by_station.get(row["station_id"], anchor_local_date)
+        if not event_date < station_anchor:
             continue
         key = (row["station_id"], row["event_date"])
         model_by_key[key].append(row)
@@ -710,7 +758,12 @@ def evaluate_strict_asof_replay(
                 "strict_asof": all(
                     _timestamp("run_initialization_utc", row["run_initialization_utc"])
                     < _target_bounds(
-                        _local_date("event_date", row["event_date"]), target_timezone
+                        _local_date("event_date", row["event_date"]),
+                        _station_timezone(
+                            row["station_id"],
+                            target_timezone=target_timezone,
+                            station_timezone_map=timezone_by_station or None,
+                        ),
                     )[0]
                     for row in scoped
                 ),
@@ -731,7 +784,12 @@ def evaluate_strict_asof_replay(
             "strict_asof": all(
                 _timestamp("run_initialization_utc", row["run_initialization_utc"])
                 < _target_bounds(
-                    _local_date("event_date", row["event_date"]), target_timezone
+                    _local_date("event_date", row["event_date"]),
+                    _station_timezone(
+                        row["station_id"],
+                        target_timezone=target_timezone,
+                        station_timezone_map=timezone_by_station or None,
+                    ),
                 )[0]
                 for row in all_rows
             ),
@@ -751,6 +809,7 @@ def evaluate_strict_asof_replay(
         "state": "BLOCKED_EVIDENCE" if incomplete_model_keys else "EVALUATED",
         "as_of_utc": as_of.isoformat().replace("+00:00", "Z"),
         "target_timezone": target_timezone,
+        "station_timezones": dict(sorted(timezone_by_station.items())),
         "anchor_local_date": anchor_local_date.isoformat(),
         "maturity_key": maturity_key,
         "lead_bucket": lead_bucket_for_maturity(maturity_key),

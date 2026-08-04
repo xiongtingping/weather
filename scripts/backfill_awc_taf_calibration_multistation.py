@@ -25,24 +25,41 @@ from scripts.capture_bayes_basket_target_awc_taf_calibration import (  # noqa: E
 )
 
 
-def _station_timezones(
+def _station_scopes(
     conn: sqlite3.Connection,
     requested: set[str],
-) -> dict[str, str]:
+) -> dict[str, tuple[str, str]]:
+    # A station can legitimately have both retired AMSC history and the
+    # current global AWC registry row (the Chinese/Taiwan stations do).  Do
+    # not let MIN(source_lane) select AMSC merely because it sorts first:
+    # this backfill is explicitly an AWC calibration lane.  Keep the scope
+    # fail-closed when timezones disagree or an AWC row is absent.
     rows = conn.execute(
-        "SELECT station_id,MIN(settlement_timezone),"
-        "COUNT(DISTINCT settlement_timezone) "
+        "SELECT station_id,settlement_timezone,UPPER(source_lane) "
         "FROM basket_target_market_registry "
         "WHERE station_id IS NOT NULL AND station_id<>'' "
         "AND settlement_timezone<>'' "
-        "GROUP BY station_id ORDER BY station_id"
+        "AND UPPER(source_lane) IN ('AMSC','AWC') "
+        "ORDER BY station_id,UPPER(source_lane),settlement_timezone"
     ).fetchall()
-    result = {
-        str(row[0]).strip().upper(): str(row[1])
-        for row in rows
-        if int(row[2]) == 1
-        and (not requested or str(row[0]).strip().upper() in requested)
-    }
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    for station_id, timezone_name, source_lane in rows:
+        station = str(station_id).strip().upper()
+        if requested and station not in requested:
+            continue
+        grouped.setdefault(station, []).append(
+            (str(timezone_name).strip(), str(source_lane).upper())
+        )
+    result: dict[str, tuple[str, str]] = {}
+    for station, station_rows in grouped.items():
+        timezones = {timezone_name for timezone_name, _lane in station_rows}
+        awc_timezones = {
+            timezone_name
+            for timezone_name, lane in station_rows
+            if lane == "AWC"
+        }
+        if len(timezones) == 1 and len(awc_timezones) == 1:
+            result[station] = (next(iter(awc_timezones)), "AWC")
     expected_count = len(requested) if requested else 45
     if (
         len(result) != expected_count
@@ -53,6 +70,20 @@ def _station_timezones(
     return result
 
 
+# Keep the old helper name out of the execution path; callers that still
+# import it must not receive a scope with an unbound lane.
+def _station_timezones(
+    conn: sqlite3.Connection,
+    requested: set[str],
+) -> dict[str, str]:
+    return {
+        station: timezone_name
+        for station, (timezone_name, _source_lane) in _station_scopes(
+            conn, requested
+        ).items()
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
@@ -60,6 +91,11 @@ def main() -> int:
     parser.add_argument("--start-date", required=True)
     parser.add_argument("--end-date", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Optional bounded run receipt, written for both success and fail-closed runs.",
+    )
     parser.add_argument("--max-workers", type=int, default=2)
     parser.add_argument("--timeout-sec", type=int, default=20)
     parser.add_argument("--request-interval-sec", type=float, default=0.25)
@@ -75,11 +111,15 @@ def main() -> int:
     database = args.db.expanduser().resolve(strict=True)
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
         conn.execute("PRAGMA query_only=ON")
-        scopes = _station_timezones(conn, requested)
+        scopes = _station_scopes(conn, requested)
     destination = args.output_dir.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
 
-    def run(station: str, timezone_name: str) -> dict[str, object]:
+    def run(
+        station: str,
+        scope: tuple[str, str],
+    ) -> dict[str, object]:
+        timezone_name, source_lane = scope
         output = destination / (
             f"AWC_TAF_{station}_{args.start_date.replace('-', '')}_"
             f"{args.end_date.replace('-', '')}.json"
@@ -96,6 +136,7 @@ def main() -> int:
             end_date=args.end_date,
             timeout_sec=args.timeout_sec,
             request_interval_sec=args.request_interval_sec,
+            source_lane=source_lane,
             existing=existing,
         )
         write_bounded_json(
@@ -105,6 +146,7 @@ def main() -> int:
         )
         return {
             "station_id": station,
+            "source_lane": source_lane,
             "output": str(output),
             "sample_count": int(artifact["sample_count"]),
             "excluded_sample_count": int(
@@ -120,8 +162,8 @@ def main() -> int:
         thread_name_prefix="awc-taf-history",
     ) as executor:
         pending = {
-            executor.submit(run, station, timezone_name): station
-            for station, timezone_name in scopes.items()
+            executor.submit(run, station, scope): station
+            for station, scope in scopes.items()
         }
         for future in as_completed(pending):
             station = pending[future]
@@ -134,7 +176,7 @@ def main() -> int:
                 })
     results.sort(key=lambda row: str(row["station_id"]))
     failures.sort(key=lambda row: str(row["station_id"]))
-    print(json.dumps({
+    receipt = {
         "station_count": len(scopes),
         "completed_station_count": len(results),
         "failed_station_count": len(failures),
@@ -151,7 +193,14 @@ def main() -> int:
         "outputs": [row["output"] for row in results],
         "calls_order_gateway": False,
         "orders_submitted": 0,
-    }, ensure_ascii=False, sort_keys=True))
+    }
+    if args.receipt is not None:
+        write_bounded_json(
+            args.receipt.expanduser().resolve(),
+            receipt,
+            limit=MAX_OUTPUT_BYTES,
+        )
+    print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
     return 0 if not failures else 2
 
 

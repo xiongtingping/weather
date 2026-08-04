@@ -1,0 +1,100 @@
+{
+  "schema": "dwd_icon_global_eps_f015_lineage_closure_v1",
+  "inspected_at_utc": "2026-08-01T22:52:54Z",
+  "scope": {
+    "product_id": "DWD_ICON_GLOBAL_EPS",
+    "station_count": 45,
+    "expected_member_count": 40,
+    "run_initialization_utc": "2026-08-01T00:00:00Z",
+    "forecast_hour": 15,
+    "valid_time_utc": "2026-08-01T15:00:00Z"
+  },
+  "state": "FAIL_CLOSED_ORIGINAL_CAPTURE_RECEIPT_UNAVAILABLE",
+  "boundary": {
+    "read_existing_local_evidence_only": true,
+    "downloads_raw": false,
+    "repolls_provider": false,
+    "writes_production_database": false,
+    "writes_target_database": false,
+    "activates_p0": false,
+    "calls_order_gateway": false,
+    "places_orders": false,
+    "orders_submitted": 0
+  },
+  "cohort": {
+    "path": "/Users/xiong/weather/output/audits/icon_global_eps_daily_20260802/cohorts/cohort_f015.json",
+    "content_sha256": "88affc2477984d8e1a56d9011d2fbbe98f0102542127213efa12755d25cf7bd3",
+    "source_role": "official_native",
+    "transport_provider_id": "DWD",
+    "provider_id": "icon_global_eps_official",
+    "provider_published_at_utc": "2026-08-01T02:46:05Z",
+    "response_completed_at_utc": "2026-08-01T08:34:22Z",
+    "raw_sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+    "required_capture_receipt_content_sha256": "5481b05ba5fa78579760952f3068b9219dcac4bc911c763d34d9aaff6d6ec30d",
+    "member_count": 40,
+    "station_count": 45,
+    "member_station_record_count": 1800,
+    "official_member_and_run_lineage_complete": true
+  },
+  "retained_raw": {
+    "path": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_eps_official/raw/08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab.grib2.bz2",
+    "sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+    "byte_count": 33017132,
+    "sha256_verified": true
+  },
+  "capture_f015": {
+    "path": "/Users/xiong/weather/output/audits/icon_global_eps_daily_20260802/captures/capture_f015.json",
+    "content_sha256": "71971e3b5310100001f87e4e375a60c04d533d6c200e8f56556b3f40e026e544",
+    "source_role": "official_native",
+    "transport_provider_id": "DWD",
+    "provider_id": "icon_global_eps_official",
+    "run_initialization_utc": "2026-08-01T00:00:00Z",
+    "forecast_hour": 15,
+    "valid_time_utc": "2026-08-01T15:00:00Z",
+    "provider_published_at_utc": "2026-08-01T02:46:05Z",
+    "response_completed_at_utc": "2026-08-01T19:03:16.524Z",
+    "raw_sha256": "08f2eb7d99b91a0895c95d26bb1424586f6c8e51c2b161e848f39c92a416eeab",
+    "same_provider_payload_and_run_as_cohort": true,
+    "matches_required_original_receipt_content_sha256": false,
+    "matches_original_response_completed_at_utc": false,
+    "substitution_decision": "REJECTED_LATER_RECEIPT_CANNOT_BACKFILL_ORIGINAL_ARRIVAL"
+  },
+  "receipt_ad0b4d": {
+    "path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/icon_global_official_capture_20260801/icon_global_official/receipts/ad0b4d82cc63a371410741bddcdd3352ea4dd66949d3c0f7dc4edfea129f5229.json",
+    "receipt_content_sha256": "ad0b4d82cc63a371410741bddcdd3352ea4dd66949d3c0f7dc4edfea129f5229",
+    "provider_id": "icon_global_official",
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "valid_time_utc": "2026-08-01T15:00:00Z",
+    "station_id": "ZUUU",
+    "raw_sha256": "66430ab189f2db1bf75e30abfbf94541662a7381b034ab32def4f1d5f7ff1323",
+    "source_url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_021_T_2M.grib2.bz2",
+    "matches_f015_eps_raw": false,
+    "matches_f015_eps_run": false,
+    "matches_f015_eps_product": false,
+    "matches_required_original_receipt_content_sha256": false,
+    "substitution_decision": "REJECTED_DIFFERENT_ICON_PRODUCT_RUN_AND_RAW"
+  },
+  "search": {
+    "f015_capture_object_count": 1,
+    "f015_cohort_object_count": 1,
+    "runtime_transport_receipt_object_count": 25,
+    "expected_original_receipt_found": false,
+    "existing_transport_receipt_with_f015_eps_raw_found": false,
+    "search_scope": [
+      "/Users/xiong/weather/output/audits/icon_global_eps_daily_20260802/captures",
+      "/Users/xiong/weather/output/audits/icon_global_eps_daily_20260802/cohorts",
+      "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/icon_global_official_capture_20260801/icon_global_official/receipts",
+      "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals/icon_global_eps_official"
+    ]
+  },
+  "conclusion": {
+    "provider_native_publication_evidence": "COMPLETE_FOR_COHORT",
+    "native_40_member_45_station_decode": "COMPLETE_FOR_COHORT",
+    "original_native_arrival_receipt": "MISSING",
+    "arrival_index_rebuild_permitted": false,
+    "strict_oos_rebuild_permitted": false,
+    "p0_activation_permitted": false,
+    "blocking_reason": "The cohort's required original receipt object 5481b05b… is absent; same-payload later receipt 71971e… and unrelated receipt ad0b4d… cannot establish the original local arrival time."
+  },
+  "content_sha256": "1b106e1866e139cf611a6ebfa0b8c3f989367f34fd0619ee052c54aafcc9991e"
+}

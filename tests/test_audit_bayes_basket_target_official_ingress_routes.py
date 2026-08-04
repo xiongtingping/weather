@@ -24,6 +24,9 @@ def test_multi_station_official_ingress_replay_passes_all_role_and_timezone_gate
     assert result["boundary"]["calls_order_gateway"] is False
     assert result["counts"]["station_count"] == 4
     assert result["counts"]["truth_row_count"] == 4
+    assert result["checks"]["amsc_00_formal"] is True
+    assert result["checks"]["amsc_30_reference_only"] is True
+    assert result["checks"]["awc_hour_for_amsc_reference_only"] is True
 
 
 def test_clean_bad_clean_rewrap_is_not_latched() -> None:

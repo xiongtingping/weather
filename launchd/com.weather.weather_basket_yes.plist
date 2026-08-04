@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.weather_basket_yes</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/weather_basket_yes_daemon.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PM_CLOB_ORDER_SERVICE_URL</key>
+    <string>http://127.0.0.1:8765</string>
+    <key>HTTP_PROXY</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>HTTPS_PROXY</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>ALL_PROXY</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>http_proxy</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>https_proxy</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>all_proxy</key>
+    <string>http://127.0.0.1:1082</string>
+    <key>PM_TARGET_EXECUTION_MODE</key>
+    <string>production_no_live</string>
+    <key>PM_TARGET_PRODUCTION_WRITER</key>
+    <string>1</string>
+    <key>WEATHER_SERVICE_DOMAIN</key>
+    <string>user</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>2</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/weather_basket_yes.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/weather_basket_yes.err.log</string>
+</dict>
+</plist>

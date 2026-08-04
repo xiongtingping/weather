@@ -1,0 +1,784 @@
+{
+  "content_sha256": "3bd07adc3f0fad510546cd8022dbf43ae8e50517b30191d57e1a486d8c88bf57",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "314c8d9fa4b7703637313204a4d245aea803c088333ea95fbb174e172d0d4b49",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 8,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-21",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-19T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "17e95d09d61dfd07db9b0a8136dd6a6a829cfdf2d4db28d407fa05f2253c3bf1",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.4939139784946237,
+          "15°C": 0.15778494623655914,
+          "16°C": 0.12415053763440859,
+          "17°C": 0.059655913978494624,
+          "18°C": 0.108494623655914,
+          "19°C": 0.01666666666666667,
+          "20°C": 0.006,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C or higher": 0.03333333333333334
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-22T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-20T23:30:23Z",
+        "capture_content_sha256": "55688cf508e68ee054ff5a83e3eb7cc92e135dac225f7f9a0c6051b3164a543c",
+        "cloud_cover_fraction": 1.0,
+        "precipitation_probability": 1.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 15.0,
+        "wind_speed_mps": 4.2870333333333335
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "55688cf508e68ee054ff5a83e3eb7cc92e135dac225f7f9a0c6051b3164a543c",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-007fcde2a840b16b969d60fee0d73be0",
+        "source_lane": "AWC",
+        "tmax_c": 13.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-22",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-20T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "7ef4c3c34ccc68846a64dd0c1d714f5e536ac82cd7844c9cea483d0e18e43a16",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.5892258064516129,
+          "15°C": 0.14647311827956988,
+          "16°C": 0.09397849462365593,
+          "17°C": 0.04765591397849463,
+          "18°C": 0.07266666666666668,
+          "19°C": 0.01666666666666667,
+          "20°C": 0.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C or higher": 0.03333333333333334
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-23T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-21T23:30:21Z",
+        "capture_content_sha256": "2b14aa2ac71f6d18ab28ed8e4b6cfc115938078d5f0df70e8a1b35b94c9c988e",
+        "cloud_cover_fraction": 1.0,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 14.0,
+        "wind_speed_mps": 4.2870333333333335
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "2b14aa2ac71f6d18ab28ed8e4b6cfc115938078d5f0df70e8a1b35b94c9c988e",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-1ecaa85202d059ac3af2857ab1da906a",
+        "source_lane": "AWC",
+        "tmax_c": 15.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-23",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-21T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "193bd5df68197f755c6ccb2ff10eaf5d14945efbd353a74534d3f5420ecffe6f",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.5415698924731183,
+          "15°C": 0.1823010752688172,
+          "16°C": 0.08797849462365591,
+          "17°C": 0.05948387096774192,
+          "18°C": 0.07866666666666668,
+          "19°C": 0.016666666666666666,
+          "20°C": 0.0,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C or higher": 0.03333333333333333
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-24T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-23T03:11:08Z",
+        "capture_content_sha256": "0da83fdfaac0bc6abaebb2d0e54e0c8c96995004858f8a909925564a10909156",
+        "cloud_cover_fraction": 0.6666666666666666,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 14.0,
+        "wind_speed_mps": 2.7865716666666667
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "0da83fdfaac0bc6abaebb2d0e54e0c8c96995004858f8a909925564a10909156",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-e15168066837f288fbf393c4296bf3df",
+        "source_lane": "AWC",
+        "tmax_c": 16.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-24",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-22T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "ecf5ff28658045f5255b46cec93546bc5c06e5ccb761176178ef9a75250eef1c",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.3386021505376344,
+          "15°C": 0.06898924731182797,
+          "16°C": 0.12346236559139784,
+          "17°C": 0.10165591397849462,
+          "18°C": 0.18580645161290324,
+          "19°C": 0.06466666666666666,
+          "20°C": 0.04782795698924731,
+          "21°C": 0.023827956989247313,
+          "22°C": 0.011827956989247311,
+          "23°C": 0.0,
+          "24°C or higher": 0.03333333333333334
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-25T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-23T23:36:13Z",
+        "capture_content_sha256": "34853d7ef48426ac0fa0897958342644ec0603cd221ba6da4b3c6810da3b4047",
+        "cloud_cover_fraction": 0.7916666666666666,
+        "precipitation_probability": 0.6666666666666666,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 16.0,
+        "wind_speed_mps": 5.144440000000001
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "34853d7ef48426ac0fa0897958342644ec0603cd221ba6da4b3c6810da3b4047",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "et-truth-7a2d5cc36190472c37420538af06450a",
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "42c2f6b9c83a78f73553e82206dd5420b92070e2d279b4fd5487075e45f334a8",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.16666666666666669,
+          "15°C": 0.03333333333333334,
+          "16°C": 0.02266666666666667,
+          "17°C": 0.059483870967741936,
+          "18°C": 0.14415053763440863,
+          "19°C": 0.09397849462365593,
+          "20°C": 0.16062365591397848,
+          "21°C": 0.20227956989247312,
+          "22°C": 0.08348387096774193,
+          "23°C": 0.0,
+          "24°C or higher": 0.03333333333333334
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-27T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-26T03:35:12Z",
+        "capture_content_sha256": "c29f14a961c3efc434d604df727716fa5a6234aa43b017fbaa94f58048aa35f0",
+        "cloud_cover_fraction": 0.3333333333333333,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 19.0,
+        "wind_speed_mps": 2.5722200000000006
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "c29f14a961c3efc434d604df727716fa5a6234aa43b017fbaa94f58048aa35f0",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SAEZ-2026-07-26-r0-66f4cf180db4",
+        "source_lane": "AWC",
+        "tmax_c": 20.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-27",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-25T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "61680dd2bca77996508f0dd65669c6000a8ae567b09388539343b4c302c3c94f",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.2141505376344086,
+          "15°C": 0.05716129032258065,
+          "16°C": 0.07015053763440861,
+          "17°C": 0.14913978494623656,
+          "18°C": 0.17363440860215057,
+          "19°C": 0.14146236559139785,
+          "20°C": 0.04765591397849463,
+          "21°C": 0.03582795698924731,
+          "22°C": 0.04765591397849463,
+          "23°C": 0.012,
+          "24°C or higher": 0.051161290322580655
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-28T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-26T23:58:20Z",
+        "capture_content_sha256": "95eca765e3ecb54c36f60075d1cc8d69980a399ec119fe1561df5f51679b02a6",
+        "cloud_cover_fraction": 0.75,
+        "precipitation_probability": 0.05454545454545454,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 20.0,
+        "wind_speed_mps": 3.6478756363636364
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "95eca765e3ecb54c36f60075d1cc8d69980a399ec119fe1561df5f51679b02a6",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SAEZ-2026-07-27-r0-9f550afe8602",
+        "source_lane": "AWC",
+        "tmax_c": 18.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-28",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-26T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "1ee35cc3ea62586b39af3e4db3194fd787a81556c51492359b9aa07e54cb7ead",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.1786666666666667,
+          "15°C": 0.08116129032258065,
+          "16°C": 0.06997849462365592,
+          "17°C": 0.05382795698924731,
+          "18°C": 0.17963440860215057,
+          "19°C": 0.2007741935483871,
+          "20°C": 0.06548387096774194,
+          "21°C": 0.06548387096774194,
+          "22°C": 0.04182795698924731,
+          "23°C": 0.023827956989247313,
+          "24°C or higher": 0.039333333333333345
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-20"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-29T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-27T23:30:24Z",
+        "capture_content_sha256": "ae271a0d632d8c8df98765b2ede374eda216223277b824b96f1e3d8ddf9d1680",
+        "cloud_cover_fraction": 0.75,
+        "precipitation_probability": 0.05454545454545454,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 17.0,
+        "wind_speed_mps": 3.039896363636364
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "ae271a0d632d8c8df98765b2ede374eda216223277b824b96f1e3d8ddf9d1680",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SAEZ-2026-07-28-r0-6d3eefce7083",
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "future_event_count": 0,
+      "historical_oos_eligible": true,
+      "native_p0": {
+        "bucket_centers_c": {
+          "14°C or below": 14.0,
+          "15°C": 15.0,
+          "16°C": 16.0,
+          "17°C": 17.0,
+          "18°C": 18.0,
+          "19°C": 19.0,
+          "20°C": 20.0,
+          "21°C": 21.0,
+          "22°C": 22.0,
+          "23°C": 23.0,
+          "24°C or higher": 24.0
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "204e3f47f33bbacbf7d6cd6e144297b3c42b057e7e9e22dee4f1f6c8e7f31400",
+        "prediction_oos": true,
+        "probabilities": {
+          "14°C or below": 0.24125801496457067,
+          "15°C": 0.1216491254149943,
+          "16°C": 0.08834745552747635,
+          "17°C": 0.2301040582726327,
+          "18°C": 0.19434923938357862,
+          "19°C": 0.07545463554828799,
+          "20°C": 0.01811550468262227,
+          "21°C": 0.0,
+          "22°C": 0.0,
+          "23°C": 0.0,
+          "24°C or higher": 0.030721966205837184
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45000000000000007,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-21"
+      },
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_window": {
+        "end_utc": "2026-07-30T03:00:00Z"
+      },
+      "station_id": "SAEZ",
+      "taf": {
+        "available_at_utc": "2026-07-28T23:30:17Z",
+        "capture_content_sha256": "baf4a86a12d3974f2d27cfe9b82c6418e4659003cbac7f854c09770e6414f141",
+        "cloud_cover_fraction": 0.6666666666666666,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 16.0,
+        "wind_speed_mps": 2.3578683333333332
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "baf4a86a12d3974f2d27cfe9b82c6418e4659003cbac7f854c09770e6414f141",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "rebuild29-truth-SAEZ-2026-07-29-r0-ad5e04e0c2d2",
+        "source_lane": "AWC",
+        "tmax_c": 17.0
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Argentina/Buenos_Aires",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "SAEZ"
+}

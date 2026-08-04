@@ -1,0 +1,24 @@
+{
+  "content_sha256": "f352b28a3b0d3742ffef824fb000f28112baa377a690224b7f7861dc2e42603a",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "e8374b3e9a251604c23a53af59f9415de1d799ae2c9f744f934969219eda719f",
+  "observational_forward_event_count": 5,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03",
+    "2026-08-04"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Taipei",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "RCSS"
+}

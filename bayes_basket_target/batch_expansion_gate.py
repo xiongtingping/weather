@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Mapping
@@ -14,6 +16,58 @@ SCHEMA = "bayes_basket_target_45station_expansion_gate_v1"
 MAX_PACKET_BYTES = 16 * 1024 * 1024
 MAX_RKPK_GATE_FACTS = 512
 EXPECTED_POLICY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
+HISTORICAL_STRICT_OOS_ROLE = "historical_strict_oos"
+OBSERVATIONAL_CANDIDATE_ROLE = "observational_candidate_not_oos"
+
+
+def _fact_evidence_role(details_json: Any, event_date: Any) -> str:
+    """Classify a training fact without promoting future observations.
+
+    New rows must carry the explicit role; a future/observational row never
+    enters strict-OOS label counts.  A legacy forward marker alone is not
+    enough to infer historical OOS: forward packets remain observational even
+    after their target date has passed.
+    """
+
+    try:
+        details = json.loads(str(details_json or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        details = {}
+    if not isinstance(details, Mapping):
+        details = {}
+    role = str(
+        details.get("evidence_role")
+        or details.get("oos_evidence_role")
+        or details.get("future_observation_evidence_role")
+        or ""
+    ).strip()
+    try:
+        event = datetime.fromisoformat(str(event_date)[:10]).date()
+    except (TypeError, ValueError):
+        event = None
+    today = datetime.now(timezone.utc).date()
+    # Even a stale/mis-bound role claim cannot turn an open/current/future
+    # event into an OOS sample.  A same-day row needs explicit closed-day and
+    # strict-as-of proof; otherwise it remains observational.
+    if event is None or (
+        event >= today
+        and not (
+            details.get("closed_day") is True
+            and details.get("strict_asof") is True
+        )
+    ):
+        return OBSERVATIONAL_CANDIDATE_ROLE
+    if role == HISTORICAL_STRICT_OOS_ROLE:
+        return role
+    if role == OBSERVATIONAL_CANDIDATE_ROLE or details.get(
+        "future_event_not_oos"
+    ) is True:
+        return OBSERVATIONAL_CANDIDATE_ROLE
+    # ``forward_observation_status=ELIGIBLE`` is deliberately *not* a
+    # historical-OOS signal.  Older receipts without an explicit role stay
+    # observational until an independent closed-day strict-as-of artifact is
+    # bound.
+    return OBSERVATIONAL_CANDIDATE_ROLE
 
 
 def _table(connection: sqlite3.Connection, name: str) -> bool:
@@ -61,7 +115,12 @@ def evaluate_45station_no_live_expansion(
     forward_store: sqlite3.Connection,
     candidate_packet: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Evaluate the single vertical gate without consulting forward OOS."""
+    """Evaluate the no-live vertical gate without using forward OOS.
+
+    Forward/next-day rows may be read for bounded observational telemetry, but
+    they are never used as a production expansion blocker or strict-OOS label
+    source.
+    """
 
     if not isinstance(candidate_packet, Mapping):
         raise ContractError("batch_expansion_candidate_packet_mapping_required")
@@ -235,16 +294,41 @@ def evaluate_45station_no_live_expansion(
     if fact_scope_exceeded:
         blockers.append("rkpk_delta_v2_fact_scope_cap_exceeded")
         all_facts = all_facts[:MAX_RKPK_GATE_FACTS]
-    facts = [
-        row
-        for row in all_facts
-        if '"forward_observation_status":"ELIGIBLE"' in str(row[3] or "")
+    # Forward/next-day observations are telemetry, not the source of the
+    # expansion gate.  Keep the bounded d2fact inventory intact and classify
+    # strict-OOS evidence separately; filtering the inventory by
+    # ``forward_observation_status=ELIGIBLE`` made a future observation a
+    # hidden hard prerequisite for production_no_live.
+    facts = list(all_facts)
+    fact_roles = {
+        str(row[0]): _fact_evidence_role(row[3], row[2])
+        for row in facts
+    }
+    historical_facts = [
+        row for row in facts
+        if fact_roles.get(str(row[0])) == HISTORICAL_STRICT_OOS_ROLE
+    ]
+    observational_facts = [
+        row for row in facts
+        if fact_roles.get(str(row[0])) == OBSERVATIONAL_CANDIDATE_ROLE
     ]
     fact_ids = tuple(str(row[0]) for row in facts)
     decision_ids = tuple(str(row[1]) for row in facts)
-    event_dates = tuple(sorted({str(row[2]) for row in facts}))
+    historical_fact_ids = tuple(str(row[0]) for row in historical_facts)
+    historical_decision_ids = tuple(str(row[1]) for row in historical_facts)
+    event_dates = tuple(sorted({str(row[2]) for row in historical_facts}))
     if not facts:
         blockers.append("rkpk_delta_v2_training_fact_missing")
+    elif not historical_fact_ids:
+        # A populated forward/observational inventory is not an empty source,
+        # but it is also not a ready historical strict-OOS scorecard.  Keep
+        # this distinction out of the no-live expansion blockers while making
+        # formal/live promotion visibly pending.
+        settlement_scorecard_blockers = [
+            "historical_strict_oos_evidence_missing"
+        ]
+    else:
+        settlement_scorecard_blockers = []
     label_count = 0
     stale_label_count = 0
     exact_labels_by_fact: dict[str, tuple[str, int, str, str]] = {}
@@ -280,7 +364,7 @@ def evaluate_45station_no_live_expansion(
             )
         )
     )
-    for fact_id, _, event_date, _ in facts:
+    for fact_id, _, event_date, _ in historical_facts:
         if not truth_table_ready or not label_table_ready:
             continue
         latest_truth_rows = ssot.execute(
@@ -344,7 +428,7 @@ def evaluate_45station_no_live_expansion(
             str(truth_sha),
         )
         label_count += 1
-    if label_count != len(fact_ids):
+    if historical_fact_ids and label_count != len(historical_fact_ids):
         settlement_scorecard_blockers.append(
             "rkpk_same_day_settlement_labels_incomplete"
         )
@@ -359,8 +443,9 @@ def evaluate_45station_no_live_expansion(
                 decision_ids,
             ).fetchone()[0]
         )
-    if observation_count != len(decision_ids):
-        blockers.append("rkpk_forward_observations_incomplete")
+    # Forward observations are observational candidates only.  A missing
+    # row, late receipt or repaired quarantine is retained as telemetry and
+    # never becomes a production_no_live/batch-expansion blocker.
     unresolved_quarantine = 0
     if _table(forward_store, "forward_ingest_state"):
         repair_clause = (
@@ -375,8 +460,6 @@ def evaluate_45station_no_live_expansion(
                 f"WHERE s.state='QUARANTINED' {repair_clause}"
             ).fetchone()[0]
         )
-    if unresolved_quarantine:
-        blockers.append("rkpk_forward_quarantine_unresolved")
     forward_label_count = 0
     forward_label_table_ready = (
         _table(forward_store, "forward_settlement_label")
@@ -394,8 +477,8 @@ def evaluate_45station_no_live_expansion(
     )
     if forward_label_table_ready:
         for fact_id, decision_id in zip(
-            fact_ids,
-            decision_ids,
+            historical_fact_ids,
+            historical_decision_ids,
             strict=True,
         ):
             exact_label = exact_labels_by_fact.get(fact_id)
@@ -425,7 +508,11 @@ def evaluate_45station_no_live_expansion(
             ).fetchone()
             if projected is not None:
                 forward_label_count += 1
-    if label_count == len(fact_ids) and forward_label_count < len(fact_ids):
+    if (
+        historical_fact_ids
+        and label_count == len(historical_fact_ids)
+        and forward_label_count < len(historical_fact_ids)
+    ):
         settlement_scorecard_blockers.append(
             "rkpk_forward_settlement_label_projection_incomplete"
         )
@@ -537,13 +624,36 @@ def evaluate_45station_no_live_expansion(
         "rkpk_delta_v2_total_fact_count": len(all_facts),
         "rkpk_delta_v2_fact_scope_cap": MAX_RKPK_GATE_FACTS,
         "rkpk_delta_v2_fact_scope_exceeded": fact_scope_exceeded,
-        "rkpk_delta_v2_ineligible_fact_count": len(all_facts) - len(facts),
+        # Retain the legacy field name for receipt compatibility, but make its
+        # meaning explicit: these are observational/non-strict rows excluded
+        # from historical OOS labels, not rows dropped from the bounded fact
+        # inventory or a production expansion blocker.
+        "rkpk_delta_v2_ineligible_fact_count": len(observational_facts),
         "rkpk_delta_v2_fact_count": len(fact_ids),
+        "rkpk_delta_v2_historical_strict_oos_fact_count": len(
+            historical_fact_ids
+        ),
+        "rkpk_delta_v2_observational_candidate_not_oos_fact_count": len(
+            observational_facts
+        ),
         "rkpk_settlement_label_count": label_count,
         "rkpk_stale_settlement_label_count": stale_label_count,
         "rkpk_forward_observation_count": observation_count,
         "rkpk_forward_settlement_label_count": forward_label_count,
         "rkpk_unresolved_quarantine_count": unresolved_quarantine,
+        "future_observation_evidence_role": OBSERVATIONAL_CANDIDATE_ROLE,
+        "future_observation_is_oos": False,
+        "future_observation_counts_as_strict_oos": False,
+        "forward_observational_scorecard": {
+            "evidence_role": OBSERVATIONAL_CANDIDATE_ROLE,
+            "fact_count": len(observational_facts),
+            "decision_count": len(decision_ids),
+            "observation_count": observation_count,
+            "unresolved_quarantine_count": unresolved_quarantine,
+            "settlement_label_projection_count": forward_label_count,
+            "blocks_production_no_live_or_batch_expansion": False,
+            "blocks_live_or_parameter_promotion": False,
+        },
         "settlement_scorecard_state": (
             "READY"
             if not settlement_scorecard_blockers
@@ -557,9 +667,14 @@ def evaluate_45station_no_live_expansion(
         ),
         "settlement_labels_block_live_or_parameter_promotion": True,
         "order_counts": order_counts,
+        # Legacy keys remain for readers that still deserialize the previous
+        # receipt.  They are explicitly non-blocking: forward data cannot be
+        # an OOS gate.  The historical key below carries the real promotion
+        # requirement.
         "forward_oos_consulted": False,
         "forward_oos_blocks_production_no_live_or_batch_expansion": False,
-        "forward_oos_blocks_live_or_parameter_promotion": True,
+        "forward_oos_blocks_live_or_parameter_promotion": False,
+        "historical_strict_oos_required_for_live_or_parameter_promotion": True,
         "execution_mode": "production_no_live",
         "live_submit_authorized": False,
         "calls_order_gateway": False,
@@ -569,7 +684,10 @@ def evaluate_45station_no_live_expansion(
 
 
 __all__ = [
+    "HISTORICAL_STRICT_OOS_ROLE",
     "MAX_RKPK_GATE_FACTS",
+    "OBSERVATIONAL_CANDIDATE_ROLE",
     "SCHEMA",
+    "_fact_evidence_role",
     "evaluate_45station_no_live_expansion",
 ]

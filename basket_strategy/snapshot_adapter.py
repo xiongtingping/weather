@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping, Sequence
 
-from reported_trajectory_no_runtime import parse_bucket_interval
+from weather_basket_yes_runtime import parse_bucket_interval
 
-from .runtime import build_basket_plus_hard_no_plan
+from .runtime import build_basket_yes_plan
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -203,7 +203,7 @@ def _probability_projection(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def build_plan_from_weather_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    """Transform existing snapshot surfaces into ``build_*_plan`` input."""
+    """Transform existing snapshot surfaces into pure-YES plan input."""
 
     snapshot = snapshot if isinstance(snapshot, Mapping) else {}
     event = dict(_mapping(snapshot.get("event")))
@@ -228,8 +228,8 @@ def build_plan_from_weather_snapshot(snapshot: Mapping[str, Any]) -> dict[str, A
     if not isinstance(features, Mapping):
         features = {}
     source_observations = snapshot.get("source_observations") or snapshot.get("forecast_source_observations") or []
-    report = snapshot.get("report") or snapshot.get("hard_report") or snapshot.get("reported_trajectory_observation")
-    return build_basket_plus_hard_no_plan(
+    report = snapshot.get("report") or snapshot.get("reported_trajectory_observation")
+    return build_basket_yes_plan(
         {
             "as_of": snapshot.get("as_of") or snapshot.get("snapshot_at") or event.get("as_of"),
             "event": event,
@@ -239,7 +239,6 @@ def build_plan_from_weather_snapshot(snapshot: Mapping[str, Any]) -> dict[str, A
             "probability_projection": _probability_projection(snapshot),
             "regime": _regime(snapshot),
             "report": report if isinstance(report, Mapping) else None,
-            "held_yes_shares_by_token": snapshot.get("held_yes_shares_by_token") or {},
             "config": snapshot.get("basket_strategy_config") or snapshot.get("config") or {},
         }
     )

@@ -9,7 +9,11 @@ import pytest
 
 from bayes_basket_target import ContractError
 from scripts import rebuild_bayes_basket_target_historical_truth as rebuild
-from bayes_basket_target.source_policy import reference_only_reason, source_policy_reason
+from bayes_basket_target.source_policy import (
+    AWC_METAR_TIMING_INVALID,
+    reference_only_reason,
+    source_policy_reason,
+)
 
 
 def _write_timezone_registry(
@@ -164,6 +168,19 @@ def test_amsc_metar_timing_and_speci_policy_and_awc_hourly_reference():
     ) == "awc_hourly_reference_only_for_amsc_station"
 
 
+def test_awc_owned_metar_requires_exact_hour_but_speci_keeps_effective_time():
+    from datetime import datetime, timezone
+
+    off_hour = datetime(2026, 7, 17, 16, 30, tzinfo=timezone.utc)
+
+    assert source_policy_reason(
+        source_lane="awc", report_type="METAR", valid_at=off_hour, expected_lane="awc"
+    ) == AWC_METAR_TIMING_INVALID
+    assert source_policy_reason(
+        source_lane="awc", report_type="SPECI", valid_at=off_hour, expected_lane="awc"
+    ) == ""
+
+
 def test_existing_mixed_research_archive_loads_only_explicit_amsc_objects(tmp_path, monkeypatch):
     objects = tmp_path / "data/research/bayes_basket_target/historical_truth_raw/objects/aa"
     objects.mkdir(parents=True)
@@ -214,10 +231,10 @@ def test_existing_awc_archive_preserves_provider_precision(tmp_path, monkeypatch
         "station_id": "KATL",
         "source_lane": "awc",
         "report_type": "METAR",
-        "valid_at_utc": "2026-07-24T17:52:00Z",
+        "valid_at_utc": "2026-07-24T17:00:00Z",
         "reported_temperature_c": 31.1,
         "raw_sha256": "c" * 64,
-        "raw_text": "METAR KATL 241752Z 23008G16KT 10SM SCT028TCU 31/22 A3011 RMK AO2 T03110222=",
+        "raw_text": "METAR KATL 241700Z 23008G16KT 10SM SCT028TCU 31/22 A3011 RMK AO2 T03110222=",
         "source_poll_id": "awc-history",
         "first_seen_at_utc": "2026-07-25T00:00:00Z",
     }
@@ -234,6 +251,50 @@ def test_existing_awc_archive_preserves_provider_precision(tmp_path, monkeypatch
 
     assert len(formal) == 1
     assert formal[0]["reported_temperature_c"] == 31.1
+
+
+def test_existing_awc_archive_filters_non_hourly_metar_but_keeps_speci(tmp_path, monkeypatch):
+    objects = tmp_path / "data/research/bayes_basket_target/historical_truth_raw/objects/aa"
+    objects.mkdir(parents=True)
+    rows = [
+        {
+            "station_id": "KATL",
+            "source_lane": "awc",
+            "report_type": "METAR",
+            "valid_at_utc": "2026-07-24T17:30:00Z",
+            "reported_temperature_c": 31.0,
+            "raw_sha256": "d" * 64,
+            "raw_text": "METAR KATL 241730Z 23008KT 10SM SCT028 31/22 A3011=",
+            "source_poll_id": "awc-history",
+            "first_seen_at_utc": "2026-07-25T00:00:00Z",
+        },
+        {
+            "station_id": "KATL",
+            "source_lane": "awc",
+            "report_type": "SPECI",
+            "valid_at_utc": "2026-07-24T17:31:00Z",
+            "reported_temperature_c": 32.0,
+            "raw_sha256": "e" * 64,
+            "raw_text": "SPECI KATL 241731Z 23008KT 10SM SCT028 32/22 A3011=",
+            "source_poll_id": "awc-history",
+            "first_seen_at_utc": "2026-07-25T00:00:00Z",
+        },
+    ]
+    for index, row in enumerate(rows):
+        with gzip.open(objects / f"row-{index}.json.gz", "wt", encoding="utf-8") as handle:
+            json.dump(row, handle)
+    monkeypatch.setattr(rebuild, "ROOT", tmp_path)
+
+    formal = rebuild._load_existing_awc(
+        {"KATL"},
+        "2026-07-24",
+        "2026-07-24",
+        target_timezone="America/New_York",
+    )
+
+    assert [(row["report_type"], row["valid_at_utc"]) for row in formal] == [
+        ("SPECI", "2026-07-24T17:31:00Z"),
+    ]
 
 
 def test_amsc_fetch_queries_complete_station_days_then_filters_exact_et_window(monkeypatch):
@@ -333,6 +394,47 @@ def test_awc_reference_only_keeps_hourly_metar_out_of_formal_rows(monkeypatch):
     assert rows[0]["evidence_role"] == "REFERENCE_ONLY"
     assert rows[0]["reference_reason"] == "awc_hourly_reference_only_for_amsc_station"
     assert receipt["reference_only"] is True
+
+
+def test_awc_fetch_discards_non_hourly_metar_but_keeps_effective_speci(monkeypatch):
+    payload = [
+        {
+            "icaoId": "RCSS",
+            "temp": 25,
+            "obsTime": 1784304000,
+            "rawOb": "METAR RCSS 171600Z 00000KT 9999 FEW020 25/20 Q1000=",
+            "metarType": "METAR",
+        },
+        {
+            "icaoId": "RCSS",
+            "temp": 26,
+            "obsTime": 1784305800,
+            "rawOb": "METAR RCSS 171630Z 00000KT 9999 FEW020 26/20 Q1000=",
+            "metarType": "METAR",
+        },
+        {
+            "icaoId": "RCSS",
+            "temp": 27,
+            "obsTime": 1784305860,
+            "rawOb": "SPECI RCSS 171631Z 00000KT 9999 FEW020 27/20 Q1000=",
+            "metarType": "SPECI",
+        },
+    ]
+    monkeypatch.setattr(rebuild, "_curl_json", lambda url, timeout: payload)
+    monkeypatch.setattr(rebuild.time, "sleep", lambda seconds: None)
+
+    rows, receipt = rebuild._awc_fetch(
+        ["RCSS"],
+        ["2026-07-17"],
+        "2026-07-24T00:00:00Z",
+        target_timezone="America/New_York",
+    )
+
+    assert [(row["report_type"], row["valid_at_utc"]) for row in rows] == [
+        ("METAR", "2026-07-17T16:00:00Z"),
+        ("SPECI", "2026-07-17T16:31:00Z"),
+    ]
+    assert receipt["returned"] == 2
 
 
 def test_reference_only_cli_success_depends_on_reference_rows() -> None:
@@ -437,3 +539,68 @@ def test_rebuild_writes_reference_lane_separately_from_formal_observations(tmp_p
     assert all(row["evidence_role"] == "REFERENCE_ONLY" for row in reference_payload["reference_observations"])
     assert result["reference_observation_count"] == 2
     assert result["source_counts"] == {"amsc": 1, "awc": 0}
+
+
+def test_fresh_official_awc_raw_only_never_reads_retained_objects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lane_map = tmp_path / "lane_map.json"
+    lane_map.write_text(
+        json.dumps({"stations": {"RCSS": "awc"}}), encoding="utf-8"
+    )
+    fetched = {
+        "station_id": "RCSS",
+        "source_lane": "awc",
+        "report_type": "METAR",
+        "valid_at_utc": "2026-07-22T15:00:00Z",
+        "reported_temperature_c": 31.0,
+        "raw_sha256": "d" * 64,
+        "raw_text": "METAR RCSS 221500Z 00000KT 9999 FEW020 31/24 Q1008=",
+        "source_poll_id": "official-awc-response",
+        "first_seen_at_utc": "2026-08-01T00:00:00Z",
+        "canonical_committed_at_utc": "2026-08-01T00:00:00Z",
+        "source_url": "https://aviationweather.gov/api/data/metar",
+        "historical_data_class": "H",
+    }
+
+    def unexpected_retained_read(*_args, **_kwargs):
+        raise AssertionError("retained_raw_must_not_be_read")
+
+    def fetch_awc(stations, event_dates, fetched_at, *, reference_only=False, target_timezone):
+        assert stations == ["RCSS"]
+        assert event_dates == ["2026-07-22"]
+        assert reference_only is False
+        assert target_timezone == "Asia/Taipei"
+        return [fetched], {
+            "query_count": 1,
+            "queries": [{"source_url": fetched["source_url"]}],
+            "query_blockers": [],
+            "returned": 1,
+            "reference_only": False,
+        }
+
+    monkeypatch.setattr(rebuild, "_load_existing_amsc", unexpected_retained_read)
+    monkeypatch.setattr(rebuild, "_load_existing_awc", unexpected_retained_read)
+    monkeypatch.setattr(rebuild, "_awc_fetch", fetch_awc)
+    output = tmp_path / "receipt.json"
+    observations = tmp_path / "observations.json"
+    references = tmp_path / "references.json"
+    result = rebuild.rebuild(
+        lane_map_path=lane_map,
+        event_dates=["2026-07-22"],
+        output_path=output,
+        observations_path=observations,
+        reference_output_path=references,
+        raw_root=tmp_path / "raw",
+        target_timezone="Asia/Taipei",
+        fetch_amsc=False,
+        fetch_awc=True,
+        fetch_formal_awc=True,
+        station_ids=["RCSS"],
+        reuse_existing_raw=False,
+    )
+    assert result["source_counts"] == {"amsc": 0, "awc": 1}
+    assert result["boundary"]["uses_existing_retained_raw"] is False
+    assert result["boundary"]["fresh_official_awc_raw_only"] is True
+    assert json.loads(observations.read_text(encoding="utf-8"))["observation_count"] == 1

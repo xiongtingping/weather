@@ -51,10 +51,10 @@ def test_process_memory_budget_rejects_projected_growth(monkeypatch: pytest.Monk
         resource_bounds.assert_process_memory_budget(projected_bytes=1, limit=100)
 
 
-def test_process_memory_runtime_limit_matches_declared_512_mib_and_is_strict(
+def test_process_memory_runtime_limit_matches_declared_4096_mib_and_is_strict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert resource_bounds.MAX_TARGET_PROCESS_RSS_BYTES == 512 * resource_bounds.MIB
+    assert resource_bounds.MAX_TARGET_PROCESS_RSS_BYTES == 4096 * resource_bounds.MIB
     limit = resource_bounds.MAX_TARGET_PROCESS_RSS_BYTES
 
     monkeypatch.setattr(resource_bounds, "_process_rss_bytes", lambda: limit - 1)

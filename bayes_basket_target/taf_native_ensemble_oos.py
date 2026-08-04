@@ -37,6 +37,10 @@ from .taf_live_combination_oos import (
 from .taf_nwp_transport_oos import (
     SCHEMA as TRANSPORT_REPORT_SCHEMA,
 )
+from .taf_oos_contract import (
+    HISTORICAL_OOS_TEMPORAL_SCOPE,
+    assert_historical_taf_oos,
+)
 from .taf_revision import TafRevisionArtifact
 from .calibration import TAF_NWP_TRANSPORT_EVIDENCE_SCHEMA
 
@@ -395,6 +399,29 @@ def evaluate_taf_native_ensemble_oos(
             >= decision
         ):
             raise ContractError("taf_native_strict_asof_violation")
+        # A forward/local TAF receipt is useful to the resident worker, but it
+        # is never an OOS label.  Exact historical joins produced by the
+        # current builder carry the explicit closed-day marker; legacy native
+        # rows remain readable only when their settlement window is already
+        # closed.  Open-Meteo/republisher rows must additionally carry their
+        # immutable historical receipt contract.
+        temporal = assert_historical_taf_oos(
+            raw,
+            event_date=event_date,
+            truth_closed_at=truth_closed,
+            transport_values=tuple(
+                (raw.get("transport_provider_ids") or [])
+                if isinstance(raw.get("transport_provider_ids"), list)
+                else tuple(
+                    str(item.get("transport_provider_id") or "")
+                    for item in (raw.get("model_rows") or [])
+                    if isinstance(item, Mapping)
+                )
+            ) + (taf.get("source_class"),),
+            name="taf_native",
+        )
+        if str(taf.get("source_class") or "") == "official_forward_native_receipt":
+            raise ContractError("taf_native_forward_taf_not_oos")
         probabilities_raw = native.get("probabilities")
         centers_raw = native.get("bucket_centers_c")
         if (
@@ -496,6 +523,7 @@ def evaluate_taf_native_ensemble_oos(
             "truth_closed_at_utc": truth_closed.isoformat().replace(
                 "+00:00", "Z"
             ),
+            **temporal,
         })
         assert_process_memory_budget()
 
@@ -604,6 +632,7 @@ def evaluate_taf_native_ensemble_oos(
         "evidence": evidence,
         "evaluated_rows": evaluated,
         "gaps": gaps,
+        "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
         "boundary": {
             "strict_time_split": True,
             "current_live_artifact_replayed_on_historical_labels": False,

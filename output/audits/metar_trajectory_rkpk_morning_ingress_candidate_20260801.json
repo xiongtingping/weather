@@ -1,0 +1,106 @@
+{
+  "activations": [],
+  "artifacts": [
+    {
+      "artifact": {
+        "activated": false,
+        "activation_id": "metar-trajectory-RKPK-morning-v1",
+        "artifact_id": "metar-trajectory-8b9f7057d330ca6d803878eaa3d7ff87",
+        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        "base_strength": 0.8,
+        "content_sha256": "8b9f7057d330ca6d803878eaa3d7ff87df778773aa02a59a95c1d6d74f7a88ac",
+        "effective_sample_n": 4.0,
+        "expected_interval_minutes": 60,
+        "feature_definitions": {
+          "remaining_warming_c": "final official tmax minus running high, nearest 1C",
+          "running_high_c": "max canonical AWC METAR/SPECI temperature available at local bucket start"
+        },
+        "hard_exclusion_baseline_distribution": {
+          "0": 0.07692307692307693,
+          "1": 0.07692307692307693,
+          "10": 0.07692307692307693,
+          "11": 0.07692307692307693,
+          "12": 0.07692307692307693,
+          "2": 0.07692307692307693,
+          "3": 0.07692307692307693,
+          "4": 0.07692307692307693,
+          "5": 0.07692307692307693,
+          "6": 0.07692307692307693,
+          "7": 0.07692307692307693,
+          "8": 0.07692307692307693,
+          "9": 0.07692307692307693
+        },
+        "likelihood_ratio_ceiling": 4.0,
+        "likelihood_ratio_floor": 0.25,
+        "local_time_bucket": "MORNING",
+        "long_interval_minutes": 90,
+        "long_interval_strength_factor": 0.5,
+        "maturity_bin": "D0",
+        "maturity_strength": 0.75,
+        "max_missing_intervals": 4,
+        "method_version": "canonical_full_root_recompute_remaining_warming_v1",
+        "missing_interval_strength_factor": 0.8,
+        "missing_observation_policy": "DEGRADE_STRENGTH",
+        "oos_metrics": {
+          "brier_score": 0.906253160875942,
+          "crps": 1.260382687250291,
+          "nll": 2.467893532043122
+        },
+        "promotion_state": "CANDIDATE_ONLY",
+        "remaining_warming_distribution": {
+          "0": 0.042735042735042736,
+          "1": 0.042735042735042736,
+          "10": 0.042735042735042736,
+          "11": 0.042735042735042736,
+          "12": 0.042735042735042736,
+          "2": 0.042735042735042736,
+          "3": 0.042735042735042736,
+          "4": 0.042735042735042736,
+          "5": 0.042735042735042736,
+          "6": 0.15384615384615385,
+          "7": 0.042735042735042736,
+          "8": 0.26495726495726496,
+          "9": 0.15384615384615385
+        },
+        "sample_n": 4,
+        "schema": "bayes_basket_metar_trajectory_likelihood_artifact_v1",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Seoul",
+        "source_lane": "awc",
+        "station_id": "RKPK",
+        "tail_calibration_error": 0.042735042735042736,
+        "trained_through_utc": "2026-07-31T15:17:48.886Z",
+        "valid_from_utc": "2026-08-01T12:10:01Z",
+        "valid_until_utc": "2026-08-08T12:10:01Z"
+      },
+      "artifact_id": "metar-trajectory-8b9f7057d330ca6d803878eaa3d7ff87",
+      "artifact_kind": "METAR_TRAJECTORY_LIKELIHOOD",
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "content_sha256": "8b9f7057d330ca6d803878eaa3d7ff87df778773aa02a59a95c1d6d74f7a88ac",
+      "oos_gate_passed": false,
+      "scope_key": "awc|JJA|MORNING|D0|official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK",
+      "trained_through_utc": "2026-07-31T15:17:48.886Z",
+      "valid_from_utc": "2026-08-01T12:10:01Z",
+      "valid_until_utc": "2026-08-08T12:10:01Z"
+    }
+  ],
+  "packet_sha256": "f704070570a5268d6a6878a9448fe2b817b5a032bb38bc82a0ffca746a17af4c",
+  "promotions": [
+    {
+      "artifact_id": "metar-trajectory-8b9f7057d330ca6d803878eaa3d7ff87",
+      "artifact_kind": "METAR_TRAJECTORY_LIKELIHOOD",
+      "content_sha256": "3b5ade24f7254afa8fe4490fbf31a9c70db593a68f446ef5d304c658437b22df",
+      "decided_at_utc": "2026-08-01T12:10:00Z",
+      "decision": "REJECTED",
+      "decision_seq": 1,
+      "gate_version": "metar_trajectory_expanding_window_probability_oos_v1",
+      "metrics_sha256": "c31bcd0adc3e9669f2d19b9421850cebd443e5c2896fad0e2660e01c3dc6e0d0",
+      "promotion_id": "metar-trajectory-promotion-8344e073dd2f1cf8d07c4c2ab5d7a6fc",
+      "receipt_sha256": "f9fd5911330d8ba1cdcf8ff8ece34cd712f862cd6d38939644de648112edf9c9"
+    }
+  ],
+  "schema": "bayes_basket_probability_evidence_ingress_v1"
+}

@@ -34,6 +34,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.held_yes_registry import (
+    classify_held_yes_tokens,
+    quote_required_token_ids,
+    registry_classification_complete,
+)
+
 
 def _load_runtime_env() -> None:
     """Keep direct WS diagnostics identical to the launchd environment."""
@@ -45,6 +51,12 @@ def _load_runtime_env() -> None:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return
+    proxy_keys = {
+        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+        "http_proxy", "https_proxy", "all_proxy",
+        "GLOBAL_AGENT_HTTP_PROXY", "PM_MARKET_WS_PROXY",
+        "PM_OFFICIAL_NWP_PROXY",
+    }
     for raw in lines:
         line = raw.strip()
         if line.startswith("export "):
@@ -60,6 +72,11 @@ def _load_runtime_env() -> None:
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
+        # The shell launcher repairs stale localhost proxy ports before
+        # entering Python.  Do not let a repo .env value overwrite that
+        # reachable runtime choice (for example a stale local port -> 1082).
+        if key in proxy_keys and os.environ.get(key):
+            continue
         os.environ[key] = value
 
 
@@ -79,12 +96,37 @@ LATEST_QUOTES_PATH = Path(
 QUOTE_SHARD_DIR = Path(
     os.environ.get("PM_MARKET_WS_QUOTE_SHARD_DIR", str(ROOT / "data" / "market_ws_quote_shards"))
 )
+HELD_YES_WS_MANIFEST_PATH = Path(
+    os.environ.get(
+        "PM_HELD_YES_WS_MANIFEST_PATH",
+        str(ROOT / "data" / "market_ws_held_yes_quotes.json"),
+    )
+)
+HELD_YES_WS_SHARD_DIR = Path(
+    os.environ.get(
+        "PM_HELD_YES_WS_SHARD_DIR",
+        str(ROOT / "data" / "market_ws_held_yes_quote_shards"),
+    )
+)
 TARGET_ACTIVATION_PATH = (
     ROOT
     / "config"
     / "trading"
     / "bayes_basket_target_production_no_live_activation_v1.json"
 )
+HELD_YES_INVENTORY_PATH = Path(
+    os.environ.get(
+        "PM_HELD_YES_INVENTORY_FILE",
+        str(ROOT / "data" / "reported_trajectory_held_yes_tokens.json"),
+    )
+)
+HELD_YES_INVENTORY_SCHEMA = "reported_trajectory_held_yes_inventory_v1"
+HELD_YES_CLOB_RECONCILE_SOURCE = "official_local_clob_execution_guard_snapshot"
+MAX_HELD_YES_INVENTORY_BYTES = 64 * 1024
+MAX_HELD_YES_ACTIVE_TOKENS = 64
+_CLOB_TOKEN_ID_RE = re.compile(r"^[0-9]{1,128}$")
+HELD_YES_WS_MANIFEST_SCHEMA = "clob_ws_held_yes_quote_manifest_v1"
+HELD_YES_WS_TOKEN_SCHEMA = "clob_ws_held_yes_token_quote_snapshot_v1"
 
 
 def _today_et() -> str:
@@ -147,13 +189,12 @@ def _best_bid_ask_and_depth(message: Mapping[str, Any], *, levels: int) -> Tuple
 
 
 def _target_yes_quotes_enabled() -> bool:
-    """Return whether the target no-live lane needs YES book evidence.
+    """Return whether the target no-live lane may subscribe to YES books.
 
-    The market WS is still evidence-only and never authorizes an order.  The
-    target compiler cannot build a real cycle/leg set from NO-only books, so
-    all active YES tokens are subscribed only when the target-owned activation
-    proves the complete production-no-live boundary.  Missing, malformed,
-    legacy or mutation-authorizing configuration fails closed.
+    The market WS is evidence-only and never authorizes an order.  The
+    production strategy is a pure-YES basket, so a missing, malformed,
+    legacy, or mutation-authorizing activation must produce an empty catalog;
+    it must never fall back to a NO subscription.
     """
 
     try:
@@ -224,9 +265,41 @@ class LatestQuoteSnapshot:
             token_write_interval = 0.25
         self._token_write_interval_sec = max(0.0, token_write_interval)
         self._last_token_write_monotonic: Dict[str, float] = {}
+        # Price-change bursts can touch hundreds of tokens at once.  Keep a
+        # bounded dirty queue and drain it at a process-wide rate so each
+        # incoming websocket message cannot synchronously trigger an atomic
+        # JSON+SHA file replacement.  Initial shard activation still writes
+        # every token before publishing the generation; this budget applies
+        # only to subsequent live updates.
+        try:
+            token_write_budget = int(
+                os.environ.get("PM_MARKET_WS_TOKEN_WRITE_BUDGET_PER_SEC", "100")
+            )
+        except (TypeError, ValueError):
+            token_write_budget = 100
+        self._token_write_budget_per_sec = max(1, token_write_budget)
+        self._token_write_budget_window_sec = 1.0
+        self._token_write_window_started = 0.0
+        self._token_write_window_count = 0
+        self._pending_dirty_tokens: set[str] = set()
         self.expected_shards = 0
         self.connection_observed_at = ""
         self._last_write_monotonic = 0.0
+        # Text PINGs are intentionally frequent to keep the official socket
+        # alive, but they must not rebuild the (potentially large)
+        # ``unmaterialized_tokens`` root manifest on every ping for every
+        # shard.  Keep liveness in memory and publish it at one process-wide,
+        # bounded cadence.  The acceptance gate allows 15s for the separate
+        # heartbeat and consumers reject stale books independently, so the
+        # default 5s cadence leaves ample margin while avoiding a write storm.
+        try:
+            liveness_write_interval = float(
+                os.environ.get("PM_MARKET_WS_LIVENESS_WRITE_INTERVAL_SEC", "5.0")
+            )
+        except (TypeError, ValueError):
+            liveness_write_interval = 5.0
+        self._liveness_write_interval_sec = max(1.0, liveness_write_interval)
+        self._last_liveness_write_monotonic = 0.0
         self.sharded = str(os.environ.get("PM_MARKET_WS_SHARDED_SNAPSHOT", "0")).strip().lower() in {
             "1", "true", "yes", "on", "y",
         }
@@ -528,23 +601,37 @@ class LatestQuoteSnapshot:
     def _write(self, *, force: bool = False, dirty_tokens: Iterable[str] = ()) -> None:
         now = time.monotonic()
         dirty_token_set = {str(value) for value in dirty_tokens if str(value)}
-        # Initial book arrays and quiet-socket liveness updates carry no
-        # committed token file changes.  Check the write throttle before
-        # rebuilding/sorting the full manifest; otherwise 1200-token shards
-        # turn every incoming initial book into synchronous JSON work and can
-        # starve the websocket receive loop.
-        if (
-            not force
-            and not dirty_token_set
-            and now - self._last_write_monotonic < self.min_write_interval_sec
-        ):
-            return
         if self.sharded:
             # Provisional quotes deliberately stay in memory.  Writing them
             # under the active token filename was the source of the false
             # quote-missing window during shard reconnects.
-            for token_id in dirty_token_set:
-                if self._active_shard_for_token(token_id) is not None:
+            self._pending_dirty_tokens.update(
+                token_id
+                for token_id in dirty_token_set
+                if self._active_shard_for_token(token_id) is not None
+            )
+            if self._token_write_window_started <= 0.0 or (
+                now - self._token_write_window_started >= self._token_write_budget_window_sec
+            ):
+                self._token_write_window_started = now
+                self._token_write_window_count = 0
+            remaining_budget = max(
+                0,
+                self._token_write_budget_per_sec - self._token_write_window_count,
+            )
+            if remaining_budget:
+                # A deterministic order makes retries reproducible and keeps
+                # the queue bounded under repeated updates to the same token.
+                for token_id in sorted(
+                    self._pending_dirty_tokens,
+                    key=lambda value: (
+                        self._last_token_write_monotonic.get(value, 0.0),
+                        value,
+                    ),
+                )[:remaining_budget]:
+                    if self._active_shard_for_token(token_id) is None:
+                        self._pending_dirty_tokens.discard(token_id)
+                        continue
                     if (
                         not force
                         and now - self._last_token_write_monotonic.get(token_id, 0.0)
@@ -553,6 +640,8 @@ class LatestQuoteSnapshot:
                         continue
                     self._write_token_shard(token_id, shard_active=True)
                     self._last_token_write_monotonic[token_id] = now
+                    self._pending_dirty_tokens.discard(token_id)
+                    self._token_write_window_count += 1
                     was_unmaterialized = token_id in self._active_unmaterialized_tokens
                     if self._quote_is_materialized(self.quotes.get(token_id)):
                         self._active_unmaterialized_tokens.discard(token_id)
@@ -564,6 +653,14 @@ class LatestQuoteSnapshot:
                             self._active_materialized_token_count = max(
                                 0, self._active_materialized_token_count - 1
                             )
+        # In sharded mode a changed token gets its own atomic file above, but
+        # the root manifest is shared by every shard.  Do not let an active
+        # book's high-frequency update bypass this throttle: while a rolling
+        # replacement has hundreds of pending initial books, rebuilding the
+        # large ``unmaterialized_tokens`` array per tick can monopolise the
+        # event loop and prevent those initial books from ever arriving.
+        # Token files remain immediate; the root's <=0.5s continuity delay is
+        # safely within the bounded official WS freshness window.
         if not force and now - self._last_write_monotonic < self.min_write_interval_sec:
             return
         active_tokens = self._active_tokens()
@@ -896,6 +993,34 @@ class LatestQuoteSnapshot:
     def observe(self, rows: Iterable[Mapping[str, Any]], *, observed_at: str) -> None:
         self.observe_with_shard(rows, observed_at=observed_at, shard_index=None)
 
+    def touch_connection(
+        self,
+        *,
+        observed_at: str,
+        shard_index: Optional[int] = None,
+    ) -> None:
+        """Refresh socket liveness without serialising the root per ping.
+
+        Every text PING updates the in-memory connection clocks.  Only the
+        first caller after the bounded interval writes the shared manifest;
+        concurrent shard ping tasks therefore coalesce into one atomic write.
+        Quote/book writes continue to use :meth:`observe_with_shard` and are
+        unaffected by this liveness-only path.
+        """
+
+        self.connection_observed_at = str(observed_at or "").strip()
+        if shard_index is not None:
+            index = int(shard_index)
+            if index in self.pending_shard_tokens:
+                self.pending_shard_connection_observed_at[index] = self.connection_observed_at
+            elif index in self.active_shards:
+                self.active_shard_connection_observed_at[index] = self.connection_observed_at
+        now = time.monotonic()
+        if now - self._last_liveness_write_monotonic < self._liveness_write_interval_sec:
+            return
+        self._write(force=True)
+        self._last_liveness_write_monotonic = now
+
     def observe_with_shard(
         self,
         rows: Iterable[Mapping[str, Any]],
@@ -986,7 +1111,291 @@ class LatestQuoteSnapshot:
         self._write(force=True)
 
 
+class HeldYesQuoteSnapshot:
+    """Independent, per-token official WS evidence for active held YES.
+
+    This deliberately does not share the primary catalog's manifest, shard
+    directory, topology, or activation rule.  A historical held token may no
+    longer receive a CLOB book; that is missing evidence for that *one* token,
+    never a reason to make the current 45-station basket topology disappear.
+    """
+
+    MANIFEST_SCHEMA = HELD_YES_WS_MANIFEST_SCHEMA
+    TOKEN_SCHEMA = HELD_YES_WS_TOKEN_SCHEMA
+
+    def __init__(
+        self,
+        path: Path = HELD_YES_WS_MANIFEST_PATH,
+        *,
+        shard_dir: Path = HELD_YES_WS_SHARD_DIR,
+        depth_levels: int = 5,
+    ) -> None:
+        self.path = Path(path)
+        self.shard_dir = Path(shard_dir)
+        self.depth_levels = max(1, int(depth_levels))
+        self.scope_token_ids: tuple[str, ...] = ()
+        self.scope_sha256 = self._scope_sha256(())
+        self.quotes: Dict[str, Dict[str, Any]] = {}
+        self.books: Dict[str, Dict[str, Any]] = {}
+        self.connection_observed_at = ""
+        self.connected = False
+        self.last_error = ""
+
+    @staticmethod
+    def _canonical(value: Mapping[str, Any]) -> bytes:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    @staticmethod
+    def _scope_sha256(token_ids: Iterable[str]) -> str:
+        return hashlib.sha256("\x00".join(sorted(str(value) for value in token_ids)).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalise_tokens(token_ids: Iterable[str]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in token_ids if str(value).strip()}))
+
+    def _token_path(self, token_id: str) -> Path:
+        return self.shard_dir / f"{hashlib.sha256(token_id.encode('utf-8')).hexdigest()}.json"
+
+    def _atomic_write(self, path: Path, payload: Mapping[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                handle.write("\n")
+                handle.flush()
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _state(self) -> str:
+        if not self.connected:
+            return "disconnected" if self.scope_token_ids else "empty"
+        materialized = len(self.quotes)
+        if not self.scope_token_ids:
+            return "empty"
+        if materialized == len(self.scope_token_ids):
+            return "ready"
+        if materialized:
+            return "partial_evidence"
+        return "missing_evidence"
+
+    def _write_manifest(self) -> None:
+        materialized = sorted(token_id for token_id in self.scope_token_ids if token_id in self.quotes)
+        core = {
+            "schema": self.MANIFEST_SCHEMA,
+            "state": self._state(),
+            "connection_observed_at": self.connection_observed_at,
+            "scope_token_ids": list(self.scope_token_ids),
+            "scope_sha256": self.scope_sha256,
+            "complete_book_token_count": len(materialized),
+            "complete_book_token_ids": materialized,
+            "missing_complete_book_token_ids": [
+                token_id for token_id in self.scope_token_ids if token_id not in self.quotes
+            ],
+            "quote_storage": "sha256_token_shards_v1",
+            "quote_shard_dir": str(self.shard_dir),
+            "source": "official_polymarket_clob_websocket",
+            "evidence_only": True,
+            "authorizes_order": False,
+            "last_error": self.last_error,
+        }
+        payload = {
+            **core,
+            "snapshot_sha256": hashlib.sha256(self._canonical(core)).hexdigest(),
+        }
+        self._atomic_write(self.path, payload)
+
+    def _write_token_shard(self, token_id: str) -> None:
+        quote = self.quotes.get(token_id)
+        if not isinstance(quote, Mapping):
+            return
+        core = {
+            "schema": self.TOKEN_SCHEMA,
+            "token_id": token_id,
+            "scope_sha256": self.scope_sha256,
+            "scope_token_ids": list(self.scope_token_ids),
+            "quote": dict(quote),
+            "source": "official_polymarket_clob_websocket",
+            "evidence_only": True,
+            "authorizes_order": False,
+        }
+        payload = {
+            **core,
+            "snapshot_sha256": hashlib.sha256(self._canonical(core)).hexdigest(),
+        }
+        self._atomic_write(self._token_path(token_id), payload)
+
+    def _invalidate_current_scope(self) -> None:
+        old_tokens = tuple(self.scope_token_ids)
+        self.quotes.clear()
+        self.books.clear()
+        # Publish absence first: a reader observing an old file after this
+        # point rejects it because it no longer appears in the signed root.
+        self._write_manifest()
+        for token_id in old_tokens:
+            self._token_path(token_id).unlink(missing_ok=True)
+
+    def configure_scope(self, token_ids: Iterable[str], *, reset: bool = False) -> bool:
+        """Atomically move to a bounded held-token scope.
+
+        A changed scope invalidates all old token files before deleting them so
+        stale shards cannot bridge an inventory reconcile into a new scope.
+        """
+
+        normalized = self._normalise_tokens(token_ids)
+        changed = normalized != self.scope_token_ids
+        if changed:
+            old_tokens = tuple(self.scope_token_ids)
+            self.scope_token_ids = normalized
+            self.scope_sha256 = self._scope_sha256(normalized)
+            self.quotes.clear()
+            self.books.clear()
+            self.connected = bool(normalized)
+            self.last_error = ""
+            self._write_manifest()
+            # The signed new root has already invalidated all old scope
+            # shards, so cleanup cannot make a stale quote usable.
+            for token_id in old_tokens:
+                self._token_path(token_id).unlink(missing_ok=True)
+            return True
+        if reset:
+            self._invalidate_current_scope()
+            self.connected = bool(normalized)
+            self.last_error = ""
+        return changed
+
+    def begin_connection(self, token_ids: Iterable[str], *, observed_at: str) -> bool:
+        """Start a fresh auxiliary subscription; old books never carry it."""
+
+        normalized = self._normalise_tokens(token_ids)
+        old_tokens = tuple(self.scope_token_ids)
+        changed = normalized != self.scope_token_ids
+        if changed:
+            self.scope_token_ids = normalized
+            self.scope_sha256 = self._scope_sha256(normalized)
+        self.quotes.clear()
+        self.books.clear()
+        self.connected = bool(normalized)
+        self.connection_observed_at = str(observed_at or "")
+        self.last_error = ""
+        # First invalidate any previous evidence under the new signed scope,
+        # then delete only the exact old/current token shards.
+        self._write_manifest()
+        for token_id in set(old_tokens) | set(normalized):
+            self._token_path(token_id).unlink(missing_ok=True)
+        return changed
+
+    def mark_disconnected(self, *, error: str = "", observed_at: Optional[str] = None) -> None:
+        self.connected = False
+        self.last_error = str(error or "")[:240]
+        if observed_at:
+            self.connection_observed_at = str(observed_at)
+        self._write_manifest()
+
+    def touch_connection(self, *, observed_at: str) -> None:
+        if not self.connected:
+            return
+        self.connection_observed_at = str(observed_at or "")
+        self._write_manifest()
+
+    def _quote_from_book(self, token_id: str, *, observed_at: str) -> Dict[str, Any]:
+        book = self.books[token_id]
+        bids = book["bids"]
+        asks = book["asks"]
+        ordered_bids = [
+            {"price": price, "size": bids[price]}
+            for price in sorted(bids, reverse=True)[: self.depth_levels]
+        ]
+        ordered_asks = [
+            {"price": price, "size": asks[price]}
+            for price in sorted(asks)[: self.depth_levels]
+        ]
+        best_bid = ordered_bids[0]["price"] if ordered_bids else None
+        best_ask = ordered_asks[0]["price"] if ordered_asks else None
+        return {
+            "token_id": token_id,
+            "run_date": _today_et(),
+            "event_date": "",
+            "slug": "__held_yes_clob_reconcile__",
+            "outcome": "",
+            "side": "YES",
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "mid": ((float(best_bid) + float(best_ask)) / 2.0)
+            if best_bid is not None and best_ask is not None
+            else None,
+            "spread": max(float(best_ask) - float(best_bid), 0.0)
+            if best_bid is not None and best_ask is not None
+            else None,
+            "bid_depth_topN": float(sum(level["size"] for level in ordered_bids)),
+            "ask_depth_topN": float(sum(level["size"] for level in ordered_asks)),
+            "source": "clob_ws",
+            "source_detail": "book",
+            "created_at": observed_at,
+            "book_observed_at": str(book["observed_at"]),
+            "bids": ordered_bids,
+            "asks": ordered_asks,
+            "tick_size": book.get("tick_size"),
+        }
+
+    def observe_market_message(self, message: Mapping[str, Any], *, observed_at: str) -> bool:
+        """Materialize only a full official book, then its safe deltas."""
+
+        event_type = str(message.get("event_type") or "").strip()
+        if event_type == "book":
+            token_id = str(message.get("asset_id") or "").strip()
+            if (
+                token_id not in self.scope_token_ids
+                or not isinstance(message.get("bids"), list)
+                or not isinstance(message.get("asks"), list)
+            ):
+                return False
+            self.books[token_id] = {
+                "bids": LatestQuoteSnapshot._levels(message.get("bids")),
+                "asks": LatestQuoteSnapshot._levels(message.get("asks")),
+                "observed_at": str(observed_at),
+                "tick_size": _to_float(message.get("tick_size")),
+            }
+            self.quotes[token_id] = self._quote_from_book(token_id, observed_at=str(observed_at))
+            self._write_token_shard(token_id)
+            self._write_manifest()
+            return True
+        if event_type != "price_change":
+            return False
+        changed_tokens: set[str] = set()
+        for raw in message.get("price_changes") or []:
+            if not isinstance(raw, Mapping):
+                continue
+            token_id = str(raw.get("asset_id") or "").strip()
+            book = self.books.get(token_id)
+            if token_id not in self.scope_token_ids or not isinstance(book, Mapping):
+                continue
+            side = str(raw.get("side") or "").strip().upper()
+            level_key = "bids" if side in {"BUY", "BID"} else "asks" if side in {"SELL", "ASK"} else ""
+            try:
+                price, size = float(raw.get("price")), float(raw.get("size"))
+            except (TypeError, ValueError):
+                continue
+            levels = book.get(level_key) if level_key else None
+            if not isinstance(levels, dict) or not 0 < price < 1 or not math.isfinite(size):
+                continue
+            if size <= 0:
+                levels.pop(price, None)
+            else:
+                levels[price] = size
+            book["observed_at"] = str(observed_at)
+            self.quotes[token_id] = self._quote_from_book(token_id, observed_at=str(observed_at))
+            changed_tokens.add(token_id)
+        for token_id in sorted(changed_tokens):
+            self._write_token_shard(token_id)
+        if changed_tokens:
+            self._write_manifest()
+        return bool(changed_tokens)
+
+
 LATEST_QUOTE_SNAPSHOT = LatestQuoteSnapshot()
+HELD_YES_QUOTE_SNAPSHOT = HeldYesQuoteSnapshot()
 
 
 def _utc_now_precise() -> str:
@@ -1058,6 +1467,79 @@ _BINDINGS_CACHE: Dict[Tuple[Any, ...], Tuple[Tuple[Any, ...], Dict[str, TokenBin
 _BINDING_MARKER_CACHE: Dict[Tuple[Any, ...], Tuple[float, Tuple[Any, ...]]] = {}
 
 
+def _held_yes_active_token_scope() -> Tuple[Tuple[str, ...], str]:
+    """Read a bounded CLOB-bound held-YES token projection for WS evidence.
+
+    The inventory identifies retained non-zero balances, not executable
+    markets.  Only a matching official registry row that is source-eligible,
+    active and accepting orders may enter the auxiliary CLOB subscription.
+    Closed/non-accepting tokens stay in inventory but are explicitly
+    non-tradeable and therefore cannot create a stale-book subscription.
+    """
+
+    path = HELD_YES_INVENTORY_PATH
+    try:
+        if path.is_symlink() or not path.is_file():
+            return (), "invalid"
+        size = int(path.stat().st_size)
+        if size <= 0 or size > MAX_HELD_YES_INVENTORY_BYTES:
+            return (), "invalid"
+        raw = path.read_bytes()
+        if len(raw) != size or len(raw) > MAX_HELD_YES_INVENTORY_BYTES:
+            return (), "invalid"
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, TypeError):
+        return (), "invalid"
+    if not isinstance(payload, Mapping):
+        return (), "invalid"
+    active_raw = payload.get("active_token_ids")
+    known_raw = payload.get("token_ids")
+    if (
+        payload.get("schema") != HELD_YES_INVENTORY_SCHEMA
+        or payload.get("complete") is not True
+        or payload.get("active_token_ids_source") != HELD_YES_CLOB_RECONCILE_SOURCE
+        or not isinstance(payload.get("active_token_ids_observed_at"), str)
+        or not str(payload.get("active_token_ids_observed_at") or "").strip()
+        or not isinstance(payload.get("active_token_ids_receipt_sha256"), str)
+        or not re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(payload.get("active_token_ids_receipt_sha256") or "").lower(),
+        )
+        or not isinstance(active_raw, list)
+        or not isinstance(known_raw, list)
+        or len(active_raw) > MAX_HELD_YES_ACTIVE_TOKENS
+        or len(known_raw) > MAX_HELD_YES_INVENTORY_BYTES // 2
+    ):
+        return (), "invalid"
+    active = [str(value).strip() for value in active_raw]
+    known = [str(value).strip() for value in known_raw]
+    if (
+        any(not _CLOB_TOKEN_ID_RE.fullmatch(token) for token in active)
+        or any(not _CLOB_TOKEN_ID_RE.fullmatch(token) for token in known)
+        or len(set(active)) != len(active)
+        or len(set(known)) != len(known)
+        or not set(active) <= set(known)
+    ):
+        return (), "invalid"
+    try:
+        with _open_registry_ro() as conn:
+            records = classify_held_yes_tokens(
+                conn,
+                token_ids=active,
+                official_source_lane="awc",
+            )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error):
+        return (), "registry_unresolved"
+    if not registry_classification_complete(records):
+        return (), "registry_unresolved"
+    token_ids = tuple(sorted(quote_required_token_ids(records)))
+    # The catalog changes only when the subscribed set changes.  A normal
+    # reconcile refreshes timestamps/receipt hash frequently and must not
+    # force a fresh six-shard subscription when its active token set is same.
+    signature = hashlib.sha256("\x00".join(token_ids).encode("utf-8")).hexdigest()
+    return token_ids, signature if token_ids else "no_quote_required_tokens"
+
+
 def _binding_catalog_marker(days_ahead: int, max_assets: int, basket_yes_enabled: bool) -> Tuple[Any, ...] | None:
     """Read a cheap SSOT marker before deciding whether to rebuild bindings."""
 
@@ -1081,11 +1563,11 @@ def _binding_catalog_marker(days_ahead: int, max_assets: int, basket_yes_enabled
         with _open_registry_ro() as conn:
             row = conn.execute(
                 """SELECT COUNT(*), COALESCE(MAX(refreshed_at),''), COALESCE(MAX(event_date),''),
-                          COALESCE(MAX(yes_token),''), COALESCE(MAX(no_token),'')
+                          COALESCE(MAX(yes_token),'')
                    FROM reported_trajectory_market_registry
-                   WHERE source_lane IN ('amsc','awc') AND source_eligible=1
+                   WHERE source_lane = 'awc' AND source_eligible=1
                      AND market_active=1 AND market_accepting_orders=1
-                     AND COALESCE(yes_token,'')<>'' AND COALESCE(no_token,'')<>''"""
+                     AND COALESCE(yes_token,'')<>''"""
             ).fetchone()
     except Exception:
         # Keep the last known catalog marker during a short SQLite hiccup.  A
@@ -1098,7 +1580,7 @@ def _binding_catalog_marker(days_ahead: int, max_assets: int, basket_yes_enabled
         return None
     marker = (
         int(days_ahead), int(max_assets), bool(basket_yes_enabled), int(row[0] or 0),
-        str(row[1] or ""), str(row[2] or ""), str(row[3] or ""), str(row[4] or ""),
+        str(row[1] or ""), str(row[2] or ""), str(row[3] or ""),
         utc_minute_bucket,
     )
     _BINDING_MARKER_CACHE[cache_key] = (now, marker)
@@ -1215,7 +1697,7 @@ def _ws_proxy_candidates(mode_raw: str) -> List[Tuple[str, Any]]:
         return [("http_proxy_env", explicit_http_proxy)]
     if mode in {"auto", "system"}:
         return [("auto", "__auto__")]
-    # Explicit proxy URL (e.g. http://127.0.0.1:7897)
+    # Explicit proxy URL (e.g. http://127.0.0.1:1082)
     if mode.startswith("http://") or mode.startswith("https://"):
         return [("custom", mode_raw)]
     raise ValueError(f"unsupported PM_MARKET_WS_PROXY mode: {mode_raw}")
@@ -1241,26 +1723,37 @@ def _load_token_bindings(days_ahead: int, max_assets: int) -> Dict[str, TokenBin
     today_utc = datetime.now(timezone.utc).date().isoformat()
     sql = """
         SELECT
-            slug,event_date,outcome,yes_token,no_token,settlement_timezone
+            slug,event_date,outcome,yes_token,settlement_timezone
         FROM reported_trajectory_market_registry
-        WHERE source_lane IN ('amsc','awc')
+        WHERE source_lane = 'awc'
           AND source_eligible=1
           AND market_active=1
           AND market_accepting_orders=1
           AND COALESCE(yes_token,'')<>''
-          AND COALESCE(no_token,'')<>''
           AND event_date >= date(?, '-1 day')
           AND event_date <= date(?, '+LOOKAHEAD day')
         ORDER BY event_date,slug,outcome
     """
     sql = sql.replace("+LOOKAHEAD day", f"+{lookahead_days} day")
+    # The primary catalog is strictly the current registry.  Historical held
+    # YES evidence is subscribed via a separate bounded auxiliary socket;
+    # otherwise an old token with no book would prevent a complete current
+    # 45-station topology from materializing.
     bindings: Dict[str, TokenBinding] = {}
     basket_yes_enabled = _target_yes_quotes_enabled()
-    cache_key = (lookahead_days, int(max_assets), bool(basket_yes_enabled))
+    cache_key = (
+        lookahead_days,
+        int(max_assets),
+        bool(basket_yes_enabled),
+    )
     marker = _binding_catalog_marker(lookahead_days, int(max_assets), basket_yes_enabled)
     cached = _BINDINGS_CACHE.get(cache_key)
     if marker is not None and cached is not None and cached[0] == marker:
         return dict(cached[1])
+    if not basket_yes_enabled:
+        if marker is not None:
+            _BINDINGS_CACHE[cache_key] = (marker, {})
+        return {}
     try:
         with _open_registry_ro() as conn:
             rows = conn.execute(
@@ -1273,7 +1766,7 @@ def _load_token_bindings(days_ahead: int, max_assets: int) -> Dict[str, TokenBin
         slug = str(row[0] or "").strip()
         event_date = str(row[1] or "").strip().split("T", 1)[0]
         outcome = str(row[2] or "").strip()
-        timezone_name = str(row[5] or "").strip()
+        timezone_name = str(row[4] or "").strip()
         try:
             local_event_date = datetime.now(timezone.utc).astimezone(ZoneInfo(timezone_name)).date()
         except Exception:
@@ -1290,24 +1783,20 @@ def _load_token_bindings(days_ahead: int, max_assets: int) -> Dict[str, TokenBin
             or event_date_value > local_event_date + timedelta(days=lookahead_days)
         ):
             continue
-        token_rows = [("NO", row[4])]
-        if basket_yes_enabled:
-            token_rows.append(("YES", row[3]))
-        for side, token_raw in token_rows:
-            token_id = str(token_raw or "").strip()
-            if not token_id or token_id in bindings:
-                continue
-            bindings[token_id] = TokenBinding(
-                token_id=token_id,
-                slug=slug,
-                event_date=event_date,
-                outcome=outcome,
-                side=side,
-            )
-            if max_assets > 0 and len(bindings) >= max_assets:
-                if marker is not None:
-                    _BINDINGS_CACHE[cache_key] = (marker, dict(bindings))
-                return dict(bindings)
+        token_id = str(row[3] or "").strip()
+        if not token_id or token_id in bindings:
+            continue
+        bindings[token_id] = TokenBinding(
+            token_id=token_id,
+            slug=slug,
+            event_date=event_date,
+            outcome=outcome,
+            side="YES",
+        )
+        if max_assets > 0 and len(bindings) >= max_assets:
+            if marker is not None:
+                _BINDINGS_CACHE[cache_key] = (marker, dict(bindings))
+            return dict(bindings)
     if marker is not None:
         _BINDINGS_CACHE[cache_key] = (marker, dict(bindings))
     return bindings
@@ -1484,8 +1973,8 @@ async def _ping_loop(ws: Any, interval_sec: float, shard_index: Optional[int] = 
                 # alive.  Persist liveness separately from quote timestamps;
                 # once send fails, this timestamp stops and the consumer's
                 # normal freshness limit closes the evidence window.
-                LATEST_QUOTE_SNAPSHOT.observe_with_shard(
-                    [], observed_at=_utc_now_precise(), shard_index=shard_index,
+                LATEST_QUOTE_SNAPSHOT.touch_connection(
+                    observed_at=_utc_now_precise(), shard_index=shard_index,
                 )
         except Exception:
             return
@@ -1830,6 +2319,14 @@ async def _listen_asset_batch(
                                             shard_count
                                         )
                                 received += len(rows)
+                            # ``ws.recv`` can complete immediately while the
+                            # server's initial-book burst remains buffered.
+                            # Give the independent held-YES evidence task and
+                            # sibling shards a scheduling turn before asking
+                            # for the next raw payload; otherwise synchronous
+                            # token-shard writes can starve their 60-second
+                            # liveness/refresh deadlines indefinitely.
+                            await asyncio.sleep(0)
                         now = time.monotonic()
                         materialized_count, shard_token_count = (
                             LATEST_QUOTE_SNAPSHOT.shard_materialization_counts(shard_index)
@@ -1958,6 +2455,162 @@ async def _listen_asset_batch(
     raise RuntimeError("; ".join(connect_errors[:3]) or "ws_connect_failed")
 
 
+class HeldYesScopeChanged(RuntimeError):
+    """The CLOB-proven active held-token set changed during a socket cycle."""
+
+
+async def _held_yes_ping_loop(
+    ws: Any,
+    snapshot: HeldYesQuoteSnapshot,
+    interval_sec: float,
+) -> None:
+    while True:
+        await asyncio.sleep(interval_sec)
+        try:
+            await ws.send("PING")
+            snapshot.touch_connection(observed_at=_utc_now_precise())
+        except Exception:
+            return
+
+
+async def _listen_held_yes_asset_batch(
+    args: argparse.Namespace,
+    token_ids: tuple[str, ...],
+    *,
+    snapshot: HeldYesQuoteSnapshot = HELD_YES_QUOTE_SNAPSHOT,
+) -> None:
+    """Run one bounded, independent subscription for active held YES tokens.
+
+    No exception from this task is allowed to cross into the primary catalog
+    supervisor.  A missing initial book is deliberately represented only in
+    the auxiliary manifest, never by an empty quote or a primary shard gap.
+    """
+
+    if not token_ids:
+        return
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    subscription = {
+        "assets_ids": list(token_ids),
+        "type": "market",
+        "custom_feature_enabled": True,
+    }
+    base_connect_kwargs: Dict[str, Any] = {
+        "ssl": ssl_context,
+        "ping_interval": 20,
+        "ping_timeout": 20,
+        "open_timeout": 20,
+        "close_timeout": 5,
+        "max_size": 8 * 1024 * 1024,
+    }
+    connect_errors: List[str] = []
+    for proxy_label, proxy_value in _ws_proxy_candidates(WS_PROXY_MODE):
+        connect_kwargs = dict(base_connect_kwargs)
+        if proxy_value != "__auto__":
+            connect_kwargs["proxy"] = proxy_value
+        try:
+            async with websockets.connect(WS_URL, **connect_kwargs) as ws:
+                connected_at = _utc_now_precise()
+                snapshot.begin_connection(token_ids, observed_at=connected_at)
+                await ws.send(json.dumps(subscription))
+                ping_task = asyncio.create_task(
+                    _held_yes_ping_loop(ws, snapshot, args.text_ping_sec),
+                    name="held-yes-official-ws-ping",
+                )
+                catalog_probe_sec = max(
+                    1.0,
+                    _env_float("PM_HELD_YES_WS_CATALOG_PROBE_SEC", 2.0),
+                )
+                next_catalog_probe = time.monotonic() + catalog_probe_sec
+                reload_sec = max(1.0, float(args.reload_sec))
+                deadline = time.monotonic() + reload_sec
+                try:
+                    while True:
+                        timeout = max(0.25, min(float(args.flush_sec), deadline - time.monotonic()))
+                        try:
+                            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                        except asyncio.TimeoutError:
+                            raw = ""
+                        if raw:
+                            observed_at = _utc_now_precise()
+                            snapshot.touch_connection(observed_at=observed_at)
+                            for message in _iter_payload_messages(str(raw)):
+                                snapshot.observe_market_message(
+                                    message, observed_at=observed_at,
+                                )
+                        now = time.monotonic()
+                        if now >= next_catalog_probe:
+                            current_tokens, _scope = _held_yes_active_token_scope()
+                            if current_tokens != token_ids:
+                                raise HeldYesScopeChanged("held_yes_token_scope_changed")
+                            next_catalog_probe = now + catalog_probe_sec
+                        if now >= deadline:
+                            return
+                finally:
+                    ping_task.cancel()
+                    await asyncio.gather(ping_task, return_exceptions=True)
+        except asyncio.CancelledError:
+            raise
+        except HeldYesScopeChanged:
+            raise
+        except Exception as exc:
+            connect_errors.append(f"{proxy_label}:{exc.__class__.__name__}:{str(exc)[:140]}")
+            continue
+        return
+    raise RuntimeError("; ".join(connect_errors[:3]) or "held_yes_ws_connect_failed")
+
+
+async def _run_held_yes_ws_forever(
+    args: argparse.Namespace,
+    *,
+    snapshot: HeldYesQuoteSnapshot = HELD_YES_QUOTE_SNAPSHOT,
+) -> None:
+    """Keep held-YES evidence alive without coupling it to the primary loop."""
+
+    backoff = 1.0
+    idle_sec = max(1.0, min(float(args.reload_sec), 15.0))
+    while True:
+        try:
+            token_ids, scope_state = _held_yes_active_token_scope()
+            if not token_ids:
+                snapshot.configure_scope(())
+                snapshot.mark_disconnected(
+                    error=(
+                        "held_yes_inventory_invalid"
+                        if scope_state == "invalid"
+                        else "held_yes_registry_classification_unresolved"
+                        if scope_state == "registry_unresolved"
+                        else "held_yes_no_quote_required_tokens"
+                    ),
+                    observed_at=_utc_now_precise(),
+                )
+                await asyncio.sleep(idle_sec)
+                backoff = 1.0
+                continue
+            await _listen_held_yes_asset_batch(args, token_ids, snapshot=snapshot)
+            # A deliberate bounded refresh will obtain a fresh authoritative
+            # initial book rather than extending an old book indefinitely.
+            snapshot.mark_disconnected(
+                error="held_yes_ws_refreshing", observed_at=_utc_now_precise(),
+            )
+            backoff = 1.0
+        except asyncio.CancelledError:
+            raise
+        except HeldYesScopeChanged:
+            # Publish a missing-evidence root before the next subscription;
+            # the new scope cannot inherit old token shards.
+            snapshot.mark_disconnected(
+                error="held_yes_token_scope_changed", observed_at=_utc_now_precise(),
+            )
+            backoff = 1.0
+        except Exception as exc:
+            snapshot.mark_disconnected(
+                error=f"{exc.__class__.__name__}:{str(exc)[:200]}",
+                observed_at=_utc_now_precise(),
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 1.7, 30.0)
+
+
 async def run_forever(args: argparse.Namespace) -> None:
     backoff = 1.0
     coalescer = TickCoalescer(
@@ -1965,6 +2618,7 @@ async def run_forever(args: argparse.Namespace) -> None:
         same_quote_tolerance=float(args.coalesce_same_quote_tolerance),
     )
     target_multi_scope_task: asyncio.Task[Any] | None = None
+    held_yes_ws_task: asyncio.Task[Any] | None = None
     target_multi_scope_enabled = str(
         os.environ.get("PM_TARGET_WS_VERTICAL_SLICE_ENABLED", "1")
     ).strip().lower() in {"1", "true", "yes", "on"}
@@ -1981,6 +2635,14 @@ async def run_forever(args: argparse.Namespace) -> None:
             run_resident_target_ws_publisher(),
             name="target-resident-multi-scope-official-ws",
         )
+    # Active historical YES positions have their own bounded official CLOB
+    # evidence task.  It is intentionally neither awaited nor included in the
+    # primary shard gather: missing history books must fail only that token's
+    # exit evidence, never the 45-station basket quote topology.
+    held_yes_ws_task = asyncio.create_task(
+        _run_held_yes_ws_forever(args),
+        name="held-yes-official-ws-evidence",
+    )
     try:
         while True:
             try:
@@ -2002,6 +2664,12 @@ async def run_forever(args: argparse.Namespace) -> None:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 1.7, 30.0)
     finally:
+        if held_yes_ws_task is not None:
+            held_yes_ws_task.cancel()
+            await asyncio.gather(
+                held_yes_ws_task,
+                return_exceptions=True,
+            )
         if target_multi_scope_task is not None:
             target_multi_scope_task.cancel()
             await asyncio.gather(

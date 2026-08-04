@@ -1,0 +1,14 @@
+{
+  "content_sha256": "6f3fa56499db79ba02bc8f6f0828b45365ad62eba6d4b30ae63860b75d7a6345",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "58c89e1e69a2389708f85029184b6fcfe95be5f3b5637ee65aac9a7af687f2a9",
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Chicago",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KAUS"
+}

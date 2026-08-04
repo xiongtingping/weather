@@ -1,0 +1,2065 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "matrix_only": true,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "declared_status_counts": {
+    "BLOCKED": 0,
+    "DONE": 49,
+    "PARTIAL": 66,
+    "TODO": 0
+  },
+  "incomplete_item_ids": [
+    "M0-02",
+    "M0-05",
+    "M1-08",
+    "M2-01",
+    "M2-02",
+    "M2-03",
+    "M2-04",
+    "M3-01",
+    "M3-02",
+    "M3-03",
+    "M3-03A",
+    "M3-04",
+    "M3-06",
+    "M3-06A",
+    "M3-07",
+    "M3-08",
+    "M3-09",
+    "M3-10",
+    "M3-11",
+    "M3-12",
+    "M4-01",
+    "M4-03",
+    "M4-04",
+    "M4-05",
+    "M4-06",
+    "M4-07",
+    "M4-08",
+    "M4-09",
+    "M4-18",
+    "M4-19",
+    "M4-20",
+    "M4-21",
+    "M4-22",
+    "M4-26",
+    "M5-01",
+    "M5-02",
+    "M5-03",
+    "M5-04",
+    "M5-05",
+    "M5-06",
+    "M5-07",
+    "M6-01",
+    "M6-02",
+    "M6-03",
+    "M6-05",
+    "M6-07",
+    "M6-10",
+    "M6-11",
+    "M6-12",
+    "M8-02",
+    "M8-03",
+    "M8-05",
+    "M8-06",
+    "M8-07",
+    "M8-08",
+    "M8-09",
+    "M8-11",
+    "M8-12",
+    "M8-13",
+    "M9-01",
+    "M9-04",
+    "M9-08",
+    "M10-01",
+    "M10-02",
+    "M10-03",
+    "M10-04"
+  ],
+  "item_count": 115,
+  "items": [
+    {
+      "acceptance_and_dependencies": "冻结当前activation、配置、DB与运行闭包hash；验收：重跑两次hash一致；证据：`output/audits/bayes_basket_target_production_facts_baseline.json`（`facts_sha256=7e0e082cb805f839e5c54b4983eb2a046e065fea3b205289c2907178a174ecba`，连续两次一致）+ receipt。`data/market_ws_latest_quotes.json` 是受保护的 evidence-only 动态文件，仅保留前后原始hash用于保护观测，不纳入稳定 facts hash；依赖：无。",
+      "declared_status": "DONE",
+      "id": "M0-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1045,
+      "title": "生产事实"
+    },
+    {
+      "acceptance_and_dependencies": "按唯一阻断权威`auto_trade_decisions`核对未决cycle；当前actionable unresolved为0；截至2026-07-27T22:02:40Z，118条`blocked/will_order=0` decision中114条具备完整`NO_EXECUTION` vector，历史缺口固定为4条严格append-only repair候选，因此真实闭环为BLOCKED/PARTIAL；完整v4临时副本演练达到118/118且源库不变，不能替代维护窗。证据：`output/audits/bayes_basket_target_m0_closure_audit.json`与`output/audits/bayes_basket_target_current_ssot_v4_rehearsal.json`；依赖：M0-01。",
+      "declared_status": "PARTIAL",
+      "id": "M0-02",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "deletes_retained_cycles": false,
+          "places_orders": false,
+          "read_only": true,
+          "reads_shared_live_database": false,
+          "shared_live_database": "/Users/xiong/weather/data/archive.db",
+          "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+          "writes_database": false
+        },
+        "path": "output/audits/bayes_basket_target_m0_closure_audit.json",
+        "present": true,
+        "status": "BLOCKED",
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1046,
+      "title": "cycle对账"
+    },
+    {
+      "acceptance_and_dependencies": "只核对target-local gateway边界，不读取共享live gateway DB；验收：will_order/nonblocked decision、intent、order event和reconciliation均为0；证据：`output/audits/bayes_basket_target_current_et_20260726/m0_closure_audit.json`；依赖：M0-01。",
+      "declared_status": "DONE",
+      "id": "M0-03",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "deletes_retained_cycles": false,
+          "places_orders": false,
+          "read_only": true,
+          "reads_shared_live_database": false,
+          "shared_live_database": "/Users/xiong/weather/data/archive.db",
+          "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+          "writes_database": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/m0_closure_audit.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1047,
+      "title": "幂等对账"
+    },
+    {
+      "acceptance_and_dependencies": "核对reserve/release/filled与cycle总账；验收：target reservation、requested reserve、pool balance和reserved均为0并闭合；证据：`output/audits/bayes_basket_target_current_et_20260726/m0_closure_audit.json`；依赖：M0-02,M0-03。",
+      "declared_status": "DONE",
+      "id": "M0-04",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "deletes_retained_cycles": false,
+          "places_orders": false,
+          "read_only": true,
+          "reads_shared_live_database": false,
+          "shared_live_database": "/Users/xiong/weather/data/archive.db",
+          "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+          "writes_database": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/m0_closure_audit.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1048,
+      "title": "资本账本"
+    },
+    {
+      "acceptance_and_dependencies": "generation 6曾完成当时版本的真实切换，但最新文件合同又增加regime superseded约束；当前真实DB缺4条execution vector与formal cash authority manifest。完整真实DB临时副本演练已完成最新v4 delta、114→118 append-repair及45站cash candidate preview，源DB SHA不变、零intent/reservation/order/reconcile、零gateway/live写。下一次真实增量迁移仍须唯一维护窗满足quiescence，禁止在线绕过；入口已具备逐阶段自动回滚与有界恢复物保留。验收：维护窗后contract hash/generation一致且`production_no_live`、gateway/live-submit仍关闭；证据：`output/audits/bayes_basket_target_current_ssot_v4_rehearsal.json`、`output/audits/bayes_basket_target_no_live_candidate_artifacts_v1.json`及M0 closure；依赖：M0-01。",
+      "declared_status": "PARTIAL",
+      "id": "M0-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "concurrent_source_drift_observed": false,
+          "concurrent_source_writer_permitted_for_online_backup": true,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "source_opened_read_only": true,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_current_ssot_v4_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1049,
+      "title": "激活一致性"
+    },
+    {
+      "acceptance_and_dependencies": "重复运行篮子+硬NO只读验收；验收：两份独立receipt均PASS且语义输出可重放，orders/gateway/production writes均为0；证据：`production_no_live_acceptance_run_a.json`、`production_no_live_acceptance_run_b.json`及M0 closure receipt；依赖：M0-02:M0-05。",
+      "declared_status": "DONE",
+      "id": "M0-06",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "deletes_retained_cycles": false,
+          "places_orders": false,
+          "read_only": true,
+          "reads_shared_live_database": false,
+          "shared_live_database": "/Users/xiong/weather/data/archive.db",
+          "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+          "writes_database": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/m0_closure_audit.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1050,
+      "title": "验收"
+    },
+    {
+      "acceptance_and_dependencies": "发布唯一Bayes+篮子ADR并废止冲突文档；验收：Markdown/JSON为同一逻辑authority、current authority恰为1，roadmap与下位合同不越权；证据：`docs/adr/ADR-0008-BAYES-BASKET-TARGET-AUTHORITY.md` + `output/audits/bayes_basket_target_document_authority.json`；依赖：M0。",
+      "declared_status": "DONE",
+      "id": "M1-01",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "read_only": true,
+          "reads_shared_live_db": false,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_document_authority.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1054,
+      "title": "权威合同"
+    },
+    {
+      "acceptance_and_dependencies": "定义P0/P0-M/P1阶段、完整桶向量、lineage、freshness与bridge hash；验收：概率和、桶ordinal、schema、未知字段、时间窗与内容寻址正反例通过；证据：`bayes_basket_target/contracts.py` + `test_bayes_basket_target_m1_contracts.py`；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-02",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "receipt_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/focused_test_receipt.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1055,
+      "title": "ProbabilityEnvelope"
+    },
+    {
+      "acceptance_and_dependencies": "定义TAF首份、AMD/COR线性supersession、sequence、arrival与有效时间；验收：每个前驱最多被下一版本替换一次，重复sequence、分叉、到达回绕与未知字段fail closed；证据：`bayes_basket_target/event_contracts.py` + M1 contract tests；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-03",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "receipt_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/focused_test_receipt.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1056,
+      "title": "ForecastRevision"
+    },
+    {
+      "acceptance_and_dependencies": "定义METAR/SPECI事件身份、source lane、序号、修订、arrival与QC；验收：重复ID、sequence空洞、乱序/到达回绕、非线性修订与未review correction反例通过；证据：`bayes_basket_target/event_contracts.py` + M1 contract tests；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-04",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "receipt_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/focused_test_receipt.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1057,
+      "title": "CanonicalObservation"
+    },
+    {
+      "acceptance_and_dependencies": "物化D_s、H(p_s)、方向侧质量、中心领先差、freshness及方向唯一来源；输入只允许当前ProbabilityEnvelope与策略阈值，不接受市场anchor或外部天气方向字段；验收：未知字段拒绝、同一阶段重复运行content hash一致；证据：`bayes_basket_target/stage_bias.py` + probability-only direction/M1 contract tests；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "receipt_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/focused_test_receipt.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1058,
+      "title": "StageProbabilityBiasContract"
+    },
+    {
+      "acceptance_and_dependencies": "定义state、每桶成本/份额目标、base/bias/edge、filled/pending、snapshot/version/CAS与全情景PnL；验收：schema可表达全部状态且无固定桶数/等份/2:1；证据：adaptive shadow contracts + 30-test receipt；依赖：M1-02,M1-05。",
+      "declared_status": "DONE",
+      "id": "M1-06",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1059,
+      "title": "AdaptiveBasketPlan"
+    },
+    {
+      "acceptance_and_dependencies": "从候选配置/schema删除4→3→2、equal_share、固定2:1和重仓仅由阶段重叠产生；验收：候选运行闭包静态搜索零命中；证据：adaptive shadow dependency audit；依赖：M1-06。",
+      "declared_status": "DONE",
+      "id": "M1-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1060,
+      "title": "删除硬编码"
+    },
+    {
+      "acceptance_and_dependencies": "删除center-vs-market-anchor方向，改为当前阶段p_s(B)偏斜；首建明确使用P0；验收：P0/P0-M/P1各阶段方向均只随本阶段概率变化，盘口anchor不影响方向；证据：target B05/B06 probability-only resolver + entropy/side-mass/stale fail-closed regression，仍待三阶段完整物化链证据；依赖：M1-02。",
+      "declared_status": "PARTIAL",
+      "id": "M1-08",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1061,
+      "title": "方向语义"
+    },
+    {
+      "acceptance_and_dependencies": "删除同桶YES→NO顺序、NO入场/退出和相关执行状态；硬事实只保留纯 YES 支持集裁剪，任何 BUY NO intent/order 均拒绝；证据：生产 acceptance `hard_no_execution_removed=true` 与纯 YES 篮子回归；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-09",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1062,
+      "title": "NO策略退役"
+    },
+    {
+      "acceptance_and_dependencies": "每项源账户机制标记FACT/INFERENCE/NORMATIVE并绑定可证伪反例；验收：精确私有参数不以FACT出现；证据：evidence ledger audit；依赖：M1-01。",
+      "declared_status": "DONE",
+      "id": "M1-10",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1063,
+      "title": "证据等级"
+    },
+    {
+      "acceptance_and_dependencies": "目标运行闭包已冻结“目标库存→post-only Maker→确认撤销→有上限单桶FOK→成交后重算”的唯一合同；撤单未确认、部分/未知/迟到成交和cancel-fill race均进入`reconcile_required`。目标runtime已删除对受保护L0配置的cross-read，L0只保留为独立owner/consumer的内容寻址资源；两个退役forecast daemon声明与加载均为0。execution constitution为`ok=true`，最新service closure为PASS，用户域恰为三服务且system同名服务为0；全程`production_no_live`、不赋予live权限。证据：`config/bayes_basket_target/runtime_config_isolation_v1.json`、`basket_kernel/state_machine.py`、`production_worker.py`及constitution/closure audit；依赖：M1-06。",
+      "declared_status": "DONE",
+      "id": "M1-11",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/bayes_basket_target_production_closure_audit.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1064,
+      "title": "执行宪章收口"
+    },
+    {
+      "acceptance_and_dependencies": "定义与P0/P0-M/P1正交的cash phase枚举、显式clip policy版本、IANA时区阈值、阶段现金表、有效期和artifact SHA；验收：未知版本、版本空洞、无时区时间、未知IANA时区和未观察阶段全部fail closed；cash phase变化不改p_s(B)/支持集/q*；证据：basket_phase_policy_versions_v2.md + bayes_basket_target cash-phase contract tests；依赖：M1-01,M1-06。",
+      "declared_status": "DONE",
+      "id": "M1-12",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1065,
+      "title": "BasketCashPhasePolicy合同"
+    },
+    {
+      "acceptance_and_dependencies": "正式 lane-map 必须使45站均归 AWC；市场结算时区唯一权威仍为`market_registry.settlement_timezone`。AMSC 路由、报文与旧 lineage 只保留历史审计，不构成当前验收；重新验收须证明45/45每站恰有 AWC 一路正式来源、无跨源 fallback、缺失即 fail closed；依赖：M1-04。",
+      "declared_status": "PARTIAL",
+      "id": "M2-01",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "market_timezone_authority": "market_registry.settlement_timezone",
+          "operational_timezone": "America/New_York",
+          "places_orders": false,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_source_routes.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1069,
+      "title": "源路由（AWC全球回归）"
+    },
+    {
+      "acceptance_and_dependencies": "canonical ingress 必须按官方有效时间接收45站 AWC 正式报文；AMSC 报文和旧 AMSC lineage 均不得进入 formal/realtime truth、P1 或 YES 篮子硬事实。验收须绑定来源、站点和 registry 结算时区并完成 integration replay；依赖：M2-01。",
+      "declared_status": "PARTIAL",
+      "id": "M2-02",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "operational_timezone_is_not_settlement_authority": true,
+          "places_orders": false,
+          "read_only": true,
+          "settlement_timezone_authority": "market_registry.settlement_timezone",
+          "writes_database": false,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_official_ingress_routes.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1070,
+      "title": "正式 ingress（AWC全球）"
+    },
+    {
+      "acceptance_and_dependencies": "45站 AWC 可进入 production truth/P1/纯 YES 篮子硬事实链，任何 AMSC 或参考证据不可消费。验收须证明 AMSC/cross-lane evidence 不能改变 truth、P1、硬事实排除集合或篮子，且同站不混源；依赖：M2-01。",
+      "declared_status": "PARTIAL",
+      "id": "M2-03",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "operational_timezone_is_not_settlement_authority": true,
+          "places_orders": false,
+          "read_only": true,
+          "settlement_timezone_authority": "market_registry.settlement_timezone",
+          "writes_database": false,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_official_ingress_routes.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1071,
+      "title": "反跨泳道隔离"
+    },
+    {
+      "acceptance_and_dependencies": "正式P1闭包必须由 registry/canonical 的数据拥有 station-lane 作用域解析，不得用代码硬编码站点列表、全站单泳道默认或 SQL 单泳道过滤绕过合同。验收：显式P1 Python文件集执行AST与SQL字符串审计，且由反例证明可检测硬编码站点、代码单泳道和SQL单泳道过滤；依赖：M2-02,M2-03。",
+      "declared_status": "PARTIAL",
+      "id": "M2-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1072,
+      "title": "数据驱动路由"
+    },
+    {
+      "acceptance_and_dependencies": "事件ID、sequence与消费水位原子提交；验收：AMSC/AWC同事件及P1各重复100次仍仅首次写入，同ID异内容与sequence rewind均fail closed；证据：`output/audits/bayes_basket_target_ingress_replay.json` + property tests；依赖：M2-02,M2-03。",
+      "declared_status": "DONE",
+      "id": "M2-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1073,
+      "title": "exactly-once"
+    },
+    {
+      "acceptance_and_dependencies": "定义旧报、迟到报和跨日事件处理；验收：前进→后退→前进及低→错→低多轮回绕不改最终结果，跨日scope fail closed；证据：`output/audits/bayes_basket_target_ingress_replay.json` + time-warp tests；依赖：M2-05。",
+      "declared_status": "DONE",
+      "id": "M2-06",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1074,
+      "title": "乱序迟到"
+    },
+    {
+      "acceptance_and_dependencies": "COR/AMD或矛盾修订触发站点日停牌；验收：AMD/COR/矛盾修订进入`HALTED_REVIEW`且后续事件阻断，不得自动反向或二次更新；证据：`output/audits/bayes_basket_target_ingress_replay.json` + fault tests；依赖：M2-05。",
+      "declared_status": "DONE",
+      "id": "M2-07",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1075,
+      "title": "修订停牌"
+    },
+    {
+      "acceptance_and_dependencies": "TAF/AMD/COR独立进入ForecastRevision队列；验收：producer与resident P0-M consumer绑定同一有界inbox schema，TAF不得写CanonicalObservation或纯YES硬事实排除，METAR/SPECI不得进入ForecastRevision；证据：`output/audits/bayes_basket_target_taf_role_isolation.json` + role-isolation tests；依赖：M1-03。",
+      "declared_status": "DONE",
+      "id": "M2-08",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "network_access": false,
+          "places_orders": false,
+          "read_only": true,
+          "writes_database": false,
+          "writes_source": false
+        },
+        "path": "output/audits/bayes_basket_target_taf_role_isolation.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1076,
+      "title": "TAF到达"
+    },
+    {
+      "acceptance_and_dependencies": "统一但严格分离resolution local date、ET运营日和UTC事件时钟，市场日界只来自registry；验收：RKPK KST跨日、纽约春秋DST 23/25小时、半小时时区、UTC fold和无时区反例全部通过；证据：`output/audits/bayes_basket_target_time_contract.json` + time-contract tests；依赖：M2-01。",
+      "declared_status": "DONE",
+      "id": "M2-09",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "et_may_override_market_timezone": false,
+          "event_ordering_clock": "UTC",
+          "market_timezone_authority": "market_registry.settlement_timezone",
+          "operational_timezone": "America/New_York",
+          "places_orders": false,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_time_contract.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P1",
+      "roadmap_line": 1077,
+      "title": "时间语义"
+    },
+    {
+      "acceptance_and_dependencies": "建立统一逻辑库而非每站独立数据库，物化StationRegistry、真值、原始模型、残差、单模型artifact、组合artifact、晋级和激活八类合同；正式组合mask仅允许3个二模型集合与1个三模型集合，单模型仅作benchmark/ablation且不得激活，零/单模型正式物化fail closed；strict-as-of和多次时间回绕全部通过。证据：station_model_calibration_ssot_v1.* + min-2 ensemble contract/selector tests；依赖：无。",
+      "declared_status": "DONE",
+      "id": "M3-00",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1081,
+      "title": "统一校准SSOT合同"
+    },
+    {
+      "acceptance_and_dependencies": "严格as-of残差可用时刻已改为结算关闭、truth接收/提交、模型发布/接收四者最晚值；holdout起点purge、训练/holdout不重叠、future输入拒绝及旧权重防复用均已测试。canonical candidate receipt现已有正式adapter：逐receipt、provider及evidence binding复核内容哈希、station/date/timezone/run和raw/provider lineage，只从原始provider payload投影完整native arrival；缺字段不得按文件名或发布时间表推算，聚合源明确隔离且不能进入native arrival index，所有输入受文件数、单文件字节、symlink和流式哈希门约束。adapter输出仍为`promotion_allowed=false`，尚未自动接入resident backlog和truth exact join；真实旧残差与artifact也尚未按新版`paired_asof`合同重建，故保持PARTIAL；依赖：M2。",
+      "declared_status": "PARTIAL",
+      "id": "M3-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1082,
+      "title": "站点偏差"
+    },
+    {
+      "acceptance_and_dependencies": "ECMWF/GFS/ICON先分别做偏差/方差校正；每个station×season×lead×run-cycle×settlement scope以expanding rolling-origin评分七种非空组合，但3个单模型仅标记`single_model_ablation`，正式排序只比较3个二模型与1个三模型exact mask。正式winner和在线mask至少2个正权重模型，联合长/近期窗口Brier、NLL、CRPS、残差相关性和n_eff收缩选择组合，禁止三模型等权占位。近期更准只能经新版不可变`ModelEnsembleSelectionEvidence`和外层概率级OOS提高权重；artifact必须绑定父artifact和`max_weight_delta`，任一scope退化不得激活，禁止在线根据最近一次结果追随某模型。P0运行时只消费已激活2+模型最优mask或其预先验证2+模型子mask，不等待未选模型、不临时归一；当前正式promotion继续PARTIAL；依赖：M3-01。",
+      "declared_status": "PARTIAL",
+      "id": "M3-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1083,
+      "title": "模型集合与组合"
+    },
+    {
+      "acceptance_and_dependencies": "已用真实保留native decode、registry逐字段等价rebind和SQLite online backup临时副本完成P0 v4隔离演练：正式2模型`ECMWF=0.65/GFS=0.35`、权重和1、无TAF/METAR、历史同日缺正式artifact时`theta=0`且前后概率完全一致；proof、envelope和X-S-B bridge同一事务提交，重复回放零写，proof后/bridge history故障注入全回滚，乱序旧P0不降低latest。多站修复已把时区校验限定到每份decode实际覆盖站点，禁止把单份时区错误套用全registry。代码和演练为`TESTED/REHEARSED`，真实SSOT尚未迁移概率表、全站resident尚未消费新P0，因此保持PARTIAL；证据：`p0_producer.py`、`rehearse_bayes_basket_target_m3_03_p0_historical_meta.py`及专项测试；依赖：M3-01,M3-02。",
+      "declared_status": "PARTIAL",
+      "id": "M3-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1084,
+      "title": "模型基础P0"
+    },
+    {
+      "acceptance_and_dependencies": "用独立历年同日单点最终最高温构建`SameDayClimatologyArtifact`，再以站点日分组rolling OOF的`P0HistoricalMetaCombinationArtifact/Proof`有界倾斜`P_model`；目标年/同折truth泄漏、历史模型混入、直接相乘、裸方向、强方向未经OOS反转、KL/中心/质量迁移越界均已由合同与回归fail closed，缺artifact或无增益时`theta_h=0`。代码和测试已完成，但最新真实resident事实尚未消费`theta_h=0`回退proof，故PARTIAL；证据：`same_day_climatology.py`、`p0_historical_meta.py`及专项测试；依赖：M3-03。",
+      "declared_status": "PARTIAL",
+      "id": "M3-03A",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1085,
+      "title": "历史同日弱倾斜"
+    },
+    {
+      "acceptance_and_dependencies": "首份TAF仅能经激活OOS `TafRevisionArtifact`和有界`TafRevisionProof`形成确认/有限修正checkpoint；不消费METAR、不重写P0、不允许硬排除或正概率归零。v2已强制每个样本绑定station×season×lead×run-cycle×settlement scope及同决策NWP组合artifact，以holdout TAF/NWP组合残差相关折扣重复信息，并要求TX+云量+降水+风联合模型通过OOS门；resident已完成ForecastRevision整链预编译、同一writer事务原子物化及失败整批回滚。artifact读取已支持最多256项的内容寻址registry，按station×settlement timezone×season×lead×run-cycle精确选择；旧RKPK单artifact只对RKPK有效，其他站缺exact artifact时保留P0并记录`IGNORED_NO_EXACT_TAF_ARTIFACT`，不得再因station mismatch阻断全站概率lane，也不得回退使用RKPK权重。直接面向实际live组合的nested OOS链已落地，RKPK当前23/24个outer样本且NLL/CRPS均劣于baseline，因此正确状态为`NA/candidate_only`，不得用旧crossfit transport或降低阈值建立bridge。`date=`只提供官方归档定位，不能生成或替代本机native arrival；只有真实`received_at`证据可进入native arrival index。真实多站TAF artifact registry尚未物化，故继续PARTIAL；证据：`taf_live_combination_oos.py`、`taf_revision.py`、`materialization.py`及live compatibility/OOS测试；依赖：M2-08,M3-03。",
+      "declared_status": "PARTIAL",
+      "id": "M3-04",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1086,
+      "title": "P0-M"
+    },
+    {
+      "acceptance_and_dependencies": "AMD/COR从同一P0根替换重算，拒绝裸likelihood ratio和上一版累计；验收：低→高→低多次回绕、质量迁移/中心位移/LR上下限、时区错配、硬排除篡改全部fail closed或确定性回绕。证据：`test_bayes_basket_target_materialization.py`、`test_bayes_basket_target_time_replay.py`；依赖：M3-04。",
+      "declared_status": "DONE",
+      "id": "M3-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1087,
+      "title": "P0-M修订"
+    },
+    {
+      "acceptance_and_dependencies": "现有canonical METAR/SPECI执行HardBound-Normalize，当前正式compiler逐桶LR固定1；RKPK已完成正式AWC整点回放、未来commit拒绝、canonical事件时钟、独立P1 activation、P1后官方WS及原子零订单对账。该项只证明硬排除基线，不证明轨迹软似然；证据：`p1_rkpk_20260727_retrospective.json`、`p1_no_live_reconcile_receipt.json`、`resident_p1_cutover_replay.json`及P1专项回绕测试；依赖：M2-05,M3-03。",
+      "declared_status": "PARTIAL",
+      "id": "M3-06",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "isolated_in_memory_only": true,
+          "no_live_submit": true,
+          "places_orders": false,
+          "probability_inputs_are_materialized_contracts_only": true,
+          "receipt_max_bytes": 1048576,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_ingress_replay.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1088,
+      "title": "P1硬下界基线"
+    },
+    {
+      "acceptance_and_dependencies": "按站点×registry日重建strict-as-of canonical序列，以当时OOF P0/P0-M和最终truth训练剩余升温条件分布；每版P1从不可变预测根＋完整有序观测集重算`P_base×LR_traj^alpha×I_hard`。重复、乱序、长间隔、缺报、低→高→低回绕、软似然复活硬排除桶、在上一P1重复乘完整轨迹、跨source lane及时区错配已确定性拒绝或回绕，artifact未晋级时`alpha=0/LR=1`。代码和测试已完成，但最新真实resident事实尚未消费identity-likelihood fallback proof，故PARTIAL；证据：`metar_trajectory.py`、`metar_trajectory_training.py`及专项测试；依赖：M3-06,M3-03A,M3-04。",
+      "declared_status": "PARTIAL",
+      "id": "M3-06A",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1089,
+      "title": "METAR轨迹软似然"
+    },
+    {
+      "acceptance_and_dependencies": "P1 builder必须以 started registry 而非“已有观测站”作为覆盖分母，并使45站只消费 AWC。完全缺报、请求站未进入 started registry、无概率根、旧 AMSC lineage 或 schema 未迁移均逐站显式阻断，不再静默遗漏。2026-07-30T03:15:35Z 的旧 AWC 只读候选只作历史证据，不替代当前按正式 AWC lane-map 生成的 P1 覆盖 receipt。依赖：M3-06。",
+      "declared_status": "PARTIAL",
+      "id": "M3-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1090,
+      "title": "多站P1"
+    },
+    {
+      "acceptance_and_dependencies": "概率和`1±1e-9`、bucket-map/bridge/envelope/projection逐桶哈希及全局连续ordinal已通过；真实SSOT尚待迁移物化，故PARTIAL；依赖：M3-03:M3-07。",
+      "declared_status": "PARTIAL",
+      "id": "M3-08",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1091,
+      "title": "X-S-B"
+    },
+    {
+      "acceptance_and_dependencies": "损坏/过期P1或P0-M立即fail closed，乱序低→高→低不降级，只有高阶段未生效或不存在时才回退；真实resident尚待加载，故PARTIAL；依赖：M3-08。",
+      "declared_status": "PARTIAL",
+      "id": "M3-09",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1092,
+      "title": "P1/P0优先级"
+    },
+    {
+      "acceptance_and_dependencies": "checkpoint、history、latest与p(B)已在同一savepoint提交，断点及写后资源门失败全成或零写；真实SSOT尚待迁移，故PARTIAL；依赖：M3-08。",
+      "declared_status": "PARTIAL",
+      "id": "M3-10",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1093,
+      "title": "物化事务"
+    },
+    {
+      "acceptance_and_dependencies": "40轮随机乱序增量回放与全量canonical结果差异`<=1e-9`并生成零写等价回执；真实两轮resident回执尚待物化，故PARTIAL；依赖：M3-10。",
+      "declared_status": "PARTIAL",
+      "id": "M3-11",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1094,
+      "title": "确定性"
+    },
+    {
+      "acceptance_and_dependencies": "3/7/15/30天、跨四季、station×lead×run-cycle×settlement exact scope、父artifact与M3-11 equivalence receipt现已绑定到内容寻址`CANDIDATE_NO_LIVE_REVIEW`；窗口缺失、样本不足、时间泄漏、漂移和低→高→低回放统一为`BLOCKED_EVIDENCE`，篡改父对象、child或M3-11 receipt均fail closed。代码与专项回归已`TESTED`，但尚未用真实3/7/15/30天前向样本生成可审查candidate，且合同明确禁止activation、`FORMAL_PROMOTED`、DB写、gateway和live，因此保持PARTIAL；证据：`probability_promotion.py`、`build_bayes_basket_target_probability_promotion_candidate.py`及专项测试；依赖：M3-11。",
+      "declared_status": "PARTIAL",
+      "id": "M3-12",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1095,
+      "title": "版本晋级"
+    },
+    {
+      "acceptance_and_dependencies": "c*=argmax p(B)，平局规则内容寻址固定；已物化top1-top2领先差、`center_stable`、策略阈值和NEUTRAL降级，且模型包络保持独立。当前no-live保守基线`ell_min=1pp`已通过低于阈值、跨越阈值及再次回落的通用回绕；测试中的具体站点、桶边界和0.291pp仅为合成示例，不是策略常量。正式阈值仍待按station/season/lead/run-cycle离线OOS晋级。证据：center-lead/metamorphic tests；依赖：M3-08。",
+      "declared_status": "PARTIAL",
+      "id": "M4-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1099,
+      "title": "概率中心与稳定门"
+    },
+    {
+      "acceptance_and_dependencies": "方向唯一取当前阶段sign(D_s)，模型/TAF/实况只通过后验影响方向；验收：三个阶段都可产出候选，同后验下价格或外部标签变化不改变方向；证据：three-stage metamorphic tests及价格/anchor隔离回归均通过；依赖：M4-01。",
+      "declared_status": "DONE",
+      "id": "M4-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1100,
+      "title": "方向候选"
+    },
+    {
+      "acceptance_and_dependencies": "仅在中心领先差、|D_s|、阶段熵、方向侧质量和当前阶段概率新鲜度全部达标时启用K_bias，否则方向降级NEUTRAL并退回base或HOLD。P0/P0-M/P1的强信号、弱偏斜、高熵、低方向质量、过期及NaN/Inf/未归一化旁路均已确定性覆盖；仍待station/season/lead/run-cycle正式OOS阈值晋级。证据：center-lead + all-stage probability confidence gate tests；依赖：M1-05,M4-02。",
+      "declared_status": "PARTIAL",
+      "id": "M4-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1101,
+      "title": "当前阶段概率偏置置信门"
+    },
+    {
+      "acceptance_and_dependencies": "阶段组合概率按覆盖目标生成包含稳定中心的最小连续核心；正式组合正权重成员的校准中心极值只形成`ModelAnchorRange`分歧诊断，并在`k_disagreement`层数上限内约束候选边界。方向只决定外围排序和集中度，不移动核心、不要求越过模型极值。核心每桶正目标库存，外围风险桶可非连续但逐桶通过概率、可靠性、价格覆盖、Maker和边界门。验收：远端模型不拉宽核心且候选边界受层数限制；两个外围端点不填满中间桶；中心不稳转NEUTRAL、核心Maker缺腿HOLD、未知订单RECONCILE；低→高→低及UP→NEUTRAL→DOWN多轮确定性回绕。代码状态`TESTED`，真实resident尚未物化；依赖：M4-01,M4-03,M3-03A。",
+      "declared_status": "PARTIAL",
+      "id": "M4-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1102,
+      "title": "连续核心与候选边界"
+    },
+    {
+      "acceptance_and_dependencies": "已实现独立确定性的`SEED/EXTEND_LOW/EXTEND_HIGH/FILL_GAP/REPLENISH/HOLD/STOP`解析，并接入DeltaBasketScore v2 resident plan；经济授权继续保留为独立`TRADE/HOLD`字段，basket state只解释支持集/库存生命周期，不能改概率、支持集、目标或授权。初始完整核心、单侧扩展、双侧/内部补缺、现有支持补仓、未知订单HOLD及terminal STOP均已测试，terminal即使正delta也禁止新bundle；低→高→低与STOP→resume重放确定。仍待真实resident新版本物化及撤单/迟到成交跨cycle回执证明后升级`RUNNING`；依赖：M4-04。",
+      "declared_status": "PARTIAL",
+      "id": "M4-05",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1103,
+      "title": "连续核心状态语义"
+    },
+    {
+      "acceptance_and_dependencies": "posterior、quote、inventory、fill、time、risk共同决定迁移；验收：单一价格涨跌或空轮询均不能加仓；证据：boundary tests；依赖：M4-05。",
+      "declared_status": "PARTIAL",
+      "id": "M4-06",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1104,
+      "title": "状态门槛"
+    },
+    {
+      "acceptance_and_dependencies": "实现CAPITAL_FIRST和SHARE_FIRST候选并同时产出每桶k*/q*，但只允许进入GlobalBasketPriorArtifact；验收：任一候选都无固定等份/2:1，且不能绕过站点策略activation直接执行；证据：shadow allocation tests；依赖：M1-07,M4-06。",
+      "declared_status": "PARTIAL",
+      "id": "M4-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1105,
+      "title": "全局allocator先验候选"
+    },
+    {
+      "acceptance_and_dependencies": "K_base/K_bias/K_edge作为全局先验分别核算基础覆盖、方向偏置和边缘可选性；验收：三本和总账闭合且受集中度/预算上限；站点目标artifact只做受限收缩；证据：shadow role-ledger tests；依赖：M4-07。",
+      "declared_status": "PARTIAL",
+      "id": "M4-08",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1106,
+      "title": "全局角色预算先验"
+    },
+    {
+      "acceptance_and_dependencies": "按实际filled份额与成本枚举全部市场结果，包括篮子外赢家；验收：外桶情景显示全成本损失；selected情景逐桶闭合；证据：shadow scenario tests；依赖：M4-07。",
+      "declared_status": "PARTIAL",
+      "id": "M4-09",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1107,
+      "title": "全情景PnL"
+    },
+    {
+      "acceptance_and_dependencies": "Delta=max(target-filled-pending,0)；验收：任何bucket delta不为负；主成本桶可随追加切换；证据：shadow property tests；依赖：M4-07。",
+      "declared_status": "DONE",
+      "id": "M4-10",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1108,
+      "title": "只增缺口"
+    },
+    {
+      "acceptance_and_dependencies": "仅新checkpoint、盘口签名、成交/撤单状态或时间门变化允许重算；验收：四类触发可独立打开求值门；空触发零候选；变化也不自动等于加仓；证据：B15 four-trigger and zero-candidate tests；依赖：M4-10。",
+      "declared_status": "DONE",
+      "id": "M4-11",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1109,
+      "title": "触发向量"
+    },
+    {
+      "acceptance_and_dependencies": "持久化候选消费前绑定完整execution version vector、intent集合、quote expiry与target execution hard deadline；验收：任一字段/intent漂移或过期均废弃候选，zero-intent明确验证且始终不授权订单；证据：持久化CAS已接入worker原子commit边界，字段漂移矩阵与E2E通过；依赖：M4-11。",
+      "declared_status": "DONE",
+      "id": "M4-12",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1110,
+      "title": "多版本CAS"
+    },
+    {
+      "acceptance_and_dependencies": "分别计算主成本桶、主份额桶及切换原因；验收：成本/份额重仓可分离且每次切换闭合到clip；证据：leadership pure function + 10 boundary tests + 23,747-clip audit；依赖：M4-08。",
+      "declared_status": "DONE",
+      "id": "M4-13",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1111,
+      "title": "主桶归因"
+    },
+    {
+      "acceptance_and_dependencies": "由后验边际价值、情景风险、手续费和预算求每桶limit；验收：盘口变化不改p(B)，篮子总卖一价大于1不自动阻断高概率桶，但单桶价值、预算、深度和风险门仍必须通过；证据：B14 pure solver + 50-seed boundary tests；依赖：M4-09。",
+      "declared_status": "DONE",
+      "id": "M4-14",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1112,
+      "title": "目标价"
+    },
+    {
+      "acceptance_and_dependencies": "精确权重/阈值按候选网格而非账户点估计写入；验收：训练样本与promotion holdout隔离；缺完整决策点时全部NOT_EVALUATED；证据：30-candidate grid + 229-event evidence audit + 32 boundary tests；依赖：M1-10,M4-14。",
+      "declared_status": "DONE",
+      "id": "M4-15",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1113,
+      "title": "可识别性"
+    },
+    {
+      "acceptance_and_dependencies": "十二因子合取且每桶物化内容寻址ExecutionGateDecision；验收：十二因子逐项单失败时其余十一项为真且候选清零；证据：B13 single-failure truth matrix；依赖：M4-12,M4-14。",
+      "declared_status": "DONE",
+      "id": "M4-16",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1114,
+      "title": "B13执行硬门"
+    },
+    {
+      "acceptance_and_dependencies": "把time/gap/fill/spread/depth五权重冻结为GlobalBasketPrior候选，不再作为所有站点直接参数；验收：五分量逐项单调且不得改概率/中心/方向；旧权重只能被站点cadence层级收缩消费；证据：B15 monotonicity and determinism matrix；依赖：M4-11,M4-16。",
+      "declared_status": "DONE",
+      "id": "M4-17",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1115,
+      "title": "B15全局节奏先验"
+    },
+    {
+      "acceptance_and_dependencies": "冻结目标/保留价/节奏三参数族的全局先验、特征规范、kappa、训练窗、站点集合和OOS指标；验收：内容寻址、不可变、不可直接执行；缺站点activation时仍不能自动下单；证据：candidate bundle + explicit global-prior promotion decision + lineage; OOS promotion pending；依赖：M4-15,M4-17。",
+      "declared_status": "PARTIAL",
+      "id": "M4-18",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1116,
+      "title": "GlobalBasketPriorArtifact"
+    },
+    {
+      "acceptance_and_dependencies": "按站点学习当前支持集内每桶目标成本/份额、集中度与角色预算并向全局先验收缩；验收：不改c_s*、不翻转sign(D_s)、不恢复等份/2:1；k/q双账本闭合；证据：45-station candidate artifacts + lineage; forward/OOS promotion pending；依赖：M4-18,M4-08。",
+      "declared_status": "PARTIAL",
+      "id": "M4-19",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1117,
+      "title": "StationTargetPolicyArtifact"
+    },
+    {
+      "acceptance_and_dependencies": "按站点用区间删失与前向production_no_live成交候选事实学习保守价格margin；验收：r_final=tick_down(min(r_math,r_learned))；对B14上限零突破；证据：45-station candidate artifacts + reserve boundary tests; forward/OOS promotion pending；依赖：M4-18,M4-14。",
+      "declared_status": "PARTIAL",
+      "id": "M4-20",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1118,
+      "title": "StationReservePriceArtifact"
+    },
+    {
+      "acceptance_and_dependencies": "按站点学习离散时间hazard、等待与重评估节奏；验收：hazard不授权下单、不绕过B13/B14/预算/风险/订单状态；多次时间回绕一致；证据：45-station candidate artifacts + cadence boundary tests; forward/OOS promotion pending；依赖：M4-18,M4-17。",
+      "declared_status": "PARTIAL",
+      "id": "M4-21",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1119,
+      "title": "StationCadenceArtifact"
+    },
+    {
+      "acceptance_and_dependencies": "按station_id+stage+season+maturity+liquidity+version+decision_at解析三个artifact和activation；验收：精确activation优先；仅预晋级fallback可用；缺失/过期/scope错配FAIL_CLOSED_NO_STATION_POLICY；证据：station_policy_resolver_fault_matrix_v1: 9/9 cases passed; activation promotion is explicit; live activation pending；依赖：M4-19,M4-20,M4-21。",
+      "declared_status": "PARTIAL",
+      "id": "M4-22",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1120,
+      "title": "站点策略解析与回退"
+    },
+    {
+      "acceptance_and_dependencies": "冻结最近7天旧完整版本15/9.05/2.22与新部分版本10.77/0.25、站点本地D-1 19:54/D 09:58阈值、版本观测空洞和逐单lineage；验收：45站源范围完整；旧版33/33、新版行为19/19、新部分版本27/27通过；新版HEAVY保持UNOBSERVED_FAIL_CLOSED；证据：recent_7d_clip_policy_versions_v2 + basket_phase_state_machine.py；依赖：M1-10。",
+      "declared_status": "DONE",
+      "id": "M4-23",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1121,
+      "title": "源账户现金阶段证据"
+    },
+    {
+      "acceptance_and_dependencies": "将显式自有clip policy版本、单调cash phase纯函数、C_base与OrderSizingDecision映射到同服务production_no_live链；验收：不读取源值作为运行默认；C_order=min(C_base,r_limit*Deltaq,budget,depth)且q_order=C_order/r_limit；未知/空洞/未观察阶段零候选；证据：tests/test_bayes_basket_cash_phase.py + Bayes bridge/acceptance receipts；依赖：M1-12,M4-22,M4-23,M4-14。",
+      "declared_status": "DONE",
+      "id": "M4-24",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1122,
+      "title": "自有BasketCashPhasePolicyArtifact"
+    },
+    {
+      "acceptance_and_dependencies": "旧v2已被无兼容分叉地删除，其应保留的情景PnL、下行、方向覆盖、集中度、总预算与篮子外损失能力已迁入`piecewise_ws_basket_proposal_optimizer_v3`；历史回执只读审计，不得重新消费。证据：旧schema/字段静态零消费者、proposal optimizer性质与回绕测试；依赖：M4-03,M4-04,M4-09,M4-14,M4-19。",
+      "declared_status": "DONE",
+      "id": "M4-25",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1123,
+      "title": "全情景赔率曲线基础优化（已退役完成）"
+    },
+    {
+      "acceptance_and_dependencies": "v2唯一篮子价值`V(q)`、`q*=argmax V(q)`、InventoryFit非重复逼近正则、HOLD零基线、完整Maker bundle联合随机成交效用与严格epsilon授权已实现并接入正式`production_no_live`。跨事件共享资本也只接受完整bundle，每个事件整包入选或整包HOLD，单腿不再是portfolio候选。多意图、总资本预留、decision与training fact同事务全成或零写；真实RKPK已连续物化三腿bundle，最新38℃/39℃/40℃总预留2.65290 USDC与腿名义金额之和精确一致，resident正在消费。故实现状态已达`MATERIALIZED＋RUNNING`；两个连续forward OOS窗口仍只控制live/参数晋级，尚未`OOS_PASSED/DONE`。证据：`delta_v2.py`、`delta_v2_runtime.py`、`runtime.py`、`production.py`、真实SSOT与target回归；依赖：M4-25,M4-04,M4-09,M4-14,M4-19。",
+      "declared_status": "PARTIAL",
+      "id": "M4-26",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0-B/CRITICAL",
+      "roadmap_line": 1124,
+      "title": "唯一严格DeltaBasketScore顶层目标函数"
+    },
+    {
+      "acceptance_and_dependencies": "observation/bounds/decision/intent/reserve同事务；验收：每个写点故障注入全成或零写；证据：P1 plan与canonical observation/raw SHA/commit time/source/report type/hard bound在build＋commit双边界独立核对，幂等重放事实缺失/漂移fail closed，生产同构多腿演练通过；真实resident尚未加载本轮代码；依赖：M4。",
+      "declared_status": "PARTIAL",
+      "id": "M5-01",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1128,
+      "title": "原子事实"
+    },
+    {
+      "acceptance_and_dependencies": "auto_trade_decisions成为唯一执行阻断原因；验收：其他表无独立阻断语义；证据：target schema/append-only boundary passes offline；旧表已改名保留，target authority 已落地；依赖：M5-01。",
+      "declared_status": "PARTIAL",
+      "id": "M5-02",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1129,
+      "title": "阻断事实"
+    },
+    {
+      "acceptance_and_dependencies": "明确prepared/submitting/submitted/reconcile/settled终态；验收：非法跃迁全部拒绝；证据：no-live下prepared→submitting显式不可达，`close_target_cycle`为唯一settled入口并原子释放/消耗资本，相反outcome replay fail closed；待真实resident闭环验证；依赖：M5-01。",
+      "declared_status": "PARTIAL",
+      "id": "M5-03",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1130,
+      "title": "cycle状态机"
+    },
+    {
+      "acceptance_and_dependencies": "篮子与硬NO共用统一资金池且防超卖；验收：并发决策总预留不超余额；证据：8-thread shared-pool regression passes + 真实30 USDC capital epoch ready；待真实输入闭环验证；依赖：M5-01。",
+      "declared_status": "PARTIAL",
+      "id": "M5-04",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1131,
+      "title": "资本预留"
+    },
+    {
+      "acceptance_and_dependencies": "定义同一资金池的确定性仲裁和饥饿保护；验收：同输入给出同一胜出策略；证据：deterministic arbitration/aging tests pass offline; no production pool authority yet；依赖：M5-04。",
+      "declared_status": "PARTIAL",
+      "id": "M5-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P1",
+      "roadmap_line": 1132,
+      "title": "优先级"
+    },
+    {
+      "acceptance_and_dependencies": "plan/cycle/intent/order key均内容寻址；验收：重复100次只产生一个事实；证据：100-replay idempotency plus three-leg replay passes offline; production migration pending；依赖：M5-01。",
+      "declared_status": "PARTIAL",
+      "id": "M5-06",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1133,
+      "title": "plan幂等"
+    },
+    {
+      "acceptance_and_dependencies": "结算/失败/阻断按唯一状态释放资本；验收：无悬挂reserve；证据：release/consume/blocked close tests pass offline；target reconciliation tables 已安装且 order-state producer 对 pending/unknown/partial fail closed，仍待首批真实输入驱动 cycle/reconciliation 闭环；依赖：M5-03。",
+      "declared_status": "PARTIAL",
+      "id": "M5-07",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "execution_mode": "production_no_live",
+          "live_submit_authorized": false,
+          "writes_orders": false,
+          "writes_production_database": false,
+          "writes_source_database": false
+        },
+        "path": "output/audits/bayes_basket_target_migration_rehearsal.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1134,
+      "title": "账本释放"
+    },
+    {
+      "acceptance_and_dependencies": "只允许官方CLOB WS token shard快照；验收：REST/tick读取静态审计零命中；证据：dependency audit；依赖：M5。",
+      "declared_status": "PARTIAL",
+      "id": "M6-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1138,
+      "title": "盘口来源"
+    },
+    {
+      "acceptance_and_dependencies": "每个clip绑定posterior/quote/inventory/order-state generation；验收：混代快照被拒绝；证据：four-version content hash; live CAS pending；依赖：M6-01。",
+      "declared_status": "PARTIAL",
+      "id": "M6-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1139,
+      "title": "版本快照"
+    },
+    {
+      "acceptance_and_dependencies": "按目标缺口、预算、深度与晋级clip规则拆单；验收：常见9.05只作校准参照而非硬编码；证据：zero-order clip tests；依赖：M6-02。",
+      "declared_status": "PARTIAL",
+      "id": "M6-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1140,
+      "title": "离散clip"
+    },
+    {
+      "acceptance_and_dependencies": "低紧迫度以post-only限价单等待并记录队列/超时/撤单意图；验收：零吃单、可取消、重复触发不重复挂单；证据：content-addressed Maker candidate + queue simulator；依赖：M1-11,M6-03。",
+      "declared_status": "DONE",
+      "id": "M6-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1141,
+      "title": "Maker候选"
+    },
+    {
+      "acceptance_and_dependencies": "处理撤单与成交交叉、部分成交、迟到回报和未知状态；验收：每种交错经多次回绕后账本唯一收敛；证据：shadow race/late-fill/reconcile tests; exchange adapter pending；依赖：M6-04。",
+      "declared_status": "PARTIAL",
+      "id": "M6-05",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1142,
+      "title": "撤单竞态"
+    },
+    {
+      "acceptance_and_dependencies": "高紧迫度且limit/风险门通过时用有上限FOK吃单；验收：不得裸market；失败不猜测重发；证据：official WS multi-level VWAP/FOK shadow simulator + atomic receipts；依赖：M6-03,M6-05。",
+      "declared_status": "DONE",
+      "id": "M6-06",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1143,
+      "title": "紧迫Taker"
+    },
+    {
+      "acceptance_and_dependencies": "仅用确定性order id对账Maker/Taker未知POST；验收：同桶未知pending阻断新单；跨桶动作由显式风险门决定；证据：reconcile tests；依赖：M6-05,M6-06。",
+      "declared_status": "PARTIAL",
+      "id": "M6-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1144,
+      "title": "对账"
+    },
+    {
+      "acceptance_and_dependencies": "篮子不MERGE、不选择性配平、不提前卖出，持有到结算；验收：候选闭包无自动退出路径；证据：`output/audits/bayes_basket_target_hold_closure_audit.json`，`hold_closure_verified=true`，无自动退出/merge/选择性配平路径；依赖：M6-07（对账本身仍保持PARTIAL）。",
+      "declared_status": "DONE",
+      "id": "M6-08",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_hold_closure_audit.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1145,
+      "title": "持有语义"
+    },
+    {
+      "acceptance_and_dependencies": "Maker/Taker路径当前固定为同一resident的`production_no_live`且`places_orders=false`，不得创建第二套Shadow运行线；验收：宪章修订、G0-G8与显式live晋级缺一则无法提交；历史adaptive shadow acceptance receipt只作离线回归证据；依赖：M1-11,M6-08。",
+      "declared_status": "DONE",
+      "id": "M6-09",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1146,
+      "title": "L0授权门"
+    },
+    {
+      "acceptance_and_dependencies": "已实现同一`J0/J1/DeltaBasketScore`下的有界价格×timeout求解、逐格`MakerGridOOSArtifact`合同、独立append-only authority与统一SSOT迁移DDL；每格独立绑定price/tick/timeout、station/season/lead/issuance/liquidity/price-distance/queue、训练/holdout窗口、正式realized lifecycle、官方WS、promotion与内容哈希，缺点、复用、邻点、跨scope/as-of、时间倒挂和no-live proxy均fail closed。`production_io→state_machine→solve_maker_reservation`已成为唯一正式grid消费者，旧单点`MakerOOSArtifact`模块、authority、DDL、候选脚本和测试已删除，并有静态契约防止恢复分叉。`price_distance_bin`由每个价格×timeout点独立拥有，固定减tick/复制买一零命中，confirmed pending不进入情景PnL或地板。当前仅剩forward official-WS queue/fill/PnL/故障scorecard和正式晋级artifact未闭环，故继续PARTIAL、HOLD且无promotion/order权限；依赖：M4-26,M6-04,M6-05,M6-12。",
+      "declared_status": "PARTIAL",
+      "id": "M6-10",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1147,
+      "title": "Maker价格与等待优化器"
+    },
+    {
+      "acceptance_and_dependencies": "确认撤销Maker后才允许同桶有上限单桶FOK。权威Maker部分/完整成交与FOK完整成交均原子推进transition、按实际matched notional结算旧总预留并生成post-fill recompute request；仍为prepared的兄弟腿原子取消，任何兄弟腿已submitting/submitted/filled/reconcile则整个cycle转`reconcile_required`。FOK部分成交、未知/迟到、cancel-fill race和版本漂移继续fail closed且不猜测重发；这些`RECONCILE_REQUIRED`分支现也会原子取消仍安全的prepared兄弟腿，同时保留未知库存与active reservation等待权威对账。真实RKPK三腿SSOT副本已通过25% Maker部分成交→三腿关闭→实际资本结算→全篮recompute request演练；5类未知/迟到/FOK异常已锁定prepared sibling清理、cycle poison和资本不释放。正式forward realized lifecycle与promotion仍缺，故保持PARTIAL且仅`production_no_live`。",
+      "declared_status": "PARTIAL",
+      "id": "M6-11",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1148,
+      "title": "Maker→Taker收口与晋级门"
+    },
+    {
+      "acceptance_and_dependencies": "v2已实现并接线`event×bucket×cash_clip×limit_price×timeout×order_mode`有界候选、随机`F_a`零/部分/全成分布、Wait/Queue/AdverseSelection/Reprice/CapitalLock扣减、数学保留价反解、HOLD比较、跨事件资本选择和confirmed pending资本占用；Maker部分成交后按实际成交重算，未知/迟到/撤单竞态进入`reconcile_required`，FOK仍要求已确认撤销Maker。`NO_LIVE_ACTIVATED` policy/fill bootstrap不得声称OOS，可先用于no-live事实积累；只有`FORMAL_PROMOTED`才硬要求至少两个连续forward窗口并完整比较v1/EV_ONLY/ZERO_WEIGHT/HOLD。代码与临时SSOT演练已完成；真实forward queue/fill/PnL/故障scorecard和正式promotion仍缺，故保持`REHEARSED/PARTIAL`。证据：`delta_v2_artifact.py`、`delta_v2_fill_artifact.py`、`execution_transition_runtime.py`、post-fill E2E及门控/迁移回归；依赖：M4-26,M6-02,M6-04,M6-05,M6-06。",
+      "declared_status": "PARTIAL",
+      "id": "M6-12",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0-B/CRITICAL",
+      "roadmap_line": 1149,
+      "title": "Maker/FOK模式化成本曲线与保留价"
+    },
+    {
+      "acceptance_and_dependencies": "硬事实只读取官方 AWC METAR/SPECI 与站点日状态，不导入概率、先验、似然、TAF 或 NWP；验收：硬事实只能裁剪纯 YES 支持集，不能生成 BUY NO；证据：生产 acceptance 与 source-lane isolation receipt；依赖：M1。",
+      "declared_status": "DONE",
+      "id": "M7-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/reported_trajectory_no_dependency_audit.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1153,
+      "title": "依赖隔离"
+    },
+    {
+      "acceptance_and_dependencies": "仅45站官方 AWC METAR/SPECI更新最高温硬下界；任意 AMSC、旧 AMSC lineage、其他参考证据、缺源、重复与未复核更正均不能改变 bound；缺证据即 fail closed；依赖：M2。",
+      "declared_status": "DONE",
+      "id": "M7-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1154,
+      "title": "硬下界"
+    },
+    {
+      "acceptance_and_dependencies": "删除 NO 选择、下单、退出和反向交易状态机；BUY NO intent/order 在 writer 与 gateway 边界均拒绝；依赖：M1-09,M7-02。",
+      "declared_status": "DONE",
+      "id": "M7-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1155,
+      "title": "NO 路径退役"
+    },
+    {
+      "acceptance_and_dependencies": "当前196个跨域相关测试文件、1689项测试全部通过。TAF live组合OOS历史inbox夹具已在合成副本中显式重绑定`RKPK×summer×d2_fallback×18Z`的ensemble、两模型calibration、权重和内容哈希，生产exact-scope唯一门未放宽；完整bundle、跨事件整包资本、确定性部分成交、5类reconcile sibling清理、低→高→低与重复回绕均绑定回归。带system服务探针的production closure PASS；依赖：M0,M2。",
+      "declared_status": "DONE",
+      "id": "M8-01",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "receipt_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_current_et_20260726/focused_test_receipt.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1159,
+      "title": "当前失败"
+    },
+    {
+      "acceptance_and_dependencies": "公式B00-B18覆盖随机、边界和反例；验收：多seed重复通过；证据：adaptive v4 adds B13/B15 full gate matrices, B14 50-seed and B12 multi-level/FOK fault boundaries; full B00-B18 pending；依赖：M3,M4。",
+      "declared_status": "PARTIAL",
+      "id": "M8-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1160,
+      "title": "属性测试"
+    },
+    {
+      "acceptance_and_dependencies": "跨时区、DST、跨日、乱序、重复来回回绕；验收：状态与全量回放一致；证据：通用B00-B18 replay与真实target SSOT适配器已拆分；RKPK 2026-07-29的283条、2026-07-30的15条training-fact锚点均完成registry时区、P0/P0-M/P1、官方WS、inventory/order-state、cycle/decision、execution/NO_EXECUTION vector、资本与training fact精确SHA只读回放，prefix+suffix等价且未来label/forward OOS不阻断production_no_live。WS经济semantic digest排除transport keepalive但保留真实价格回绕：7月29日识别280次经济变化和3次相邻keepalive重复；low→high→low不丢第三状态的当前合同反例、as-of future排除、HOLD继承及core/direction前驱漂移均已回归。真实7月30日旧resident事实仍为`explicit_core_seen=false`，待受控切换后产生新版连续核心事实，故保持PARTIAL；依赖：M2,M3。",
+      "declared_status": "PARTIAL",
+      "id": "M8-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1161,
+      "title": "时间回绕"
+    },
+    {
+      "acceptance_and_dependencies": "在事务、gateway、WS、artifact读取点逐点失败；验收：每类故障均fail closed；证据：fault matrix; 31 cases, six focused tests, zero production writes/gateway/orders；依赖：M5,M6。",
+      "declared_status": "DONE",
+      "id": "M8-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1162,
+      "title": "故障注入"
+    },
+    {
+      "acceptance_and_dependencies": "3/7/15/30天互斥窗口按相同成熟度比较；验收：按每个市场registry结算时区无重叠、无未来泄漏，混合时区必须拆分artifact；依赖：M3,M4。",
+      "declared_status": "PARTIAL",
+      "id": "M8-05",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "offline_research_only": true,
+          "places_orders": false,
+          "promotion_allowed": false,
+          "reads_market_state": false,
+          "reads_probability_state": false,
+          "uses_production_database": false,
+          "writes_production_state": false
+        },
+        "path": "output/audits/bayes_basket_target_strict_asof_replay.json",
+        "present": true,
+        "status": "BLOCKED_EVIDENCE",
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1163,
+      "title": "窗口回放"
+    },
+    {
+      "acceptance_and_dependencies": "跨季节跨站严格as-of回放；验收：每个样本与模型run均有registry结算时区和lineage，跨时区scope不得合并为单一日界；依赖：M3。",
+      "declared_status": "PARTIAL",
+      "id": "M8-06",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "offline_research_only": true,
+          "places_orders": false,
+          "promotion_allowed": false,
+          "reads_market_state": false,
+          "reads_probability_state": false,
+          "uses_production_database": false,
+          "writes_production_state": false
+        },
+        "path": "output/audits/bayes_basket_target_strict_asof_replay.json",
+        "present": true,
+        "status": "BLOCKED_EVIDENCE",
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1164,
+      "title": "跨季节"
+    },
+    {
+      "acceptance_and_dependencies": "同一服务内运行不接gateway的正式零订单链，不创建第二套Shadow运行线；验收：gateway/order提交零增量，candidate intent与reserve仅在完整M5事务合同允许时写入并可确定性回绕；证据：isolated target chain rehearsal passes，resident仍受v4 schema门阻断；依赖：M3:M7。",
+      "declared_status": "PARTIAL",
+      "id": "M8-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1165,
+      "title": "production_no_live前向链"
+    },
+    {
+      "acceptance_and_dependencies": "新结算label writer已原子生成内容寻址的settlement-version binding与`Settlement-Version Evidence Packet v1`，仅限`HYPOTHETICAL_REQUESTED_INTENTS`的coverage/overlap/edge/execution/failure五项严格闭合；production_no_live无真实成交证据时显式写`NA_ACTUAL_FILL_EVIDENCE_MISSING`，禁止伪造为0。旧label不回填伪造；scorecard已改为有硬总量/64MiB JSON上限的完整keyset分页，不再被512行页边界截断。代码与回归完成，真实新label及actual-fill归因尚未物化，故PARTIAL；证据：`settlement_evidence_packet.py`、`delta_v2_settlement_label.py`、`settled_attribution.py`、`forward_scorecard.py`及专项测试；依赖：M4,M6。",
+      "declared_status": "PARTIAL",
+      "id": "M8-08",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1166,
+      "title": "归因"
+    },
+    {
+      "acceptance_and_dependencies": "只读性能审计器已落地并以有限样本测量 target runtime/resource audit、读事务获取延迟和 WS evidence/cache 年龄；`config/bayes_basket_target/performance_budget_v1.json` 已声明仅用于 bounded no-live audit 的 P95/P99、WS 年龄和资源阈值，`bayes_basket_target/runtime_config.py` 另行把 no-live 预算默认锁为 target-owned `0.0 USDC`；target-owned writer lock-wait telemetry 已产生真实样本，当前仅缺可执行官方 WS materialized snapshot，缺失时仍 `BLOCKED_EVIDENCE`；证据：`output/audits/bayes_basket_target_performance.json`；依赖：M3:M7。",
+      "declared_status": "PARTIAL",
+      "id": "M8-09",
+      "isolated_evidence": {
+        "boundary": {
+          "authorizes_order": false,
+          "calls_order_gateway": false,
+          "cleanup_performed": false,
+          "evidence_only_ws": true,
+          "external_archive_dependency": false,
+          "live_submit_authorized": false,
+          "orders_submitted": 0,
+          "settlement_floor_calculation_only": true,
+          "writes_shared_live_db": false
+        },
+        "path": "output/audits/bayes_basket_target_performance.json",
+        "present": true,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1167,
+      "title": "性能"
+    },
+    {
+      "acceptance_and_dependencies": "校准/OOS不足只阻止新版本promotion；验收：已激活live不读取研究门；证据：`bayes_basket_target_promotion_boundary_audit.json` 五项检查通过；依赖：M3-12。",
+      "declared_status": "DONE",
+      "id": "M8-10",
+      "isolated_evidence": {
+        "boundary": {
+          "calls_order_gateway": false,
+          "places_orders": false,
+          "read_only": true,
+          "writes_production_db": false
+        },
+        "path": "output/audits/bayes_basket_target_promotion_boundary_audit.json",
+        "present": true,
+        "status": null,
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1168,
+      "title": "晋级边界"
+    },
+    {
+      "acceptance_and_dependencies": "在独立holdout比较桶数-模型跨度、主桶切换、成本/份额分离、clip与Maker/Taker矩；验收：同时报告能复现、不能复现和证据不足；候选无完整历史向量时禁止排名；证据：layer1: 8 reproduced/0 contradicted/2 gaps; layer2: 30 candidates NOT_EVALUATED, 0 promotion-grade events；依赖：M4,M6。",
+      "declared_status": "PARTIAL",
+      "id": "M8-11",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1169,
+      "title": "源账户矩检验"
+    },
+    {
+      "acceptance_and_dependencies": "对目标仓位、保留价、补仓节奏分别执行同站时间外、留一站点、跨季节及3/7/15/30天验证；验收：逐站对比全局先验/随机/市场基线并报告n_eff与区间；任一族不得用聚合Top-1替代自身指标；证据：`output/audits/station_policy_transfer_gate_m8_12.json`为BLOCKED_EVIDENCE；45站候选但仅8站聚合行为、三族分项/窗口join/区间缺失；依赖：M4-18:M4-22,M8-05,M8-06。",
+      "declared_status": "PARTIAL",
+      "id": "M8-12",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/station_policy_transfer_gate_m8_12.json",
+        "present": true,
+        "status": "BLOCKED_EVIDENCE",
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1170,
+      "title": "站点层级迁移验证"
+    },
+    {
+      "acceptance_and_dependencies": "源账户行为复刻与本系统经济目标继续分开；逆向优化的合法权重全零和无约束Top-3 63.2%只作诊断。自有forward choice set必须同时保存交易动作与HOLD、完整price×timeout×clip反事实、随机部分成交/未成交/撤单、跨事件可用机会、资本锁定、P0/P0-M/P1、官方WS、inventory/order-state、strict-delta v2双SHA和final truth。v2连续至少两个事件级OOS窗口同时优于v1、EV-only、零权重和HOLD基线，并且ExpectedPnL、ProfitFloor、CVaR、超额集中、成交率、折价、等待、资本占用、故障和资源门均不退化。当前这些真实scorecard仍缺，cash policy和v2均不得promotion；证据：逆向研究产物与现有forward store只作起点，统一v2 scorecard为`BLOCKED_EVIDENCE`；依赖：M1-12,M4-24,M4-26,M6-02:M6-12,M8-04,M8-07,M8-08。",
+      "declared_status": "PARTIAL",
+      "id": "M8-13",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/cash_phase_promotion_gate_m8_13.json",
+        "present": true,
+        "status": "BLOCKED_EVIDENCE",
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1171,
+      "title": "现金阶段与DeltaBasketScore v2晋级验证"
+    },
+    {
+      "acceptance_and_dependencies": "three-leg与Target Realization已从声明、加载和target运行闭包移除；copy-follow并行gateway入口已从源码删除，用户域唯一gateway对`weather_copy_follow_v1`执行零持久化、零submit硬拒绝，真实closure反回归门PASS。离线旧文件尚无完整依赖/审计删除证明，安全删除候选仍为0，故保持PARTIAL；证据：最新用户域production closure；依赖：M8。",
+      "declared_status": "PARTIAL",
+      "id": "M9-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/bayes_basket_target_production_closure_latest.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1175,
+      "title": "旧代码"
+    },
+    {
+      "acceptance_and_dependencies": "UI、monitor、市场REST、tick写入和任务队列均无声明/加载服务且不在target热路径；带真实system/user probe的closure确认禁止服务、REST/tick fallback和旧runtime依赖均为0；证据：production closure receipt `148cccd9...`；依赖：M8。",
+      "declared_status": "DONE",
+      "id": "M9-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/bayes_basket_target_production_closure_latest.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1176,
+      "title": "旧基础设施"
+    },
+    {
+      "acceptance_and_dependencies": "声明、wrapper、installer、readiness与closure均已冻结为`gui/$(id -u)`三个用户域服务；2026-07-30真实closure为PASS，system同名服务为0、用户域三服务均running、无双活，live pause、CLOB read-only及`production_no_live`保持不变。日常`targetctl`拒绝root与system残留，无需sudo；证据：`output/audits/bayes_basket_target_production_closure_user_domain_latest.json`；依赖：M9-01,M9-02。",
+      "declared_status": "DONE",
+      "id": "M9-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": "output/audits/bayes_basket_target_production_closure_latest.json",
+        "present": true,
+        "status": "PASS",
+        "verified": true
+      },
+      "priority": "P0",
+      "roadmap_line": 1177,
+      "title": "三服务"
+    },
+    {
+      "acceptance_and_dependencies": "内容寻址schema、45站cash authority、概率evidence candidate、activation与release闭包均已进入同一受控包；2026-07-30以真实SSOT只读在线备份生成可丢弃克隆，完整执行v4 DDL、7张概率表与12个不可变触发器、45站cash packet、6行概率candidate ingress、bridge backfill及二次幂等迁移，源DB身份不变、trial/backup/temp全部自动删除、WAL归零且零gateway/订单。证据：`output/audits/bayes_basket_target_probability_evidence_migration_rehearsal_latest.json`为PASS；正式概率evidence activation仍为0，真实release继续`BLOCKED_NOT_RELEASE`，故保持PARTIAL；依赖：M8。",
+      "declared_status": "PARTIAL",
+      "id": "M9-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1178,
+      "title": "切换包"
+    },
+    {
+      "acceptance_and_dependencies": "迁移后的用户域resident已完成连续两轮真实SSOT消费并通过独立验签；两轮均为PASS，零gateway、零订单、零execution receipt，forward OOS未通过不阻断该`production_no_live`验收。证据：`output/audits/bayes_basket_target_probability_resident_two_rounds_20260730T075033Z.json`与对应`verified`回执；依赖：M9-04。",
+      "declared_status": "DONE",
+      "id": "M9-05",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1179,
+      "title": "零订单演练"
+    },
+    {
+      "acceptance_and_dependencies": "2026-07-30已一次性退役root-owned system jobs，在登录用户域完成writer quiescence、WAL checkpoint、七表schema/activation替换与target-only重启；9个原子阶段全部完成，受保护`market_ws/clob_order_service` PID稳定，恢复备份在可回滚完成回执落盘后清理，零gateway/订单。正式回执为`COMPLETED`，重复执行为`NOOP_IDEMPOTENT`；证据：`output/audits/bayes_basket_target_m9_06_atomic_cutover_20260730T075033Z.json`及`20260730T075516Z.json`；依赖：M9-03:M9-05。",
+      "declared_status": "DONE",
+      "id": "M9-06",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1180,
+      "title": "原子切换"
+    },
+    {
+      "acceptance_and_dependencies": "当前目标只允许`production_no_live`，`live_submit_authorized=false`、`places_orders=false`、`calls_order_gateway=false`必须由代码、activation与验收三重固定；任何人工短语不得放宽。证据：production/no-live boundary与零订单验收；依赖：M9-06。",
+      "declared_status": "DONE",
+      "id": "M9-07",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1181,
+      "title": "永久live deny"
+    },
+    {
+      "acceptance_and_dependencies": "用户域切后连续两轮、回执验签与真实service closure均已PASS；runtime isolation按冻结source closure重封印为`c7d2c2cc...`，专项61项通过，system残留、双活、WAL超限、概率schema缺失和runtime hash漂移均已消除。该项仍保持PARTIAL，因为验收范围尚未覆盖canonical 45站完整纵向物化；多数站仍在candidate accumulation或缺正式2+模型P0，不能用RKPK/部分scope成功替代全站完成。forward OOS继续不阻断`production_no_live`，只阻断formal promotion/live；证据：用户域two-round/verified回执及`bayes_basket_target_production_closure_user_domain_latest.json`；依赖：M9-06,M9-07。",
+      "declared_status": "PARTIAL",
+      "id": "M9-08",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P0",
+      "roadmap_line": 1182,
+      "title": "切后验收"
+    },
+    {
+      "acceptance_and_dependencies": "append-only truth/label writer已绑定registry结算时区、最终truth revision/SHA以及当时P0/P0-M/P1、WS、inventory/order-state、decision和策略版本lineage；新label原子写入内容寻址settlement-version binding、五项归因terms和Evidence Packet v1且不改写checkpoint，no-live实际成交缺失保持显式NA。代码与回归完成，真实resident仍待受控迁移后产生新版label，故PARTIAL；证据：`settlement_evidence_packet.py`、`delta_v2_settlement_label.py`及settlement truth/label tests；依赖：M9。",
+      "declared_status": "PARTIAL",
+      "id": "M10-01",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1186,
+      "title": "结算回填"
+    },
+    {
+      "acceptance_and_dependencies": "`Settlement-Version Evidence Packet v1`已按显式station×event-date固定窗口和稳定策略版本身份生成校准、支持覆盖、counterfactual PnL、归因及执行质量分母，并校验packet/terms/binding/vector SHA及算术闭合；scorecard对facts、labels和官方WS使用有界keyset全量分页，页大小不再充当分母上限。真实旧label仍因无packet/概率向量/actual fill保持`BLOCKED_EVIDENCE`；证据：`settlement_evidence_packet.py`、`settled_attribution.py`、`forward_scorecard.py`、`settlement_version_scorecard.py`及tests；依赖：M10-01。",
+      "declared_status": "PARTIAL",
+      "id": "M10-02",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1187,
+      "title": "版本评分"
+    },
+    {
+      "acceptance_and_dependencies": "packet生成内容寻址offline promotion receipt，完整性漂移时`BLOCKED_FAIL_CLOSED`，证据不足时`BLOCKED_EVIDENCE`；始终`activation_written=false`、禁止在线调参。forward OOS明确只阻断formal promotion/live，不阻断`production_no_live`；真实证据尚不足，故无promotion；依赖：M10-02。",
+      "declared_status": "PARTIAL",
+      "id": "M10-03",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1188,
+      "title": "新版本"
+    },
+    {
+      "acceptance_and_dependencies": "已实现有界只读daily acceptance，检查仅三个用户域服务/PID且system残留为0、target资源、官方WS、当前P0/P0-M/P1 authority、原子账本、执行零边界、training/label和lineage；合法no-live `EXECUTION`与`NO_EXECUTION`版本向量均可验收，历史阶段过期不覆盖当前authority。服务域、WAL和schema门已通过；当前daily acceptance仍可能因站点级P1/WS stale或45站物化缺口fail closed，forward OOS不在no-live blocker，故保持PARTIAL；证据：`accept_bayes_basket_target_daily_no_live.py`及tests；依赖：M9。",
+      "declared_status": "PARTIAL",
+      "id": "M10-04",
+      "isolated_evidence": {
+        "boundary": null,
+        "path": null,
+        "present": false,
+        "status": null,
+        "verified": false
+      },
+      "priority": "P1",
+      "roadmap_line": 1189,
+      "title": "日常验收"
+    }
+  ],
+  "receipt_sha256": "fd6d8e7727c875f604c35c72efa2bede6956466be224bc5d1c10d2dca05bbe83",
+  "roadmap": "/Users/xiong/weather/data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/bayes_basket_development_roadmap_v1_6.md",
+  "roadmap_sha256": "3d235d89268e9434f846e215800f2b5f1f536f3982078169b671a5d3810a1408",
+  "schema": "bayes_basket_target_roadmap_compliance_v1"
+}

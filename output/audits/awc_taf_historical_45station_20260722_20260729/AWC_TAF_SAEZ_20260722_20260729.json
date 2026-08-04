@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "bbc396bb6b548ab6c562dbfa4f9dc66b968478b991ff4ea6aff6b945226354d8",
+  "content_sha256": "c0bb3d1a7b642a6be67c3e6687738a996c6db733a274d94ef38e208f50beab7a",
   "end_date": "2026-07-29",
   "excluded_sample_count": 1,
   "excluded_samples": [
@@ -38,12 +43,14 @@
         "taf_response_sha256": "fac4ba75698127f37d8e9f377915ceb16ed697b88dbbb110dda17b78decd0f64",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-22T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-fe6be5cccfc0326987cb2af6b04b924b",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-23T03:00:00Z",
         "start_utc": "2026-07-22T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-21T23:30:21Z",
@@ -229,8 +236,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 15.0
-      }
+        "tmax_c": 15.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T04:00:00Z",
@@ -241,12 +260,14 @@
         "taf_response_sha256": "0f48450becb1fe7bc9be220edf1944a15b2b9096dec4307f155f12a6186fd5db",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-23T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-6320751d8b5df33ffffdd6c766cbe47f",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-24T03:00:00Z",
         "start_utc": "2026-07-23T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-23T03:11:08Z",
@@ -432,8 +453,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 16.0
-      }
+        "tmax_c": 16.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T04:00:00Z",
@@ -444,12 +477,14 @@
         "taf_response_sha256": "f7995b1304aaddf8573c37591d53b38cde90ede7d1b20cfc3cc2547edbb24522",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-24T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-5227fe0b621c65509a30969d8933d559",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-25T03:00:00Z",
         "start_utc": "2026-07-24T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-23T23:36:13Z",
@@ -698,8 +733,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 17.0
-      }
+        "tmax_c": 17.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T04:00:00Z",
@@ -710,12 +757,14 @@
         "taf_response_sha256": "af8d73686c2074540225abc4b68aa3eb50fe171a345f6ab53728ee5e43cd6cef",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-26T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-bd4d011abd8832c344c358e791c69291",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-27T03:00:00Z",
         "start_utc": "2026-07-26T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-26T03:35:12Z",
@@ -901,8 +950,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 20.0
-      }
+        "tmax_c": 20.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-27T04:00:00Z",
@@ -913,12 +974,14 @@
         "taf_response_sha256": "d187fee956be4b571f706ae5e975d0b8b9f06b4e2686e7276af8a2027ac8a6df",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-27T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-6114776dce24b2a4355bd4ece8b2955b",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-28T03:00:00Z",
         "start_utc": "2026-07-27T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-26T23:58:20Z",
@@ -1125,8 +1188,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 18.0
-      }
+        "tmax_c": 18.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-28T04:00:00Z",
@@ -1137,12 +1212,14 @@
         "taf_response_sha256": "34e34a79104491500575830d4ce54d801560d9bed6e0387cb78047b1e108c5da",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-28T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-a33b773d660863702034fb07806c9662",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-29T03:00:00Z",
         "start_utc": "2026-07-28T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-27T23:30:24Z",
@@ -1405,8 +1482,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 17.0
-      }
+        "tmax_c": 17.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-29T04:00:00Z",
@@ -1417,12 +1506,14 @@
         "taf_response_sha256": "10598c0486bd905abcb79ba8e82221ed5c5d536f62301eea1170885d7ba3ecc3",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SAEZ&format=json&time=issue&date=2026-07-29T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-9b75cce80c4b5ea801bb736dcb0baa38",
       "settlement_timezone": "America/Argentina/Buenos_Aires",
       "settlement_window": {
         "end_utc": "2026-07-30T03:00:00Z",
         "start_utc": "2026-07-29T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SAEZ",
       "taf": {
         "available_time_utc": "2026-07-28T23:30:17Z",
@@ -1608,13 +1699,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 17.0
-      }
+        "tmax_c": 17.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "America/Argentina/Buenos_Aires",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "SAEZ"
+  "station_id": "SAEZ",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

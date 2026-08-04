@@ -106,13 +106,28 @@ def _truth_rows(path: Path, *, station: str, timezone_name: str) -> tuple[dict[s
         payload.get("schema") != TRUTH_SCHEMA
         or payload.get("station_id") != station
         or payload.get("settlement_timezone") != timezone_name
+        or payload.get("source_lane") != "AWC"
+        or payload.get("source_role") != "AWC_HISTORICAL_REPLAY_INGRESS"
+        or payload.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
     ):
         raise ContractError(f"explicit_oos_truth_scope_invalid:{station}")
+    supplied_content = str(payload.get("content_sha256") or "").lower()
+    if supplied_content != content_sha256({
+        key: value for key, value in payload.items() if key != "content_sha256"
+    }):
+        raise ContractError(f"explicit_oos_truth_content_hash_invalid:{station}")
+    checks = payload.get("checks")
+    if (
+        not isinstance(checks, Mapping)
+        or checks.get("input_evidence_content_hashes_verified") is not True
+        or checks.get("settlement_timezone_exact_match") is not True
+        or checks.get("reference_only_excluded") is not True
+    ):
+        raise ContractError(f"explicit_oos_truth_checks_invalid:{station}")
     label_authority = str(payload.get("label_authority") or "")
-    if label_authority not in {
-        "FORMAL_STATION_LANE_TRUTH",
-        "TEMPORARY_AWC_CALIBRATION_LABEL",
-    }:
+    if label_authority == "TEMPORARY_AWC_CALIBRATION_LABEL":
+        raise ContractError(f"explicit_oos_temporary_awc_retired:{station}")
+    if label_authority != "FORMAL_STATION_LANE_TRUTH":
         raise ContractError(f"explicit_oos_truth_authority_invalid:{station}")
     rows: dict[str, dict[str, Any]] = {}
     for sample in payload.get("samples") or []:
@@ -123,10 +138,40 @@ def _truth_rows(path: Path, *, station: str, timezone_name: str) -> tuple[dict[s
         window = sample.get("settlement_window")
         if not event_date or not isinstance(truth, Mapping) or not isinstance(window, Mapping):
             raise ContractError(f"explicit_oos_truth_sample_invalid:{station}")
+        observations = truth.get("observations")
+        if (
+            sample.get("settlement_timezone") != timezone_name
+            or truth.get("source_lane") != "AWC"
+            or truth.get("source_role") != "AWC_HISTORICAL_REPLAY_INGRESS"
+            or truth.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
+            or not isinstance(observations, list)
+            or not observations
+        ):
+            raise ContractError(f"explicit_oos_truth_sample_lineage_invalid:{station}")
+        if any(
+            not isinstance(item, Mapping)
+            or item.get("source_lane") != "AWC"
+            or item.get("source_role") != "AWC_HISTORICAL_REPLAY_INGRESS"
+            or item.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
+            or item.get("settlement_timezone") != timezone_name
+            or item.get("reference_only") is not False
+            or item.get("evidence_role") != "FORMAL"
+            for item in observations
+        ):
+            raise ContractError(
+                f"explicit_oos_truth_observation_lineage_invalid:{station}"
+            )
+        sample_identity = {
+            key: value for key, value in sample.items() if key != "sample_id"
+        }
+        if str(sample.get("sample_id") or "") != (
+            "truth-" + content_sha256(sample_identity)[:32]
+        ):
+            raise ContractError(f"explicit_oos_truth_sample_hash_invalid:{station}")
         rows[event_date] = {
             "official_tmax_c": float(truth["tmax_c"]),
             "truth_sample_id": str(sample.get("sample_id") or ""),
-            "truth_rows_sha256": content_sha256(truth.get("observations") or []),
+            "truth_rows_sha256": content_sha256(observations),
             "settlement_window": dict(window),
             "truth_source_lane": str(truth.get("source_lane") or "").upper(),
         }
@@ -237,15 +282,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     output_root = args.output_root.expanduser().resolve()
     station_results = []
-    temporary_truth_stations = []
     for station in sorted(registry):
         truths, authority = _truth_rows(
             truth_paths[station],
             station=station,
             timezone_name=registry[station],
         )
-        if authority == "TEMPORARY_AWC_CALIBRATION_LABEL":
-            temporary_truth_stations.append(station)
         common_dates = sorted(
             set(truths)
             & {event_date for candidate, event_date in gfs if candidate == station}
@@ -330,11 +372,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     )
                 )
-                else (
-                    "BLOCKED_TEMPORARY_AWC_TRUTH"
-                    if authority == "TEMPORARY_AWC_CALIBRATION_LABEL"
-                    else "BLOCKED_PROBABILITY_OOS_GATE"
-                )
+                else "BLOCKED_PROBABILITY_OOS_GATE"
             ),
             "output": str(output),
         })
@@ -373,11 +411,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for row in station_results
             ),
             "p0_activation_written": False,
-            "temporary_awc_calibration_station_count": len(temporary_truth_stations),
             "live_submit_authorized": False,
             "calls_order_gateway": False,
         },
-        "temporary_awc_calibration_stations": temporary_truth_stations,
         "station_results": station_results,
         "boundary": {
             "production_no_live_only": True,
@@ -411,7 +447,6 @@ def main() -> int:
             row["common_sample_n"] for row in result["station_results"]
         ),
         "single_model_winner_count": result["checks"]["single_model_winner_count"],
-        "temporary_awc_calibration_station_count": result["checks"]["temporary_awc_calibration_station_count"],
         "output": str((args.output_root / "manifest.json").resolve()),
         "live_submit_authorized": False,
     }, ensure_ascii=False, sort_keys=True))

@@ -1,0 +1,84 @@
+{
+  "archive_database": "/Users/xiong/weather/data/archive.db",
+  "boundary": {
+    "calls_network": false,
+    "candidate_only": true,
+    "formal_promoted_created": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "writes_archive_database": false,
+    "writes_target_database": false
+  },
+  "canonical_input": "/Users/xiong/weather/output/audits/awc_canonical_truth_20260730_5station_20260801.json",
+  "content_sha256": "b9e9e1870064dc0fbcc7d26f52a4995a8a441fc8784e81139c1f3d8a158242c7",
+  "event_date": "2026-08-01",
+  "reports": [
+    {
+      "blockers": [],
+      "content_sha256": "9b9e370b1501f7482eb2aad6e4e821a09a9ff39949f7fad7ba86e80bf8e25a9d",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 6,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/NZWN_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "NZWN",
+      "strict_asof_bindable_observation_count": 6
+    },
+    {
+      "blockers": [],
+      "content_sha256": "ab8534951fe4e0a8197172066ae0105f6cd8ea7d21a96dc5029e86b4f80f8a9e",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 3,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/RJTT_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "RJTT",
+      "strict_asof_bindable_observation_count": 3
+    },
+    {
+      "blockers": [],
+      "content_sha256": "63af846d7ddad66f4aa438d9bfab114736a479d5569aaa372291ab0df9646bd6",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 3,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/RKSI_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "RKSI",
+      "strict_asof_bindable_observation_count": 3
+    },
+    {
+      "blockers": [],
+      "content_sha256": "6ae9ffb355571a987b5e7988613cd4dfab57709f166c01a0ee5fe13f1c9d641d",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 2,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/WMKK_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "WMKK",
+      "strict_asof_bindable_observation_count": 2
+    },
+    {
+      "blockers": [],
+      "content_sha256": "c67fa127852f12cdc1d259e5b0dcda632d6e4bc4e4083c2eafe4a1e6adbcfdb7",
+      "event_date": "2026-08-01",
+      "formal_observation_count": 2,
+      "output": "/Users/xiong/weather/output/audits/p1_replay_authority_candidate_20260803_fulltruth/WSSS_2026-08-01_p1_replay_authority_candidate.json",
+      "pointer_repair_count": 0,
+      "state": "EXPORTED",
+      "station_id": "WSSS",
+      "strict_asof_bindable_observation_count": 2
+    }
+  ],
+  "root_decision_at_utc": "2026-07-31T17:44:47.361Z",
+  "schema": "bayes_basket_target_p1_replay_authority_candidate_manifest_v1",
+  "state": "CANDIDATE_ONLY",
+  "station_count": 5,
+  "summary": {
+    "blocked_count": 0,
+    "candidate_ready_count": 5,
+    "formal_observations": 16,
+    "pointer_repairs": 0,
+    "strict_asof_bindings": 16
+  },
+  "target_database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db"
+}

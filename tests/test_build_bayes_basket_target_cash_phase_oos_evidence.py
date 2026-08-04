@@ -111,3 +111,52 @@ def test_rkpk_wrong_timezone_is_reported_not_guessed(tmp_path: Path) -> None:
         "policy_registry_timezone_mismatch"
         in receipt["rkpk"]["missing_requirements"]
     )
+
+
+def test_rkpk_candidate_price_is_counted_with_the_oos_evaluator_alias(
+    tmp_path: Path,
+) -> None:
+    paths = {
+        name: tmp_path / f"{name}.json"
+        for name in ("observations", "policies", "registry", "training", "faults")
+    }
+    _write(paths["observations"], {
+        "observations": [
+            {
+                "station_id": "RKPK",
+                "phase": "TAIL",
+                "candidate_price": 0.02,
+                "settlement_pnl_usdc": 0.0,
+                "labels": [{"winning_bucket": "39°C"}],
+            }
+            for _ in range(90)
+        ],
+    })
+    _write(paths["policies"], {"cash_phase_policies": [{
+        "station_id": "RKPK",
+        "station_timezone": "Asia/Seoul",
+        "policy_version": "rkpk-design-v1",
+        "evidence_status": "DESIGN_CANDIDATE",
+        "promoted": False,
+    }]})
+    _write(paths["registry"], {"rows": [{
+        "station_id": "RKPK",
+        "settlement_timezone": "Asia/Seoul",
+    }]})
+    _write(paths["training"], {"policy_training_cutoffs": {"RKPK": "2026-06-28T00:00:00Z"}})
+    _write(paths["faults"], {"fault_cases": []})
+    receipt = build_from_paths(
+        observations_path=paths["observations"],
+        policies_path=paths["policies"],
+        registry_path=paths["registry"],
+        training_cutoffs_path=paths["training"],
+        fault_cases_path=paths["faults"],
+        as_of_utc="2026-07-28T00:00:00Z",
+        evaluation_start_utc="2026-06-28T00:00:00Z",
+        evaluation_end_utc="2026-07-28T00:00:00Z",
+    )
+    assert receipt["rkpk"]["price_coverage_count"] == 90
+    assert not any(
+        item.startswith("price_coverage_deficit:")
+        for item in receipt["rkpk"]["missing_requirements"]
+    )

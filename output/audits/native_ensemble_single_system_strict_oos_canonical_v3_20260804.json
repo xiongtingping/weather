@@ -1,0 +1,2178 @@
+{
+  "artifact_count": 0,
+  "artifacts": [],
+  "blocked_scope_count": 55,
+  "blocked_scope_count_by_system": {
+    "ECCC_GEM_GLOBAL_ENS": 10,
+    "NOAA_GEFS_05": 45
+  },
+  "blocked_scopes": [
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "a3f9556fe2d8fd007fd44da8c990ebd2244ff46c0922df8e401a520a24550880",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "62e2f8bc9126b70726fd883b1206a7720858cef3fc8af7f86eb3ecde14c04b63",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "CYYZ"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "55cd024d438bca441be5c648b5ca58e6ac737fc6981c3e12d1bc74ba85f695f0",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "59ba6ee000e19a6a1b51551d03ba08f2d01d23dd12002f8ff379a6a35cf7c744",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EPWA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "a3f9556fe2d8fd007fd44da8c990ebd2244ff46c0922df8e401a520a24550880",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "8a5e1b47721d8e0263a33020323b64b9a0b2ac6a0d0b244b9272107cac123b72",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "FACT"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "55cd024d438bca441be5c648b5ca58e6ac737fc6981c3e12d1bc74ba85f695f0",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "60f39aa5587887883e109e7d271fd1ae60903c2e6824bb469f1e02487c607f5c",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LEMD"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "55cd024d438bca441be5c648b5ca58e6ac737fc6981c3e12d1bc74ba85f695f0",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "f8e6734fc57266f7db9e1233cd7670c69c466f9937266c4241076563b390628e",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LFPB"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "bfc633dba59934cad304f2603ca9a264c019818adf6d23492b7e6a41f621202f",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 16,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "5a7f23ef25d38fd43f244eda87c7ad740ac0833963dc11ecbf1e01cfa7f2eea8",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "MPMG"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "55cd024d438bca441be5c648b5ca58e6ac737fc6981c3e12d1bc74ba85f695f0",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "101a45b71c712c17bffbfe0a82beb1aa74966e2b66a3686cf7bd51d5487dfa95",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "OEJN"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "0a273648c7c78c7e0b24195d6f2f74c31c977e1bcea7108133df53590312bec4",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 21,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "5f778ef89ab68c9eb8ce227ea04f32f501c7c225d651b44ca50027677512f0f8",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "OPKC"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "b2a25d7f8cd8f88e55cc389708b350be84c7462f7f75f41ab56bfa9493b82c19",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 25,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "06cb9ad06f677dadeb5ea895e20bec04e083cbf80fa50bd1efec28007b751ae9",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RKPK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 28,
+        "candidate_member_fact_count": 588,
+        "date_rows_content_sha256": "a3f9556fe2d8fd007fd44da8c990ebd2244ff46c0922df8e401a520a24550880",
+        "exact_member_cohort_date_count": 28,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 21,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "abdc0e805d8babaf772d27732bcb7b310af05c4d91d6b17a8b9b001e2fafb84c",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "formal_live_authority": false,
+      "independence_family_id": "ECCC_GEM",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "ECCC",
+      "run_cycle": "00Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "SBGR"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "7ffb8ee92407d72548ae2ec1cf30ca1e7cb1c41b1a382a1ecd9376118ed975ed",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 28,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "4e7c646110ffcc176ea7c0002841b088533fc669ff36abbe4cbb8c59b1e65668",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "CYYZ"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "e2de5b1b3a10d8ff34f554557ed26d2a79d05daea0f50147d081932016f49cc5",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EDDM"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3a3a10f27b5641d8bdb357f29977bf040f7e1f87c837914079da49f19d5f8187",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EFHK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "eb68e785064988edf95851c9ac26f2c09c762b5fa42a3a7c2873306fdddc029e",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EGLC"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "a0f7af949c9c6116f56c1d55def4a17a2cc30a84a2666544464490c48eed26fb",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EHAM"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "ec3c2ee3900c2fb03c090e9f3b70abc42b9b9a09d19386e28596504adbf518b9",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "d6001447e985450ecdc21c2abb6d9f675a94583f796e6b0567f68567fc407102",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "EPWA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "45f1fb86ad3c0e8d803685edea889b641e2c4fd5f0c5649dd3334cd1113556d6",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "FACT"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "5c3f10688d418f0ff27a29ac11497d77310799e5ffde39ef45de2a0e9992ebc4",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KATL"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "97282565b23b0305ff30a2bbb0850491a699edaad4675ca315dacc72951f7a8b",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KAUS"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "8b3410d413de8548d5a2d56d3ae723e3ef81c03db94b9aa15f3affa19c0357bd",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KBKF"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "e4d48a75daa1fee488d24d140a6d0559ba6aae56643c12f1d8a5857be0ad262b",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KDAL"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3400ecc7754dba8d893514280f32177b3ee6856ec24fa93236bcae0d02608ee2",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KHOU"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "160a55ce6bc85529921ca477040d2817ef887ea310bf611779bfcd2ba048e614",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KLAX"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "2a0596b557a27c8e35b146b6a6a008e59b1334f51808d236942b6bfca30bb073",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KLGA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "743a932ffd0ddb0c371565158b5d8cbe7d57601b8fb06cf8ff2be4928dc441b1",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KMIA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "eebd71dbe546d623f3710f8920add91325d36fe20158238f4310b26ae26f5b43",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KORD"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "afb3bbf9023bbdd029e1071cdce1c02ba0955dae22931954a255bddeaf36403d",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KSEA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3de759dedfc0d54a4f69dbdd1d2d6b1924ae974980da88be46ee4c96f72295ff",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "KSFO"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "ec3c2ee3900c2fb03c090e9f3b70abc42b9b9a09d19386e28596504adbf518b9",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "1505e9b66e229be1692c8ba8092a107d7e0d2890992b919a3505da113d6ef35e",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LEMD"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "ec3c2ee3900c2fb03c090e9f3b70abc42b9b9a09d19386e28596504adbf518b9",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "296e4b3a1cacbc5847908b7ade73b223c66907208127f238b442fc50a2abc4fa",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LFPB"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "30dbb12b855f1bfbd2d96c1f6e1f44993133df3d2e190f18a8c98fa91eec8315",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LIMC"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "2a9c0d5ccd7a11771667077a0969e3a6984f14b7251cb76b5f19baf769aef041",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "LTAC"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "fdc0f255aa8c6bfaebd96446dbd42c09aed6c9d91d79baa058ccb91b91644289",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 0,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "b9bc4b77d303bfce35fa07106a198c1f7cca45b254e69dd610f48593fe555e33",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "MMMX"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "4ad217cbed4a46787e6f7fffd99c6d66cd62b20c8f19872af76f07984cb180b5",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 17,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "fc61c11929ede80cc1f1f0d8c2ca7cff6983a12c44201e529b162e55a22b021d",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "MPMG"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "7ffb8ee92407d72548ae2ec1cf30ca1e7cb1c41b1a382a1ecd9376118ed975ed",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 28,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "e3e18fc676fd9cb6d6d8189e64c9c9a3b8fc2fe9162d759ae9799b0773feb111",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "NZWN"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "ec3c2ee3900c2fb03c090e9f3b70abc42b9b9a09d19386e28596504adbf518b9",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3361c85346fb7ed2a564274e58df0a18972d678b049d4533473d13424b5bf5a0",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "OEJN"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "f16709cfa17d6016fdd43920c8fd6d231a1da4af55a36cb776f7dd94c2f2829c",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 21,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "ca6d9899c9e37838290456ae6927e4afa0a317a8cb202e9c759d61d9d41e0e25",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "OPKC"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "990ba47cddd3f00b2fe5d981d0a651d19645a88e6bd78de8adbb03ba3f03837b",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RCSS"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "1bfe44ae0b7c90b41ef013632fe433d73ca66dbe60077db8d7fab364d6202fe0",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RJTT"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "b176fe8a24ec9c9b874431fe7ea59ab9b4b8077a3bb96d59a1a8ffb56513b27e",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 25,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "2148b1ef36593a8cb5223898a4ba9351115fcb83cb455f556cfa2b6e96da356a",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RKPK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "7b46d4c8d4867a8651dccbe3744eedab93ce9c489beca4fb7924380b121d4e1e",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RKSI"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "91ab0b63f69afc7784dbf4368f788390b48c068ef5a60ede76f4526fa02aa2f3",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "RPLL"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "bb5fe685e335ec1b84ed988147a9cf90005b8e28672b3019a78f0e56d96821d1",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "52517ebee5cbca461eb1e76c79be13b26b44f2ae16b31f422ccbcf8e32637924",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "SAEZ"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "7597bfdce0939d1a42879b06f57b3c3aee291e8e860ecba75a73adc0e512ef52",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "SBGR"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "0b217096822b1d94234b8d80bc40e39dc8163aa84191748b32d23736a108b1a4",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 25,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "730c49535d66fc53db01e424705198a08fcf800c5b5e5657c979c75dc7cc3ef9",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "VILK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "ee23cc7c8118e73b1bcefa00f5d8663341d5384a7ab08f15e91135ddce4c5aef",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 26,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3c0ffaf0eee8b206c9807caf81a82536e5ba036f33f32dc0133504cf2cf368b8",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "WMKK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "1f61e6ce52abea684a765ba87095e030d3b8cb5b14b2afdac734170efdaf85f6",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 27,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "fdb2f0feaa5808b379cf2ffb36f6d09a6f282cff2a6f4f0e332600ba10131517",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "WSSS"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "f34cda5aeb8385d1ac93d1522fd35a67faec2f71ac84398f38b109e8ad820d29",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZBAA"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "3fef875831ad3ef0f23115b13f142bcaed25b7470d74fd8b0101cf247186ff2e",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZGGG"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "5dd9a08457f723bd8b9de57ad13ef6d527e792b6e411bc7275f3fb53b1c7ffc2",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZGSZ"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "97b7b9c52c4f10eadade337652e766d4c40c4b33cde463505adf9281844d89ef",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZHHH"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "a00ab7dd7900ac8f0787ce81a741ae8bbf42a60262d1a03ca959cc0ab799a9b6",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZSPD"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "b623f968a8451496c5f83283e5b7e855ca71a4c7c404911ab09d2f1968ecb70d",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZSQD"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "3597c25216109e067a3eba41240988270fb749e87d803ecf1f72eb0105794728",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 15,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "682d225b82192561dee7f5280f005ef0976f549a89b6985f10ce04cbdd125204",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZUCK"
+    },
+    {
+      "artifact_count": 0,
+      "blocker_detail": [
+        "CANONICAL_MEMBERS_ARE_OBSERVATIONAL_NOT_STRICT_OOS",
+        "CANONICAL_NATIVE_ARRIVAL_MISSING",
+        "CANONICAL_MEMBER_ARRIVAL_BINDING_MISSING"
+      ],
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "canonical_diagnostics": {
+        "candidate_member_date_count": 44,
+        "candidate_member_fact_count": 1364,
+        "date_rows_content_sha256": "9cc7a8ef5cbdebf6ca17d79296de00168424c64710d2cf54c53e3920bfa41448",
+        "exact_member_cohort_date_count": 44,
+        "exact_member_truth_overlap_date_count": 14,
+        "expected_member_count": 31,
+        "indexed_native_arrival_fact_count": 0,
+        "member_arrival_binding_fact_count": 0,
+        "strict_member_cohort_date_count": 0
+      },
+      "content_sha256": "200a5200d1a444de04b493045b225520aa535fff41b2ad55aa2c11f3d9bbcee0",
+      "cross_activation_count": 0,
+      "cross_selection_count": 0,
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "formal_live_authority": false,
+      "independence_family_id": "NOAA_GEFS",
+      "inferred_member_arrival_join": false,
+      "lead_bucket": "d2",
+      "legacy_audit_read": false,
+      "legacy_metrics_reused": false,
+      "model_family": "global_ensemble",
+      "p0_count": 0,
+      "provider_id": "NOAA",
+      "run_cycle": "18Z",
+      "schema": "native_ensemble_single_system_strict_historical_oos_blocked_scope_v2",
+      "state": "BLOCKED",
+      "station_id": "ZUUU"
+    }
+  ],
+  "calls_order_gateway": false,
+  "compiled_at_utc": "2026-08-04T00:00:00.000Z",
+  "content_sha256": "2854b681bf6ba1d9c3836d4d19c75ab72115aa5ad193d050aeb80b8fe74be145",
+  "cross_activation_count": 0,
+  "cross_selection_count": 0,
+  "formal_live_authority": false,
+  "legacy_audit_read": false,
+  "legacy_metrics_reused": false,
+  "member_arrival_binding_fact_type_present": false,
+  "orders_submitted": 0,
+  "p0_count": 0,
+  "schema": "native_ensemble_single_system_strict_historical_oos_manifest_v3",
+  "scope_registry_count": 55,
+  "scope_registry_count_by_system": {
+    "ECCC_GEM_GLOBAL_ENS": 10,
+    "NOAA_GEFS_05": 45
+  },
+  "visible_canonical_fact_counts": {
+    "ensemble_member": 87840,
+    "truth": 596
+  },
+  "writes_database": false
+}

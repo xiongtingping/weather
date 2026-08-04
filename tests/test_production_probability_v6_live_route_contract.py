@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.reported_trajectory_no_daemon import TargetProductionWorker
+from scripts.weather_basket_yes_daemon import TargetProductionWorker
 from bayes_basket_target.database import SHARED_LIVE_DB
-from scripts.reported_trajectory_no_daemon import (
+from scripts.weather_basket_yes_daemon import (
     DEFAULT_TARGET_ACTIVATION,
     DEFAULT_TARGET_DB,
 )
@@ -28,8 +28,8 @@ def _fixture_root(tmp_path: Path) -> Path:
     for relative in ROUTE_FILES:
         shutil.copy2(ROOT / relative, tmp_path / relative)
     shutil.copy2(
-        ROOT / "scripts/install_reported_trajectory_no_system_services.sh",
-        tmp_path / "scripts/install_reported_trajectory_no_system_services.sh",
+        ROOT / "scripts/install_weather_basket_yes_user_services.sh",
+        tmp_path / "scripts/install_weather_basket_yes_user_services.sh",
     )
     return tmp_path
 
@@ -64,7 +64,7 @@ def test_resident_route_replaces_monitor_fanout_and_forbids_fourth_service(
     assert "watch_zuuu_speci_once.py" not in text
     assert "polymarket_monitor_daemon.sh" not in text
     assert audit["no_fourth_service_definition"] is True
-    assert audit["resident_service"] == "com.weather.reported_trajectory_no"
+    assert audit["resident_service"] == "com.weather.weather_basket_yes"
 
 
 def test_target_production_worker_uses_an_enforced_read_only_connection(

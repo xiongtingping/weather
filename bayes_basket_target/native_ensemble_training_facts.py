@@ -12,12 +12,44 @@ from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
 from .event_contracts import ForecastRevision
-from .ssot import native_ensemble_foundation_schema_status
+from .ssot import (
+    native_ensemble_foundation_schema_status,
+)
 from .taf_native_ensemble_oos import EXACT_JOIN_SCHEMA
+from .taf_oos_contract import HISTORICAL_OOS_TEMPORAL_SCOPE
 
 
 TAF_INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
 MAX_TAF_CAPTURES = 256
+MAX_FORWARD_TAF_CORRECTIONS_PER_DAY = 16
+FORMAL_STATION_LANE_TRUTH = "FORMAL_STATION_LANE_TRUTH"
+
+
+def _historical_taf_correction_kind(raw_taf: Any) -> str | None:
+    """Return the explicit bulletin correction marker, never a substring guess."""
+
+    tokens = str(raw_taf or "").upper().split()
+    if len(tokens) >= 2 and tokens[0] == "TAF" and tokens[1] in {"AMD", "COR"}:
+        return tokens[1]
+    return None
+
+
+def _historical_taf_truth_authority(source_lane: str) -> dict[str, Any]:
+    lane = str(source_lane or "").strip().upper()
+    # P0-M calibration is executable lineage, not the retired historical
+    # comparison lane.  Only official AWC may supply it for any station.
+    if lane != "AWC":
+        raise ContractError("historical_taf_station_source_lane_invalid")
+    return {
+        "station_source_lane": "AWC",
+        "evidence_source_lane": "AWC",
+        "truth_label_authority": FORMAL_STATION_LANE_TRUTH,
+        "reference_only": False,
+        "enters_realtime_truth": False,
+        "enters_p1": False,
+        "enters_hard_no": False,
+        "replacement_required_when_canonical_history_available": False,
+    }
 
 
 def _utc(name: str, value: Any) -> str:
@@ -299,6 +331,7 @@ def ingest_forward_taf_inbox(
     conn.execute("RELEASE forward_taf_capture_ingress")
     return {
         "schema": "forward_taf_capture_ingress_v1",
+        "evidence_role": "observational_candidate_not_oos",
         "state": (
             "COMMITTED_WITH_REJECTED_CAPTURES"
             if rejected_timestamp_captures
@@ -334,6 +367,10 @@ def ingest_historical_taf_calibration(
     )
     boundary = artifact.get("boundary")
     samples = artifact.get("samples")
+    try:
+        declared_sample_count = int(artifact.get("sample_count", -1))
+    except (TypeError, ValueError, OverflowError):
+        declared_sample_count = -1
     if (
         artifact.get("schema")
         != "bayes_basket_awc_taf_calibration_dataset_v1"
@@ -348,15 +385,23 @@ def ingest_historical_taf_calibration(
         or boundary.get("historical_replay_only") is not True
         or boundary.get("truth_days_closed") is not True
         or not isinstance(samples, list)
-        or int(artifact.get("sample_count") or -1) != len(samples)
+        # ``0`` is a valid empty capture (for example, the official AWC
+        # endpoint returned no usable TAF/truth pair for a closed day).  Do
+        # not let truthiness turn that valid count into ``-1`` and reject the
+        # whole bounded 45-station ingest.
+        or declared_sample_count != len(samples)
     ):
         raise ContractError("historical_taf_artifact_invalid")
     station = str(artifact.get("station_id") or "").strip().upper()
+    station_source_lane = str(artifact.get("source_lane") or "").strip().upper()
+    truth_label_authority = str(
+        artifact.get("truth_label_authority") or ""
+    ).strip()
     timezone_name = str(
         artifact.get("settlement_timezone") or ""
     ).strip()
     station_row = conn.execute(
-        "SELECT timezone_name FROM calibration_station_registry "
+        "SELECT timezone_name,source_lane FROM calibration_station_registry "
         "WHERE station_id=?",
         (station,),
     ).fetchone()
@@ -366,6 +411,24 @@ def ingest_historical_taf_calibration(
         "WHERE station_id=? AND settlement_timezone<>''",
         (station,),
     ).fetchall()
+    # The market registry is append-only and therefore retains retired lane
+    # rows.  The current authority is the latest active/source-eligible AWC
+    # snapshot; no retired AMSC row can make a historical TAF executable.
+    try:
+        market_lane_row = conn.execute(
+            "SELECT UPPER(source_lane) "
+            "FROM basket_target_market_registry "
+            "WHERE station_id=? AND source_lane<>'' "
+            "AND source_eligible=1 AND market_active=1 "
+            "AND market_accepting_orders=1 "
+            "ORDER BY refreshed_at DESC, rowid DESC LIMIT 1",
+            (station,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        # Small isolated fixtures may expose only the legacy three-column
+        # market table.  They have no active snapshot clock, so retain the
+        # registry lane as the only available authority.
+        market_lane_row = None
     expected_timezone = (
         str(market_timezones[0][0])
         if len(market_timezones) == 1
@@ -373,23 +436,76 @@ def ingest_historical_taf_calibration(
         if station_row is not None and not market_timezones
         else ""
     )
+    registry_lane = (
+        str(station_row[1]).strip().upper()
+        if station_row is not None
+        else ""
+    )
+    expected_lane = (
+        str(market_lane_row[0]).strip().upper()
+        if market_lane_row is not None and str(market_lane_row[0]).strip()
+        else registry_lane
+    )
+    expected_authority = (
+        _historical_taf_truth_authority(expected_lane)
+        if expected_lane == "AWC"
+        else None
+    )
     if (
         not station
         or not timezone_name
         or station_row is None
         or expected_timezone != timezone_name
+        or station_source_lane != expected_lane
+        or expected_authority is None
+        or truth_label_authority != FORMAL_STATION_LANE_TRUTH
+        or truth_label_authority != str(expected_authority["truth_label_authority"])
+        or artifact.get("truth_authority") != expected_authority
+        or (
+            market_lane_row is not None
+            and str(market_lane_row[0]).strip().upper() != expected_lane
+        )
     ):
-        raise ContractError("historical_taf_station_scope_invalid")
+        raise ContractError("historical_taf_station_lane_authority_invalid")
+    boundary_reference_only = artifact.get("boundary")
+    if (
+        not isinstance(boundary_reference_only, Mapping)
+        or boundary_reference_only.get("reference_only")
+        != expected_authority["reference_only"]
+        or boundary_reference_only.get("enters_realtime_truth") is not False
+        or boundary_reference_only.get("enters_p1") is not False
+        or boundary_reference_only.get("enters_hard_no") is not False
+        or boundary_reference_only.get(
+            "replacement_required_when_canonical_history_available"
+        )
+        != expected_authority[
+            "replacement_required_when_canonical_history_available"
+        ]
+    ):
+        raise ContractError("historical_taf_truth_authority_boundary_invalid")
     tz = ZoneInfo(timezone_name)
     rows: list[dict[str, Any]] = []
     seen_dates: set[str] = set()
     skipped_after_anchor: list[str] = []
+    correction_dates: set[str] = set()
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise ContractError("historical_taf_sample_invalid")
+        event_date = str(sample.get("event_date") or "")
+        taf = sample.get("taf")
+        if not event_date or not isinstance(taf, Mapping):
+            raise ContractError("historical_taf_sample_invalid")
+        if not str(taf.get("raw_taf") or "").strip():
+            raise ContractError("historical_taf_raw_bulletin_required")
+        if _historical_taf_correction_kind(taf.get("raw_taf")) is not None:
+            correction_dates.add(event_date)
     for sample in samples:
         if not isinstance(sample, Mapping):
             raise ContractError("historical_taf_sample_invalid")
         event_date = str(sample.get("event_date") or "")
         taf = sample.get("taf")
         receipts = sample.get("receipts")
+        sample_truth = sample.get("truth")
         if (
             str(sample.get("station_id") or "").strip().upper()
             != station
@@ -399,8 +515,25 @@ def ingest_historical_taf_calibration(
             or event_date in seen_dates
             or not isinstance(taf, Mapping)
             or not isinstance(receipts, Mapping)
+            or str(sample.get("source_lane") or "").strip().upper()
+            != expected_lane
+            or str(sample.get("truth_label_authority") or "")
+            != truth_label_authority
+            or sample.get("truth_authority") != expected_authority
+            or sample.get("reference_only")
+            != expected_authority["reference_only"]
+            or not isinstance(sample_truth, Mapping)
+            or str(sample_truth.get("source_lane") or "").strip().upper()
+            != "AWC"
+            or str(sample_truth.get("truth_label_authority") or "")
+            != truth_label_authority
         ):
-            raise ContractError("historical_taf_sample_scope_invalid")
+            raise ContractError("historical_taf_sample_lane_authority_invalid")
+        # AMD/COR is a whole station-day halt.  A normal TAF from the same
+        # archive day is not a permissible fallback, so skip every sample for
+        # that day; the companion append-only quarantine table records why.
+        if event_date in correction_dates:
+            continue
         seen_dates.add(event_date)
         day_start = datetime.fromisoformat(event_date).replace(
             tzinfo=tz
@@ -484,6 +617,7 @@ def ingest_historical_taf_calibration(
             "source_class": (
                 "official_date_addressed_historical_replay"
             ),
+            "truth_label_authority": truth_label_authority,
             "authority_scope": "CALIBRATION_TRAIN_ONLY",
         }
         row_sha = content_sha256(row_identity)
@@ -538,11 +672,188 @@ def ingest_historical_taf_calibration(
         "replay_count": len(rows) - wrote,
         "skipped_after_anchor_count": len(skipped_after_anchor),
         "skipped_after_anchor_dates": skipped_after_anchor,
+        "skipped_correction_station_day_count": len(correction_dates),
+        "skipped_correction_station_days": sorted(correction_dates),
         "authority_scope": "CALIBRATION_TRAIN_ONLY",
+        "source_lane": expected_lane,
+        "truth_label_authority": truth_label_authority,
         "source_artifact_sha256": source_artifact_sha,
         "calls_order_gateway": False,
         "orders_submitted": 0,
         "live_submit_authorized": False,
+    }
+
+
+def ingest_historical_taf_correction_quarantine(
+    conn: sqlite3.Connection,
+    artifact: Mapping[str, Any],
+    *,
+    event_dates: set[str] | None = None,
+) -> dict[str, Any]:
+    """Append AWC historical AMD/COR station-day halts from retained raw TAF.
+
+    The raw bulletin is deliberately parsed only for its leading ``TAF AMD``
+    or ``TAF COR`` marker.  No forecast value, METAR value, or replacement
+    TAF is derived here.  The resulting fact blocks the whole station day in
+    the exact join while retaining all prior immutable receipt rows.
+    """
+
+    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
+        raise ContractError("native_ensemble_foundation_schema_required")
+    identity = {key: value for key, value in artifact.items() if key != "content_sha256"}
+    artifact_sha = _sha(
+        "historical_taf_correction_artifact_sha256",
+        artifact.get("content_sha256"),
+    )
+    if content_sha256(identity) != artifact_sha:
+        raise ContractError("historical_taf_correction_artifact_sha_mismatch")
+    if (
+        artifact.get("schema") != "bayes_basket_awc_taf_calibration_dataset_v1"
+        or artifact.get("source_class") != "official_date_addressed_historical_replay"
+        or str(artifact.get("source_lane") or "").upper() != "AWC"
+        or artifact.get("truth_label_authority") != FORMAL_STATION_LANE_TRUTH
+        or not isinstance(artifact.get("samples"), list)
+    ):
+        raise ContractError("historical_taf_correction_artifact_invalid")
+    station = str(artifact.get("station_id") or "").strip().upper()
+    timezone_name = str(artifact.get("settlement_timezone") or "").strip()
+    authority = _historical_taf_truth_authority("AWC")
+    if (
+        not station
+        or not timezone_name
+        or artifact.get("truth_authority") != authority
+    ):
+        raise ContractError("historical_taf_correction_authority_invalid")
+    allowed_dates = None if event_dates is None else {
+        str(value).strip() for value in event_dates if str(value).strip()
+    }
+    rows: list[dict[str, Any]] = []
+    for sample in artifact["samples"]:
+        if not isinstance(sample, Mapping):
+            raise ContractError("historical_taf_correction_sample_invalid")
+        taf = sample.get("taf")
+        if not isinstance(taf, Mapping):
+            raise ContractError("historical_taf_correction_taf_missing")
+        event_date = str(sample.get("event_date") or "")
+        kind = _historical_taf_correction_kind(taf.get("raw_taf"))
+        if kind is None:
+            continue
+        if allowed_dates is not None and event_date not in allowed_dates:
+            continue
+        if (
+            str(sample.get("station_id") or "").strip().upper() != station
+            or str(sample.get("settlement_timezone") or "") != timezone_name
+            or str(sample.get("source_lane") or "").upper() != "AWC"
+            or sample.get("truth_label_authority") != FORMAL_STATION_LANE_TRUTH
+            or sample.get("truth_authority") != authority
+            or not event_date
+        ):
+            raise ContractError("historical_taf_correction_sample_scope_invalid")
+        row_identity = {
+            "station_id": station,
+            "event_date": event_date,
+            "settlement_timezone": timezone_name,
+            "correction_kind": kind,
+            "raw_taf_sha256": _sha(
+                "historical_taf_correction_raw_sha256",
+                taf.get("raw_taf_sha256"),
+            ),
+            "source_sample_sha256": content_sha256(sample),
+            "source_artifact_sha256": artifact_sha,
+            "source_class": "official_date_addressed_historical_replay",
+            "authority_scope": "CALIBRATION_TRAIN_ONLY",
+        }
+        row_sha = content_sha256(row_identity)
+        rows.append({
+            "historical_taf_correction_quarantine_id": "historical-taf-correction-" + row_sha[:32],
+            **row_identity,
+            "content_sha256": row_sha,
+        })
+    wrote = 0
+    conn.execute("SAVEPOINT historical_taf_correction_quarantine")
+    try:
+        for row in rows:
+            existing = conn.execute(
+                "SELECT content_sha256,settlement_timezone,correction_kind,"
+                "raw_taf_sha256,source_class,authority_scope "
+                "FROM calibration_historical_taf_correction_quarantine "
+                "WHERE station_id=? AND event_date=? AND source_sample_sha256=?",
+                (row["station_id"], row["event_date"], row["source_sample_sha256"]),
+            ).fetchone()
+            if existing is not None:
+                # A bounded retry can rebuild the outer archive (and thus
+                # change source_artifact_sha256) while retaining the exact
+                # same AMD/COR bulletin.  The source sample is the immutable
+                # evidence identity, so preserve the first append-only row;
+                # only a change to the stable station-day/raw-bulletin
+                # contract is a real conflict.
+                stable_match = (
+                    str(existing[1]) == str(row["settlement_timezone"])
+                    and str(existing[2]) == str(row["correction_kind"])
+                    and str(existing[3]) == str(row["raw_taf_sha256"])
+                    and str(existing[4]) == str(row["source_class"])
+                    and str(existing[5]) == str(row["authority_scope"])
+                )
+                if not stable_match:
+                    raise ContractError("historical_taf_correction_content_conflict")
+                continue
+            columns = tuple(row)
+            conn.execute(
+                "INSERT INTO calibration_historical_taf_correction_quarantine("
+                + ",".join(columns) + ") VALUES(" + ",".join("?" for _ in columns) + ")",
+                tuple(row[column] for column in columns),
+            )
+            wrote += 1
+    except Exception:
+        conn.execute("ROLLBACK TO historical_taf_correction_quarantine")
+        conn.execute("RELEASE historical_taf_correction_quarantine")
+        raise
+    conn.execute("RELEASE historical_taf_correction_quarantine")
+    return {
+        "schema": "historical_taf_correction_quarantine_ingress_v1",
+        "station_id": station,
+        "correction_count": len(rows),
+        "wrote_count": wrote,
+        "replay_count": len(rows) - wrote,
+        "authority_scope": "CALIBRATION_TRAIN_ONLY",
+        "source_lane": "AWC",
+        "source_artifact_sha256": artifact_sha,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+
+
+def ingest_historical_taf_calibration_with_quarantine(
+    conn: sqlite3.Connection,
+    artifact: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Atomically append historical AWC correction halts and usable TAF facts.
+
+    A normal historical TAF row is append-only.  Therefore discovering an
+    AMD/COR bulletin after an ordinary row was already retained must add the
+    station-day halt in the *same* ingress operation; merely skipping the new
+    correction bulletin would leave the earlier row eligible for an exact
+    join.  The caller may wrap a batch in ``BEGIN IMMEDIATE``; this savepoint
+    additionally keeps the paired operation atomic for direct callers.
+    """
+
+    conn.execute("SAVEPOINT historical_taf_atomic_ingress")
+    try:
+        quarantine = ingest_historical_taf_correction_quarantine(conn, artifact)
+        calibration = ingest_historical_taf_calibration(conn, artifact)
+    except Exception:
+        conn.execute("ROLLBACK TO historical_taf_atomic_ingress")
+        conn.execute("RELEASE historical_taf_atomic_ingress")
+        raise
+    conn.execute("RELEASE historical_taf_atomic_ingress")
+    return {
+        **calibration,
+        "schema": "historical_taf_calibration_atomic_ingress_v1",
+        "quarantine": quarantine,
+        "quarantine_correction_count": int(quarantine["correction_count"]),
+        "quarantine_wrote_count": int(quarantine["wrote_count"]),
+        "quarantine_replay_count": int(quarantine["replay_count"]),
     }
 
 
@@ -681,6 +992,19 @@ def build_taf_native_exact_join(
     tz = ZoneInfo(settlement_timezone)
     samples: list[dict[str, Any]] = []
     prediction_shas: list[str] = []
+    taf_lineages: list[dict[str, str | bool]] = []
+    excluded_correction_samples: list[dict[str, Any]] = []
+    observational_forward_dates = [
+        str(item[0])
+        for item in conn.execute(
+            "SELECT DISTINCT event_date FROM calibration_forward_taf_capture "
+            "WHERE station_id=? AND settlement_timezone=? "
+            "AND source_class='official_forward_native_receipt' "
+            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "ORDER BY event_date LIMIT ?",
+            (station, settlement_timezone, MAX_TAF_CAPTURES),
+        ).fetchall()
+    ]
     generation_by_day: dict[str, int] = {}
     for row in rows:
         event_date = str(row[1])
@@ -716,10 +1040,12 @@ def build_taf_native_exact_join(
             + timedelta(days=1)
         ).astimezone(timezone.utc)
         truth = conn.execute(
-            "SELECT official_tmax_c,canonical_committed_at_utc "
+            "SELECT official_tmax_c,canonical_committed_at_utc,truth_id,"
+            "source_lane,authority_scope "
             "FROM calibration_station_daily_high_truth "
             "WHERE station_id=? AND local_date=? "
-            "AND settlement_definition=? AND qc_status='ACCEPTED' "
+            "AND settlement_definition=? AND source_lane='AWC' "
+            "AND qc_status='ACCEPTED' "
             "AND authority_scope IN "
             "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
             "ORDER BY revision_no DESC LIMIT 1",
@@ -730,39 +1056,109 @@ def build_taf_native_exact_join(
         truth_committed = datetime.fromisoformat(
             str(truth[1]).replace("Z", "+00:00")
         ).astimezone(timezone.utc)
-        if truth_committed < day_end:
+        if truth_committed < day_end or truth_committed > datetime.now(timezone.utc):
+            continue
+        # A TAF AMD/COR is a station-day halt, just as an official
+        # METAR/SPECI correction is.  This calibration table has no manual
+        # review receipt authority, so it must never silently use the
+        # preceding ordinary TAF (or the correction itself) as a P0-M label.
+        # Keep a bounded, content-addressed exclusion in the exact join so
+        # the missing sample is explainable without weakening the 24-sample
+        # OOS gate.
+        forward_corrections = conn.execute(
+            "SELECT revision_kind,revision_id,revision_sequence,"
+            "provider_available_at_utc,content_sha256 "
+            "FROM calibration_forward_taf_capture "
+            "WHERE station_id=? AND event_date=? "
+            "AND settlement_timezone=? "
+            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND revision_kind IN ('AMD','COR') "
+            "ORDER BY provider_available_at_utc,revision_sequence "
+            "LIMIT ?",
+            (
+                station,
+                event_date,
+                settlement_timezone,
+                MAX_FORWARD_TAF_CORRECTIONS_PER_DAY + 1,
+            ),
+        ).fetchall()
+        historical_corrections = conn.execute(
+            "SELECT correction_kind,historical_taf_correction_quarantine_id,"
+            "content_sha256 FROM calibration_historical_taf_correction_quarantine "
+            "WHERE station_id=? AND event_date=? AND settlement_timezone=? "
+            "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
+            "ORDER BY content_sha256 LIMIT ?",
+            (
+                station,
+                event_date,
+                settlement_timezone,
+                MAX_FORWARD_TAF_CORRECTIONS_PER_DAY + 1,
+            ),
+        ).fetchall()
+        if (
+            len(forward_corrections) + len(historical_corrections)
+            > MAX_FORWARD_TAF_CORRECTIONS_PER_DAY
+        ):
+            raise ContractError("native_taf_join_correction_scope_cap_exceeded")
+        if forward_corrections or historical_corrections:
+            corrections = [
+                {
+                    "revision_kind": str(correction[0]),
+                    "revision_id": str(correction[1]),
+                    "revision_sequence": int(correction[2]),
+                    "provider_available_at_utc": str(correction[3]),
+                    "content_sha256": str(correction[4]),
+                }
+                for correction in forward_corrections
+            ] + [
+                {
+                    "revision_kind": str(correction[0]),
+                    "revision_id": str(correction[1]),
+                    "revision_sequence": 0,
+                    "provider_available_at_utc": "",
+                    "content_sha256": str(correction[2]),
+                    "correction_source": "HISTORICAL_AWC_RAW_BULLETIN",
+                }
+                for correction in historical_corrections
+            ]
+            excluded_correction_samples.append({
+                "station_id": station,
+                "event_date": event_date,
+                "reason": (
+                    "taf_correction_requires_manual_review"
+                    if historical_corrections
+                    else "forward_taf_correction_requires_manual_review"
+                ),
+                "corrections": corrections,
+            })
             continue
         taf = conn.execute(
             "SELECT provider_available_at_utc,tx_c,"
             "cloud_cover_fraction,precipitation_probability,"
-            "wind_speed_mps,content_sha256,source_class "
+            "wind_speed_mps,content_sha256,source_class,"
+            "truth_label_authority "
             "FROM ("
             "SELECT provider_available_at_utc,tx_c,"
             "cloud_cover_fraction,precipitation_probability,"
+            # Historical date-addressed AWC replay is the only TAF feature
+            # source allowed in a strict OOS exact join.  Forward/local
+            # receipts remain resident arrival evidence and are never reused
+            # as historical labels.
             "wind_speed_mps,content_sha256,source_class,"
-            "revision_sequence AS source_sequence "
-            "FROM calibration_forward_taf_capture "
-            "WHERE station_id=? AND event_date=? "
-            "AND settlement_timezone=? "
-            "AND tx_available=1 AND tx_c IS NOT NULL "
-            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-            "UNION ALL "
-            "SELECT provider_available_at_utc,tx_c,"
-            "cloud_cover_fraction,precipitation_probability,"
-            "wind_speed_mps,content_sha256,source_class,"
+            "'FORMAL_STATION_LANE_TRUTH' AS truth_label_authority,"
             "1 AS source_sequence "
             "FROM calibration_historical_taf_capture "
             "WHERE station_id=? AND event_date=? "
             "AND settlement_timezone=? "
-            "AND authority_scope='CALIBRATION_TRAIN_ONLY'"
+            "AND tx_c IS NOT NULL "
+            "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
+            "AND source_class='official_date_addressed_historical_replay' "
+            "AND truth_label_authority='FORMAL_STATION_LANE_TRUTH' "
             ") WHERE provider_available_at_utc>? "
             "AND provider_available_at_utc<? "
             "ORDER BY provider_available_at_utc,source_sequence "
             "LIMIT 1",
             (
-                station,
-                event_date,
-                settlement_timezone,
                 station,
                 event_date,
                 settlement_timezone,
@@ -782,6 +1178,12 @@ def build_taf_native_exact_join(
             row[10],
         )
         prediction_shas.append(prediction_sha)
+        taf_label_authority = str(taf[7] or "")
+        taf_lineages.append({
+            "capture_content_sha256": str(taf[5]),
+            "truth_label_authority": taf_label_authority,
+            "reference_only": False,
+        })
         samples.append({
             "station_id": station,
             "event_date": event_date,
@@ -816,8 +1218,26 @@ def build_taf_native_exact_join(
                 "wind_speed_mps": float(taf[4]),
                 "capture_content_sha256": str(taf[5]),
                 "source_class": str(taf[6]),
+                "truth_label_authority": taf_label_authority,
+                "reference_only": False,
             },
-            "truth": {"tmax_c": float(truth[0])},
+            "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
+            "future_event_count": 0,
+            "historical_oos_eligible": True,
+            "truth": {
+                "tmax_c": float(truth[0]),
+                "canonical_truth_id": str(truth[2]),
+                "source_lane": str(truth[3]),
+                "authority_scope": str(truth[4]),
+            },
+            "taf_lineage": {
+                "capture_content_sha256": str(taf[5]),
+                "truth_label_authority": taf_label_authority,
+                "reference_only": False,
+                "enters_realtime_truth": False,
+                "enters_p1": False,
+                "enters_hard_no": False,
+            },
             "settlement_window": {
                 "end_utc": day_end.isoformat().replace("+00:00", "Z"),
             },
@@ -832,13 +1252,29 @@ def build_taf_native_exact_join(
             settlement_timezone,
         ],
         "prediction_content_shas": prediction_shas,
+        "taf_lineages": taf_lineages,
     })
     identity = {
         "schema": EXACT_JOIN_SCHEMA,
         "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+        # Keep the exact-join artifact self-describing.  The live contract is
+        # keyed by this five-dimensional scope; hiding it only inside the
+        # cross-fit digest made later bounded replays dependent on filenames
+        # and allowed an otherwise valid artifact to be attached to the wrong
+        # station/run at the ingress boundary.
+        "station_id": station,
+        "season_bin": season_bin,
+        "lead_bucket": lead_bucket,
+        "run_cycle": run_cycle,
+        "settlement_definition": settlement_definition,
+        "settlement_timezone": settlement_timezone,
         "nwp_crossfit_prediction_artifact_sha256": crossfit_sha,
         "sample_count": len(samples),
         "samples": samples,
+        "excluded_correction_sample_count": len(excluded_correction_samples),
+        "excluded_correction_samples": excluded_correction_samples,
+        "observational_forward_event_count": len(observational_forward_dates),
+        "observational_forward_event_dates": observational_forward_dates,
     }
     return {
         **identity,
@@ -850,4 +1286,6 @@ __all__ = [
     "build_taf_native_exact_join",
     "ingest_forward_taf_inbox",
     "ingest_historical_taf_calibration",
+    "ingest_historical_taf_calibration_with_quarantine",
+    "ingest_historical_taf_correction_quarantine",
 ]

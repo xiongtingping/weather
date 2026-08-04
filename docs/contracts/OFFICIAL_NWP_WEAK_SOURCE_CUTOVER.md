@@ -6,13 +6,14 @@ effective_from: 2026-07-12
 supersedes:
   - Open-Meteo production multimodel transport
   - source_inline_refresh_v1
+  - Open-Meteo complete-retirement wording (superseded 2026-08-02)
 ---
 
 # 官方数值模式弱似然切换合同
 
 ## 定义与边界
 
-弱似然中的数值模式预测源为四个彼此独立的 provider：ECMWF IFS、DWD ICON、NOAA/NCEP GFS、JMA GSM。它们都是**预测**，不是事实；AMSC/AWC METAR/SPECI 仍是强观测，不能被任一模型覆盖。TAF、WU、TWC 也都是独立预测源，不能被并入或冒充为数值模式。
+弱似然中的数值模式预测源为已登记的全球、集合和区域模型家族。官方 native receipt 始终优先；它们都是**预测**，不是事实；AMSC/AWC METAR/SPECI 仍是强观测，不能被任一模型覆盖。TAF、WU、TWC 也都是独立预测源，不能被并入或冒充为数值模式。
 
 生产 transport 的唯一允许路径如下：
 
@@ -22,8 +23,9 @@ supersedes:
 | ICON | DWD Open Data | Open-Meteo、Windy 转发、网页抓取 |
 | GFS | NOAA/NCEP NOMADS | Open-Meteo、Windy 转发、网页抓取 |
 | JMA | JMA 官方交付，或已批准、可审计的授权交付 | 未登记的第三方转发、网页抓取 |
+| Open-Meteo（仅 fallback） | 同一站点×事件日的官方 native 对象缺失、失效或未及时到达时，使用带 `aggregator_republisher` lineage 的历史 strict-as-of artifact 进入 no-live P0/P0-M candidate | 伪造 native arrival、进入 P1、native arrival index、formal/live authority，或无历史 OOS activation 时启用 |
 
-每个 provider collector 必须独立保留原始响应、请求 URL/host、request/header/body 时间、run、valid time、raw SHA、decoder ID/version 和规范化 feature。只有原始 URL host 命中 `config/forecast_sources/official_nwp_zuuu_v1.json` 的 allowlist、明确 `open_meteo=false` 且 `aggregator_or_republisher=false` 的 snapshot 才能进入下一步。launchd 所用 Python 若没有系统 CA bundle，direct HTTPS collector 必须显式使用 certifi trust store，并保持 `CERT_REQUIRED` 与 hostname verification；证书错误只能使该 provider 进入缺失掩码，绝不关闭 TLS、绕过验证或改走聚合商。
+每个 provider collector 必须独立保留原始响应、请求 URL/host、request/header/body 时间、run、valid time、raw SHA、decoder ID/version 和规范化 feature。官方 native snapshot 只有在原始 URL host 命中 `config/forecast_sources/official_nwp_zuuu_v1.json` 的 allowlist、明确 `open_meteo=false` 且 `aggregator_or_republisher=false` 时才能进入 native arrival/正式 native lane。Open-Meteo fallback 必须走独立 republisher ingress，保留 native 尝试及 `native_unavailable_reason`，且没有历史 strict-as-of OOS activation 时保持 candidate/fail-closed。launchd 所用 Python 若没有系统 CA bundle，direct HTTPS collector 必须显式使用 certifi trust store，并保持 `CERT_REQUIRED` 与 hostname verification；证书错误只能使该 provider 进入缺失掩码，绝不关闭 TLS、绕过验证或把聚合商伪装成 native。
 
 ## 联合 generation 宪章
 
@@ -31,9 +33,16 @@ supersedes:
 
 AMSC source fact 先独立提交；之后只能将其时点之前已存在的 official-NWP availability generation reference 写入 Transaction A.1 posterior task。热路径没有数值模式网络请求，因此弱源故障绝不能延迟或回滚 AMSC 事实。主模型若已批准该可用源组合，缺源只降低其置信度与仓位能力；只有组合未被 artifact 支持、输入血缘无效或主模型不可用时才关闭 posterior，事实归档永远不受影响。
 
-## Open-Meteo 与 Windy 退役规则
+## Open-Meteo 受限 fallback 与 Windy 规则
 
-Open-Meteo 已退出 production 弱似然：不得抓取、预热、读取其 live bundle、使用其 artifact 或作为 fallback。已存在的 Open-Meteo 历史资产隔离为 legacy/research，只能辅助探索，不能进入新 artifact、posterior、decision 或 order。
+Open-Meteo 不得作为 native provider 或实时 P1 authority；但在 native 对象不可用时，允许作为带 `aggregator_republisher` lineage 的 no-live P0/P0-M fallback。该 fallback 必须满足：
+
+1. 同站点×事件日先记录 native 尝试及明确不可用原因；不得跳过 native 优先顺序。
+2. 使用已保存的历史闭日 strict-as-of raw/receipt/hash 与 AWC closed truth；没有可验证历史 OOS contract 时仅保留 `candidate_only`，不能激活。
+3. 未来/forward 数据统一标记 `observational_candidate_not_oos`，不计入 OOS、20 train/8 holdout、TAF 24 样本门，也不阻断 `production_no_live`。
+4. republisher lineage 不得进入 native arrival index、P1、formal/live authority 或订单；P1 仍只由官方 AWC METAR/SPECI 形成。
+
+因此，fallback 是受限的 no-live 证据补位，不是把 Open-Meteo 重新命名为官方模型或把研究数据直接写入生产 artifact。
 
 Windy 的 MultiModel 页面不能抓取。将来如取得可用于自动化交易的正式 Point Forecast 授权，Windy 只能被登记为一个独立供应商预测源，绝不是 ECMWF/ICON/GFS/JMA 的替身；因相关性高，权重只能由新的联合弱似然 artifact 学出，不能重复计权。
 
@@ -72,7 +81,7 @@ forecast_corrected(s,t) = forecast_peak(s,t) - b*(s,c,t)
 ### 证据边界与时序
 
 1. 训练标签只能是 closed AMSC `physical_x_final`；不得用 market `S/B`、Wunderground、市场价格、订单、PnL 或实况当前值替代。
-2. 预测输入只能是 P1 已重验的 Tier-A official/authorised forecast revision；legacy/Open-Meteo、Windy、事后下载、Tier-B/C 与字段同名旧缓存一律不能进入正式校正训练。
+2. 预测输入只能是 P1 已重验的 Tier-A official/authorised forecast revision；Open-Meteo republisher 只能在单独的 historical strict-OOS fallback contract 中训练/校准，必须保留 republisher lineage，不能与 native 样本混称或进入 P1 authority；Windy、事后下载、Tier-B/C 与字段同名旧缓存一律不能进入官方 native 校正训练。
 3. P1 中的 `source_id` 必须是唯一联合弱似然 universe 的 canonical ID（`ecmwf/icon/gfs/jma/taf/wu/twc`）。TAF 的 AMSC transport identity、WU 与 TWC 的各自 provider identity 保留在 `payload.provider_source_id`，再以 `payload.weak_source_id` 逐项绑定 canonical ID；不得将已退役的 `*_model_peak` 技术名映射为官方数值模式。
 4. `b*(s,c,t)` 在 event `t` 的第一条弱预测/ P0 之前冻结；只允许在先前 event 的 `X` 闭合后更新。因此当天 METAR/SPECI、温度动量、温度轨迹、云雨、露点等不得进入偏差 state。
 5. D0 新 forecast revision 只可使用冻结 bias state 进行弱源中心校正；它不能把已见强观测回灌到弱似然。当天物理证据对后验的快速修正仍只属于 strong likelihood。
@@ -310,11 +319,11 @@ live 弱似然 prewarm 使用独立的 `official_nwp_live_snapshot_monitor_job_v
 
 ## 当前实施状态
 
-- 已完成：Open-Meteo 从 AMSC 热链路、预热 generation 合同和任务冻结合同中移除；四源 catalog、source-set/缺失掩码与 source-integrity validator 已建立。
-- 已完成：旧 Open-Meteo artifact 被 runtime 拒绝，不能将官方 generation 误解释成旧模型输入。
+- 已完成：Open-Meteo 已从 AMSC 强观测、P1、native arrival index 和 formal/live authority 中移除；四源 native catalog、source-set/缺失掩码与 source-integrity validator 已建立。
+- 已完成：native-first worker 已建立；native 缺失时只尝试带 lineage 的 Open-Meteo no-live P0/P0-M fallback，并以独立历史 OOS activation gate 保护 runtime。旧无 lineage/无 strict-as-of receipt 的 Open-Meteo artifact 仍被拒绝。
 - 已完成：ecCodes 已锁定；NOAA/NOMADS GFS 官方 Filter GRIB 已真实抓取、验 host、封存 raw、最近格点解码。DWD ICON 已按官方 11 原始场 + CDO grid/weights 投影后取点。ECMWF Open Data SDK 已安装在项目 runtime；2026-07-12 已用 00Z/30h 官方 server-side subset 成功采集并解码 ZUUU。ECMWF SDK 没有 response-header arrival hook，故该源是 Tier-C live 弱预测，不能被伪称 Tier-A strict-as-of 训练数据。
 - 已完成：JMA GSM collector 已按授权交付合同实现；合同未配置时只产生 `jma_authorized_delivery_not_configured` 缺失状态，不猜 URL、不走第三方、不以其他模型补位。
 - 已完成：live prewarm snapshot 已作为现有 monitor daemon 的独立低频 child 接入；2026-07-12 ECMWF 00Z/30h anchor snapshot 已写入 live root，并发布只含 `ecmwf` 的 fresh generation，证明缺源组合通过 availability mask 进入唯一弱似然主模型，而非整条后验停摆。
 - 已完成：已批准预校准 baseline artifact 已升级并物化为 `data/runtime/joint_forecast_weak_likelihood/approved/joint_weak_operational_baseline_v3.json`；它以 exact source-set/context template 处理正式源组合并显式降低缺源信息，不读取 D0 实况或旧 v3.1/Open-Meteo 系数。v3 将逐源无样本 residual distribution、源间情景分歧与联合置信度分离，峰形不再被人为强制；v1/v2 已退出默认 runtime 选择，仅保留既有 P0 的不可变 as-of 血缘。
 - 待完成：live prewarm 的连续 freshness/SLO 验收、ECMWF header-arrival transport、JMA 已批准交付 host/凭据和 catalog allowlist、官方源组合 strict-as-of 训练覆盖与 artifact approval。P1 Tier-A forecast + closed X label + forecast-only context 的事件组装入口已就绪，但真实 final-label 覆盖尚未达到训练/OOS门槛。
-- 明确不做：页面爬虫、模型转发源伪装、未获批准 artifact 的参数 fallback、旧系数同名字段映射。预校准 baseline 或 trained artifact 中的部分可用源不是 fallback，而是唯一弱似然主模型以 `A/M` 显式处理的正常输入。
+- 明确不做：页面爬虫、模型转发源伪装、未获批准 artifact 的参数 fallback、旧系数同名字段映射。允许的 Open-Meteo fallback 仅是有界的 historical strict-OOS no-live P0/P0-M candidate；不能绕过 native-first、OOS、P1 或 utility 合同。

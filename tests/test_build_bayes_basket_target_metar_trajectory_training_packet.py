@@ -112,6 +112,10 @@ def test_builder_uses_only_truth_and_observations_available_at_cutoff() -> None:
     assert fold["root_checkpoint_id"] == "p0-root-25"
     assert fold["truth_bucket"] == "35C"
     assert len(fold["trajectory_training_truths"]) == 3
+    assert packet["source_manifest"]["v3_eligible_fold_count"] == 0
+    assert packet["source_manifest"][
+        "v3_incomplete_future_curve_fold_count"
+    ] == 1
     assert packet["content_sha256"] == content_sha256({
         key: value
         for key, value in packet.items()
@@ -150,4 +154,44 @@ def test_builder_excludes_correction_day() -> None:
     assert any(
         row["reason"] == "correction_suspected"
         for row in packet["source_manifest"]["excluded"]
+    )
+
+
+def test_builder_keeps_forward_rows_as_observational_candidates_only() -> None:
+    truths = [
+        _truth(20, committed="2026-07-20T15:00:00Z"),
+        _truth(21, committed="2026-07-21T15:00:00Z"),
+        _truth(22, committed="2026-07-22T15:00:00Z"),
+        # The target day is closed by the evaluation cut, but its truth was
+        # committed after the cut: it is a future truth candidate, not OOS.
+        _truth(24, committed="2026-08-01T15:00:00Z"),
+        # The settlement day itself remains open at the evaluation cut.
+        _truth(30, committed="2026-07-30T00:00:00Z"),
+    ]
+    packet = build_training_packet(
+        truth_rows=truths,
+        observation_rows=[],
+        probability_rows=[],
+        station_id="RKPK",
+        settlement_timezone="Asia/Seoul",
+        local_time_bucket="AFTERNOON",
+        minimum_prior_truths=3,
+        minimum_effective_sample_n=20.0,
+        decided_at_utc="2026-07-30T00:00:00Z",
+        valid_from_utc="2026-07-30T00:00:00Z",
+        valid_until_utc="2027-07-30T00:00:00Z",
+        generation=1,
+    )
+    assert packet["folds"] == []
+    manifest = packet["source_manifest"]
+    assert manifest["evaluation_as_of_utc"] == "2026-07-30T00:00:00.000Z"
+    assert manifest["observational_candidate_count"] == 2
+    candidates = {
+        row["event_date"]: row for row in manifest["observational_candidates"]
+    }
+    assert candidates["2026-07-24"]["reason"] == "future_truth_not_oos"
+    assert candidates["2026-07-30"]["reason"] == "future_event_not_oos"
+    assert all(
+        row["evidence_role"] == "observational_candidate_not_oos"
+        for row in manifest["observational_candidates"]
     )

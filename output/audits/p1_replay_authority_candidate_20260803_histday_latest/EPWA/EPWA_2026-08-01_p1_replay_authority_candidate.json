@@ -1,0 +1,1098 @@
+{
+  "authority_validation": {
+    "content_sha256": "e8529562670a4110e744fa168e88f383528c5506df89149de99b53af8ff52507",
+    "state": "AUTHORITY_OBJECT_VALID"
+  },
+  "blocked_rows": [],
+  "blockers": [],
+  "boundary": {
+    "calls_network": false,
+    "calls_order_gateway": false,
+    "candidate_only": true,
+    "fetches_weather_data": false,
+    "formal_promoted_created": false,
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "settlement_truth_final_frozen": false,
+    "writes_archive_database": false,
+    "writes_target_database": false
+  },
+  "candidate_only": true,
+  "evidence_sha256": "fd149cb6cb50f7cad11f20d22bec971d0ef5c82396362dbc59b3b37260744e40",
+  "excluded_rows": [
+    {
+      "observation_id": "histobs_25167acff76171289008e2b2cb56d3ff",
+      "reason": "observation_valid_after_root_decision"
+    },
+    {
+      "observation_id": "histobs_2618bc1703acdac8f728bf3aa832a99d",
+      "reason": "observation_valid_after_root_decision"
+    },
+    {
+      "observation_id": "histobs_80ca849bb88276ea1e4e556559e5b588",
+      "reason": "observation_valid_after_root_decision"
+    },
+    {
+      "observation_id": "histobs_02720ce350273f2ed47a6f9310ed7247",
+      "reason": "observation_valid_after_root_decision"
+    },
+    {
+      "observation_id": "histobs_72510bfb9a8eeb316542238a08b401b2",
+      "reason": "observation_valid_after_root_decision"
+    }
+  ],
+  "formal_observation_count": 19,
+  "observations": [
+    {
+      "canonical_committed_at_utc": "2026-07-31T22:21:07.365Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-07-31T22:21:07.311Z",
+      "observation_id": "histobs_bbe25ba858f026fd7c6b35315d6543f5",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "3d3f4c84c341079a95b1a4199a3438384ae099357cf6bd24d75d41ca353e5831",
+      "report_type": "METAR",
+      "reported_temperature_c": 23,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_f9d923da30e2992808a1b3e59f2b5418",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-07-31T22:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-07-31T23:34:08.459Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-07-31T23:34:07.505Z",
+      "observation_id": "histobs_b80c21b2374e19df946001e086af53a9",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "700cfc48bab0ea93901060827473aa887c1599b73737e69918dff9bc9578898d",
+      "report_type": "METAR",
+      "reported_temperature_c": 23,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_16b8bdd1166442a99554775981fa71a2",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-07-31T23:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T00:03:14.742Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T00:03:14.691Z",
+      "observation_id": "histobs_c73346cce708feab52c7cced766aa0a4",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "380d1e335a9f567503ee7b1435ba125aabadbe625f2be6951aa408d1b6fa3a26",
+      "report_type": "METAR",
+      "reported_temperature_c": 24,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_71b9c87657d64e981c1edb68fd3bde42",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T01:02:25.718Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T01:02:25.663Z",
+      "observation_id": "histobs_d46300d45a7452593ff4cb78bfa6ab83",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "bf793305423bb8115aac116058ae80e0496de0502104e3b11e5c8e1bb3ad8dd2",
+      "report_type": "METAR",
+      "reported_temperature_c": 23,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_ae1e4f6c9866355bb4db7a4c2ac984eb",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T01:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T02:02:33.324Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T02:02:33.206Z",
+      "observation_id": "histobs_f9587db6e18543d2b23816439f3cd983",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "6ef43062e43389253af8d956d32e8208ac0c959124d0a43c79121033dcf7134d",
+      "report_type": "METAR",
+      "reported_temperature_c": 22,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_c0fa96b39cf8ba664cac98c437461da9",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T02:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T03:02:32.538Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T03:02:31.750Z",
+      "observation_id": "histobs_e12be3b659a87d7ee635ea07fade8a23",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "bc8a72f31139e4609fd84a967e06d3227d708e2684c3ff46e71f5e8208209905",
+      "report_type": "METAR",
+      "reported_temperature_c": 23,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_afc5e1a1d4d0d60b588a01c7ae876f46",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T03:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T04:02:35.045Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T04:02:34.925Z",
+      "observation_id": "histobs_1e632cec57c82585a503cc29b6869c76",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "92afb09141eae9c6a6ea2a0ee6c301c670b99aed3de681a676b2ac2ca963bab3",
+      "report_type": "METAR",
+      "reported_temperature_c": 22,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_f20b6e3b45d99e175b9c9d353c957199",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T04:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T05:02:40.254Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T05:02:40.179Z",
+      "observation_id": "histobs_863ff5798959ce86a26cb621f9eb0f71",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "5ec1062c303780e42d3d6e07ac779735cd904090c36546ce0159a1477253b5a5",
+      "report_type": "METAR",
+      "reported_temperature_c": 22,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_ac0a05bb0b3db36b0d46a040cea83aae",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T05:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T06:02:28.538Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T06:02:28.360Z",
+      "observation_id": "histobs_84ffcbbdfb6381021efef5d26ce75396",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "02bc87a8f5989a4bc47ee2f63584c661c78d56e59b3b02dfc2faab85315918eb",
+      "report_type": "METAR",
+      "reported_temperature_c": 22,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_f131950f3ca4baca0c89d109351b5361",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T06:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T07:02:40.216Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T07:02:40.117Z",
+      "observation_id": "histobs_f5082a87bcc2b1cc7c736bd824e0c58c",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "beef8117cfedb97e69c6cfb2ad01205b2f649c9763ab67eebfc91dd9a49562b3",
+      "report_type": "METAR",
+      "reported_temperature_c": 23,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_601fba0a27af5e31358387c98563c5d9",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T07:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T08:02:34.033Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T08:02:33.972Z",
+      "observation_id": "histobs_eb71784f9e7df7f5c152ab78db064909",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "8577463687bbbcc8989ef36a4551dafd153242cae1d3ea7b17b1b184a2185770",
+      "report_type": "METAR",
+      "reported_temperature_c": 24,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_df7cb4c1019a3b922141b42cb2352579",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T08:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T09:02:57.904Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T09:02:57.647Z",
+      "observation_id": "histobs_0639aca95211cf060df9aebbf55b815c",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "ef773d5bad135d21b382ea40511a58922942e73ef102f60fd1bb832006972703",
+      "report_type": "METAR",
+      "reported_temperature_c": 26,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_b3c4e509860d37aa417a97a2c09a36cb",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T09:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T10:02:26.254Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T10:02:26.152Z",
+      "observation_id": "histobs_f55c0ddf8342260a6862f0c1cb10bd26",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "a10f0bf874e09959fe51e95cf2fdd74e9000eaf039843bbc72eb089d975fd5f1",
+      "report_type": "METAR",
+      "reported_temperature_c": 28,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_9a16b906aedd54f941bf73c65b1e9a5e",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T10:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T11:02:33.768Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T11:02:33.734Z",
+      "observation_id": "histobs_79667968711fe834530b795d88fadda3",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "ac6ad4175f765a79a1333347cd6147cf9e1f70ec59e8d62c4d001a779d5a48da",
+      "report_type": "METAR",
+      "reported_temperature_c": 30,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_86c95d60580280704cfdb539e87a9218",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T11:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T12:02:40.621Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T12:02:40.596Z",
+      "observation_id": "histobs_57c787aac1a79a799d8fb6f12590e830",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "af34bf7bbfce137f6858aace60e9d85fe9cf28951abaf8053fb7fb5286d3da5a",
+      "report_type": "METAR",
+      "reported_temperature_c": 31,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_1f6fea00964b659fb2975861d47903fb",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T12:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T13:02:25.160Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T13:02:25.124Z",
+      "observation_id": "histobs_cfbf7bb9d667a0ee2df48fba15a3b5ee",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "cf8250589a0083478960849a5792864f12f555c81b5bace2646d7388487100ca",
+      "report_type": "METAR",
+      "reported_temperature_c": 31,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_166b15e9a7033c5dc710fd776f8f9fc7",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T13:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T14:02:34.581Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T14:02:34.140Z",
+      "observation_id": "histobs_0b3393d98c3452367c71f5ff0cca1590",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "3e6f1b19060ea44d0a0100af1bff42b2779dd60c6ee103388f3468fc78616ae6",
+      "report_type": "METAR",
+      "reported_temperature_c": 30,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_aa1adff50eaf20aa72833864bcdb6db8",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T14:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T15:02:31.592Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T15:02:31.546Z",
+      "observation_id": "histobs_37029baecb11d896f1655468a085684a",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "664d7e9f44c080adc1738a8eed07f2c1ff13c584032eb830c8bff9598411405b",
+      "report_type": "METAR",
+      "reported_temperature_c": 29,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_59b5d93a72e86ce3f3a8bac39b09dcd9",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T16:02:41.239Z",
+      "event_date_local": "2026-08-01",
+      "evidence_role": "FORMAL",
+      "first_seen_at_utc": "2026-08-01T16:02:41.215Z",
+      "observation_id": "histobs_e7e36d31bff90870fe5ee2dcbf2f505a",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "d2f79320c2517380f27f03a0cd6d5bba3127673096e23a3d7983c4025876efed",
+      "report_type": "METAR",
+      "reported_temperature_c": 27,
+      "source_lane": "AWC",
+      "source_poll_id": "rtpoll_188da4b9df34b02f4cde9fb37161b6c3",
+      "station_id": "EPWA",
+      "valid_at_utc": "2026-08-01T16:00:00.000Z"
+    }
+  ],
+  "p1_replay_source_authority": {
+    "authority_id": "awc-p1-replay-epwa-20260801-7982b6f9821f",
+    "authority_state": "FORMAL_AWC_HISTORICAL_REPLAY",
+    "canonical_evidence_sha256": "fd149cb6cb50f7cad11f20d22bec971d0ef5c82396362dbc59b3b37260744e40",
+    "content_sha256": "e8529562670a4110e744fa168e88f383528c5506df89149de99b53af8ff52507",
+    "event_date_local": "2026-08-01",
+    "fallback_source_lane": null,
+    "fallback_used": false,
+    "observation_bindings": [
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_bbe25ba858f026fd7c6b35315d6543f5",
+        "poll_content_sha256": "fa1d49f3aaf3c0552a90206bf82f6a8578e98939878c78b44c2f5b7e8877ebe2",
+        "published_at_utc": "2026-07-31T22:00:00.000Z",
+        "raw_sha256": "3d3f4c84c341079a95b1a4199a3438384ae099357cf6bd24d75d41ca353e5831",
+        "received_at_utc": "2026-07-31T22:21:07.311Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_f9d923da30e2992808a1b3e59f2b5418",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_b80c21b2374e19df946001e086af53a9",
+        "poll_content_sha256": "b69e3fb2e6ed46d7e1a8f7018adf74f0cfa8a99771072e2c113723e6a391ca5a",
+        "published_at_utc": "2026-07-31T23:00:00.000Z",
+        "raw_sha256": "700cfc48bab0ea93901060827473aa887c1599b73737e69918dff9bc9578898d",
+        "received_at_utc": "2026-07-31T23:34:07.505Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_16b8bdd1166442a99554775981fa71a2",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_c73346cce708feab52c7cced766aa0a4",
+        "poll_content_sha256": "7dcfb79bdc82245257da97b2c414191dd38c32c1dad0169e7b5b32c1eb7d2d85",
+        "published_at_utc": "2026-08-01T00:00:00.000Z",
+        "raw_sha256": "380d1e335a9f567503ee7b1435ba125aabadbe625f2be6951aa408d1b6fa3a26",
+        "received_at_utc": "2026-08-01T00:03:14.691Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_71b9c87657d64e981c1edb68fd3bde42",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_d46300d45a7452593ff4cb78bfa6ab83",
+        "poll_content_sha256": "b4abe2ff8dddeaa177cb13291d8811be6b252c8a242b1cf0eff53f335020aff6",
+        "published_at_utc": "2026-08-01T01:00:00.000Z",
+        "raw_sha256": "bf793305423bb8115aac116058ae80e0496de0502104e3b11e5c8e1bb3ad8dd2",
+        "received_at_utc": "2026-08-01T01:02:25.663Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_ae1e4f6c9866355bb4db7a4c2ac984eb",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_f9587db6e18543d2b23816439f3cd983",
+        "poll_content_sha256": "ae99f0817d4215d88ede8f09bb06ca5e7834fa5f6ef57340664ad0e00c731ed3",
+        "published_at_utc": "2026-08-01T02:00:00.000Z",
+        "raw_sha256": "6ef43062e43389253af8d956d32e8208ac0c959124d0a43c79121033dcf7134d",
+        "received_at_utc": "2026-08-01T02:02:33.206Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_c0fa96b39cf8ba664cac98c437461da9",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_e12be3b659a87d7ee635ea07fade8a23",
+        "poll_content_sha256": "4a6f55b2b8d88492a7d5d18612a3589d04fe92a7ab71a7fc7be0a21ff0f2d03f",
+        "published_at_utc": "2026-08-01T03:00:00.000Z",
+        "raw_sha256": "bc8a72f31139e4609fd84a967e06d3227d708e2684c3ff46e71f5e8208209905",
+        "received_at_utc": "2026-08-01T03:02:31.750Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_afc5e1a1d4d0d60b588a01c7ae876f46",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_1e632cec57c82585a503cc29b6869c76",
+        "poll_content_sha256": "0f80eb1922392d8e79502d9e8bd3e77a2b4b47da59a78a01b2bedb387ae1626d",
+        "published_at_utc": "2026-08-01T04:00:00.000Z",
+        "raw_sha256": "92afb09141eae9c6a6ea2a0ee6c301c670b99aed3de681a676b2ac2ca963bab3",
+        "received_at_utc": "2026-08-01T04:02:34.925Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_f20b6e3b45d99e175b9c9d353c957199",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_863ff5798959ce86a26cb621f9eb0f71",
+        "poll_content_sha256": "fc4ed9c526f7ef8ed0aadf59bf92925cadfdddfb5fd86c2d51769ac50960c082",
+        "published_at_utc": "2026-08-01T05:00:00.000Z",
+        "raw_sha256": "5ec1062c303780e42d3d6e07ac779735cd904090c36546ce0159a1477253b5a5",
+        "received_at_utc": "2026-08-01T05:02:40.179Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_ac0a05bb0b3db36b0d46a040cea83aae",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_84ffcbbdfb6381021efef5d26ce75396",
+        "poll_content_sha256": "7f84473a8723153adad732928b45f0e9e4da29192dfe71cceeeb8892f8b1199e",
+        "published_at_utc": "2026-08-01T06:00:00.000Z",
+        "raw_sha256": "02bc87a8f5989a4bc47ee2f63584c661c78d56e59b3b02dfc2faab85315918eb",
+        "received_at_utc": "2026-08-01T06:02:28.360Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_f131950f3ca4baca0c89d109351b5361",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_f5082a87bcc2b1cc7c736bd824e0c58c",
+        "poll_content_sha256": "09f74282463d5050a0ddbf3545841ca45e604e52954ecabae84bc68241c78560",
+        "published_at_utc": "2026-08-01T07:00:00.000Z",
+        "raw_sha256": "beef8117cfedb97e69c6cfb2ad01205b2f649c9763ab67eebfc91dd9a49562b3",
+        "received_at_utc": "2026-08-01T07:02:40.117Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_601fba0a27af5e31358387c98563c5d9",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_eb71784f9e7df7f5c152ab78db064909",
+        "poll_content_sha256": "ae2537536da4c19df8b5b30348fd9fec1bc0f88e03fceb09356a20cdea93a99e",
+        "published_at_utc": "2026-08-01T08:00:00.000Z",
+        "raw_sha256": "8577463687bbbcc8989ef36a4551dafd153242cae1d3ea7b17b1b184a2185770",
+        "received_at_utc": "2026-08-01T08:02:33.972Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_df7cb4c1019a3b922141b42cb2352579",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_0639aca95211cf060df9aebbf55b815c",
+        "poll_content_sha256": "abef58af8117fe172fa39f3d6162ccb7dbbaf1956e4a834a1a1d345a6d9aa23c",
+        "published_at_utc": "2026-08-01T09:00:00.000Z",
+        "raw_sha256": "ef773d5bad135d21b382ea40511a58922942e73ef102f60fd1bb832006972703",
+        "received_at_utc": "2026-08-01T09:02:57.647Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_b3c4e509860d37aa417a97a2c09a36cb",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_f55c0ddf8342260a6862f0c1cb10bd26",
+        "poll_content_sha256": "ac3a9a384a57e583cf11768d6e043088b4df4f9838c7f46660b32be832659b06",
+        "published_at_utc": "2026-08-01T10:00:00.000Z",
+        "raw_sha256": "a10f0bf874e09959fe51e95cf2fdd74e9000eaf039843bbc72eb089d975fd5f1",
+        "received_at_utc": "2026-08-01T10:02:26.152Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_9a16b906aedd54f941bf73c65b1e9a5e",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_79667968711fe834530b795d88fadda3",
+        "poll_content_sha256": "5e7ae680276349ae3aa2c3f0afca4fa8c9e7981fda8e867b3a6a682b24587c81",
+        "published_at_utc": "2026-08-01T11:00:00.000Z",
+        "raw_sha256": "ac6ad4175f765a79a1333347cd6147cf9e1f70ec59e8d62c4d001a779d5a48da",
+        "received_at_utc": "2026-08-01T11:02:33.734Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_86c95d60580280704cfdb539e87a9218",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_57c787aac1a79a799d8fb6f12590e830",
+        "poll_content_sha256": "3fbb9d0d6b4caf138938b45bbad93a0b6527c93e157bb163f93c5507eeba99c3",
+        "published_at_utc": "2026-08-01T12:00:00.000Z",
+        "raw_sha256": "af34bf7bbfce137f6858aace60e9d85fe9cf28951abaf8053fb7fb5286d3da5a",
+        "received_at_utc": "2026-08-01T12:02:40.596Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_1f6fea00964b659fb2975861d47903fb",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_cfbf7bb9d667a0ee2df48fba15a3b5ee",
+        "poll_content_sha256": "d5e06eb4270b4bde2b524aae000b388982631b7b3ad53fea959b8e49931d06a8",
+        "published_at_utc": "2026-08-01T13:00:00.000Z",
+        "raw_sha256": "cf8250589a0083478960849a5792864f12f555c81b5bace2646d7388487100ca",
+        "received_at_utc": "2026-08-01T13:02:25.124Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_166b15e9a7033c5dc710fd776f8f9fc7",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_0b3393d98c3452367c71f5ff0cca1590",
+        "poll_content_sha256": "4886919ce87bbc640cb77f0f97407084e28be83a856ae61c878e8c691b267738",
+        "published_at_utc": "2026-08-01T14:00:00.000Z",
+        "raw_sha256": "3e6f1b19060ea44d0a0100af1bff42b2779dd60c6ee103388f3468fc78616ae6",
+        "received_at_utc": "2026-08-01T14:02:34.140Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_aa1adff50eaf20aa72833864bcdb6db8",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_37029baecb11d896f1655468a085684a",
+        "poll_content_sha256": "4ce895cbfd3f627ecbc557dbb8767d4d9137d463257322837e7660db655830f6",
+        "published_at_utc": "2026-08-01T15:00:00.000Z",
+        "raw_sha256": "664d7e9f44c080adc1738a8eed07f2c1ff13c584032eb830c8bff9598411405b",
+        "received_at_utc": "2026-08-01T15:02:31.546Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_59b5d93a72e86ce3f3a8bac39b09dcd9",
+        "station_id": "EPWA"
+      },
+      {
+        "correction_status": "NONE",
+        "event_date_local": "2026-08-01",
+        "manual_review_receipt_sha256": null,
+        "manual_review_status": "NOT_REQUIRED",
+        "observation_id": "histobs_e7e36d31bff90870fe5ee2dcbf2f505a",
+        "poll_content_sha256": "94e3575acb0655feec7ab7aa803cad587667f4369833b7516fcc83d348958602",
+        "published_at_utc": "2026-08-01T16:00:00.000Z",
+        "raw_sha256": "d2f79320c2517380f27f03a0cd6d5bba3127673096e23a3d7983c4025876efed",
+        "received_at_utc": "2026-08-01T16:02:41.215Z",
+        "report_type": "METAR",
+        "source_lane": "AWC",
+        "source_poll_id": "rtpoll_188da4b9df34b02f4cde9fb37161b6c3",
+        "station_id": "EPWA"
+      }
+    ],
+    "schema": "bayes_basket_target_p1_replay_awc_source_authority_v1",
+    "source_lane": "AWC",
+    "source_publisher": "AVIATION_WEATHER_CENTER",
+    "source_snapshot_sha256": "74818d935831a10f0bbedd90446808f157a8c8ff086b7c896e649db420c501e1",
+    "station_id": "EPWA"
+  },
+  "p1_root_binding": {
+    "root_checkpoint_id": "p0-native-2b5b44c4018fb30cbf247982b6f9821f",
+    "root_content_sha256": "a20c8cbb65f42137906b2d268d90e263d860609265e27499c33981d226c4282b",
+    "root_decision_at_utc": "2026-08-01T16:44:40.423Z",
+    "root_fresh_until_utc": "2026-08-01T22:44:40.423Z",
+    "root_lineage_sha256": "f1cbda2d6bf84792ba16f4fd6c400694ddf69e05e018029e1c5b3a7674b7995b",
+    "root_stage": "P0"
+  },
+  "pointer_repairs": [],
+  "receipt_sha256": "101372d7650bf55565e9467852895437a042f3134a10b5cf841addcca61b7f74",
+  "root_decision_at_utc": "2026-08-01T16:44:40.423Z",
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "source_input": {
+    "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_canonical_observation_evidence.json",
+    "receipt_sha256": "bdf9d676dbe5d51e7d58165489bdf38e4ddc97ad80ee41cffa47fc88c1004392",
+    "source_state": "EXPORTED"
+  },
+  "source_match_rows": [
+    {
+      "canonical_source_poll_id": "rtpoll_f9d923da30e2992808a1b3e59f2b5418",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T22:21:07.365Z",
+          "poll_content_sha256": "fa1d49f3aaf3c0552a90206bf82f6a8578e98939878c78b44c2f5b7e8877ebe2",
+          "raw_sha256": "3d3f4c84c341079a95b1a4199a3438384ae099357cf6bd24d75d41ca353e5831",
+          "received_at_utc": "2026-07-31T22:21:07.311Z",
+          "source_observation_id": "rtobs_b855729010f7567d4803b6a7297b23f6",
+          "source_poll_id": "rtpoll_f9d923da30e2992808a1b3e59f2b5418",
+          "source_report_issued_at_utc": "2026-07-31T22:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T22:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_bbe25ba858f026fd7c6b35315d6543f5"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_16b8bdd1166442a99554775981fa71a2",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-07-31T23:34:08.459Z",
+          "poll_content_sha256": "b69e3fb2e6ed46d7e1a8f7018adf74f0cfa8a99771072e2c113723e6a391ca5a",
+          "raw_sha256": "700cfc48bab0ea93901060827473aa887c1599b73737e69918dff9bc9578898d",
+          "received_at_utc": "2026-07-31T23:34:07.505Z",
+          "source_observation_id": "rtobs_c48edb9e47ce628eb748cc0545718487",
+          "source_poll_id": "rtpoll_16b8bdd1166442a99554775981fa71a2",
+          "source_report_issued_at_utc": "2026-07-31T23:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-07-31T23:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_b80c21b2374e19df946001e086af53a9"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_71b9c87657d64e981c1edb68fd3bde42",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T00:03:14.742Z",
+          "poll_content_sha256": "7dcfb79bdc82245257da97b2c414191dd38c32c1dad0169e7b5b32c1eb7d2d85",
+          "raw_sha256": "380d1e335a9f567503ee7b1435ba125aabadbe625f2be6951aa408d1b6fa3a26",
+          "received_at_utc": "2026-08-01T00:03:14.691Z",
+          "source_observation_id": "rtobs_3326dc1c9ab99fd9d3468eb6541af901",
+          "source_poll_id": "rtpoll_71b9c87657d64e981c1edb68fd3bde42",
+          "source_report_issued_at_utc": "2026-08-01T00:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_c73346cce708feab52c7cced766aa0a4"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_ae1e4f6c9866355bb4db7a4c2ac984eb",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T01:02:25.718Z",
+          "poll_content_sha256": "b4abe2ff8dddeaa177cb13291d8811be6b252c8a242b1cf0eff53f335020aff6",
+          "raw_sha256": "bf793305423bb8115aac116058ae80e0496de0502104e3b11e5c8e1bb3ad8dd2",
+          "received_at_utc": "2026-08-01T01:02:25.663Z",
+          "source_observation_id": "rtobs_8f3d7cd913db197a3154409f4bc7a727",
+          "source_poll_id": "rtpoll_ae1e4f6c9866355bb4db7a4c2ac984eb",
+          "source_report_issued_at_utc": "2026-08-01T01:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T01:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_d46300d45a7452593ff4cb78bfa6ab83"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_c0fa96b39cf8ba664cac98c437461da9",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T02:02:33.324Z",
+          "poll_content_sha256": "ae99f0817d4215d88ede8f09bb06ca5e7834fa5f6ef57340664ad0e00c731ed3",
+          "raw_sha256": "6ef43062e43389253af8d956d32e8208ac0c959124d0a43c79121033dcf7134d",
+          "received_at_utc": "2026-08-01T02:02:33.206Z",
+          "source_observation_id": "rtobs_e4935dee921a9ef08e226dede78421bf",
+          "source_poll_id": "rtpoll_c0fa96b39cf8ba664cac98c437461da9",
+          "source_report_issued_at_utc": "2026-08-01T02:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T02:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_f9587db6e18543d2b23816439f3cd983"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_afc5e1a1d4d0d60b588a01c7ae876f46",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T03:02:32.538Z",
+          "poll_content_sha256": "4a6f55b2b8d88492a7d5d18612a3589d04fe92a7ab71a7fc7be0a21ff0f2d03f",
+          "raw_sha256": "bc8a72f31139e4609fd84a967e06d3227d708e2684c3ff46e71f5e8208209905",
+          "received_at_utc": "2026-08-01T03:02:31.750Z",
+          "source_observation_id": "rtobs_6bd90b336b97b9bc3e56a6f29e001dd5",
+          "source_poll_id": "rtpoll_afc5e1a1d4d0d60b588a01c7ae876f46",
+          "source_report_issued_at_utc": "2026-08-01T03:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T03:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_e12be3b659a87d7ee635ea07fade8a23"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_f20b6e3b45d99e175b9c9d353c957199",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T04:02:35.045Z",
+          "poll_content_sha256": "0f80eb1922392d8e79502d9e8bd3e77a2b4b47da59a78a01b2bedb387ae1626d",
+          "raw_sha256": "92afb09141eae9c6a6ea2a0ee6c301c670b99aed3de681a676b2ac2ca963bab3",
+          "received_at_utc": "2026-08-01T04:02:34.925Z",
+          "source_observation_id": "rtobs_3e4d77ad602197847e5aac111311e1e1",
+          "source_poll_id": "rtpoll_f20b6e3b45d99e175b9c9d353c957199",
+          "source_report_issued_at_utc": "2026-08-01T04:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T04:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_1e632cec57c82585a503cc29b6869c76"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_ac0a05bb0b3db36b0d46a040cea83aae",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T05:02:40.254Z",
+          "poll_content_sha256": "fc4ed9c526f7ef8ed0aadf59bf92925cadfdddfb5fd86c2d51769ac50960c082",
+          "raw_sha256": "5ec1062c303780e42d3d6e07ac779735cd904090c36546ce0159a1477253b5a5",
+          "received_at_utc": "2026-08-01T05:02:40.179Z",
+          "source_observation_id": "rtobs_f35652063ffc903c8288e0d19c7de21e",
+          "source_poll_id": "rtpoll_ac0a05bb0b3db36b0d46a040cea83aae",
+          "source_report_issued_at_utc": "2026-08-01T05:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T05:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_863ff5798959ce86a26cb621f9eb0f71"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_f131950f3ca4baca0c89d109351b5361",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T06:02:28.538Z",
+          "poll_content_sha256": "7f84473a8723153adad732928b45f0e9e4da29192dfe71cceeeb8892f8b1199e",
+          "raw_sha256": "02bc87a8f5989a4bc47ee2f63584c661c78d56e59b3b02dfc2faab85315918eb",
+          "received_at_utc": "2026-08-01T06:02:28.360Z",
+          "source_observation_id": "rtobs_2f38c2569bdcc3946ff2411dddcc203c",
+          "source_poll_id": "rtpoll_f131950f3ca4baca0c89d109351b5361",
+          "source_report_issued_at_utc": "2026-08-01T06:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T06:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_84ffcbbdfb6381021efef5d26ce75396"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_601fba0a27af5e31358387c98563c5d9",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T07:02:40.216Z",
+          "poll_content_sha256": "09f74282463d5050a0ddbf3545841ca45e604e52954ecabae84bc68241c78560",
+          "raw_sha256": "beef8117cfedb97e69c6cfb2ad01205b2f649c9763ab67eebfc91dd9a49562b3",
+          "received_at_utc": "2026-08-01T07:02:40.117Z",
+          "source_observation_id": "rtobs_bf2a1e2814c50fb6dad0ca7174f4f05f",
+          "source_poll_id": "rtpoll_601fba0a27af5e31358387c98563c5d9",
+          "source_report_issued_at_utc": "2026-08-01T07:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T07:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_f5082a87bcc2b1cc7c736bd824e0c58c"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_df7cb4c1019a3b922141b42cb2352579",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T08:02:34.033Z",
+          "poll_content_sha256": "ae2537536da4c19df8b5b30348fd9fec1bc0f88e03fceb09356a20cdea93a99e",
+          "raw_sha256": "8577463687bbbcc8989ef36a4551dafd153242cae1d3ea7b17b1b184a2185770",
+          "received_at_utc": "2026-08-01T08:02:33.972Z",
+          "source_observation_id": "rtobs_ff50993592f360a17cbe4a774c34aae8",
+          "source_poll_id": "rtpoll_df7cb4c1019a3b922141b42cb2352579",
+          "source_report_issued_at_utc": "2026-08-01T08:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T08:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_eb71784f9e7df7f5c152ab78db064909"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_b3c4e509860d37aa417a97a2c09a36cb",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T09:02:57.904Z",
+          "poll_content_sha256": "abef58af8117fe172fa39f3d6162ccb7dbbaf1956e4a834a1a1d345a6d9aa23c",
+          "raw_sha256": "ef773d5bad135d21b382ea40511a58922942e73ef102f60fd1bb832006972703",
+          "received_at_utc": "2026-08-01T09:02:57.647Z",
+          "source_observation_id": "rtobs_16c08b3d9230f0eba0f08c33e41fea0e",
+          "source_poll_id": "rtpoll_b3c4e509860d37aa417a97a2c09a36cb",
+          "source_report_issued_at_utc": "2026-08-01T09:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T09:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_0639aca95211cf060df9aebbf55b815c"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_9a16b906aedd54f941bf73c65b1e9a5e",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T10:02:26.254Z",
+          "poll_content_sha256": "ac3a9a384a57e583cf11768d6e043088b4df4f9838c7f46660b32be832659b06",
+          "raw_sha256": "a10f0bf874e09959fe51e95cf2fdd74e9000eaf039843bbc72eb089d975fd5f1",
+          "received_at_utc": "2026-08-01T10:02:26.152Z",
+          "source_observation_id": "rtobs_b6446125f55bcbb91ba6b3f342e32c50",
+          "source_poll_id": "rtpoll_9a16b906aedd54f941bf73c65b1e9a5e",
+          "source_report_issued_at_utc": "2026-08-01T10:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T10:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_f55c0ddf8342260a6862f0c1cb10bd26"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_86c95d60580280704cfdb539e87a9218",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T11:02:33.768Z",
+          "poll_content_sha256": "5e7ae680276349ae3aa2c3f0afca4fa8c9e7981fda8e867b3a6a682b24587c81",
+          "raw_sha256": "ac6ad4175f765a79a1333347cd6147cf9e1f70ec59e8d62c4d001a779d5a48da",
+          "received_at_utc": "2026-08-01T11:02:33.734Z",
+          "source_observation_id": "rtobs_7a33ae606ea641d3aa2710565c21ba73",
+          "source_poll_id": "rtpoll_86c95d60580280704cfdb539e87a9218",
+          "source_report_issued_at_utc": "2026-08-01T11:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T11:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_79667968711fe834530b795d88fadda3"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_1f6fea00964b659fb2975861d47903fb",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T12:02:40.621Z",
+          "poll_content_sha256": "3fbb9d0d6b4caf138938b45bbad93a0b6527c93e157bb163f93c5507eeba99c3",
+          "raw_sha256": "af34bf7bbfce137f6858aace60e9d85fe9cf28951abaf8053fb7fb5286d3da5a",
+          "received_at_utc": "2026-08-01T12:02:40.596Z",
+          "source_observation_id": "rtobs_16cce79df6099a73a9144b239b313666",
+          "source_poll_id": "rtpoll_1f6fea00964b659fb2975861d47903fb",
+          "source_report_issued_at_utc": "2026-08-01T12:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T12:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_57c787aac1a79a799d8fb6f12590e830"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_166b15e9a7033c5dc710fd776f8f9fc7",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T13:02:25.160Z",
+          "poll_content_sha256": "d5e06eb4270b4bde2b524aae000b388982631b7b3ad53fea959b8e49931d06a8",
+          "raw_sha256": "cf8250589a0083478960849a5792864f12f555c81b5bace2646d7388487100ca",
+          "received_at_utc": "2026-08-01T13:02:25.124Z",
+          "source_observation_id": "rtobs_fb3cb0609a6b1bae0f0ec48db526776c",
+          "source_poll_id": "rtpoll_166b15e9a7033c5dc710fd776f8f9fc7",
+          "source_report_issued_at_utc": "2026-08-01T13:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T13:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_cfbf7bb9d667a0ee2df48fba15a3b5ee"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_aa1adff50eaf20aa72833864bcdb6db8",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T14:02:34.581Z",
+          "poll_content_sha256": "4886919ce87bbc640cb77f0f97407084e28be83a856ae61c878e8c691b267738",
+          "raw_sha256": "3e6f1b19060ea44d0a0100af1bff42b2779dd60c6ee103388f3468fc78616ae6",
+          "received_at_utc": "2026-08-01T14:02:34.140Z",
+          "source_observation_id": "rtobs_20725ba5171595c2db195ae2622736bf",
+          "source_poll_id": "rtpoll_aa1adff50eaf20aa72833864bcdb6db8",
+          "source_report_issued_at_utc": "2026-08-01T14:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T14:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_0b3393d98c3452367c71f5ff0cca1590"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_59b5d93a72e86ce3f3a8bac39b09dcd9",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T15:02:31.592Z",
+          "poll_content_sha256": "4ce895cbfd3f627ecbc557dbb8767d4d9137d463257322837e7660db655830f6",
+          "raw_sha256": "664d7e9f44c080adc1738a8eed07f2c1ff13c584032eb830c8bff9598411405b",
+          "received_at_utc": "2026-08-01T15:02:31.546Z",
+          "source_observation_id": "rtobs_6519ef393fa0d33d9e93fc22c1e5053e",
+          "source_poll_id": "rtpoll_59b5d93a72e86ce3f3a8bac39b09dcd9",
+          "source_report_issued_at_utc": "2026-08-01T15:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T15:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_37029baecb11d896f1655468a085684a"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_188da4b9df34b02f4cde9fb37161b6c3",
+      "matches": [
+        {
+          "blockers": [],
+          "canonical_committed_at_utc": "2026-08-01T16:02:41.239Z",
+          "poll_content_sha256": "94e3575acb0655feec7ab7aa803cad587667f4369833b7516fcc83d348958602",
+          "raw_sha256": "d2f79320c2517380f27f03a0cd6d5bba3127673096e23a3d7983c4025876efed",
+          "received_at_utc": "2026-08-01T16:02:41.215Z",
+          "source_observation_id": "rtobs_e2497e47873bdcb9c62d14bb8bb9752a",
+          "source_poll_id": "rtpoll_188da4b9df34b02f4cde9fb37161b6c3",
+          "source_report_issued_at_utc": "2026-08-01T16:00:00.000Z",
+          "strict_asof_bindable": true,
+          "valid_at_utc": "2026-08-01T16:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_e7e36d31bff90870fe5ee2dcbf2f505a"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_3236e05502204d1ad8eb0b482f2a54cf",
+      "matches": [
+        {
+          "blockers": [
+            "source_receipt_after_root_decision"
+          ],
+          "canonical_committed_at_utc": "2026-08-01T17:02:25.517Z",
+          "poll_content_sha256": "079f6a9975dc60a7d98ddf9f7dac9822bf6bf88a8f657a830cb9a37052727761",
+          "raw_sha256": "cf5a9a80e2bfe976b4c1ee80e1b160bef3ce1bcc59b8d2e10db428a2557bf03f",
+          "received_at_utc": "2026-08-01T17:02:25.459Z",
+          "source_observation_id": "rtobs_c7025572bbd65c10e1850add66ce4b09",
+          "source_poll_id": "rtpoll_3236e05502204d1ad8eb0b482f2a54cf",
+          "source_report_issued_at_utc": "2026-08-01T17:00:00.000Z",
+          "strict_asof_bindable": false,
+          "valid_at_utc": "2026-08-01T17:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_25167acff76171289008e2b2cb56d3ff"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_b0c6c669dde1a84a8266e68befc8acac",
+      "matches": [
+        {
+          "blockers": [
+            "source_receipt_after_root_decision"
+          ],
+          "canonical_committed_at_utc": "2026-08-01T18:02:29.729Z",
+          "poll_content_sha256": "7e2cce4d8f780dffd22568252873f9f398eca1d67294a64ca8545818fb8fb2b3",
+          "raw_sha256": "b54953c97a61d104757d42dd690aa38c6262e9a789b29d05a6d9ea46c82b72ca",
+          "received_at_utc": "2026-08-01T18:02:29.674Z",
+          "source_observation_id": "rtobs_a01416e1c2a63556e4e996dd6bd620f1",
+          "source_poll_id": "rtpoll_b0c6c669dde1a84a8266e68befc8acac",
+          "source_report_issued_at_utc": "2026-08-01T18:00:00.000Z",
+          "strict_asof_bindable": false,
+          "valid_at_utc": "2026-08-01T18:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_2618bc1703acdac8f728bf3aa832a99d"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_34d4e56ba2f624869cd78e9320bbbb2a",
+      "matches": [
+        {
+          "blockers": [
+            "source_receipt_after_root_decision"
+          ],
+          "canonical_committed_at_utc": "2026-08-01T19:02:31.929Z",
+          "poll_content_sha256": "b62e049989658a22b513fa0d9b6d81a8cf917ceb94ab394031b84bcd832272f3",
+          "raw_sha256": "0f59f0b590fc1a2189052b01976e1939ba476bfffbdf3c0d35abaa89b44666e1",
+          "received_at_utc": "2026-08-01T19:02:31.571Z",
+          "source_observation_id": "rtobs_e058c5caa083b7468ca9d001e646cc19",
+          "source_poll_id": "rtpoll_34d4e56ba2f624869cd78e9320bbbb2a",
+          "source_report_issued_at_utc": "2026-08-01T19:00:00.000Z",
+          "strict_asof_bindable": false,
+          "valid_at_utc": "2026-08-01T19:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_80ca849bb88276ea1e4e556559e5b588"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_53174c27386a809e567cc389791fe033",
+      "matches": [
+        {
+          "blockers": [
+            "source_receipt_after_root_decision"
+          ],
+          "canonical_committed_at_utc": "2026-08-01T20:03:08.886Z",
+          "poll_content_sha256": "81b28ddb84eb0b502d18656a8304cf968f87ddb2a49da7e491d78d84af4bf22c",
+          "raw_sha256": "ce5c512c28109f9fc5af291f5aeb71f26a734e2741c735441c3ac60e51f29fb2",
+          "received_at_utc": "2026-08-01T20:03:02.735Z",
+          "source_observation_id": "rtobs_d831554870c1362f48abce5ed4beefff",
+          "source_poll_id": "rtpoll_53174c27386a809e567cc389791fe033",
+          "source_report_issued_at_utc": "2026-08-01T20:00:00.000Z",
+          "strict_asof_bindable": false,
+          "valid_at_utc": "2026-08-01T20:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_02720ce350273f2ed47a6f9310ed7247"
+    },
+    {
+      "canonical_source_poll_id": "rtpoll_f37cc2aa23afc312a7fce500b6ffea44",
+      "matches": [
+        {
+          "blockers": [
+            "source_receipt_after_root_decision"
+          ],
+          "canonical_committed_at_utc": "2026-08-01T21:02:37.833Z",
+          "poll_content_sha256": "d4f0e72f2efb2b5d0b9d533965c5a6cc4f8d23fd1f8577d93da723f9588928e3",
+          "raw_sha256": "b4d30485237c06d665106320bfd97703400398f5dd4415af7696e612fb7674b2",
+          "received_at_utc": "2026-08-01T21:02:37.762Z",
+          "source_observation_id": "rtobs_f61e16ee2f08960cf1c4c5ac53c713a2",
+          "source_poll_id": "rtpoll_f37cc2aa23afc312a7fce500b6ffea44",
+          "source_report_issued_at_utc": "2026-08-01T21:00:00.000Z",
+          "strict_asof_bindable": false,
+          "valid_at_utc": "2026-08-01T21:00:00.000Z"
+        }
+      ],
+      "observation_id": "histobs_72510bfb9a8eeb316542238a08b401b2"
+    }
+  ],
+  "source_snapshot_sha256": "74818d935831a10f0bbedd90446808f157a8c8ff086b7c896e649db420c501e1",
+  "state": "EXPORTED",
+  "strict_asof_bindable_observation_count": 19,
+  "truth_rows": []
+}

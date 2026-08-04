@@ -1,0 +1,3426 @@
+{
+  "blockers": [
+    {
+      "event_date": "2026-07-11",
+      "reason": "ContractError:awc_taf_calibration_curl_failed_rc_35:curl: (35) LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to aviationweather.gov:443"
+    }
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "historical_replay_only": true,
+    "native_local_receipt": false,
+    "official_awc_database_availability_preserved": true,
+    "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "truth_days_closed": true,
+    "truth_only_enters_p0m": false,
+    "truth_only_samples_are_not_taf_samples": true,
+    "truth_only_writes_production_db": false,
+    "writes_production_db": false
+  },
+  "content_sha256": "af22fbc014ea080039387dda37c138a8ee67fb91da67bdcbaceffa568238e4a5",
+  "end_date": "2026-07-21",
+  "excluded_sample_count": 18,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-03",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-04",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-05",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-06",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-07",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-08",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-09",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-10",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-12",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-13",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-14",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-15",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_arrival_timestamp_invalid",
+      "event_date": "2026-07-16",
+      "reason": "ContractError:awc_taf_historical_available_before_issue"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-17",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-18",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-19",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-20",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    },
+    {
+      "classification": "official_taf_structural_missing_field",
+      "event_date": "2026-07-21",
+      "reason": "ContractError:awc_taf_tx_for_settlement_day_missing"
+    }
+  ],
+  "provider": "NOAA Aviation Weather Center",
+  "resource_bounds": {
+    "actual_response_bytes": 229799,
+    "max_days": 90,
+    "max_output_bytes": 16777216,
+    "max_response_bytes": 2097152,
+    "max_total_response_bytes": 268435456
+  },
+  "sample_count": 0,
+  "samples": [],
+  "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
+  "settlement_timezone": "America/Panama",
+  "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
+  "start_date": "2026-07-03",
+  "station_id": "MPMG",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+  "truth_only_sample_count": 12,
+  "truth_only_samples": [
+    {
+      "event_date": "2026-07-03",
+      "receipts": {
+        "metar_response_sha256": "ef50e023650f51036b9d6e0dabdf59fa1ed887c95c57abbe82e3d03033f8d24f",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260704_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-04T05:00:00Z",
+        "start_utc": "2026-07-03T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "8612d215fbe3b1127d8c4f101eedd9e170138c34294ae8faae2b22b19b0e7b17",
+        "observation_count": 15,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T13:00:00Z",
+            "raw_report": "METAR MPMG 031300Z 28004KT 250V320 9000 SCT018 BKN080 28/26 Q1009 NOSIG",
+            "raw_sha256": "f929a89dc3ead65d07de8b37ae6ec4c21450020f2f0cabf5e1c344cbecd22996",
+            "received_at_utc": "2026-07-03T13:13:37.496Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T14:00:00Z",
+            "raw_report": "METAR MPMG 031400Z 32005KT 9000 SCT018 BKN080 28/26 Q1010 NOSIG",
+            "raw_sha256": "bb49c9db49cf769c22fee41483ada4a4ada88856aef0a53dba97328cadb29084",
+            "received_at_utc": "2026-07-03T14:01:32.535Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T15:00:00Z",
+            "raw_report": "METAR MPMG 031500Z 30007KT 9000 SCT018 BKN090 30/26 Q1010 NOSIG",
+            "raw_sha256": "97fe4749b10656531bd4b4ed6ecb6dcca8b82084f2aaf4f3486b6cf36a4b0b3a",
+            "received_at_utc": "2026-07-03T15:10:53.876Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T16:00:00Z",
+            "raw_report": "METAR MPMG 031600Z 33007KT 9000 SCT018 BKN090 31/26 Q1009 NOSIG",
+            "raw_sha256": "5396820dc852287916880c2f9fb71867282bf768b7d9b10f9af5ddd4103fe0bd",
+            "received_at_utc": "2026-07-03T16:03:36.716Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T17:00:00Z",
+            "raw_report": "METAR MPMG 031700Z 33008KT 9000 SCT018TCU BKN090 32/27 Q1009 NOSIG",
+            "raw_sha256": "9bd3e5ea5193eed42ba5bc209f5117a86c2ddb5f6168773374e4bb06c1c6a390",
+            "received_at_utc": "2026-07-03T17:00:51.585Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T18:00:00Z",
+            "raw_report": "METAR MPMG 031800Z 34007KT 300V010 9000 SCT017TCU BKN090 32/26 Q1009 NOSIG",
+            "raw_sha256": "4f13c80051d61f44475a06681a1ce51e97b5477d6272fa8ba727f3ff1b133433",
+            "received_at_utc": "2026-07-03T17:55:58.501Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T19:00:00Z",
+            "raw_report": "METAR MPMG 031900Z 13004KT 080V200 9000 SCT017TCU BKN090 32/26 Q1009 NOSIG",
+            "raw_sha256": "f66a94922c174c6a4f9c5cc929cc59d07ac71c11eac00ffb137128a6bf9c733d",
+            "received_at_utc": "2026-07-03T18:58:35.603Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T20:00:00Z",
+            "raw_report": "METAR MPMG 032000Z 32007KT 9000 VCSH SCT016TCU BKN080 32/26 Q1008 NOSIG",
+            "raw_sha256": "c9605aa3702fbf899d21231b68deb1169dcc6cc5f9785be81a9cbb2854781055",
+            "received_at_utc": "2026-07-03T20:03:51.748Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T21:00:00Z",
+            "raw_report": "METAR MPMG 032100Z VRB02KT 9999 SCT016CB BKN080 30/27 Q1008 NOSIG",
+            "raw_sha256": "b01e088e197b77699c7d7686bb70b3a898010880f537710c7f34a72f7170776d",
+            "received_at_utc": "2026-07-03T21:03:31.598Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-03T22:00:00Z",
+            "raw_report": "METAR MPMG 032200Z 30009KT 9999 SCT017TCU SCT090 29/26 Q1008 NOSIG",
+            "raw_sha256": "c38ecc56197678717e2f7596b135ba8cccd8c5a7c69ada61989367be9b3024a8",
+            "received_at_utc": "2026-07-03T22:03:29.163Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-04T00:00:00Z",
+            "raw_report": "METAR MPMG 040000Z 31008KT 9999 SCT018 SCT080 29/27 Q1009 NOSIG",
+            "raw_sha256": "5b8c51e594c3221a3c6ec100dc73fa1a556528eb7cf62f8a78df33a05d968842",
+            "received_at_utc": "2026-07-03T23:52:46.378Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-04T01:00:00Z",
+            "raw_report": "METAR MPMG 040100Z 31006KT 280V340 9999 FEW018 SCT080 28/27 Q1010 NOSIG",
+            "raw_sha256": "9ddb16a4688ea561d3934d92dff7db8293235f36b5a0dad1df92e7b60f94472d",
+            "received_at_utc": "2026-07-04T00:57:19.655Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-04T02:00:00Z",
+            "raw_report": "METAR MPMG 040200Z 31007KT 9999 FEW018 SCT090 28/26 Q1010 NOSIG",
+            "raw_sha256": "9ed621c0bf7731071477deafb336aaa9c065c0e9dc505d47db44697153816e52",
+            "received_at_utc": "2026-07-04T02:05:59.463Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-04T03:00:00Z",
+            "raw_report": "METAR MPMG 040300Z 32005KT 9999 FEW018CB SCT090 28/26 Q1011 NOSIG",
+            "raw_sha256": "377681b8829e5158ed97d43047759443ed2e4ea535e40fa6d31501de95e74964",
+            "received_at_utc": "2026-07-04T02:57:09.452Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-04T04:00:00Z",
+            "raw_report": "METAR MPMG 040400Z AUTO 30006KT //// R01///// // ///////// 28/26 Q1011",
+            "raw_sha256": "810165e96c5360d7e08ca7649faf0a068641c907449d29332905b54f4698e1f7",
+            "received_at_utc": "2026-07-04T04:06:09.235Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 32.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-03835031bee379364e7a9653e32cc369"
+    },
+    {
+      "event_date": "2026-07-06",
+      "receipts": {
+        "metar_response_sha256": "fe2e829ff9ce7f116dcaef825c0a6ebfb1edfe4fba220a95a8b7d9f8302cb441",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260707_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-07T05:00:00Z",
+        "start_utc": "2026-07-06T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "33c21921d88b2831df94a3d21c28d7ed2ebb927bf9f6ddcb552b75a9730654eb",
+        "observation_count": 25,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T05:00:00Z",
+            "raw_report": "METAR MPMG 060500Z AUTO 32007KT //// R01///// // OVC160/// 27/26 Q1010",
+            "raw_sha256": "be41eb794069cbea030334667c0b1a252db937cb5152aa4e871b6f24a5b207e8",
+            "received_at_utc": "2026-07-06T05:06:06.519Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T06:00:00Z",
+            "raw_report": "METAR MPMG 060600Z AUTO 32008KT //// R01///// // FEW013/// BKN160/// BKN230/// 27/26 Q1009",
+            "raw_sha256": "434aeb7198c80c31832ab56b84dfa2e662ed59da9e48441d6a815545bbf599e6",
+            "received_at_utc": "2026-07-06T06:14:06.688Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T07:00:00Z",
+            "raw_report": "METAR MPMG 060700Z AUTO 32008KT //// R01///// // FEW012/// BKN160/// 27/26 Q1009",
+            "raw_sha256": "d925301a10bd485854f41f547177df1c6bfbc29e6db52a3cb9dfcdf1f4a8c8a7",
+            "received_at_utc": "2026-07-06T08:20:15.148Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T08:00:00Z",
+            "raw_report": "METAR MPMG 060800Z AUTO 33006KT //// R01///// // SCT012/// BKN160/// 27/26 Q1009",
+            "raw_sha256": "bf1b4248342e7caef0611cc4bd49353e2abf96af819ef0710f9f248e72233583",
+            "received_at_utc": "2026-07-06T08:16:04.972Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T09:00:00Z",
+            "raw_report": "METAR MPMG 060900Z AUTO 33005KT //// R01///// // FEW011/// SCT021/// OVC160/// 27/26 Q1009",
+            "raw_sha256": "bb19987a764cffa2e9797fe12c850c03d64ae55d078d76b0991ed7510bf82a52",
+            "received_at_utc": "2026-07-06T09:06:06.036Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T10:00:00Z",
+            "raw_report": "METAR MPMG 061000Z AUTO 34007KT //// R01///// // FEW042/// BKN091/// BKN220/// 27/25 Q1009",
+            "raw_sha256": "75a129c7906433bab75b90917341fe13e18e620dba8284d9b9dcaccf4c224379",
+            "received_at_utc": "2026-07-06T10:26:07.212Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T11:00:00Z",
+            "raw_report": "METAR MPMG 061100Z 35004KT 320V020 9999 FEW018CB SCT090 27/25 Q1009 NOSIG",
+            "raw_sha256": "eba0e46633c88b8df5a3cb2e1d613254224c39add9cdcab0d20f6f5518b1f8b7",
+            "received_at_utc": "2026-07-06T11:06:35.252Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T12:00:00Z",
+            "raw_report": "METAR MPMG 061200Z 31005KT 9000 FEW018CB SCT090 27/25 Q1009",
+            "raw_sha256": "7499ead43d990560e78846898cb8ac3eb957ec29e7ded83f5b1e65086bdcc96b",
+            "received_at_utc": "2026-07-06T11:57:07.839Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T13:00:00Z",
+            "raw_report": "METAR MPMG 061300Z 31004KT 270V330 9000 FEW018 28/25 Q1010 NOSIG",
+            "raw_sha256": "1fdc5ecc972f30139972cd7151ead9a0f4e72b043c3002dbae14cba3905456e8",
+            "received_at_utc": "2026-07-06T12:57:47.889Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T14:00:00Z",
+            "raw_report": "METAR MPMG 061400Z 32006KT 290V360 9000 FEW018 30/25 Q1010 NOSIG",
+            "raw_sha256": "10b0a5cbf73fe34bc5a9a32ac5f1c8e735be692436b345887dece4127cf0ae96",
+            "received_at_utc": "2026-07-06T14:02:21.473Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T15:00:00Z",
+            "raw_report": "METAR MPMG 061500Z 33009KT 9000 FEW010 SCT018 31/26 Q1010 NOSIG",
+            "raw_sha256": "b807489f55694f3d0b5b15f29cc6f06a6c581d46dc58f73c8abb60529ec15bcf",
+            "received_at_utc": "2026-07-06T15:00:43.173Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T16:00:00Z",
+            "raw_report": "METAR MPMG 061600Z 32009KT 9000 SCT018TCU SCT090 32/25 Q1010 NOSIG",
+            "raw_sha256": "dd82740bbfe731064d592c47f374efb083c7c0045c86e12e1b0cfd91e2396213",
+            "received_at_utc": "2026-07-06T15:57:50.649Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T17:00:00Z",
+            "raw_report": "METAR MPMG 061700Z 35010KT 310V020 9000 SCT018CB 33/25 Q1009 NOSIG",
+            "raw_sha256": "d87ed52fea59957000ea70396ea42f8b9af30aa31f052a633902aca30508ea3c",
+            "received_at_utc": "2026-07-06T16:59:36.580Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T18:00:00Z",
+            "raw_report": "METAR MPMG 061800Z 34012KT 9000 VCSH SCT017TCU 33/25 Q1008 NOSIG",
+            "raw_sha256": "652715ef3f33a26275ffda05880eb59ea16f1130150de658fd759c37b87497c0",
+            "received_at_utc": "2026-07-06T17:58:58.087Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T19:00:00Z",
+            "raw_report": "METAR MPMG 061900Z 36008KT 7000 -RA FEW010 SCT015CB SCT080 31/26 Q1008 NOSIG",
+            "raw_sha256": "89a3c31103fddfe61862fa03e53cbccd302cc0d30bf996fdb7d9b8144c0e90f0",
+            "received_at_utc": "2026-07-06T19:00:33.515Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T19:20:00Z",
+            "raw_report": "SPECI MPMG 061920Z 35011KT 9000 VCSH FEW010 SCT015CB SCT080 32/26 Q1008 RERA NOSIG",
+            "raw_sha256": "127c6fa9d6b4728c2a0aaf661e96cc9a513728b8d73672f8fea8c1abb8f9ec8f",
+            "received_at_utc": "2026-07-06T19:21:53.576Z",
+            "report_type": "SPECI",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T20:00:00Z",
+            "raw_report": "METAR MPMG 062000Z 33010KT 300V360 9000 VCSH FEW010 SCT015CB BKN080 32/26 Q1008 NOSIG",
+            "raw_sha256": "403b01af94f36665109f2a978824f6752fdf3d1b6d1987332a957831929ccd03",
+            "received_at_utc": "2026-07-06T19:55:27.085Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T21:00:00Z",
+            "raw_report": "METAR MPMG 062100Z 32009KT 9999 SCT016 SCT090 31/25 Q1008 NOSIG",
+            "raw_sha256": "606f7d998dfdb5baae14759cc2e6ddd2426e4efae721d79b38bb085236631407",
+            "received_at_utc": "2026-07-06T20:57:38.079Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T22:00:00Z",
+            "raw_report": "METAR MPMG 062200Z 33008KT 9999 SCT017 SCT090 31/25 Q1008 NOSIG",
+            "raw_sha256": "759da0c4bf5202b507ac042df3548e6fe2227e4311960ef755ed6f1ad2bdcd1f",
+            "received_at_utc": "2026-07-06T21:51:33.464Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-06T23:00:00Z",
+            "raw_report": "METAR MPMG 062300Z 35008KT 9999 SCT018 SCT090 30/25 Q1008 NOSIG",
+            "raw_sha256": "eabce8a6b48724869458732e6d766c43d6c2c83057137c991abfd1f8dc41264b",
+            "received_at_utc": "2026-07-06T22:59:03.596Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-07T00:00:00Z",
+            "raw_report": "METAR MPMG 070000Z 31006KT 9999 SCT018 SCT090 29/25 Q1009 NOSIG",
+            "raw_sha256": "3d18a0cc0a1e955efc903f14351b842783d7c3eb5a4b1cee5d4db06c365cc9cb",
+            "received_at_utc": "2026-07-06T23:48:42.776Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-07T01:00:00Z",
+            "raw_report": "METAR MPMG 070100Z 32006KT 9999 SCT018 29/25 Q1009 NOSIG",
+            "raw_sha256": "f287d75d8705e3005f5899ab510fc119645834629b66a241711aada8b5de607a",
+            "received_at_utc": "2026-07-07T00:53:16.019Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-07T02:00:00Z",
+            "raw_report": "METAR MPMG 070200Z 32006KT 290V350 9999 SCT018 28/25 Q1010 NOSIG",
+            "raw_sha256": "c9939e8c7776e71e932e87fd124c606b36ccb6ec4af742fdf6a212a49bc63758",
+            "received_at_utc": "2026-07-07T01:52:39.152Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-07T03:00:00Z",
+            "raw_report": "METAR MPMG 070300Z 32005KT 9999 SCT018 28/25 Q1010 NOSIG",
+            "raw_sha256": "97a945a17f8d8a9f885ff1e2c83d91f3690bbcdc18fce06c88ba7468af2ea495",
+            "received_at_utc": "2026-07-07T02:51:56.603Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-07T04:00:00Z",
+            "raw_report": "METAR MPMG 070400Z AUTO 32006KT //// R01///// // FEW100/// BKN160/// 27/25 Q1010",
+            "raw_sha256": "792f0f6eb2eb51fdca8adcb85ae142f541802a6872709a5c2d01676f981a9fbe",
+            "received_at_utc": "2026-07-07T04:06:04.549Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 33.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-55118c30d0aecc436d09df4a2c74bf1a"
+    },
+    {
+      "event_date": "2026-07-08",
+      "receipts": {
+        "metar_response_sha256": "e180865ff2466c8df84fda0551b79635dcd80186fb1dff3cf3074a4e60398bd2",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260709_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-09T05:00:00Z",
+        "start_utc": "2026-07-08T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "6e7dd0fe405745b46e1cec35db580c0e423a746ce5f6ec06c9e9f17aa78e8b8f",
+        "observation_count": 27,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T05:00:00Z",
+            "raw_report": "METAR MPMG 080500Z AUTO 31005KT //// R01///// // BKN060/// 28/26 Q1009",
+            "raw_sha256": "3f6dc6bbe06ffb45a8e6900e30a4653f3b449337d619fa46ba8747fbb3419151",
+            "received_at_utc": "2026-07-08T05:06:06.097Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T06:00:00Z",
+            "raw_report": "METAR MPMG 080600Z AUTO 33004KT //// R01///// // FEW065/// BKN100/// 28/25 Q1009",
+            "raw_sha256": "628faccc87e72c8663dc840e812f83d88f9c653b2b5af861ee9c13ee533eaebc",
+            "received_at_utc": "2026-07-08T06:22:08.093Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T07:00:00Z",
+            "raw_report": "METAR MPMG 080700Z AUTO 32006KT //// R01///// // BKN066/// BKN160/// 28/25 Q1008",
+            "raw_sha256": "040ed66ea68a05add7067946af5e9f59758e0aae5af31dcc692549791c5acba6",
+            "received_at_utc": "2026-07-08T07:16:05.305Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T08:00:00Z",
+            "raw_report": "METAR MPMG 080800Z AUTO 33006KT //// R01///// // BKN092/// OVC160/// 27/25 Q1008",
+            "raw_sha256": "4fbef86bd4156e09ec9ba9c34770d64e57f6b6baf1940cae9724e02262fb3b42",
+            "received_at_utc": "2026-07-08T08:06:06.508Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T09:00:00Z",
+            "raw_report": "METAR MPMG 080900Z AUTO 33006KT //// R01///// // BKN091/// 28/25 Q1008",
+            "raw_sha256": "91b3c779a0106c5ce87eacdc0279f776fddcf9b9da8a4478f42bf6baa5391381",
+            "received_at_utc": "2026-07-08T09:06:05.087Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T10:00:00Z",
+            "raw_report": "METAR MPMG 081000Z AUTO 32005KT //// R01///// // FEW059/// OVC092/// 28/25 Q1008",
+            "raw_sha256": "974676c00f55eb53b1c546b7d11e3b16c42b1956ebbdf640c91886bcd16ce396",
+            "received_at_utc": "2026-07-08T10:06:04.638Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T11:00:00Z",
+            "raw_report": "METAR MPMG 081100Z 32005KT 9000 NSC 27/25 Q1008 NOSIG",
+            "raw_sha256": "d3138e904262d1c62818b9117683865cabc7ac7edaf64ac2808916e36912fd37",
+            "received_at_utc": "2026-07-08T10:55:59.992Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T12:00:00Z",
+            "raw_report": "METAR MPMG 081200Z 31004KT 9000 FEW020 28/26 Q1009 NOSIG",
+            "raw_sha256": "a79dcf34dfae4add1d1b4e24ccf4a2b0203562759ad531d6ca610bc7d7550c05",
+            "received_at_utc": "2026-07-08T11:50:43.046Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T13:00:00Z",
+            "raw_report": "METAR MPMG 081300Z 31007KT 9000 FEW020 29/26 Q1009 NOSIG",
+            "raw_sha256": "fea912cdaa362638625551ba071217048a815415644deb1f85fbe578d4cdb304",
+            "received_at_utc": "2026-07-08T13:01:29.424Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T14:00:00Z",
+            "raw_report": "METAR MPMG 081400Z 34010KT 9000 FEW020 31/26 Q1009 NOSIG",
+            "raw_sha256": "35add4c9c30c70af22959be272cb68233b8d401f81fc31b2bcd8d51fbf36bdb1",
+            "received_at_utc": "2026-07-08T13:51:58.919Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T15:00:00Z",
+            "raw_report": "METAR MPMG 081500Z 33009KT 300V360 9000 SCT020 31/26 Q1010 NOSIG",
+            "raw_sha256": "a76c6c5524fb2fe7c82c2afeff57d83a05fc3d7d43c4bebc4e396e2527797837",
+            "received_at_utc": "2026-07-08T15:02:21.834Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T16:00:00Z",
+            "raw_report": "METAR MPMG 081600Z 32009KT 9000 SCT020 33/26 Q1009 NOSIG",
+            "raw_sha256": "7ce445738be6d725988a87ca1a9c4fdf500f801d85093b32bb10df50bfb8058e",
+            "received_at_utc": "2026-07-08T15:53:21.964Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T17:00:00Z",
+            "raw_report": "METAR MPMG 081700Z 32012KT 9000 SCT020 33/25 Q1008 NOSIG",
+            "raw_sha256": "ed117d9b89a8d7041f77dda2677194a6176999a22ed16479c965ce85efe5665f",
+            "received_at_utc": "2026-07-08T17:03:26.290Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T18:00:00Z",
+            "raw_report": "METAR MPMG 081800Z 31012KT 270V330 9000 SCT020 34/27 Q1008 NOSIG",
+            "raw_sha256": "ee6302c0286999878e4664604d52a2b7ea8e07d81e13921e87bbca9c669899fb",
+            "received_at_utc": "2026-07-08T18:04:47.325Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T19:00:00Z",
+            "raw_report": "METAR MPMG 081900Z 30010KT 260V340 9999 SCT018 35/27 Q1007 NOSIG",
+            "raw_sha256": "3d4567f00b802c22914ed50aa98063b6b7d7df5f775e23047821228841ea567e",
+            "received_at_utc": "2026-07-08T18:56:05.194Z",
+            "report_type": "METAR",
+            "temperature_c": 35.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T20:00:00Z",
+            "raw_report": "METAR MPMG 082000Z 30013KT 270V330 9000 VCSH SCT016TCU SCT090 34/26 Q1007 TEMPO 6000 RA",
+            "raw_sha256": "0a174a2324dad0ab3a67126ea664341d41dc77abe829fd2e95c7daa158837e5c",
+            "received_at_utc": "2026-07-08T20:06:05.217Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T20:15:00Z",
+            "raw_report": "SPECI MPMG 082015Z 35010KT 320V030 3200 +TSRA SCT016CB SCT090 30/26 Q1007 TEMPO 2000 +TSRA",
+            "raw_sha256": "a7cb535b6052a14c6e00e3fce5bb19e5769c1deb47bf0e9e6fac2b145b317389",
+            "received_at_utc": "2026-07-08T20:23:04.395Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T20:25:00Z",
+            "raw_report": "SPECI MPMG 082025Z 33008KT 290V010 6000 1800NE +TSRA SCT016CB SCT090 30/27 Q1007 NOSIG",
+            "raw_sha256": "a7d8da08d239fa767ebe877188da96675f92533ae2e0b2984f14a5996f086e98",
+            "received_at_utc": "2026-07-08T20:28:04.886Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T21:00:00Z",
+            "raw_report": "METAR MPMG 082100Z 33006KT 300V010 8000 3200NE +TSRA SCT016CB BKN080 30/27 Q1007 NOSIG",
+            "raw_sha256": "edf69e5374cc793e5444b8f4d9ca57ec6566bd3090ac8d34dda0a8a8e71afe81",
+            "received_at_utc": "2026-07-08T21:06:08.751Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T21:22:00Z",
+            "raw_report": "SPECI MPMG 082122Z 31006KT 270V350 9999 SCT016CB BKN080 31/27 Q1007 RETSRA NOSIG",
+            "raw_sha256": "c8ba8b38bfc36c4c9f0a50c7b8354fddc4788732272da9ee515ab6440e680656",
+            "received_at_utc": "2026-07-08T21:23:58.030Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T22:00:00Z",
+            "raw_report": "METAR MPMG 082200Z 32009KT 9999 SCT016CB SCT080 31/26 Q1007 NOSIG",
+            "raw_sha256": "ff767b93db9ae28e1fa726cd5d1e88ba7c4fbfef60c0ca15334cac59f0f2c68c",
+            "received_at_utc": "2026-07-08T21:56:41.338Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-08T23:00:00Z",
+            "raw_report": "METAR MPMG 082300Z 31007KT 270V340 9000 VCSH SCT016TCU SCT080 31/26 Q1008 NOSIG",
+            "raw_sha256": "420d33af9ab8894f0b71fa0ac78bf0f386f62d4e3b704eaa67bbdffd56ea7263",
+            "received_at_utc": "2026-07-08T22:57:22.664Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T00:00:00Z",
+            "raw_report": "METAR MPMG 090000Z 31007KT 270V350 9000 VCSH SCT016CB SCT080 30/26 Q1008 TEMPO 6000 RA",
+            "raw_sha256": "6df04a8db74c27d5b6d4989dc93eaedd3286026ab356d48ea5efcb5ccf693986",
+            "received_at_utc": "2026-07-09T00:06:06.049Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T01:00:00Z",
+            "raw_report": "METAR MPMG 090100Z 32007KT 9999 SCT016 SCT080 29/26 Q1009 RETSRA NOSIG",
+            "raw_sha256": "2aabfcd1182252d57bc1a02343309af61795edf9881d3e547712b3dda48e99a2",
+            "received_at_utc": "2026-07-09T00:51:32.860Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T02:00:00Z",
+            "raw_report": "METAR MPMG 090200Z 34009KT 9999 SCT018 28/26 Q1008 NOSIG",
+            "raw_sha256": "cd6c320a15b7c64af75df93a26d83132d925827311bddcfdbfafbff2704082c2",
+            "received_at_utc": "2026-07-09T01:58:44.050Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T03:00:00Z",
+            "raw_report": "METAR MPMG 090300Z 29005KT 270V330 9999 SCT018 28/26 Q1009 NOSIG",
+            "raw_sha256": "a62bab110bea8cba3cfc843706e9efc5369582cf0c339e11a107b0bc46e30f2c",
+            "received_at_utc": "2026-07-09T02:54:34.801Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T04:00:00Z",
+            "raw_report": "METAR MPMG 090400Z AUTO 31005KT //// R01///// // BKN100/// 28/26 Q1009",
+            "raw_sha256": "a5be1d838d7dd2034c6d1f68907f350667b5d582de40d19874b0acaf485c63ff",
+            "received_at_utc": "2026-07-09T04:06:05.743Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 35.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-13d46fa14d06c73131f3b6f80c4975e4"
+    },
+    {
+      "event_date": "2026-07-09",
+      "receipts": {
+        "metar_response_sha256": "87e0362d96bd6126db0accb5e1c68d08854100e9e5e6a2ac95ea070d0578f4dd",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260710_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-10T05:00:00Z",
+        "start_utc": "2026-07-09T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "8ef456b39774fc364dc37c1fa55301973c9b27e777fac812fb9b1115bf8712dc",
+        "observation_count": 24,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T05:00:00Z",
+            "raw_report": "METAR MPMG 090500Z AUTO 31006KT //// R01///// // FEW097/// BKN160/// 28/26 Q1009",
+            "raw_sha256": "6b9bd4d847d15e871506b8d13d9a5cbaecca57c18fd368f6976e54a819a2d7d5",
+            "received_at_utc": "2026-07-09T06:04:05.096Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T07:00:00Z",
+            "raw_report": "METAR MPMG 090700Z AUTO 32005KT //// R01///// // BKN160/// 27/26 Q1008",
+            "raw_sha256": "b2b312a1c5110d4ee82b794f55065d791a5cc6b990679ed675b6663d566219dd",
+            "received_at_utc": "2026-07-09T08:00:30.897Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T08:00:00Z",
+            "raw_report": "METAR MPMG 090800Z AUTO 32003KT 280V350 //// R01///// // FEW044/// SCT054/// BKN160/// 27/25 Q1007",
+            "raw_sha256": "d975e1cde3817d9db9396f7b7c973da6d11f56acfc3154dafd0047d7dc8f19c7",
+            "received_at_utc": "2026-07-09T08:06:07.771Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T09:00:00Z",
+            "raw_report": "METAR MPMG 090900Z AUTO 36003KT //// R01///// // OVC057/// 27/26 Q1008",
+            "raw_sha256": "14160406b99fdcf62f733a4d4ed96cbf70c82ec62d306d61f99fcb150fc1ec8b",
+            "received_at_utc": "2026-07-09T09:10:05.960Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T10:00:00Z",
+            "raw_report": "METAR MPMG 091000Z AUTO 27003KT //// R01///// // SCT052/// OVC062/// 27/26 Q1008",
+            "raw_sha256": "8e14010064fb3ea18317a3abb493b90cf879f60ae4992ecf2921fa2ee51db57e",
+            "received_at_utc": "2026-07-09T10:06:06.108Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T11:00:00Z",
+            "raw_report": "METAR MPMG 091100Z VRB02KT 9999 SCT018 27/25 Q1008 NOSIG",
+            "raw_sha256": "c32c8d233ce335606c186df834b1d24f6fed5c4e583154ac950f517db05b53e3",
+            "received_at_utc": "2026-07-09T11:01:52.995Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T12:00:00Z",
+            "raw_report": "METAR MPMG 091200Z 36003KT 9000 FEW020 28/26 Q1008 NOSIG",
+            "raw_sha256": "316bf5cf042ee0025a5a8d3115e4212432047ff7e64d2b4343a3ccebaf4363a0",
+            "received_at_utc": "2026-07-09T11:59:58.092Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T13:00:00Z",
+            "raw_report": "METAR MPMG 091300Z 33004KT 9000 FEW020 29/26 Q1009 NOSIG",
+            "raw_sha256": "0d3e2d379965ebdcbb5cbff82817fbd838e2aae2eb82d423469646dc64e3e7a8",
+            "received_at_utc": "2026-07-09T13:00:46.292Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T14:00:00Z",
+            "raw_report": "METAR MPMG 091400Z VRB02KT 9000 FEW020 30/26 Q1009 NOSIG",
+            "raw_sha256": "2be537eac32a55e5aafa1781b8fc8f8a91ee644b746097f23491b0aad5783d1e",
+            "received_at_utc": "2026-07-09T14:06:32.160Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T15:00:00Z",
+            "raw_report": "METAR MPMG 091500Z 10004KT 9000 FEW020 32/25 Q1010 NOSIG",
+            "raw_sha256": "38b458e15cb94b2f1ca27839e85be3497212a6b8b8e3823bd079de4e3fc167bc",
+            "received_at_utc": "2026-07-09T15:10:55.600Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T16:00:00Z",
+            "raw_report": "METAR MPMG 091600Z VRB03KT 9000 FEW020 33/26 Q1009 NOSIG",
+            "raw_sha256": "83d80d65b410eb45735571983c1aa4be5b4353901ba24208b5d19af9d8a46e08",
+            "received_at_utc": "2026-07-09T16:00:28.829Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T17:00:00Z",
+            "raw_report": "METAR MPMG 091700Z 15007KT 090V200 9000 SCT018TCU 32/26 Q1009 TEMPO SCT016CB",
+            "raw_sha256": "a38d4e977f1b01d4cb3039ad92ddd20a47c59e507f828266b2c4f09a3e19d428",
+            "received_at_utc": "2026-07-09T17:06:03.820Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T17:36:00Z",
+            "raw_report": "SPECI MPMG 091736Z 17008KT 130V190 8000 TS VCSH SCT015CB SCT080 31/27 Q1009 TEMPO 5000 TSRA",
+            "raw_sha256": "47e6817046d5ac9ba7102bc5aed3b79a7e8c2f2e39d7864eefb5407967add302",
+            "received_at_utc": "2026-07-09T17:40:11.003Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T18:00:00Z",
+            "raw_report": "METAR MPMG 091800Z 07015G32KT 020V110 3200 +TSRA BKN012CB 27/23 Q1009 TEMPO 0800",
+            "raw_sha256": "b0570e00abdc651e05c2760006dc38f28523e0a7b37c126f0c8738c5823413d2",
+            "received_at_utc": "2026-07-09T18:06:07.387Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T18:25:00Z",
+            "raw_report": "SPECI MPMG 091825Z 34006KT 310V010 9000 -TSRA FEW003 SCT015CB BKN080 25/23 Q1008 NOSIG",
+            "raw_sha256": "fa498f88f23dc5b4237c14f24313b2fac210180886da0eefb6046a8e9913b996",
+            "received_at_utc": "2026-07-09T18:31:37.010Z",
+            "report_type": "SPECI",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T19:00:00Z",
+            "raw_report": "METAR MPMG 091900Z 30005KT 260V350 9999 SCT017CB BKN080 25/23 Q1007 RETSRA NOSIG",
+            "raw_sha256": "4c8988e2e19fc00b8b5b394a8851b57ff0ff695089409aa8b7e6fc5feb191e46",
+            "received_at_utc": "2026-07-09T18:57:26.871Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T20:00:00Z",
+            "raw_report": "METAR MPMG 092000Z 34004KT 300V010 9000 -RA SCT017CB BKN080 25/24 Q1006 NOSIG",
+            "raw_sha256": "4ef95251a5a00d81828a3a370e9783dab67b491c7cfa8d68fb41fc71fcd50830",
+            "received_at_utc": "2026-07-09T20:01:44.072Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T21:00:00Z",
+            "raw_report": "METAR MPMG 092100Z 28005KT 240V310 9999 SCT017 BKN080 26/24 Q1007 RERA NOSIG",
+            "raw_sha256": "c286996b106c038a67793695efd881747789934037bbb27421af35c70e816d04",
+            "received_at_utc": "2026-07-09T21:03:48.244Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T22:00:00Z",
+            "raw_report": "METAR MPMG 092200Z 32004KT 300V360 9999 SCT017 BKN080 26/25 Q1007 NOSIG",
+            "raw_sha256": "50360ca2db12a941f38f31b729f4c1718c7bf1738fa841762bd1ebcae8eab143",
+            "received_at_utc": "2026-07-09T22:03:06.995Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-09T23:00:00Z",
+            "raw_report": "METAR MPMG 092300Z 31004KT 9999 SCT017 SCT090 26/25 Q1007 NOSIG",
+            "raw_sha256": "6a89157bbb9b2eb78d8bdbf65af05faef1e1f302b788c362e0e1e4ac2c316416",
+            "received_at_utc": "2026-07-09T22:56:59.651Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-10T00:00:00Z",
+            "raw_report": "METAR MPMG 100000Z 29003KT 250V310 9999 SCT017 SCT090 27/25 Q1009 NOSIG",
+            "raw_sha256": "83d26575fb6279ff0f92bfa4e11cb738d414bd1644a1fa94094970543d2dc8ab",
+            "received_at_utc": "2026-07-10T00:03:46.933Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-10T01:00:00Z",
+            "raw_report": "METAR MPMG 100100Z 35004KT 9999 FEW018 SCT090 26/25 Q1009 NOSIG",
+            "raw_sha256": "42dcfa0251024b1fcf360dfe9e0386ef0de0ce833e3eb2ac175cf5a3c1b59f4b",
+            "received_at_utc": "2026-07-10T01:03:32.330Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-10T02:00:00Z",
+            "raw_report": "METAR MPMG 100200Z VRB02KT 9999 FEW018 SCT090 26/25 Q1009 NOSIG",
+            "raw_sha256": "0b65276c33c99628516925c784b7143388990c80540574f8312e01475cac5b9a",
+            "received_at_utc": "2026-07-10T01:54:18.445Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-10T03:00:00Z",
+            "raw_report": "METAR MPMG 100300Z VRB02KT 9999 FEW018 SCT090 26/26 Q1009 NOSIG",
+            "raw_sha256": "651fc0800a357deb7cbe76b984f32962856ce27397e9cfb3dfa4fe7eed5677ef",
+            "received_at_utc": "2026-07-10T02:55:12.651Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 33.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-47c0fd63cdbd9a50aa44639ddc557fcb"
+    },
+    {
+      "event_date": "2026-07-12",
+      "receipts": {
+        "metar_response_sha256": "9b3a5a058defddfe17674483c99c5b1602a7313f4467f9585e4b893c4621242b",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260713_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-13T05:00:00Z",
+        "start_utc": "2026-07-12T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "638eea26a6f0b0a89dfe17736aae80335118c3f0dde2ba6c8fb6d253e09e6007",
+        "observation_count": 27,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T05:00:00Z",
+            "raw_report": "METAR MPMG 120500Z AUTO 30003KT 270V360 //// R01///// // FEW100/// BKN160/// 27/26 Q1010",
+            "raw_sha256": "4c8a6983d13c03acb85ea824d0795334433f114ef4d5287cccf8044a1472fe83",
+            "received_at_utc": "2026-07-12T05:22:13.742Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T06:00:00Z",
+            "raw_report": "METAR MPMG 120600Z AUTO 28004KT 260V320 //// R01///// // FEW100/// BKN160/// 27/26 Q1010",
+            "raw_sha256": "db5c630f829984b6c878f3f06ddabf505badea1e6830072a3bfd51bc2158e46b",
+            "received_at_utc": "2026-07-12T06:08:14.804Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T07:00:00Z",
+            "raw_report": "METAR MPMG 120700Z AUTO 31004KT 270V350 //// R01///// // SCT033/// SCT099/// BKN160/// 27/26 Q1009",
+            "raw_sha256": "5d3073d320e642b19ba24770ae806a86d53ef7be4b0eab07a59e3987eafc5ce5",
+            "received_at_utc": "2026-07-12T08:44:08.827Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T08:00:00Z",
+            "raw_report": "METAR MPMG 120800Z AUTO 32004KT 290V350 //// R01///// // FEW037/// SCT089/// BKN160/// 27/26 Q1009",
+            "raw_sha256": "0c25daadd48b5e432581825fe7babb337ba520373ec5915b44213da0479bafdf",
+            "received_at_utc": "2026-07-12T08:44:08.814Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T10:00:00Z",
+            "raw_report": "METAR MPMG 121000Z AUTO 00000KT //// R01///// // BKN098/// BKN160/// 26/26 Q1010",
+            "raw_sha256": "220db204daa1c42066a71ac6abcb4dd74135d9acb67a110761e2fa2980edb121",
+            "received_at_utc": "2026-07-12T10:34:04.899Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T11:00:00Z",
+            "raw_report": "METAR MPMG 121100Z VRB02KT 9000 FEW007 SCT017CB SCT080 27/26 Q1010 NOSIG",
+            "raw_sha256": "512dcc7849f94abdabd2ecbc421ef6790c7cf96d5ad476c8e52b46fe4a3522e4",
+            "received_at_utc": "2026-07-12T11:09:36.544Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T12:00:00Z",
+            "raw_report": "METAR MPMG 121200Z VRB02KT 9000 FEW018CB 27/26 Q1010 NOSIG",
+            "raw_sha256": "c22e773b2c1c1e9fe3a53a4482d4b47a4a3f0260a3125b49eb72673c42a0a1f3",
+            "received_at_utc": "2026-07-12T12:03:17.177Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T13:00:00Z",
+            "raw_report": "METAR MPMG 121300Z 32004KT 300V360 9000 FEW018CB 28/26 Q1011 NOSIG",
+            "raw_sha256": "7c1bb206420f5d4e3a0003415795bfc0fd56437aab99566ee38ae512c4bcb093",
+            "received_at_utc": "2026-07-12T13:03:29.768Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T14:00:00Z",
+            "raw_report": "METAR MPMG 121400Z 31005KT 270V350 9000 FEW017CB SCT080 29/26 Q1011 NOSIG",
+            "raw_sha256": "f0cbbc35a88ca3e3cf48ec628e19e9f33d0396404328e2bbbddba97dbfad6f5d",
+            "received_at_utc": "2026-07-12T14:03:04.544Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T15:00:00Z",
+            "raw_report": "METAR MPMG 121500Z 31006KT 270V350 9000 SCT018 SCT080 30/26 Q1011 NOSIG",
+            "raw_sha256": "42a9664890cf20613672d2d53a45c7f63b08d20fc0d7608f8cf0d10cca61c77c",
+            "received_at_utc": "2026-07-12T15:00:50.565Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T16:00:00Z",
+            "raw_report": "METAR MPMG 121600Z 31008KT 9000 SCT017TCU SCT080 30/25 Q1011 NOSIG",
+            "raw_sha256": "ce325eba6f5a285edabfa5b3188756862cab39b59f06a807d7d256f6bbcb9167",
+            "received_at_utc": "2026-07-12T16:02:29.840Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T16:32:00Z",
+            "raw_report": "SPECI MPMG 121632Z 31007KT 280V350 9000 -RA SCT016TCU SCT080 30/25 Q1011 TEMPO 6000 RA",
+            "raw_sha256": "bf95b27e99b0b935187de192291992c40d8a5e8150aa75349e193c693551a1f9",
+            "received_at_utc": "2026-07-12T16:44:05.197Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T17:00:00Z",
+            "raw_report": "METAR MPMG 121700Z 33005KT 300V360 9000 -RA SCT016TCU SCT080 30/26 Q1011 TEMPO 6000 RA",
+            "raw_sha256": "94c9e7065d2a5466dddc5438aba1447ced66a355fb2241c06a75f4aca1055f4a",
+            "received_at_utc": "2026-07-12T17:06:05.795Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T17:23:00Z",
+            "raw_report": "SPECI MPMG 121723Z 25003KT 180V310 9000 SCT016TCU SCT080 31/26 Q1011 RERA NOSIG",
+            "raw_sha256": "634d9b1b4c925e43136f39162e6fe3eee0ad0b36bc5b9207ec59e7813bcd1996",
+            "received_at_utc": "2026-07-12T17:51:18.933Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T18:00:00Z",
+            "raw_report": "METAR MPMG 121800Z 29004KT 240V340 9000 SCT016TCU SCT080 31/26 Q1010 TEMPO SCT016CB",
+            "raw_sha256": "95bbd6f5a5f33d34735676ce8fbb8949e0fbb38bda6dd3641baa03f609853f82",
+            "received_at_utc": "2026-07-12T18:06:09.742Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T18:22:00Z",
+            "raw_report": "SPECI MPMG 121822Z VRB02KT 9000 TS VCSH SCT016CB SCT080 31/26 Q1010 TEMPO 6000 TSRA",
+            "raw_sha256": "1692c611d9001fc4c3c2b05cefced339fa1978153944288d2e69a76ff7c41fa7",
+            "received_at_utc": "2026-07-12T18:23:03.153Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T19:00:00Z",
+            "raw_report": "METAR MPMG 121900Z 36009KT 8000 TS VCSH SCT016CB BKN080 30/26 Q1010 TEMPO 6000 TSRA",
+            "raw_sha256": "4a6f92d22fd1ef53efcff4d1010e6d37429f80fa481ec4992f77a38f1f6b89ce",
+            "received_at_utc": "2026-07-12T19:06:05.435Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T20:00:00Z",
+            "raw_report": "METAR MPMG 122000Z 32007KT 8000 TS VCSH SCT015CB BKN080 31/26 Q1009 TEMPO 6000 TSRA",
+            "raw_sha256": "18b5ec01d5d33c564d959ae106b091f61ac87ea2f98c8a2a89ac9e7eb8aad21d",
+            "received_at_utc": "2026-07-12T20:06:11.243Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T21:00:00Z",
+            "raw_report": "METAR MPMG 122100Z 33007KT 8000 TS VCSH FEW008 BKN015CB 30/26 Q1009 TEMPO 5000 TSRA",
+            "raw_sha256": "dcd01419832e60e02a7156dc6393f7245ea39f000fbce97e12b99ddf679008cb",
+            "received_at_utc": "2026-07-12T21:06:08.838Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T22:00:00Z",
+            "raw_report": "METAR MPMG 122200Z 10007KT 8000 TS VCSH FEW008 BKN015CB 27/24 Q1009 TEMPO 5000 TSRA",
+            "raw_sha256": "0a79f755b096114b17febde90fe2b5a36fe2eb5a33bdabee6ba50c03398890a2",
+            "received_at_utc": "2026-07-12T22:06:06.323Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T22:10:00Z",
+            "raw_report": "SPECI MPMG 122210Z VRB02KT 6000 TSRA FEW008 BKN015CB 27/24 Q1009 TEMPO 5000 TSRA",
+            "raw_sha256": "680dbb20f8a32c507d58b63c1d731fa35f459302cc401eb772931907a45d8a85",
+            "received_at_utc": "2026-07-12T22:13:05.031Z",
+            "report_type": "SPECI",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T23:00:00Z",
+            "raw_report": "METAR MPMG 122300Z 20005KT 6000 TSRA FEW006 BKN012CB 26/25 Q1010 TEMPO 5000 TSRA",
+            "raw_sha256": "ab3590f8e698ef50d2ec23013e2e1e38274dd29b0d41f5d51653438f3f6242ef",
+            "received_at_utc": "2026-07-12T23:06:05.348Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-12T23:44:00Z",
+            "raw_report": "SPECI MPMG 122344Z 29005KT 9000 -TSRA FEW006 BKN015CB 26/25 Q1010 TEMPO 6000 TSRA",
+            "raw_sha256": "e954a2c795a5162560223e2e3492bac14e3d7c95cab220316ee8cb35c8e0f585",
+            "received_at_utc": "2026-07-12T23:47:04.476Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-13T00:00:00Z",
+            "raw_report": "METAR MPMG 130000Z 29005KT 8000 -TSRA FEW006 SCT015CB BKN070 26/25 Q1010 TEMPO 5000 TSRA",
+            "raw_sha256": "9603c73ca6a31034267dc224faba7c5d35c7cbd429a0aa206d95f6255c41d31f",
+            "received_at_utc": "2026-07-13T00:54:03.960Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-13T01:00:00Z",
+            "raw_report": "METAR MPMG 130100Z 31004KT 9000 -RA SCT016 BKN080 26/24 Q1011 RETS NOSIG",
+            "raw_sha256": "d977fa01df1252d6aa1683ac025ca8a1a10713854af09db7e6b642d0e5732c15",
+            "received_at_utc": "2026-07-13T01:06:27.432Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-13T02:00:00Z",
+            "raw_report": "METAR MPMG 130200Z 30004KT 9000 -RA SCT016 BKN080 26/24 Q1012 NOSIG",
+            "raw_sha256": "d6b6c4bbdcbe61267891cb5e45bc698299e088fcd19697a96753753a4f80ec48",
+            "received_at_utc": "2026-07-13T01:58:43.024Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-13T04:00:00Z",
+            "raw_report": "METAR MPMG 130400Z AUTO VRB02KT //// R01///// // SCT071/// BKN088/// BKN160/// 26/25 Q1013",
+            "raw_sha256": "10d42386190b29517f944674690a423774b8160372005453bb60abe7c66c4786",
+            "received_at_utc": "2026-07-13T04:06:07.003Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 31.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-89f1a60b78355e81ad5d20739087a79f"
+    },
+    {
+      "event_date": "2026-07-14",
+      "receipts": {
+        "metar_response_sha256": "6f3cab64c742b568a989e9d2ef6683f5f5ccf66fec8b563e5104c6b3f5c2491b",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260715_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-15T05:00:00Z",
+        "start_utc": "2026-07-14T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "d5337a7b1ac0a97ff975a7005da2410356951f9d2140027f2a9fdb528dc6f374",
+        "observation_count": 31,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T05:00:00Z",
+            "raw_report": "METAR MPMG 140500Z AUTO 31004KT //// R01///// // BKN010/// 26/25 Q1012",
+            "raw_sha256": "02aed228c178148b43370882479632ddd0caeba9ecdee47f6460a0f67c1a3353",
+            "received_at_utc": "2026-07-14T05:12:05.103Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T05:17:00Z",
+            "raw_report": "SPECI MPMG 140517Z AUTO 31005KT //// R01///// // SCT010/// BKN016/// BKN220/// 26/25 Q1012",
+            "raw_sha256": "ce4fd05b68d07f205e4e8d7dd3a92bed51cafced671b51e36605e53a39dbd7e3",
+            "received_at_utc": "2026-07-14T05:19:01.475Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T05:19:00Z",
+            "raw_report": "SPECI MPMG 140519Z AUTO 32005KT //// R01///// // SCT010/// BKN014/// BKN220/// 26/25 Q1012",
+            "raw_sha256": "b35498bd87c67266933c98d4fd3d0d71c7827253bc699d83eeb4110adbcd9f42",
+            "received_at_utc": "2026-07-14T05:28:05.709Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T05:44:00Z",
+            "raw_report": "SPECI MPMG 140544Z AUTO 31004KT //// R01///// // SCT010/// BKN019/// BKN160/// 26/25 Q1011",
+            "raw_sha256": "8e4f2b3780bb430618db46dce3c09db5f7d8bfbe6c5be2ec97c0b51615c25420",
+            "received_at_utc": "2026-07-14T05:53:07.326Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T05:51:00Z",
+            "raw_report": "SPECI MPMG 140551Z AUTO 31005KT //// R01///// // BKN010/// BKN019/// BKN160/// 26/25 Q1011",
+            "raw_sha256": "bd88b40b807e1e29c4a853aeb653e6172d9911c0c828fae190a9c6be7bc9d17e",
+            "received_at_utc": "2026-07-14T05:53:07.351Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T06:00:00Z",
+            "raw_report": "METAR MPMG 140600Z AUTO 31005KT //// R01///// // BKN010/// BKN019/// BKN160/// 26/25 Q1011",
+            "raw_sha256": "8fdaf4fee50e584d9fe6126d561ca3cd91f219b5aa73014003b03c73e8910b1d",
+            "received_at_utc": "2026-07-14T06:06:11.415Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T06:05:00Z",
+            "raw_report": "SPECI MPMG 140605Z AUTO 31004KT //// R01///// // SCT010/// BKN160/// 26/25 Q1011",
+            "raw_sha256": "f661f0b6f6addb336e1a0225b8f566c863c68cc28251cb78b0d8cc098a8206df",
+            "received_at_utc": "2026-07-14T06:14:13.623Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T06:13:00Z",
+            "raw_report": "SPECI MPMG 140613Z AUTO 32005KT //// R01///// // BKN010/// BKN160/// 26/25 Q1011",
+            "raw_sha256": "0054afb0a304f5bdb155e55d8fb5fdc193fbaf96a837632ca47f408e1f1182ca",
+            "received_at_utc": "2026-07-14T06:14:13.617Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T07:00:00Z",
+            "raw_report": "METAR MPMG 140700Z AUTO 31006KT //// R01///// // FEW011/// SCT050/// BKN220/// 26/25 Q1010",
+            "raw_sha256": "d6cc8f6106e469b07d63113d2a8ba597883ab7b5b7759ba1df828bdaf4737509",
+            "received_at_utc": "2026-07-14T07:08:17.616Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T08:00:00Z",
+            "raw_report": "METAR MPMG 140800Z AUTO 32006KT 280V340 //// R01///// // BKN010/// BKN020/// BKN220/// 26/25 Q1010",
+            "raw_sha256": "4db9c63069b38f0119091131572264392fb3e504ad08917a52b6eac70f2a138f",
+            "received_at_utc": "2026-07-14T08:06:08.344Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T09:00:00Z",
+            "raw_report": "METAR MPMG 140900Z AUTO 33006KT //// R01///// // FEW013/// OVC031/// 27/25 Q1009",
+            "raw_sha256": "06885a79c5b28cc2bcacf5d26aa5efe2df6bc7fff88c937f8d9038929fed5528",
+            "received_at_utc": "2026-07-14T09:06:10.112Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T10:00:00Z",
+            "raw_report": "METAR MPMG 141000Z AUTO 32005KT //// R01///// // FEW100/// BKN160/// 26/25 Q1009",
+            "raw_sha256": "5311d443ac15801e2db0c1b102000e3b53a9f9c2920127bdbaf139ed9aa4c30e",
+            "received_at_utc": "2026-07-14T10:10:03.472Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T11:00:00Z",
+            "raw_report": "METAR MPMG 141100Z 31006KT 9999 SCT018 26/25 Q1009 NOSIG",
+            "raw_sha256": "837e83642bb1c6e3a3fe56a4bf7106b1f76cf2050c078d4af2809caf5be3b9e1",
+            "received_at_utc": "2026-07-14T10:51:47.106Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T12:00:00Z",
+            "raw_report": "METAR MPMG 141200Z 31005KT 280V340 9999 FEW018 26/25 Q1009 NOSIG",
+            "raw_sha256": "c4eb4b42881dfd708ac27eb3a7a430cd94340e27806c0da4e835f759f0263fd1",
+            "received_at_utc": "2026-07-14T11:56:03.543Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T13:00:00Z",
+            "raw_report": "METAR MPMG 141300Z 32008KT 9999 FEW018 27/26 Q1009 NOSIG",
+            "raw_sha256": "493620eff1fc8b0bc75086245266d1abbe1e6184dda178e45ef4680bc966a170",
+            "received_at_utc": "2026-07-14T12:56:56.082Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T14:00:00Z",
+            "raw_report": "METAR MPMG 141400Z 33008KT 9999 FEW018 29/25 Q1010 NOSIG",
+            "raw_sha256": "8ce903b3d350b1d6d589d0e7e754a8a995f65a32f6f3ab2d5b73735107e8be7f",
+            "received_at_utc": "2026-07-14T13:55:36.941Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T15:00:00Z",
+            "raw_report": "METAR MPMG 141500Z 34008KT 310V020 9999 SCT020 31/25 Q1010 NOSIG",
+            "raw_sha256": "2e054ab28fd6aaaef12727286774a062a6565d5e858b98c389d1f0153cf63290",
+            "received_at_utc": "2026-07-14T14:52:54.977Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T16:00:00Z",
+            "raw_report": "METAR MPMG 141600Z 34009KT 310V010 9999 SCT020 32/25 Q1009 NOSIG",
+            "raw_sha256": "476275c24d47be8ae7fe25cd5f2d6cc2f8652a983082d83edfdda362e2f04f9a",
+            "received_at_utc": "2026-07-14T15:54:37.518Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T17:00:00Z",
+            "raw_report": "METAR MPMG 141700Z 33010KT 9999 SCT018TCU 33/25 Q1009 NOSIG",
+            "raw_sha256": "c9a19b0112a0e7551d4695e210dc9d8bc2911ce78667c498b3e3e82a8c3adbe3",
+            "received_at_utc": "2026-07-14T16:52:37.860Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T18:00:00Z",
+            "raw_report": "METAR MPMG 141800Z VRB04KT 9999 SCT018TCU 33/25 Q1008 NOSIG",
+            "raw_sha256": "8ba7f2340a128378495921dd3fa84c34870bab3fae364398e084b2740612a1ba",
+            "received_at_utc": "2026-07-14T17:55:00.475Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T19:00:00Z",
+            "raw_report": "METAR MPMG 141900Z 19005KT 140V240 7000 -RA SCT016CB SCT090 31/27 Q1007 NOSIG",
+            "raw_sha256": "d0d62b70b379248f79f9b0db632daeec6c07bfcbd150498a65677c7a5837072b",
+            "received_at_utc": "2026-07-14T18:59:25.048Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T20:00:00Z",
+            "raw_report": "METAR MPMG 142000Z VRB05KT 9000 VCSH SCT017CB SCT090 31/27 Q1007 RERA NOSIG",
+            "raw_sha256": "f07975ca3118ebba28a7564edef223245247a71d8f2e18b1ddc195efc8788e37",
+            "received_at_utc": "2026-07-14T19:56:49.540Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T20:22:00Z",
+            "raw_report": "SPECI MPMG 142022Z 25007KT 210V310 6000 RA SCT016CB SCT090 31/27 Q1006 TEMPO 4000 +RA",
+            "raw_sha256": "5e5891c5a78f65d5e3bab6ff76316b1963225db3a8b3132dea80c943e4f66776",
+            "received_at_utc": "2026-07-14T20:23:03.651Z",
+            "report_type": "SPECI",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T21:00:00Z",
+            "raw_report": "METAR MPMG 142100Z 30013KT 9999 SCT016TCU 31/27 Q1006 RERA NOSIG",
+            "raw_sha256": "fc2b5f1369fdb0907c0fec143fd3ecd43cd1c9441420e9caf11b49a7afd64792",
+            "received_at_utc": "2026-07-14T21:01:32.258Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T22:00:00Z",
+            "raw_report": "METAR MPMG 142200Z 30014KT 270V330 9999 SCT016TCU 31/26 Q1006 NOSIG",
+            "raw_sha256": "450072fb4d4429ab2b3c841bfd20bf150b22b1168ce79766f803b482613eb4f6",
+            "received_at_utc": "2026-07-14T21:57:50.323Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-14T23:00:00Z",
+            "raw_report": "METAR MPMG 142300Z 32012KT 280V340 9999 FEW016 30/26 Q1006 NOSIG",
+            "raw_sha256": "38247db674050201cc6ee5f108cfe16dd77840e540bfc9981e5ed7333b68e6d2",
+            "received_at_utc": "2026-07-14T22:59:07.088Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T00:00:00Z",
+            "raw_report": "METAR MPMG 150000Z 31011KT 9999 FEW018 29/26 Q1007 NOSIG",
+            "raw_sha256": "fd58e29b82c991ad7517c76baa3dc8a371b27bd6d621bbcae1daa1ec864a17a6",
+            "received_at_utc": "2026-07-14T23:55:34.728Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T01:00:00Z",
+            "raw_report": "METAR MPMG 150100Z 32008KT 290V350 9999 FEW020 28/26 Q1008 NOSIG",
+            "raw_sha256": "9b7f11da3780b37a3b47ae446cd846eb538e51337383d5ae24f3ae077dd1bacb",
+            "received_at_utc": "2026-07-15T00:59:47.517Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T02:00:00Z",
+            "raw_report": "METAR MPMG 150200Z 32008KT CAVOK 28/25 Q1009 NOSIG",
+            "raw_sha256": "3cfa70ecbde1cd1a19d2d48b62c3d37055825cdd2e8b2a9a6b7619750c8f33b1",
+            "received_at_utc": "2026-07-15T01:57:25.951Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T03:00:00Z",
+            "raw_report": "METAR MPMG 150300Z 33006KT CAVOK 28/25 Q1010 NOSIG",
+            "raw_sha256": "79de25dec9ec32f02c25828fe56472b3a3a4980dfbde1202f4ba5d5d8a9bd1f5",
+            "received_at_utc": "2026-07-15T02:52:09.602Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T04:00:00Z",
+            "raw_report": "METAR MPMG 150400Z AUTO 31006KT //// R01///// // OVC160/// 27/25 Q1010",
+            "raw_sha256": "4c595aab0d1f554efd67564f08f3905a0a9f908a9f351ba918c0f0a5730ef3fa",
+            "received_at_utc": "2026-07-15T04:06:04.733Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 33.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-5b3974bbeef846558b041c7a9a6449b9"
+    },
+    {
+      "event_date": "2026-07-15",
+      "receipts": {
+        "metar_response_sha256": "c096fda99c816b7c342187cb701582804e18d4b48a9a339fdd192a2a5a958291",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260716_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-16T05:00:00Z",
+        "start_utc": "2026-07-15T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "4b355ef6b6543f886fcab592ad210c852439a9fb143100d6fb2d47162b0c7115",
+        "observation_count": 24,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T05:00:00Z",
+            "raw_report": "METAR MPMG 150500Z AUTO 32004KT //// R01///// // OVC160/// 27/25 Q1010",
+            "raw_sha256": "3fa20fd9c736cc2f6e79adaaf378980b647ca1c5275794b34412bfb52e4a18d3",
+            "received_at_utc": "2026-07-15T05:20:21.152Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T06:00:00Z",
+            "raw_report": "METAR MPMG 150600Z AUTO 31005KT //// R01///// // BKN160/// 27/25 Q1009",
+            "raw_sha256": "c2193e3a70d308653dfac4d7c2770bdb040ee0e2bf4bca707a7c069bdc482b5e",
+            "received_at_utc": "2026-07-15T06:18:08.856Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T07:00:00Z",
+            "raw_report": "METAR MPMG 150700Z AUTO VRB02KT //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "21ee84be09ce0d78b77e64eb0c675419aa4f08c23ef127bd742c085d211f8d8c",
+            "received_at_utc": "2026-07-15T07:34:05.046Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T08:00:00Z",
+            "raw_report": "METAR MPMG 150800Z AUTO 33005KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "e51d9d972f3981e9bcf04c9e2abac436f2dd82c176de966d05161b1688172cc4",
+            "received_at_utc": "2026-07-15T08:06:11.433Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T09:00:00Z",
+            "raw_report": "METAR MPMG 150900Z AUTO 33004KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "b89570252f76b9cf3a4982cda0e7517783d47618e826278a2ec1cc6465cc3c94",
+            "received_at_utc": "2026-07-15T09:06:14.052Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T10:00:00Z",
+            "raw_report": "METAR MPMG 151000Z AUTO 31006KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "f9701115890138b8a7e4ec15265ae93c5475e63f727d97749883078a1565b895",
+            "received_at_utc": "2026-07-15T10:06:08.298Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T11:00:00Z",
+            "raw_report": "METAR MPMG 151100Z 31004KT 9000 NSC 26/25 Q1008 NOSIG",
+            "raw_sha256": "a6ac7875bb3734b2362223fe160780d6825666be8673ba6bb56aacffacb535e9",
+            "received_at_utc": "2026-07-15T10:53:39.226Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T12:00:00Z",
+            "raw_report": "METAR MPMG 151200Z 31003KT 8000 NSC 27/25 Q1008 NOSIG",
+            "raw_sha256": "ca13a902bd737efc27d60b17de1c3f2649d9ca6d019b5d0119373f792436fb1d",
+            "received_at_utc": "2026-07-15T11:46:59.582Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T13:00:00Z",
+            "raw_report": "METAR MPMG 151300Z 32006KT 9000 NSC 29/25 Q1008 NOSIG",
+            "raw_sha256": "372d82db6ea659e76ee4d2e9eee4a8339db94c0baf041d189cc5f84ab37fec20",
+            "received_at_utc": "2026-07-15T13:00:29.325Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T14:00:00Z",
+            "raw_report": "METAR MPMG 151400Z 33007KT 9000 NSC 30/25 Q1009 NOSIG",
+            "raw_sha256": "ee11faa101cad7aeccbd82c73f87d6ed05d11d7602864a0451a7e63457f417c3",
+            "received_at_utc": "2026-07-15T14:04:41.126Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T15:00:00Z",
+            "raw_report": "METAR MPMG 151500Z 34009KT 9000 FEW030 31/25 Q1009 NOSIG",
+            "raw_sha256": "b642f05a88004320708bd41f99eee4e2e9682c742f3ccd144aae635df3d6cb92",
+            "received_at_utc": "2026-07-15T14:58:48.160Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T16:00:00Z",
+            "raw_report": "METAR MPMG 151600Z 33008KT 9000 FEW020 33/25 Q1008 NOSIG",
+            "raw_sha256": "d7f555a3205515c9665416a9d93de9817fb4482a531a2c69fe83224a1c93aafd",
+            "received_at_utc": "2026-07-15T16:03:28.220Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T17:00:00Z",
+            "raw_report": "METAR MPMG 151700Z 31009KT 9000 SCT020 33/25 Q1008 NOSIG",
+            "raw_sha256": "8889fcc4b1ce316ff584a4f580077622da87181a9c3fd9e3f22c506da340339d",
+            "received_at_utc": "2026-07-15T16:56:59.567Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T18:00:00Z",
+            "raw_report": "METAR MPMG 151800Z 31009KT 9000 SCT018TCU 34/26 Q1008 NOSIG",
+            "raw_sha256": "5c7f240c5c6258020336a52f67ea0b8652a48e3d1e5112ffe8129d177e6c0d85",
+            "received_at_utc": "2026-07-15T18:00:40.039Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T19:00:00Z",
+            "raw_report": "METAR MPMG 151900Z 30013KT 270V330 9000 VCSH SCT017CB 33/25 Q1007 TEMPO TS",
+            "raw_sha256": "3ad88487185663486472117c116c424d66233582fd9d9ae790903b3fcb0b3f6a",
+            "received_at_utc": "2026-07-15T19:06:12.826Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T20:00:00Z",
+            "raw_report": "METAR MPMG 152000Z 30011KT 270V340 9999 SCT017TCU 33/25 Q1006 NOSIG",
+            "raw_sha256": "4fd87144e20014d99ece7fda54e15be723d10c67c3cf0b2c1b75ed4e55733b51",
+            "received_at_utc": "2026-07-15T19:55:26.067Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T21:00:00Z",
+            "raw_report": "METAR MPMG 152100Z 31013KT 280V340 9999 SCT017TCU 32/25 Q1006 NOSIG",
+            "raw_sha256": "ae410726e64e3748c9b6ed24dc8fa0218c1966e5d0289756bb80a9a84b530ef9",
+            "received_at_utc": "2026-07-15T21:04:38.379Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T22:00:00Z",
+            "raw_report": "METAR MPMG 152200Z 31010KT 280V340 9999 SCT018CB 31/26 Q1006 NOSIG",
+            "raw_sha256": "01e0022c00daf332ab192cb53ffcc5a9f742b17fc0b481354e7d42619567dc99",
+            "received_at_utc": "2026-07-15T21:57:14.987Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-15T23:00:00Z",
+            "raw_report": "METAR MPMG 152300Z 30010KT 270V330 9999 SCT018 31/26 Q1006 NOSIG",
+            "raw_sha256": "f99f11d6661d677005715b8560467659afb03b32849f80955bf513277b287cfd",
+            "received_at_utc": "2026-07-15T22:57:30.910Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-16T00:00:00Z",
+            "raw_report": "METAR MPMG 160000Z 32010KT 9999 FEW018TCU 30/26 Q1007 NOSIG",
+            "raw_sha256": "bbe17f141d8ee2b9802af0bad569c8d90d7138fb693e201b783c31b42b0f3ae4",
+            "received_at_utc": "2026-07-15T23:56:21.632Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-16T01:00:00Z",
+            "raw_report": "METAR MPMG 160100Z 31009KT 9999 FEW020 29/26 Q1008 NOSIG",
+            "raw_sha256": "59d2261957003097dc20d9488c582cddb6c23796afed32e43bac7e0e8e434685",
+            "received_at_utc": "2026-07-16T01:00:51.886Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-16T02:00:00Z",
+            "raw_report": "METAR MPMG 160200Z 31006KT 9999 FEW020 28/26 Q1008 NOSIG",
+            "raw_sha256": "ab4bb865f46f651204bfa26fd74f778a917d9fd597f6fd41f67fb41325c5b5e4",
+            "received_at_utc": "2026-07-16T01:49:48.745Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-16T03:00:00Z",
+            "raw_report": "METAR MPMG 160300Z 33006KT 300V010 CAVOK 28/26 Q1009 NOSIG",
+            "raw_sha256": "b472921998af73b9797d24b262b4c6b0ef1c7429e24d0a658f09e3d5b29d4e60",
+            "received_at_utc": "2026-07-16T03:00:31.045Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-16T04:00:00Z",
+            "raw_report": "METAR MPMG 160400Z AUTO 31006KT //// R01///// // FEW099/// BKN160/// 28/26 Q1009",
+            "raw_sha256": "be337bf2a26dd988d608bc2dd504a2ad1a5d3022a8e33b69e944f3bd8b3a2428",
+            "received_at_utc": "2026-07-16T04:06:05.786Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 34.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-8e1cfb10f744547d1d5c89c2f2149014"
+    },
+    {
+      "event_date": "2026-07-17",
+      "receipts": {
+        "metar_response_sha256": "42ed859e75c1c4e51003c187031b4d6409616f44142a836783c30b08415445e0",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260718_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-18T05:00:00Z",
+        "start_utc": "2026-07-17T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "f5fd179a19c97f681a75d2c0dae89ae29420a0f7cec3749ea7e34b62cc20fffb",
+        "observation_count": 24,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T05:00:00Z",
+            "raw_report": "METAR MPMG 170500Z AUTO 33008KT //// R01///// // SCT036/// BKN160/// 28/26 Q1009",
+            "raw_sha256": "0b9188ea629ecb702fc96837d40c8e166fccf3d51025930e52330da85f1e5dc2",
+            "received_at_utc": "2026-07-17T05:06:06.354Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T06:00:00Z",
+            "raw_report": "METAR MPMG 170600Z AUTO 34007KT //// R01///// // FEW039/// BKN160/// 28/25 Q1009",
+            "raw_sha256": "f900609584d8d46aed64ce27849f6eda107329923941922c57471742de9bb3d3",
+            "received_at_utc": "2026-07-17T06:22:08.072Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T07:00:00Z",
+            "raw_report": "METAR MPMG 170700Z AUTO 36004KT 330V030 //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "0b2be7072ea4a98290a9c91599ea805620697b9aa89f29029116d333081fd34d",
+            "received_at_utc": "2026-07-17T07:18:03.129Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T08:00:00Z",
+            "raw_report": "METAR MPMG 170800Z AUTO 33005KT //// R01///// // SCT036/// BKN160/// 27/25 Q1009",
+            "raw_sha256": "f31fcbb247d4ae756668d59c13519c14f92cf5e88d6a8aef1a896541adbccd32",
+            "received_at_utc": "2026-07-17T08:06:07.069Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T09:00:00Z",
+            "raw_report": "METAR MPMG 170900Z AUTO 33006KT //// R01///// // SCT036/// BKN160/// 27/25 Q1008",
+            "raw_sha256": "64ed202f1408eb45656a30c4cf2b8d5f01a14c0b48c80e7ac060a9d7e8dbae34",
+            "received_at_utc": "2026-07-17T09:06:07.619Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T10:00:00Z",
+            "raw_report": "METAR MPMG 171000Z AUTO 32005KT //// R01///// // FEW035/// BKN160/// 27/25 Q1008",
+            "raw_sha256": "fb49dd9c58fc9811e6c7ec967f3152017f831c6cd80bf9d3a9a81dfe6901fa45",
+            "received_at_utc": "2026-07-17T10:06:05.823Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T11:00:00Z",
+            "raw_report": "METAR MPMG 171100Z 32005KT 290V360 9000 NSC 27/25 Q1008 NOSIG",
+            "raw_sha256": "ddeb2a6e0d7aae7c83b3edf00e5c13709ec451bf2b0f26f7aa892437085bc7c4",
+            "received_at_utc": "2026-07-17T10:59:58.270Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T12:00:00Z",
+            "raw_report": "METAR MPMG 171200Z 32004KT 9000 NSC 27/25 Q1009 NOSIG",
+            "raw_sha256": "a792b80fcf19c8ae828091cb220a82b77b643100bddd4dcecb52a1dd9f492154",
+            "received_at_utc": "2026-07-17T11:54:44.078Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T13:00:00Z",
+            "raw_report": "METAR MPMG 171300Z 31007KT 9000 NSC 28/25 Q1009 NOSIG",
+            "raw_sha256": "6714f3b5e3375251fd8b860b59cc8e6326a329f8094b1a03accc4f47635e75d4",
+            "received_at_utc": "2026-07-17T13:02:16.413Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T14:00:00Z",
+            "raw_report": "METAR MPMG 171400Z 34009KT 310V010 9000 SCT020 30/25 Q1009 NOSIG",
+            "raw_sha256": "e65ea1d22f1f283cfa68d2a5635d78f90240598f9ada68af607944339c28c474",
+            "received_at_utc": "2026-07-17T14:08:32.455Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T15:00:00Z",
+            "raw_report": "METAR MPMG 171500Z 35010KT 330V030 9000 SCT020 31/25 Q1010 NOSIG",
+            "raw_sha256": "12db4b42e67dfbfcce78895daa65f24c838575a45d68f0b892ae74c71ad71982",
+            "received_at_utc": "2026-07-17T14:59:32.035Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T16:00:00Z",
+            "raw_report": "METAR MPMG 171600Z 01009KT 340V040 9000 SCT020TCU 32/25 Q1009 NOSIG",
+            "raw_sha256": "c98b73499f539c380398c5bacdb495cd6098893a19d5e18235740a8ce31199e7",
+            "received_at_utc": "2026-07-17T16:01:59.386Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T17:00:00Z",
+            "raw_report": "METAR MPMG 171700Z 36011KT 330V040 9000 SCT020 33/25 Q1009 NOSIG",
+            "raw_sha256": "94e0380f97bb832594faed6e639ba17463ec91e515b2f2fc08837d0d4857a5fc",
+            "received_at_utc": "2026-07-17T16:59:29.454Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T18:00:00Z",
+            "raw_report": "METAR MPMG 171800Z 34011KT 310V010 9000 SCT020 33/24 Q1008 NOSIG",
+            "raw_sha256": "e66236fa6eea4db107052e67dc50f89c96282cd6da72bff04bedd24ea520d1f9",
+            "received_at_utc": "2026-07-17T18:01:49.498Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T19:00:00Z",
+            "raw_report": "METAR MPMG 171900Z 34014KT 9000 FEW030 34/24 Q1007 NOSIG",
+            "raw_sha256": "4879c66b8a09e21d3e22ba4dc5aa39e3f1bc3e3dca5316de54848523bfe7a501",
+            "received_at_utc": "2026-07-17T18:55:59.084Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T20:00:00Z",
+            "raw_report": "METAR MPMG 172000Z 34013KT 9000 FEW030 34/24 Q1007 NOSIG",
+            "raw_sha256": "3730f5fc8f1a7160853f1e5fb8ecc42406061f6de6360799d68cc4b03979f374",
+            "received_at_utc": "2026-07-17T19:56:46.298Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T21:00:00Z",
+            "raw_report": "METAR MPMG 172100Z 33013KT 9000 FEW030 34/24 Q1007 NOSIG",
+            "raw_sha256": "e199c29408c981964ef887db68c7b4a5d3f6006084fafc2af941e3b80865ae2d",
+            "received_at_utc": "2026-07-17T20:57:30.763Z",
+            "report_type": "METAR",
+            "temperature_c": 34.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T22:00:00Z",
+            "raw_report": "METAR MPMG 172200Z 32013KT 9000 SCT030 32/24 Q1007 NOSIG",
+            "raw_sha256": "6f9789d32c9a5e3a83054c04b7e261ad91e0ea8e51b3ebc2eb8972cb43c7a567",
+            "received_at_utc": "2026-07-17T22:01:39.332Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-17T23:00:00Z",
+            "raw_report": "METAR MPMG 172300Z 33012KT 9000 NSC 31/24 Q1008 NOSIG",
+            "raw_sha256": "afa656747f361e4c93e3702b78148666319b169bf3124c14c0b1e573c3d5e549",
+            "received_at_utc": "2026-07-17T22:58:46.955Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T00:00:00Z",
+            "raw_report": "METAR MPMG 180000Z 32009KT 9999 FEW020 30/24 Q1009 NOSIG",
+            "raw_sha256": "194299cbd049d4dfbe35c88ee1450369b7f210ec0fd768820fcfdbe7a8da56d0",
+            "received_at_utc": "2026-07-18T00:01:27.892Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T01:00:00Z",
+            "raw_report": "METAR MPMG 180100Z 32007KT 9999 FEW020 SCT090 29/25 Q1010 NOSIG",
+            "raw_sha256": "872d5ab1cb7b687b511bc23bbd47ca531a1727477525dbf3d22c2a77d72372a0",
+            "received_at_utc": "2026-07-18T01:12:09.048Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T02:00:00Z",
+            "raw_report": "METAR MPMG 180200Z 32006KT 9999 FEW020 29/25 Q1010 NOSIG",
+            "raw_sha256": "864e359e7a6d587d3be74e1f3dc69c7b561851723c5d13196e793fef4281539d",
+            "received_at_utc": "2026-07-18T01:58:37.939Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T03:00:00Z",
+            "raw_report": "METAR MPMG 180300Z 33006KT 9999 FEW020 28/25 Q1010 NOSIG",
+            "raw_sha256": "e56f6a7bc2bb95c1c2107cea17fa4b375654e1a169dceaf472a28b3ef36b7b35",
+            "received_at_utc": "2026-07-18T03:00:54.926Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T04:00:00Z",
+            "raw_report": "METAR MPMG 180400Z AUTO 31005KT 280V340 //// R01///// // FEW038/// BKN160/// 28/26 Q1011",
+            "raw_sha256": "45d88a93c4883e759a28dec1c44234ab4417ec2af1bca6bb33a7a1146bcc1aa2",
+            "received_at_utc": "2026-07-18T04:06:06.150Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 34.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-3953256258528693b148968625200f2b"
+    },
+    {
+      "event_date": "2026-07-18",
+      "receipts": {
+        "metar_response_sha256": "8b12c19c7e7ed70d9b4b392e88e08714660eb70d93b3880355f80ca626afc84d",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260719_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-19T05:00:00Z",
+        "start_utc": "2026-07-18T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "740c17d3f7ed6f0550b973b4ed122ce5802ea3024acd3cdeb10156cbf6c8994b",
+        "observation_count": 24,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T05:00:00Z",
+            "raw_report": "METAR MPMG 180500Z AUTO 32006KT //// R01///// // BKN035/// BKN160/// 28/25 Q1011",
+            "raw_sha256": "8110f07830d4c9a8309bcc3e078074194fc968a396ecec906dfc05360c330baa",
+            "received_at_utc": "2026-07-18T05:06:06.047Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T06:00:00Z",
+            "raw_report": "METAR MPMG 180600Z AUTO 33005KT //// R01///// // OVC160/// 28/25 Q1010",
+            "raw_sha256": "ead7c947456d5a4e083591c920d55481108f930e7472c6b63b0df2a3b9009ed8",
+            "received_at_utc": "2026-07-18T06:06:08.074Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T07:00:00Z",
+            "raw_report": "METAR MPMG 180700Z AUTO 33005KT //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "2e7fb7e738f3a4441ee4ec10333ea22e4a59fc67424c2489c6705ef8769075ca",
+            "received_at_utc": "2026-07-18T08:36:04.778Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T08:00:00Z",
+            "raw_report": "METAR MPMG 180800Z AUTO 32006KT //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "827d45a074bea7bd3e2cdbbec4d8f63b85bd868c7f49b155e39758ca89b5dfb9",
+            "received_at_utc": "2026-07-18T08:38:05.706Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T09:00:00Z",
+            "raw_report": "METAR MPMG 180900Z AUTO 32007KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "aaddb96d0af8651df3c7f19d6ebb821df6ba27d34b777b7e6d801ab8eaff8f18",
+            "received_at_utc": "2026-07-18T09:38:12.062Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T10:00:00Z",
+            "raw_report": "METAR MPMG 181000Z AUTO 33005KT //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "44f09db59f34e205e54dbc3e81f7bb6a35b328761bcbfda4c5cde9bc28c86728",
+            "received_at_utc": "2026-07-18T10:08:13.208Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T11:00:00Z",
+            "raw_report": "METAR MPMG 181100Z 32005KT 9999 FEW020 27/24 Q1009 NOSIG",
+            "raw_sha256": "5441f8ecedd922a4f74f8cf2c6b12ca7ed7b733c325e39f000627f6f7230794e",
+            "received_at_utc": "2026-07-18T10:59:05.506Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T12:00:00Z",
+            "raw_report": "METAR MPMG 181200Z 32007KT 9999 FEW020 27/25 Q1009 NOSIG",
+            "raw_sha256": "fb2ccdc5defeba67f07882df873ea70cc5cd4e7de59101c6039416bb3e04bdd7",
+            "received_at_utc": "2026-07-18T11:54:33.545Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T13:00:00Z",
+            "raw_report": "METAR MPMG 181300Z 31006KT 9999 FEW020 29/25 Q1010 NOSIG",
+            "raw_sha256": "7ba22941ed4c01cfc3ee13aa2d3ada51e513ee4a935d6b51949c8b572f4bc3e1",
+            "received_at_utc": "2026-07-18T13:00:26.241Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T14:00:00Z",
+            "raw_report": "METAR MPMG 181400Z 32008KT 9999 FEW020 30/25 Q1009 NOSIG",
+            "raw_sha256": "5f8f72c952d39615162bb5267b234b390f9c81340fe142fd1035cf2422828986",
+            "received_at_utc": "2026-07-18T14:04:00.044Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T15:00:00Z",
+            "raw_report": "METAR MPMG 181500Z 33012KT 9999 FEW020 31/25 Q1009 NOSIG",
+            "raw_sha256": "639bb5b79de7c123f5064cbd9527074d8e204e773fe215f3999c56d228f86477",
+            "received_at_utc": "2026-07-18T15:10:34.589Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T16:00:00Z",
+            "raw_report": "METAR MPMG 181600Z 33011KT 9999 SCT018 32/25 Q1009 NOSIG",
+            "raw_sha256": "f93b82789c3a188121ed74a3776e344bc9d10c89d9ecfc91a327f2f6e6b94a12",
+            "received_at_utc": "2026-07-18T16:01:35.404Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T17:00:00Z",
+            "raw_report": "METAR MPMG 181700Z 32011KT 290V350 9999 SCT018TCU 33/24 Q1009 NOSIG",
+            "raw_sha256": "9818be872a706d2b9afe1dd997595250a0a55d3603376dd1a03f8429710c953a",
+            "received_at_utc": "2026-07-18T17:07:28.072Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T18:00:00Z",
+            "raw_report": "METAR MPMG 181800Z 33009KT 280V350 9000 VCSH SCT016TCU SCT090 32/25 Q1009 NOSIG",
+            "raw_sha256": "bea14ad995f59e228aec474ea89c6f4d02d404866ff2e92278552fa9857271aa",
+            "received_at_utc": "2026-07-18T18:01:32.002Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T19:00:00Z",
+            "raw_report": "METAR MPMG 181900Z 30009KT 260V350 9000 VCSH SCT017TCU 33/26 Q1008 NOSIG",
+            "raw_sha256": "16e74e0792473482d1d154582004d5779b1edba5f85c8598774b60e0259110e6",
+            "received_at_utc": "2026-07-18T19:00:59.196Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T20:00:00Z",
+            "raw_report": "METAR MPMG 182000Z 30010KT 270V330 9999 SCT018 33/26 Q1008 NOSIG",
+            "raw_sha256": "62ce8299a8cd70bff3bb99107b1ee91ee52c000da70d6de6ca99739a596a5d7c",
+            "received_at_utc": "2026-07-18T19:58:55.795Z",
+            "report_type": "METAR",
+            "temperature_c": 33.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T21:00:00Z",
+            "raw_report": "METAR MPMG 182100Z 30013KT 9999 SCT018TCU 32/25 Q1008 TEMPO SCT016CB",
+            "raw_sha256": "b6e08ab79afe5bee36e1bb63f48bc1e973f069443707135cd6671c84bb65ec64",
+            "received_at_utc": "2026-07-18T21:06:05.772Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T22:00:00Z",
+            "raw_report": "METAR MPMG 182200Z 31011KT 270V330 9999 SCT018CB 32/25 Q1007 TEMPO 6000 TSRA",
+            "raw_sha256": "59e234428c858eb8ebb09ad4c4e63a381c070922c7dcb21ee40e0a17a7c5e876",
+            "received_at_utc": "2026-07-19T00:42:11.100Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-18T23:00:00Z",
+            "raw_report": "METAR MPMG 182300Z 31011KT 280V340 9999 SCT018CB 31/24 Q1008 NOSIG",
+            "raw_sha256": "7a0f0d66816e33969851724d8266a6c449ecd550b579f40a5323188d0c97db26",
+            "received_at_utc": "2026-07-18T23:41:24.365Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": true,
+            "observed_at_utc": "2026-07-19T00:00:00Z",
+            "raw_report": "METAR MPMG 190000Z COR 31009KT 9999 FEW018TCU 30/25 Q1008 NOSIG",
+            "raw_sha256": "e2524b2fa33962a007ffe57a689fe8e2d75d4084edb4519fb0ac9975e490ce01",
+            "received_at_utc": "2026-07-18T23:56:39.685Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T01:00:00Z",
+            "raw_report": "METAR MPMG 190100Z 32008KT 9999 FEW018 29/25 Q1009 NOSIG",
+            "raw_sha256": "37c2b292f37b0789487b834d8ff4ba9beba44397f56cfc434fa27dcd2bfa1bf9",
+            "received_at_utc": "2026-07-19T01:04:07.252Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T02:00:00Z",
+            "raw_report": "METAR MPMG 190200Z 32007KT 9999 FEW018 28/25 Q1010 NOSIG",
+            "raw_sha256": "d7495499e357b7f1118afcec29844e190c13a01b036725d99cd82e34cd384b7c",
+            "received_at_utc": "2026-07-19T01:59:53.593Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T03:00:00Z",
+            "raw_report": "METAR MPMG 190300Z 32007KT 9999 FEW018 28/25 Q1010 NOSIG",
+            "raw_sha256": "9ca29ea191de18707438e1ba896aca4816482ef0e5131ee13dd5c40543f6cd69",
+            "received_at_utc": "2026-07-19T02:57:17.896Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T04:00:00Z",
+            "raw_report": "METAR MPMG 190400Z AUTO 31008KT //// R01///// // SCT061/// BKN160/// 28/26 Q1010",
+            "raw_sha256": "3dceeccd2594bc4d1e4b92fa539a85b60c6d6f69cdde42b79dda547c71023a1b",
+            "received_at_utc": "2026-07-19T04:06:05.521Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 33.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": true
+      },
+      "truth_sample_id": "awc-truth-only-71aa850f13d0099b1d9efe63e0042eee"
+    },
+    {
+      "event_date": "2026-07-19",
+      "receipts": {
+        "metar_response_sha256": "cda1f9afd6036341a67375280842afe09c8ca590a7c27fab5744053e0a49b129",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260720_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-20T05:00:00Z",
+        "start_utc": "2026-07-19T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "39f2d6dffd3ca09d90f6aacc00869f374efc15cc8de945ee26c1ec5a721aa1a7",
+        "observation_count": 29,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T05:00:00Z",
+            "raw_report": "METAR MPMG 190500Z AUTO 33005KT //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "348f7c8e9ee4a51e4b075d80a85af6aa39c9ed2278676290fe2e73476a90344f",
+            "received_at_utc": "2026-07-19T05:06:05.518Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T06:00:00Z",
+            "raw_report": "METAR MPMG 190600Z AUTO 33003KT 290V360 //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "2532f7cc14013b50767f606ac14701f7a6e4b331b874d3be1b5d6831feb57b7d",
+            "received_at_utc": "2026-07-19T06:06:06.675Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T07:00:00Z",
+            "raw_report": "METAR MPMG 190700Z AUTO 35005KT 320V020 //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "254d2ab58262ff5bc7ebd64c57f2d14b600e5b699e754bad337f71efa9ccc5a4",
+            "received_at_utc": "2026-07-19T07:06:04.784Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T08:00:00Z",
+            "raw_report": "METAR MPMG 190800Z AUTO 32004KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "7b735913c135c5517da34b9601c7a245f19e4931d84f9d1653e448772c6765a7",
+            "received_at_utc": "2026-07-19T08:06:05.223Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T09:00:00Z",
+            "raw_report": "METAR MPMG 190900Z AUTO 33004KT //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "84b2242b10def7d9a0d79c8c359022f28554a7228ec23149de3f4627b8302ef6",
+            "received_at_utc": "2026-07-19T09:06:06.663Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T10:00:00Z",
+            "raw_report": "METAR MPMG 191000Z AUTO 30004KT 270V330 //// R01///// // OVC160/// 27/25 Q1008",
+            "raw_sha256": "5b68497ddfec5f1feca7b03888704354bfa8751d315579d12db2431911de01ac",
+            "received_at_utc": "2026-07-19T10:06:05.268Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T11:00:00Z",
+            "raw_report": "METAR MPMG 191100Z 30007KT 9999 FEW020 27/25 Q1008 NOSIG",
+            "raw_sha256": "96c2d4f71a0fa0c2fb3ac7e956556a8ddbaa2d4abc1c57950dc8e6c2dce416e4",
+            "received_at_utc": "2026-07-19T11:01:37.528Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T12:00:00Z",
+            "raw_report": "METAR MPMG 191200Z 33004KT 290V020 9999 FEW018 SCT090 27/25 Q1010 NOSIG",
+            "raw_sha256": "c3d33f634f99ae9d40228e84ea53f2634571b7c1cd8f0675d7687c1099886bcd",
+            "received_at_utc": "2026-07-19T11:59:29.036Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T13:00:00Z",
+            "raw_report": "METAR MPMG 191300Z 31006KT 9999 FEW020 SCT090 28/25 Q1010 NOSIG",
+            "raw_sha256": "307ce79d1715d0492ab31904b18957b98de5f58320c3e680859dc771b9e33462",
+            "received_at_utc": "2026-07-19T12:51:32.289Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T14:00:00Z",
+            "raw_report": "METAR MPMG 191400Z 32007KT 290V350 9999 FEW020 SCT090 29/25 Q1010 NOSIG",
+            "raw_sha256": "fb114374892da5fc67f4ed7ddf7f7532ce20220844b4824f3cd5b59256d96fa1",
+            "received_at_utc": "2026-07-19T13:54:09.767Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T15:00:00Z",
+            "raw_report": "METAR MPMG 191500Z 32007KT 290V350 9999 SCT018 SCT090 30/25 Q1010 NOSIG",
+            "raw_sha256": "9c0df13f721ec903f8869cd41f212c1fa4ac3a22be41ad4ac928e5af6fb20531",
+            "received_at_utc": "2026-07-19T14:56:39.575Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T16:00:00Z",
+            "raw_report": "METAR MPMG 191600Z 32006KT 280V360 9999 SCT016TCU BKN080 31/25 Q1010 NOSIG",
+            "raw_sha256": "b5325baaa14386a2297d0a9ebf51deceb2b998032182ef25df3ed2c83174e95f",
+            "received_at_utc": "2026-07-19T15:59:18.883Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T16:23:00Z",
+            "raw_report": "SPECI MPMG 191623Z 33006KT 300V360 6000 RA SCT016TCU BKN080 30/25 Q1010 TEMPO 6000 RA",
+            "raw_sha256": "289faa55eed2ba64669308d8984b019f359c671a1f6aa1d4259257ee4db00c13",
+            "received_at_utc": "2026-07-19T16:27:02.642Z",
+            "report_type": "SPECI",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T17:00:00Z",
+            "raw_report": "METAR MPMG 191700Z 32005KT 290V360 9000 VCSH SCT016TCU BKN080 29/26 Q1010 RERA NOSIG",
+            "raw_sha256": "c133c95f30ab0950c6cb7678c249406401c663edb54f37e58e6a7853a4724ee3",
+            "received_at_utc": "2026-07-19T17:02:53.284Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T18:00:00Z",
+            "raw_report": "METAR MPMG 191800Z 30006KT 240V330 9999 SCT016TCU BKN080 31/26 Q1009 NOSIG",
+            "raw_sha256": "2d39043cb38999e4bdcce5b643565ee0d45b0ad919355dde9144f39da663e135",
+            "received_at_utc": "2026-07-19T18:04:47.904Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T19:00:00Z",
+            "raw_report": "METAR MPMG 191900Z 33006KT 300V010 9000 VCSH SCT016TCU SCT080 32/25 Q1008 TEMPO 5000 TSRA",
+            "raw_sha256": "8faf9e5b3689f0c975df5b14efdb91da0df0023bd63fe8a0fe27e1ed0c6fed0e",
+            "received_at_utc": "2026-07-19T19:06:06.747Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T20:00:00Z",
+            "raw_report": "METAR MPMG 192000Z 35011KT 9000 1600N -RA SCT015CB SCT080 31/25 Q1008 TEMPO 5000 TSRA",
+            "raw_sha256": "b4bdc89a9cece1f6800caaf7c31ebba78a2f0d92375fe52c42b4b3a89a26484f",
+            "received_at_utc": "2026-07-19T20:06:06.644Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T20:11:00Z",
+            "raw_report": "SPECI MPMG 192011Z 34007KT 8000 1600N -TSRA SCT015CB BKN070 29/26 Q1007 TEMPO 5000 TSRA",
+            "raw_sha256": "a9e427b4e7d2dad00c66c133c83a3aa2a3b9ded76aa8166ef3c45bf5997fcf7d",
+            "received_at_utc": "2026-07-19T20:13:02.500Z",
+            "report_type": "SPECI",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T21:00:00Z",
+            "raw_report": "METAR MPMG 192100Z 30005KT 260V340 7000 3200S -TSRA SCT015CB BKN070 29/25 Q1008 TEMPO 4000 TSRA",
+            "raw_sha256": "c2bd98b1563df07796097a3afe3b57a303e11ba85f16767b91bd59b4c374352b",
+            "received_at_utc": "2026-07-19T21:06:05.533Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T21:07:00Z",
+            "raw_report": "SPECI MPMG 192107Z 34006KT 300V020 2000 +TSRA BKN012CB 28/24 Q1008 NOSIG",
+            "raw_sha256": "81bdcb478a2eb5b587b6a79a4e0de8d73a7259e310235b75b778388868db3e5e",
+            "received_at_utc": "2026-07-19T21:09:16.353Z",
+            "report_type": "SPECI",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T22:00:00Z",
+            "raw_report": "METAR MPMG 192200Z 20004KT 170V230 9000 TS VCSH FEW008 BKN013CB 26/25 Q1009 RERA NOSIG",
+            "raw_sha256": "aa75c11955994349e538426cb6e7c7465247154d715dd5175723ce32076c28d2",
+            "received_at_utc": "2026-07-19T21:59:57.373Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T22:17:00Z",
+            "raw_report": "SPECI MPMG 192217Z 24003KT 180V290 9000 3200S -TSRA FEW005 BKN013CB 26/25 Q1008 TEMPO 6000 TSRA",
+            "raw_sha256": "c7e6f379bb9bf4ed0d586f9bba02e8daa3059bdeb3fc2313feb4cafb884d95a8",
+            "received_at_utc": "2026-07-19T22:18:10.033Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T22:38:00Z",
+            "raw_report": "SPECI MPMG 192238Z 00000KT 9000 TS VCSH FEW005 SCT015CB BKN070 26/25 Q1008 RERA NOSIG",
+            "raw_sha256": "2d3ee379c9f19c16d689362cc07de05fb37aeadf691647a928b19336b31651fc",
+            "received_at_utc": "2026-07-19T22:38:35.037Z",
+            "report_type": "SPECI",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-19T23:00:00Z",
+            "raw_report": "METAR MPMG 192300Z VRB01KT 9000 TS VCSH FEW005 SCT015CB BKN070 26/25 Q1009 TEMPO 6000 TSRA",
+            "raw_sha256": "9a103f5edbf6b54a6ce62e86b3ced4cf1bf3cedbe3fcc1f0d9fe8894dbcf5cac",
+            "received_at_utc": "2026-07-19T23:06:05.978Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T00:00:00Z",
+            "raw_report": "METAR MPMG 200000Z VRB02KT 9999 TS FEW010 SCT015CB BKN080 26/25 Q1009 NOSIG",
+            "raw_sha256": "35f203b79abe2666f19cafa20a6b26d0c130a94fa029e7fb3a90f5c5aeda1bb4",
+            "received_at_utc": "2026-07-20T00:03:20.631Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T01:00:00Z",
+            "raw_report": "METAR MPMG 200100Z 33006KT 9999 FEW010 SCT016 BKN080 26/24 Q1009 RETS NOSIG",
+            "raw_sha256": "d00acaa02219fca39be9525b91660610940ce071ae69f1f66e73b12fef50fb6d",
+            "received_at_utc": "2026-07-20T01:02:45.455Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T02:00:00Z",
+            "raw_report": "METAR MPMG 200200Z 31007KT 9000 -TSRA FEW008 SCT016CB BKN080 25/24 Q1010 NOSIG",
+            "raw_sha256": "23c2b11740a7138ffc8fd5362f91a39022ac484e0c3deb8333ca6f6d4e3d6cae",
+            "received_at_utc": "2026-07-20T02:00:53.907Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T03:00:00Z",
+            "raw_report": "METAR MPMG 200300Z 32006KT 9999 TS FEW010 SCT016CB BKN080 25/24 Q1011 RERA TEMPO 6000 TSRA",
+            "raw_sha256": "09544376be17c0250570fd724a556593918642886b058ccffbe9abed6e4c7516",
+            "received_at_utc": "2026-07-20T03:06:03.322Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T04:00:00Z",
+            "raw_report": "METAR MPMG 200400Z AUTO 31009KT //// R01///// // FEW060/// OVC091/// 25/24 Q1011",
+            "raw_sha256": "94bea6a677115a490b111290d47627182a1fb4f7aae4cd7561fd70e207874ba3",
+            "received_at_utc": "2026-07-20T04:14:10.010Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 32.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-953edcb94b5feb7ead88ac65f11498ff"
+    },
+    {
+      "event_date": "2026-07-20",
+      "receipts": {
+        "metar_response_sha256": "babe13b16f0b21283f5240c392d8d184930701404f054f1fec3a9c281e5b0352",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260721_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-21T05:00:00Z",
+        "start_utc": "2026-07-20T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "a513034e7bb5a8047f6c3769b3a443ef0d00378fe7fc62dec41f58ae3873dfa0",
+        "observation_count": 25,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T05:00:00Z",
+            "raw_report": "METAR MPMG 200500Z AUTO 31004KT 260V360 //// R01///// // SCT009/// BKN160/// BKN210/// 25/24 Q1010",
+            "raw_sha256": "305745876debb6bd90bd21222875e98838cbff5f609a9d6f2057341b4f825ee2",
+            "received_at_utc": "2026-07-20T05:06:05.454Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T06:00:00Z",
+            "raw_report": "METAR MPMG 200600Z AUTO 29008KT //// R01///// // BKN007/// BKN160/// 25/24 Q1010",
+            "raw_sha256": "f04930ba4f6f9af7da182fee3ed249fa2c54fc0016ca85eb25efbc7aa5a4d169",
+            "received_at_utc": "2026-07-20T06:08:15.604Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T07:00:00Z",
+            "raw_report": "METAR MPMG 200700Z AUTO 34004KT //// R01///// // FEW037/// BKN160/// 25/24 Q1010",
+            "raw_sha256": "cad0d13acdd1b2ae40858ca87cef2e875acc1b4033d090268b9fdc423e74a076",
+            "received_at_utc": "2026-07-20T07:06:07.266Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T08:00:00Z",
+            "raw_report": "METAR MPMG 200800Z AUTO 31003KT 280V020 //// R01///// // FEW008/// OVC033/// 25/24 Q1009",
+            "raw_sha256": "bc797f1bd9e65bbaeb7624f4a616949a8831923d47e0c3286aaca126960c66d3",
+            "received_at_utc": "2026-07-20T08:06:06.105Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T09:00:00Z",
+            "raw_report": "METAR MPMG 200900Z AUTO 30003KT 250V330 //// R01///// // FEW041/// BKN160/// 25/24 Q1009",
+            "raw_sha256": "85f388e4108bdb7d680b7c0c55f6980b5f7f31ad32c6d398160bea5ec0a272be",
+            "received_at_utc": "2026-07-20T09:08:08.943Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T10:00:00Z",
+            "raw_report": "METAR MPMG 201000Z AUTO VRB02KT //// R01///// // FEW007/// SCT009/// BKN033/// 25/24 Q1010",
+            "raw_sha256": "7e390033cf1a24d99403ccc00520b1569a822f26482c70b2ac050a06a0049661",
+            "received_at_utc": "2026-07-20T10:06:04.227Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T11:00:00Z",
+            "raw_report": "METAR MPMG 201100Z 35003KT 9999 SCT017 SCT080 25/24 Q1010 NOSIG",
+            "raw_sha256": "25359c4c6e96ad647f524cd372fb80ab4d1f2cfc85a3968f691f0d3a20ee10e6",
+            "received_at_utc": "2026-07-20T11:02:31.579Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T12:00:00Z",
+            "raw_report": "METAR MPMG 201200Z VRB02KT 9999 FEW010 SCT016 BKN080 25/24 Q1011 TEMPO 6000 RA",
+            "raw_sha256": "753c8973425a63497a0c8661ffb68789c1ee4e94842150fddccd7e342463682b",
+            "received_at_utc": "2026-07-20T12:06:07.800Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T13:00:00Z",
+            "raw_report": "METAR MPMG 201300Z 33002KT 9999 FEW010 SCT016 SCT080 26/25 Q1011 TEMPO 6000 RA",
+            "raw_sha256": "3ff86fcaa720c16c1021eb04f92a6b353a09634eae1cb2f989352fa5e4eb464d",
+            "received_at_utc": "2026-07-20T13:06:05.965Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T14:00:00Z",
+            "raw_report": "METAR MPMG 201400Z 35003KT 9999 FEW010 SCT016 BKN080 26/25 Q1012 NOSIG",
+            "raw_sha256": "d6fdcf9e25421124ee4f7230d68159737077141372ce261797b449616b080a29",
+            "received_at_utc": "2026-07-20T13:59:19.273Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T15:00:00Z",
+            "raw_report": "METAR MPMG 201500Z VRB01KT 9999 SCT010 SCT015 27/25 Q1012 NOSIG",
+            "raw_sha256": "e9aadbcf688c4839ae587b59403ab0bd12ed2f0793794c0c56d398f74602b8c4",
+            "received_at_utc": "2026-07-20T14:55:52.469Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T16:00:00Z",
+            "raw_report": "METAR MPMG 201600Z VRB02KT 9999 FEW010 SCT016 SCT080 28/25 Q1012 NOSIG",
+            "raw_sha256": "6110504cf079e0ee7121c5c8e65ba4cec23e90162f7ac0754d9872ef47343232",
+            "received_at_utc": "2026-07-20T15:56:38.831Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T17:00:00Z",
+            "raw_report": "METAR MPMG 201700Z 32004KT 280V010 9999 SCT016TCU SCT090 29/25 Q1012 NOSIG",
+            "raw_sha256": "541fc3e6a96c67622c731cf1839d12fe1f5e112ba4547e183e88112256e237ae",
+            "received_at_utc": "2026-07-20T17:02:36.394Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T18:00:00Z",
+            "raw_report": "METAR MPMG 201800Z 11005KT 060V150 9999 SCT016TCU SCT080 29/25 Q1011 NOSIG",
+            "raw_sha256": "f0c5b7d8a59c0e7950dae8020b5c03f650fd093cffc213366064b6f1b9516d2a",
+            "received_at_utc": "2026-07-20T17:58:35.528Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T19:00:00Z",
+            "raw_report": "METAR MPMG 201900Z 19009KT 9999 SCT008 SCT016TCU BKN080 28/25 Q1010 NOSIG",
+            "raw_sha256": "c721f9ad10b7d3edaa2fc8fa488acea2b5d2fea3962edc2ed31377d40d03423b",
+            "received_at_utc": "2026-07-20T18:58:36.174Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T19:15:00Z",
+            "raw_report": "SPECI MPMG 201915Z 15004KT 090V190 5000 RA SCT008 BKN016CB 28/25 Q1010 TEMPO 4000 +RA",
+            "raw_sha256": "7e3a08fb78ecd0a244fea98ed45cd41ab47b81e4105578e4bea039f6c32799d6",
+            "received_at_utc": "2026-07-20T19:19:04.480Z",
+            "report_type": "SPECI",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T20:00:00Z",
+            "raw_report": "METAR MPMG 202000Z 29003KT 230V330 6000 1600NE +RA SCT016CB SCT080 26/25 Q1010 TEMPO 4000 +RA",
+            "raw_sha256": "7e4e3338dc881fc136e8fe7dc77e67865005d4602fa3727aa9f4bb78436973da",
+            "received_at_utc": "2026-07-20T20:06:05.886Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T21:00:00Z",
+            "raw_report": "METAR MPMG 202100Z 34003KT 290V020 9000 VCSH SCT016CB SCT080 28/25 Q1009 RERA BECMG FM 2130Z NSW",
+            "raw_sha256": "a0c558e9fa37b65601a715508408d440c1b7fb1b7d7e209870334b19d98d38cc",
+            "received_at_utc": "2026-07-20T21:06:06.298Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T22:00:00Z",
+            "raw_report": "METAR MPMG 202200Z 29004KT 260V340 9999 SCT016 SCT080 29/26 Q1009 NOSIG",
+            "raw_sha256": "e0cb2e2a0daa6464068cdc5b57cb6a1c900237fe5e520bbb05a19d1e053185dd",
+            "received_at_utc": "2026-07-20T22:00:56.418Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-20T23:00:00Z",
+            "raw_report": "METAR MPMG 202300Z 29007KT 260V320 9999 SCT008 SCT016 28/25 Q1009 NOSIG",
+            "raw_sha256": "f7159d076f1c1f27b28b3208d69ff31c385309ec507e2f475ff5f7a5e32dd04b",
+            "received_at_utc": "2026-07-20T22:59:03.815Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T00:00:00Z",
+            "raw_report": "METAR MPMG 210000Z 28005KT 250V340 9999 SCT008 SCT016 27/24 Q1010 NOSIG",
+            "raw_sha256": "c3bc7199b14681b5f7d7fb3aa848d1353fccecadc60b50a372ac1f88dd4c4a52",
+            "received_at_utc": "2026-07-21T00:10:40.140Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T01:00:00Z",
+            "raw_report": "METAR MPMG 210100Z 28006KT 250V310 9999 FEW008 SCT018 26/24 Q1011 NOSIG",
+            "raw_sha256": "5babca9af81e670ee742a08cd33c0bc1c82a6d5f5a061b7cc25bf0864cc6ba8b",
+            "received_at_utc": "2026-07-21T00:58:44.978Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T02:00:00Z",
+            "raw_report": "METAR MPMG 210200Z 31005KT 9999 SCT018 26/24 Q1011 NOSIG",
+            "raw_sha256": "dc1dd9f68827c9bd8a60ed72a84bad3237817661e6a873d837698553d297091b",
+            "received_at_utc": "2026-07-21T01:53:41.704Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T03:00:00Z",
+            "raw_report": "METAR MPMG 210300Z 33004KT 300V350 9999 SCT016 26/25 Q1011 NOSIG",
+            "raw_sha256": "a94e002c2445d4047e4f444d7fd4197b89b10ee6912a029fe98cb9581e1dc390",
+            "received_at_utc": "2026-07-21T03:01:29.859Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T04:00:00Z",
+            "raw_report": "METAR MPMG 210400Z AUTO 32005KT //// R01///// // FEW010/// OVC160/// 26/24 Q1011",
+            "raw_sha256": "42e96a5af0221729aa40c8b37d056b553faf0228c702485908102348ebb801f7",
+            "received_at_utc": "2026-07-21T04:06:05.998Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 29.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-75540a41343ccbf6258a87b0ebf90de3"
+    },
+    {
+      "event_date": "2026-07-21",
+      "receipts": {
+        "metar_response_sha256": "ba2532b18d9ef256b54cb24bba5eed4933be22cd0ac1ecb2902fcbdf5c9a0495",
+        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MPMG&format=json&taf=false&hours=24&date=20260722_0500"
+      },
+      "reference_only": false,
+      "settlement_timezone": "America/Panama",
+      "settlement_window": {
+        "end_utc": "2026-07-22T05:00:00Z",
+        "start_utc": "2026-07-21T05:00:00Z"
+      },
+      "source_lane": "AWC",
+      "station_id": "MPMG",
+      "taf_exclusion": {
+        "classification": "official_taf_structural_missing_field",
+        "reason": "awc_taf_tx_for_settlement_day_missing"
+      },
+      "taf_p0m_eligible": false,
+      "truth": {
+        "evidence_sha256": "45b1ae36952f6e8b718788872b4335bf6b0235a0482c1c55ff2ac275ef202b7a",
+        "observation_count": 25,
+        "observations": [
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T05:00:00Z",
+            "raw_report": "METAR MPMG 210500Z AUTO 31004KT 290V350 //// R01///// // BKN170/// 26/25 Q1011",
+            "raw_sha256": "046aa33cb74ec049532183ac73ef659681a32de5c9d242dbdf345c0287c7d977",
+            "received_at_utc": "2026-07-21T05:12:05.424Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T06:00:00Z",
+            "raw_report": "METAR MPMG 210600Z AUTO 33003KT 290V360 //// R01///// // OVC160/// 26/24 Q1010",
+            "raw_sha256": "284f11db98feca13a9e1778bdfdbef4b7df031ff0ac6ea79410383612999d6a8",
+            "received_at_utc": "2026-07-21T06:06:04.572Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T07:00:00Z",
+            "raw_report": "METAR MPMG 210700Z AUTO 34004KT //// R01///// // FEW059/// BKN160/// BKN180/// 26/24 Q1009",
+            "raw_sha256": "68c5e6723d4baf1cfa2fff9c505f4e4cab8d7b6e9b80bd7120b5c1668b6c3862",
+            "received_at_utc": "2026-07-21T07:18:09.391Z",
+            "report_type": "METAR",
+            "temperature_c": 26.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T08:00:00Z",
+            "raw_report": "METAR MPMG 210800Z AUTO 33003KT //// R01///// // FEW059/// BKN160/// 25/24 Q1009",
+            "raw_sha256": "8aa81091e754bfd2f001fed6c2face1d10b5f528193f8ee53e15243ce00e4a0b",
+            "received_at_utc": "2026-07-21T08:12:04.893Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T09:00:00Z",
+            "raw_report": "METAR MPMG 210900Z AUTO VRB01KT //// R01///// // SCT160/// OVC220/// 25/24 Q1008",
+            "raw_sha256": "a82ca372a2005fb8114348ef4e785a8214c5081fae32256b48db63c06d791787",
+            "received_at_utc": "2026-07-21T09:08:12.286Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T10:00:00Z",
+            "raw_report": "METAR MPMG 211000Z AUTO VRB02KT //// R01///// // OVC160/// 25/24 Q1008",
+            "raw_sha256": "6d7f7465f0307ec8bfda12c8e8d15dcb5016565cd7d129b8373ceb9f4e7274ab",
+            "received_at_utc": "2026-07-21T10:10:03.799Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T11:00:00Z",
+            "raw_report": "METAR MPMG 211100Z VRB02KT 9999 FEW018 SCT090 25/24 Q1009 NOSIG",
+            "raw_sha256": "6033211308d66c098ac5070ea6cddb8fc7a6f224b0e642e42917e19c68d285ff",
+            "received_at_utc": "2026-07-21T11:01:01.482Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T12:00:00Z",
+            "raw_report": "METAR MPMG 211200Z VRB02KT 9999 FEW018 SCT090 25/24 Q1009 NOSIG",
+            "raw_sha256": "282ce2c4529e17953f4e61452532464244837c2560bd8784a6a3f95e40afe67b",
+            "received_at_utc": "2026-07-21T11:59:48.821Z",
+            "report_type": "METAR",
+            "temperature_c": 25.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T13:00:00Z",
+            "raw_report": "METAR MPMG 211300Z VRB02KT 9999 FEW020 27/24 Q1010 NOSIG",
+            "raw_sha256": "05aa7529c6c8ebd4d9b5f016a2c6eb643f1c2f8a0ef4a8cfe0208e1322a37bd9",
+            "received_at_utc": "2026-07-21T12:59:50.537Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T14:00:00Z",
+            "raw_report": "METAR MPMG 211400Z 31003KT 9999 FEW020 28/23 Q1010 NOSIG",
+            "raw_sha256": "092c85e47775ef337a21ea33b075346f9eec60ff61f680415b51763021038851",
+            "received_at_utc": "2026-07-21T14:01:26.966Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T15:00:00Z",
+            "raw_report": "METAR MPMG 211500Z 33004KT 9999 SCT020 29/23 Q1010 NOSIG",
+            "raw_sha256": "8a6d40093a7d399750320d723ce6501fd8b28d9f9f90b11dcec2431c5a1bf408",
+            "received_at_utc": "2026-07-21T15:14:00.399Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T16:00:00Z",
+            "raw_report": "METAR MPMG 211600Z 31006KT 9999 SCT020 30/24 Q1009 NOSIG",
+            "raw_sha256": "2fdd8de4f6c1acce844809460a614459db157d914e78819df9e5f3e7cc24f984",
+            "received_at_utc": "2026-07-21T15:55:27.976Z",
+            "report_type": "METAR",
+            "temperature_c": 30.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T17:00:00Z",
+            "raw_report": "METAR MPMG 211700Z 16003KT 9999 SCT018TCU 31/24 Q1009 NOSIG",
+            "raw_sha256": "83ca06b440681a780a65d3cc2c600d1b75d80e0d962c12ba528d28160e2e8800",
+            "received_at_utc": "2026-07-21T16:59:05.358Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T18:00:00Z",
+            "raw_report": "METAR MPMG 211800Z 17004KT 9999 SCT018TCU 32/24 Q1007 NOSIG",
+            "raw_sha256": "8779fae3aa1bdd45db876b848f03584df1c62ae04d78d832004c8a1f5c28f6a6",
+            "received_at_utc": "2026-07-21T18:00:24.274Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T19:00:00Z",
+            "raw_report": "METAR MPMG 211900Z 17004KT 120V240 9999 SCT018TCU 32/25 Q1006 NOSIG",
+            "raw_sha256": "aae124657a81d093ef671c4a085886fb8aef45030303ec79f92092d90521391c",
+            "received_at_utc": "2026-07-21T18:57:20.591Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T20:00:00Z",
+            "raw_report": "METAR MPMG 212000Z 20004KT 150V260 9999 SCT017TCU 32/24 Q1006 NOSIG",
+            "raw_sha256": "a6031cebf35bb2cde8a94201f67b1313a7a7221647c569c1a668d913feaf3358",
+            "received_at_utc": "2026-07-21T19:53:20.573Z",
+            "report_type": "METAR",
+            "temperature_c": 32.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T21:00:00Z",
+            "raw_report": "METAR MPMG 212100Z 32008KT 290V010 9000 VCSH FEW010 SCT017TCU SCT090 31/26 Q1006 NOSIG",
+            "raw_sha256": "3937498b3d60a5998f627ee4930ab983fa8b828683291dd7ff88046a6aa40af7",
+            "received_at_utc": "2026-07-21T20:57:14.419Z",
+            "report_type": "METAR",
+            "temperature_c": 31.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T21:30:00Z",
+            "raw_report": "SPECI MPMG 212130Z 32010KT 290V360 8000 -RA SCT017TCU SCT090 28/26 Q1006 NOSIG",
+            "raw_sha256": "9d377d45ff4f67de45a35bb83e23231cec5b07996c17756ff30bec5f6183c38a",
+            "received_at_utc": "2026-07-21T21:31:18.180Z",
+            "report_type": "SPECI",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T22:00:00Z",
+            "raw_report": "METAR MPMG 212200Z 31010KT 9999 SCT017TCU SCT090 28/26 Q1006 RERA NOSIG",
+            "raw_sha256": "db98328a60c724e68cc3f5c97ee8a4ae45907b855db8cf6d6c5baa81ff276b4d",
+            "received_at_utc": "2026-07-21T22:04:18.472Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-21T23:00:00Z",
+            "raw_report": "METAR MPMG 212300Z 32010KT 9999 SCT018 29/25 Q1006 NOSIG",
+            "raw_sha256": "0c7167f76d1e961eb8e6bc74d3c45c0232be1b275b682bbc8a9243833efde4b0",
+            "received_at_utc": "2026-07-21T22:51:15.474Z",
+            "report_type": "METAR",
+            "temperature_c": 29.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-22T00:00:00Z",
+            "raw_report": "METAR MPMG 220000Z 31010KT 9999 SCT018 28/25 Q1007 NOSIG",
+            "raw_sha256": "ad43e40cce4f54b4f1908aeb892a9bdbbae2b9edd83f3120dffca12730fbad14",
+            "received_at_utc": "2026-07-22T00:04:48.752Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-22T01:00:00Z",
+            "raw_report": "METAR MPMG 220100Z 30006KT 270V330 9999 FEW018 28/25 Q1008 NOSIG",
+            "raw_sha256": "d64135100ecb63a6bc77c8deb05efb15df9f25ea075f6fdca7767a8a499290df",
+            "received_at_utc": "2026-07-22T00:54:36.565Z",
+            "report_type": "METAR",
+            "temperature_c": 28.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-22T02:00:00Z",
+            "raw_report": "METAR MPMG 220200Z 31005KT 270V330 9999 FEW018 27/25 Q1008 NOSIG",
+            "raw_sha256": "4873b6e685af3a5ccaa0101a3912ea740e021212aa3d36b42d14d0763164bb48",
+            "received_at_utc": "2026-07-22T01:51:52.522Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-22T03:00:00Z",
+            "raw_report": "METAR MPMG 220300Z 31005KT 9999 FEW018 27/25 Q1008 NOSIG",
+            "raw_sha256": "6ae3089fa85632e2c55bc594d730949fa22dd4285a2596edd6ae364ae59c2f55",
+            "received_at_utc": "2026-07-22T02:55:55.888Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          },
+          {
+            "correction_suspected": false,
+            "observed_at_utc": "2026-07-22T04:00:00Z",
+            "raw_report": "METAR MPMG 220400Z AUTO 28004KT 250V310 //// R01///// // OVC160/// 27/25 Q1009",
+            "raw_sha256": "657b04f333aaf9bfa838c38c0754b4c3f513d4a5054348f8550114c6b0b988f9",
+            "received_at_utc": "2026-07-22T04:06:07.399Z",
+            "report_type": "METAR",
+            "temperature_c": 27.0
+          }
+        ],
+        "source_lane": "AWC",
+        "tmax_c": 32.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+      "truth_only": true,
+      "truth_recovery": {
+        "automatic_ssot_commit_eligible": false,
+        "historical_replay_only": true,
+        "requires_authoritative_review": true,
+        "requires_manual_correction_review": false
+      },
+      "truth_sample_id": "awc-truth-only-37e808eee3cd9e74a6f13c3f5a95ee65"
+    }
+  ]
+}

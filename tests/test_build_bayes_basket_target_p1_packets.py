@@ -19,7 +19,7 @@ from scripts.build_bayes_basket_target_p1_packets import (
 from scripts.materialize_bayes_basket_target_probability import build_envelope
 
 
-def _predecessor() -> ProbabilityEnvelope:
+def _p0_root() -> ProbabilityEnvelope:
     return ProbabilityEnvelope.from_mapping({
         "stage": "P0",
         "checkpoint_id": "p0",
@@ -42,17 +42,40 @@ def _predecessor() -> ProbabilityEnvelope:
     })
 
 
-def _existing_p1() -> ProbabilityEnvelope:
-    p0 = _predecessor()
+def _predecessor(
+    p0_root: ProbabilityEnvelope | None = None,
+    *,
+    checkpoint_id: str | None = None,
+    decision_at_utc: str = "2026-07-26T04:10:00Z",
+) -> ProbabilityEnvelope:
+    root = p0_root or _p0_root()
     return ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
+        **root.to_dict(),
+        "stage": "P0-M",
+        "checkpoint_id": checkpoint_id or f"{root.checkpoint_id}-p0m",
+        "decision_at_utc": decision_at_utc,
+        "posterior_version": "p0m",
+        "lineage": {
+            **root.lineage,
+            "p0_root_checkpoint_id": root.checkpoint_id,
+            "p0_root_content_sha256": root.content_sha256,
+        },
+    })
+
+
+def _existing_p1() -> ProbabilityEnvelope:
+    p0m = _predecessor()
+    return ProbabilityEnvelope.from_mapping({
+        **p0m.to_dict(),
         "stage": "P1",
         "checkpoint_id": "p1-existing",
         "decision_at_utc": "2026-07-26T07:00:00Z",
         "fresh_until_utc": "2026-07-26T09:00:00Z",
         "lineage": {
-            **p0.lineage,
-            "p0_root_checkpoint_id": p0.checkpoint_id,
+            **p0m.lineage,
+            "prediction_root_stage": "P0-M",
+            "prediction_root_checkpoint_id": p0m.checkpoint_id,
+            "prediction_root_content_sha256": p0m.content_sha256,
             "canonical_observation_event_id": "o1",
         },
     })
@@ -126,7 +149,7 @@ def _observation(observation_id: str, temperature_c: float, valid_at: str):
     }
 
 
-def test_every_report_updates_p1_but_only_new_high_is_decision_trigger() -> None:
+def test_only_new_high_updates_p1_while_full_prefix_drives_likelihood() -> None:
     packets = compile_station_p1_packets(
         predecessor=_predecessor(),
         observations=[
@@ -139,12 +162,13 @@ def test_every_report_updates_p1_but_only_new_high_is_decision_trigger() -> None
         compilation_at_utc="2026-07-26T08:00:00Z",
     )
 
-    assert [packet["observation_id"] for packet in packets] == [
-        "o1", "equal", "older", "o2"
-    ]
+    assert [packet["observation_id"] for packet in packets] == ["o1", "o2"]
     assert [
         packet["reported_high_advanced"] for packet in packets
-    ] == [True, False, False, True]
+    ] == [True, True]
+    assert packets[-1]["trajectory_proof"]["canonical_observation_ids"] == [
+        "o1", "equal", "older", "o2"
+    ]
     assert packets[0]["hard_excluded_buckets"] == []
     assert packets[-1]["hard_excluded_buckets"] == [
         "75°F or below", "76-77°F"
@@ -227,16 +251,30 @@ def test_consumed_new_high_advances_running_high_without_duplicate_packet() -> N
     assert [packet["observation_id"] for packet in packets] == ["o2"]
 
 
+def test_p1_compiler_accepts_raw_p0_root_without_taf() -> None:
+    packets = compile_station_p1_packets(
+        predecessor=_p0_root(),
+        observations=[_observation("o1", 24.0, "2026-07-26T04:00:00Z")],
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:00:00Z",
+    )
+    assert packets[0]["expected_envelope"]["lineage"]["prediction_root_stage"] == "P0"
+
+
 def test_new_dynamic_p0_root_forces_full_canonical_replay_to_p1() -> None:
-    old_p0 = _predecessor()
+    old_p0 = _p0_root()
+    old_p0m = _predecessor(old_p0)
     old_p1 = ProbabilityEnvelope.from_mapping({
-        **old_p0.to_dict(),
+        **old_p0m.to_dict(),
         "stage": "P1",
         "checkpoint_id": "p1-old-root",
         "decision_at_utc": "2026-07-26T08:00:00Z",
         "fresh_until_utc": "2026-07-26T12:00:00Z",
         "lineage": {
-            "p0_root_checkpoint_id": old_p0.checkpoint_id,
+            **old_p0m.lineage,
+            "prediction_root_stage": "P0-M",
+            "prediction_root_checkpoint_id": old_p0m.checkpoint_id,
+            "prediction_root_content_sha256": old_p0m.content_sha256,
             "canonical_observation_event_id": "o1",
         },
     })
@@ -251,12 +289,17 @@ def test_new_dynamic_p0_root_forces_full_canonical_replay_to_p1() -> None:
             "78°F or higher": 0.6,
         },
     })
+    new_p0m = _predecessor(
+        new_p0,
+        checkpoint_id="p0m-model-refresh",
+        decision_at_utc="2026-07-26T09:10:00Z",
+    )
     prediction_root, predecessor, consumed, rebasing = select_p1_replay_base(
-        [old_p0, old_p1, new_p0],
+        [old_p0, old_p0m, old_p1, new_p0, new_p0m],
         as_of_utc="2026-07-26T10:00:00Z",
     )
-    assert predecessor.checkpoint_id == new_p0.checkpoint_id
-    assert prediction_root.checkpoint_id == new_p0.checkpoint_id
+    assert predecessor.checkpoint_id == new_p0m.checkpoint_id
+    assert prediction_root.checkpoint_id == new_p0m.checkpoint_id
     assert consumed == set()
     assert rebasing is True
 
@@ -276,14 +319,15 @@ def test_new_dynamic_p0_root_forces_full_canonical_replay_to_p1() -> None:
 
 
 def test_stale_checkpoint_remains_available_only_as_durable_p1_replay_cursor() -> None:
-    stale_p0 = _predecessor()
+    p0 = _p0_root()
+    stale_p0m = _predecessor(p0)
     prediction_root, predecessor, consumed, rebasing = select_p1_replay_base(
-        [stale_p0],
+        [p0, stale_p0m],
         as_of_utc="2026-07-26T08:00:00Z",
     )
 
-    assert predecessor.checkpoint_id == stale_p0.checkpoint_id
-    assert prediction_root.checkpoint_id == stale_p0.checkpoint_id
+    assert predecessor.checkpoint_id == stale_p0m.checkpoint_id
+    assert prediction_root.checkpoint_id == stale_p0m.checkpoint_id
     assert predecessor.is_fresh("2026-07-26T08:00:00Z") is False
     assert consumed == set()
     assert rebasing is False
@@ -300,7 +344,59 @@ def test_stale_checkpoint_remains_available_only_as_durable_p1_replay_cursor() -
         packets[-1]["expected_envelope"]
     )
     assert final.is_fresh("2026-07-26T08:00:00Z") is True
-    assert stale_p0.fresh_until_utc == "2026-07-26T06:00:00Z"
+    assert stale_p0m.fresh_until_utc == "2026-07-26T06:00:00Z"
+
+
+def test_replay_accepts_p0_root_and_ignores_legacy_p0_root_p1() -> None:
+    p0 = _p0_root()
+    root, predecessor, consumed, rebasing = select_p1_replay_base(
+        [p0], as_of_utc="2026-07-26T08:00:00Z"
+    )
+    assert root.checkpoint_id == p0.checkpoint_id
+    assert predecessor.checkpoint_id == p0.checkpoint_id
+    assert consumed == set()
+    assert rebasing is False
+
+    p0m = _predecessor(p0)
+    tampered_p0m = ProbabilityEnvelope.from_mapping({
+        **p0m.to_dict(),
+        "checkpoint_id": "tampered-p0m",
+        "lineage": {
+            **p0m.lineage,
+            "p0_root_content_sha256": "f" * 64,
+        },
+    })
+    with pytest.raises(
+        ContractError,
+        match="p1_replay_p0m_root_lineage_mismatch",
+    ):
+        select_p1_replay_base(
+            [p0, tampered_p0m],
+            as_of_utc="2026-07-26T08:00:00Z",
+        )
+    legacy_p1 = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "stage": "P1",
+        "checkpoint_id": "legacy-p0-root-p1",
+        "decision_at_utc": "2026-07-26T07:00:00Z",
+        "fresh_until_utc": "2026-07-26T09:00:00Z",
+        "lineage": {
+            **p0.lineage,
+            "prediction_root_stage": "P0",
+            "prediction_root_checkpoint_id": p0.checkpoint_id,
+            "prediction_root_content_sha256": p0.content_sha256,
+            "p0_root_checkpoint_id": p0.checkpoint_id,
+            "canonical_observation_event_id": "legacy-observation",
+        },
+    })
+    root, predecessor, consumed, rebasing = select_p1_replay_base(
+        [p0, p0m, legacy_p1],
+        as_of_utc="2026-07-26T08:00:00Z",
+    )
+    assert root.checkpoint_id == p0m.checkpoint_id
+    assert predecessor.checkpoint_id == p0m.checkpoint_id
+    assert consumed == set()
+    assert rebasing is True
 
 
 def test_fahrenheit_hard_lower_bound_accounts_for_metar_celsius_quantization() -> None:

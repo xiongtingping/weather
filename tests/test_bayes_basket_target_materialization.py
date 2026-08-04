@@ -28,6 +28,9 @@ from bayes_basket_target.ssot import apply_production_ssot_schema, production_ss
 from bayes_basket_target.calibration import (
     build_taf_nwp_live_compatibility_fingerprint,
 )
+from bayes_basket_target.future_temperature_curve import (
+    build_root_future_temperature_curve,
+)
 from bayes_basket_target.taf_revision import (
     TAF_NWP_CROSSFIT_ARTIFACT_KIND,
     TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
@@ -189,13 +192,33 @@ def _lineage(*, event_id: str = "obs-1") -> dict[str, str]:
     }
 
 
+def _p0m_root(root: ProbabilityEnvelope) -> ProbabilityEnvelope:
+    if root.stage == "P0-M":
+        return root
+    assert root.stage == "P0"
+    return ProbabilityEnvelope.from_mapping({
+        **root.to_dict(),
+        "stage": "P0-M",
+        "checkpoint_id": f"{root.checkpoint_id}-p0m-root",
+        "decision_at_utc": "2026-07-23T05:00:00Z",
+        "posterior_version": "p0m-test",
+        "lineage": {
+            **root.lineage,
+            "p0_root_checkpoint_id": root.checkpoint_id,
+            "p0_root_content_sha256": root.content_sha256,
+        },
+    })
+
+
 def _trajectory_packet(
     root: ProbabilityEnvelope,
     *,
     event_id: str = "obs-1",
     temperature_c: float = 38.2,
     decision_at_utc: str = "2026-07-23T05:30:00Z",
+    use_p0m: bool = True,
 ) -> dict:
+    root = _p0m_root(root) if use_p0m else root
     registry = [
         {
             "station_id": root.station_id,
@@ -444,6 +467,7 @@ def test_p0m_first_and_replacement_are_weak_only_and_asof_ordered() -> None:
         bridge_sha256="b" * 64,
     )
     assert first.stage == "P0-M"
+    assert first.lineage["p0_root_posterior_sha256"] == p0.posterior_sha256
     assert first.lineage["taf_hard_exclusion"] == "FORBIDDEN"
     assert first.lineage["taf_tx_calibrated_center_c"] == (
         f"{first_proof.tx_calibrated_center_c:.17g}"
@@ -513,6 +537,62 @@ def test_p0m_first_and_replacement_are_weak_only_and_asof_ordered() -> None:
             fresh_until_utc="2026-07-23T05:00:00Z",
             bridge_sha256="b" * 64,
         )
+
+
+def test_p0m_preserves_explicit_p0_bound_future_curve_lineage() -> None:
+    base = _envelope()
+    curve = build_root_future_temperature_curve({
+        "station_id": base.station_id,
+        "event_date": base.event_date,
+        "settlement_timezone": base.settlement_timezone,
+        "root_checkpoint_id": base.checkpoint_id,
+        "root_probability_sha256": base.posterior_sha256,
+        "available_at_utc": base.decision_at_utc,
+        "source_snapshot_sha256": "e" * 64,
+        "independence_family_ids": ["ECMWF", "NOAA_GEFS"],
+        "points": [
+            {"valid_time_utc": "2026-07-23T10:00:00Z", "temperature_c": 37.0},
+            {"valid_time_utc": "2026-07-23T14:00:00Z", "temperature_c": 38.0},
+            {"valid_time_utc": "2026-07-23T18:00:00Z", "temperature_c": 39.0},
+            {"valid_time_utc": "2026-07-23T22:00:00Z", "temperature_c": 38.0},
+        ],
+    })
+    p0 = ProbabilityEnvelope.from_mapping({
+        **base.to_dict(),
+        "lineage": {
+            **dict(base.lineage),
+            "conditional_future_temperature_curve_json": json.dumps(
+                curve.to_dict(), sort_keys=True, separators=(",", ":")
+            ),
+            "conditional_future_temperature_curve_sha256": curve.content_sha256,
+            "conditional_future_temperature_curve_root_stage": "P0",
+            "conditional_future_temperature_curve_root_checkpoint_id": base.checkpoint_id,
+            "conditional_future_temperature_curve_root_probability_sha256": base.posterior_sha256,
+        },
+    })
+    artifact = _taf_artifact(station_id=p0.station_id)
+    proof = _taf_proof(
+        p0,
+        p0_root=p0,
+        revision=_forecast_revision(),
+        artifact=artifact,
+    )
+    p0m = materialize_p0m(
+        p0,
+        p0_root=p0,
+        taf_revision_artifact=artifact,
+        taf_revision_proof=proof,
+        decision_at_utc="2026-07-23T05:00:00Z",
+        fresh_until_utc="2026-07-23T06:00:00Z",
+        bridge_sha256="b" * 64,
+    )
+    assert p0m.lineage["conditional_future_temperature_curve_sha256"] == (
+        curve.content_sha256
+    )
+    assert p0m.lineage[
+        "conditional_future_temperature_curve_root_checkpoint_id"
+    ] == p0.checkpoint_id
+    assert p0m.lineage["p0_root_posterior_sha256"] == p0.posterior_sha256
 
 
 def test_mixed_native_lineage_is_inherited_by_p0m_and_p1() -> None:
@@ -927,8 +1007,9 @@ def test_peripheral_model_reliability_lineage_survives_p0m_and_p1() -> None:
 
 def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     p0 = _envelope()
+    p0m = _p0m_root(p0)
     p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(p0)["expected_envelope"]
+        _trajectory_packet(p0m)["expected_envelope"]
     )
     assert p1.stage == "P1"
     assert p1.probabilities["37"] == 0.0
@@ -941,6 +1022,10 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     )
     assert p1.lineage["source_lane"] == "AWC"
     assert p1.lineage["report_type"] == "METAR"
+    assert p1.lineage["prediction_root_stage"] == "P0-M"
+    assert p1.lineage["prediction_root_checkpoint_id"] == p0m.checkpoint_id
+    assert p1.lineage["p0_root_checkpoint_id"] == p0.checkpoint_id
+    assert p1.lineage["p0_root_content_sha256"] == p0.content_sha256
     assert p1.lineage["metar_trajectory_direction_role"] == (
         "DIAGNOSTIC_ONLY_BASKET_RECOMPUTES_POLICY_DIRECTION"
     )
@@ -967,10 +1052,14 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
         p0_row = insert_probability_envelope(
             conn, p0, created_at_utc="2026-07-23T04:01:00Z"
         )
+        p0m_row = insert_probability_envelope(
+            conn, p0m, created_at_utc="2026-07-23T05:00:00Z"
+        )
         p1_row = insert_probability_envelope(
             conn, p1, created_at_utc="2026-07-23T05:01:00Z"
         )
         assert p0_row["wrote"] is True
+        assert p0m_row["wrote"] is True
         assert p1_row["wrote"] is True
         assert insert_probability_envelope(
             conn, p1, created_at_utc="2026-07-23T05:02:00Z"
@@ -978,7 +1067,7 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
 
         altered = ProbabilityEnvelope.from_mapping(
             _trajectory_packet(
-                p0,
+                p0m,
                 temperature_c=39.0,
                 decision_at_utc="2026-07-23T05:35:00Z",
             )["expected_envelope"]
@@ -998,6 +1087,60 @@ def test_p1_rejects_legacy_raw_likelihood_boundary() -> None:
     }
     with pytest.raises(ContractError, match="unknown_fields"):
         _CLI.build_envelope(packet)
+
+
+def test_materialize_p1_accepts_p0_prediction_root_without_taf() -> None:
+    p0 = _envelope()
+    packet = _trajectory_packet(p0, use_p0m=False)
+    p1 = materialize_p1(
+        p0,
+        prediction_root=p0,
+        trajectory_artifact=packet["trajectory_artifact"],
+        trajectory_proof=packet["trajectory_proof"],
+        trajectory_observations=packet["trajectory_observations"],
+        bucket_centers_c=packet["bucket_centers_c"],
+        bucket_upper_bounds_c=packet["bucket_upper_bounds_c"],
+        reported_high_advanced=packet["reported_high_advanced"],
+        decision_at_utc=packet["decision_at_utc"],
+        fresh_until_utc=packet["fresh_until_utc"],
+        bridge_sha256=p0.bridge_sha256,
+    )
+    assert p1.stage == "P1"
+    assert p1.lineage["prediction_root_stage"] == "P0"
+
+
+def test_materialize_p1_rejects_cross_prediction_root_predecessor() -> None:
+    """A P0-root P1 cannot silently continue on a later P0-M branch."""
+
+    p0 = _envelope()
+    p0m = _p0m_root(p0)
+    p0_packet = _trajectory_packet(p0, use_p0m=False)
+    p0_p1 = ProbabilityEnvelope.from_mapping(
+        p0_packet["expected_envelope"]
+    )
+    p0m_packet = _trajectory_packet(
+        p0m,
+        event_id="obs-2",
+        decision_at_utc="2026-07-23T05:31:00Z",
+    )
+
+    with pytest.raises(
+        ContractError,
+        match="p1_predecessor_root_stage_mismatch",
+    ):
+        materialize_p1(
+            p0_p1,
+            prediction_root=p0m,
+            trajectory_artifact=p0m_packet["trajectory_artifact"],
+            trajectory_proof=p0m_packet["trajectory_proof"],
+            trajectory_observations=p0m_packet["trajectory_observations"],
+            bucket_centers_c=p0m_packet["bucket_centers_c"],
+            bucket_upper_bounds_c=p0m_packet["bucket_upper_bounds_c"],
+            reported_high_advanced=p0m_packet["reported_high_advanced"],
+            decision_at_utc=p0m_packet["decision_at_utc"],
+            fresh_until_utc=p0m_packet["fresh_until_utc"],
+            bridge_sha256=p0.bridge_sha256,
+        )
 
 
 def test_p1_with_no_hard_exclusions_records_explicit_none_lineage() -> None:

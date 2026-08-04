@@ -1,0 +1,24 @@
+{
+  "content_sha256": "4e5bfcbce25f2bdfad6b6ea9d048c34a28eac1522bc468249e69724c433440e4",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "c189625e2fbb8822fcbfa854fd465097eafc682e460e6b5312586392a2f5044c",
+  "observational_forward_event_count": 5,
+  "observational_forward_event_dates": [
+    "2026-07-30",
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "MIXED_NATIVE_CYCLES",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Chicago",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KORD"
+}

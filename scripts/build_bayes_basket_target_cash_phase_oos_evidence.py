@@ -138,7 +138,10 @@ def _rkpk_inventory(
     price = sum(
         1
         for row in station_rows
-        if row.get("all_in_yes_ask", row.get("price")) is not None
+        if row.get(
+            "all_in_yes_ask",
+            row.get("price", row.get("candidate_price")),
+        ) is not None
     )
     missing: list[str] = []
     if len(station_policies) != 1:

@@ -1,0 +1,14 @@
+{
+  "content_sha256": "d7a76b5e37674cec2e3e3543eb7de056467f00dd848247122b2837fa747bd63f",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "9340658a78a268b87b505132de8f622943123515f6a1d00c7ba180c5ee4e2174",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Paris",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LFPB"
+}

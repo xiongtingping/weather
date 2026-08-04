@@ -28,6 +28,7 @@ from .contracts import (
     ModelCalibrationArtifact,
     ModelEnsembleArtifact,
     ModelEnsembleSelectionEvidence,
+    content_sha256,
 )
 from .policy import GlobalBasketPriorArtifact, PolicyArtifact, StationBasketPolicyActivation
 from .resource_bounds import assert_connection_target_capacity
@@ -171,6 +172,57 @@ def _promotion_rows(packet: Mapping[str, Any], key: str, *, table: str, primary_
     return rows
 
 
+def _validate_no_live_truth_authority(
+    packet: Mapping[str, Any],
+    activations: Sequence[CalibrationActivation],
+) -> None:
+    """Recheck historical AWC lineage at the final activation write boundary."""
+
+    no_live = [
+        item for item in activations
+        if item.authority_scope == "PRODUCTION_NO_LIVE_ONLY"
+    ]
+    if not no_live:
+        return
+    receipt = packet.get("authority_receipt")
+    if (
+        not isinstance(receipt, Mapping)
+        or receipt.get("schema")
+        != "bayes_basket_target_no_live_calibration_authority_v1"
+        or receipt.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
+        or receipt.get("formal_promotion_created") is not False
+        or receipt.get("live_order_authorized") is not False
+    ):
+        raise ContractError("artifact_ingress_no_live_authority_receipt_invalid")
+    bindings = _rows(packet, "truth_authority_bindings")
+    by_station: dict[str, dict[str, Any]] = {}
+    for row in bindings:
+        identity = {
+            str(key): value
+            for key, value in row.items()
+            if key != "content_sha256"
+        }
+        if str(row.get("content_sha256") or "").lower() != content_sha256(identity):
+            raise ContractError("artifact_ingress_truth_binding_hash_mismatch")
+        station = str(row.get("station_id") or "").strip().upper()
+        if (
+            not station
+            or station in by_station
+            or row.get("truth_label_authority") != "FORMAL_STATION_LANE_TRUTH"
+            or str(row.get("source_lane") or "").upper() != "AWC"
+            or row.get("source_role") != "AWC_HISTORICAL_REPLAY_INGRESS"
+            or row.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
+            or not str(row.get("settlement_timezone") or "").strip()
+            or row.get("reference_only") is not False
+            or len(str(row.get("dataset_content_sha256") or "")) != 64
+        ):
+            raise ContractError("artifact_ingress_truth_binding_invalid")
+        by_station[station] = row
+    activation_stations = {item.station_id for item in no_live}
+    if set(by_station) != activation_stations:
+        raise ContractError("artifact_ingress_truth_binding_scope_mismatch")
+
+
 def _validate_cash_phase_authority_binding(
     packet: Mapping[str, Any],
     cash_policies: Sequence[BasketCashPhasePolicyArtifact],
@@ -235,6 +287,7 @@ def ingest_artifact_bundle(
     *,
     commit: bool = False,
     finalize_transaction: bool = True,
+    require_full_schema: bool = True,
 ) -> dict[str, Any]:
     if not commit and not finalize_transaction:
         raise ContractError(
@@ -243,8 +296,16 @@ def ingest_artifact_bundle(
     if not isinstance(packet, Mapping) or packet.get("schema") != SCHEMA:
         raise ContractError("artifact_ingress_schema_invalid")
     status = production_ssot_schema_status(conn)
-    if not status["ok"]:
+    if require_full_schema and not status["ok"]:
         raise ContractError("production_ssot_schema_incomplete")
+    if not require_full_schema:
+        activation_columns = {
+            str(row[1])
+            for row in conn.execute("PRAGMA table_info(calibration_activation)")
+        }
+        required_activation_columns = set(CALIBRATION_ACTIVATION_COLUMNS)
+        if not required_activation_columns.issubset(activation_columns):
+            raise ContractError("activation_only_artifact_schema_incomplete")
     if commit:
         assert_connection_target_capacity(conn)
 
@@ -276,6 +337,7 @@ def ingest_artifact_bundle(
             ):
                 raise ContractError("ensemble_selection_evidence_scope_mismatch")
     activations = [CalibrationActivation.from_mapping(row) for row in _rows(packet, "calibration_activations")]
+    _validate_no_live_truth_authority(packet, activations)
     priors = [GlobalBasketPriorArtifact.from_mapping(row) for row in _rows(packet, "global_priors")]
     policies = [PolicyArtifact.from_mapping(row) for row in _rows(packet, "policy_artifacts")]
     policy_activations = [StationBasketPolicyActivation.from_mapping(row) for row in _rows(packet, "policy_activations")]

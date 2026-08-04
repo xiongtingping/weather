@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "283b420b3e965c9f1049cdd2b72ce2b29ec8467a1a5ffb7c4d095285b3e68734",
+  "content_sha256": "ff25ab2ef70090ca18f863afc541a47311f806c91290b504fdf0512dafb6dabf",
   "end_date": "2026-07-29",
   "excluded_sample_count": 8,
   "excluded_samples": [
@@ -67,6 +72,18 @@
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "Pacific/Auckland",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "NZWN"
+  "station_id": "NZWN",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

@@ -507,6 +507,111 @@ def test_empty_target_is_economic_hold_not_missing_maker_candidate() -> None:
     assert result["candidate_action_count"] == 0
 
 
+def _bounded_multi_bucket_actions(
+    bucket_count: int,
+    *,
+    clips: tuple[float, ...],
+) -> tuple[list[str], list[dict[str, object]]]:
+    buckets = [f"bucket-{index}" for index in range(bucket_count)]
+    probabilities = {bucket: 1.0 / bucket_count for bucket in buckets}
+    current = {bucket: 0.0 for bucket in buckets}
+    target = {bucket: 40.0 for bucket in buckets}
+    actions: list[dict[str, object]] = []
+    for bucket in buckets:
+        for clip in clips:
+            actions.append(evaluate_action_v2(**_action_kwargs(
+                bucket=bucket,
+                cash_clip=clip,
+                limit_price=0.10,
+                probabilities=probabilities,
+                current_shares_by_bucket=current,
+                current_cost_by_bucket=current,
+                target_shares_by_bucket=target,
+                protected_buckets=buckets,
+                shortfall_buckets=[],
+                breakthrough_buckets=[],
+                capital_available_usdc=100.0,
+                minimum_profit_floor=-100.0,
+            )))
+    return buckets, actions
+
+
+def _select_bounded_multi_bucket_bundle(
+    buckets: list[str],
+    actions: list[dict[str, object]],
+) -> dict[str, object]:
+    probabilities = {bucket: 1.0 / len(buckets) for bucket in buckets}
+    zeros = {bucket: 0.0 for bucket in buckets}
+    return select_complete_maker_bundle_v2(
+        actions,
+        required_buckets=buckets,
+        probabilities=probabilities,
+        current_shares_by_bucket=zeros,
+        current_cost_by_bucket=zeros,
+        target_shares_by_bucket={bucket: 40.0 for bucket in buckets},
+        protected_buckets=buckets,
+        shortfall_buckets=[],
+        breakthrough_buckets=[],
+        value_weights=_value_weights(),
+        execution_weights=_execution_weights(),
+        capital_available_usdc=100.0,
+        minimum_profit_floor=-100.0,
+    )
+
+
+def test_complete_maker_bundle_prunes_normal_five_bucket_grid_before_outcome_overflow() -> None:
+    buckets, actions = _bounded_multi_bucket_actions(
+        5,
+        clips=(1.0, 2.0),
+    )
+
+    result = _select_bounded_multi_bucket_bundle(buckets, actions)
+    reverse = _select_bounded_multi_bucket_bundle(buckets, list(reversed(actions)))
+    resource = result["joint_outcome_resource_bound"]
+
+    # 5 buckets x 2 Maker choices x (zero, partial, full) would otherwise
+    # require 2**5 * 3**5 = 7,776 retained joint outcomes.  The selector
+    # keeps every required bucket and reduces only optional alternatives.
+    assert resource["requested_joint_outcome_count"] == 7776
+    assert resource["outcome_row_limit"] == 4096
+    assert resource["evaluated_joint_outcome_count"] == 3888
+    assert resource["requested_candidate_action_count"] == 10
+    assert resource["evaluated_candidate_action_count"] == 9
+    assert len(resource["pruned_action_sha256s"]) == 1
+    assert result["bundle_candidate_count"] == 16
+    assert result["content_sha256"] == reverse["content_sha256"]
+    assert result["calls_order_gateway"] is False
+    assert result["orders_submitted"] == 0
+
+
+def test_complete_maker_bundle_deduplicates_gap_clipped_identical_actions_before_pruning() -> None:
+    buckets, actions = _bounded_multi_bucket_actions(
+        5,
+        clips=(1.0, 2.0),
+    )
+    # A runtime cash clip can be capped by the same inventory gap twice.  The
+    # resulting immutable action is exactly identical and must not inflate the
+    # joint outcome Cartesian product.
+    actions[-1] = copy.deepcopy(actions[-2])
+
+    result = _select_bounded_multi_bucket_bundle(buckets, actions)
+    resource = result["joint_outcome_resource_bound"]
+
+    assert resource["raw_candidate_action_count"] == 10
+    assert resource["deduplicated_candidate_action_count"] == 9
+    assert resource["requested_joint_outcome_count"] == 3888
+    assert resource["evaluated_joint_outcome_count"] == 3888
+    assert len(resource["duplicate_action_sha256s"]) == 1
+    assert resource["pruned_action_sha256s"] == []
+
+
+def test_complete_maker_bundle_still_fails_closed_when_one_leg_per_bucket_exceeds_outcome_budget() -> None:
+    buckets, actions = _bounded_multi_bucket_actions(8, clips=(1.0,))
+
+    with pytest.raises(ContractError, match="bundle_outcome_bound_exceeded"):
+        _select_bounded_multi_bucket_bundle(buckets, actions)
+
+
 def test_complete_maker_bundle_holds_when_joint_reservation_exceeds_capital() -> None:
     common = {
         "probabilities": {"35": 0.5, "36": 0.5},

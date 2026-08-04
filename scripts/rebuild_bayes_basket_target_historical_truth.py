@@ -683,6 +683,15 @@ def _awc_fetch(
                 report_type = str(row.get("metarType") or "METAR").strip().upper()
                 if report_type not in {"METAR", "SPECI"}:
                     continue
+                # The unified AWC truth lane accepts routine METAR only at
+                # the official :00 slot.  Effective SPECI retains its own
+                # report time.  Filter before raw retention so off-cadence
+                # reports cannot become a delayed formal candidate.
+                if (
+                    report_type == "METAR"
+                    and (valid_at.minute != 0 or valid_at.second != 0)
+                ):
+                    continue
                 raw_sha = _sha_bytes(raw_text.encode("utf-8"))
                 record = {
                     "station_id": station,
@@ -878,6 +887,16 @@ def _load_existing_awc(
         if temp is None or not math.isfinite(temp):
             continue
         report_type = str(value.get("report_type") or raw_text.split(None, 1)[0] or "METAR").strip().upper()
+        # Reused research objects must obey the same formal global-AWC lane
+        # boundary as freshly fetched rows.  A prior archive can contain the
+        # provider's half-hour METARs; those are never canonical formal truth
+        # and must not become eligible merely because this rebuild is offline.
+        if (
+            not reference_only
+            and report_type == "METAR"
+            and (valid_at.minute != 0 or valid_at.second != 0)
+        ):
+            continue
         record = {
             "station_id": station,
             "source_lane": "awc",
@@ -923,6 +942,7 @@ def rebuild(
     fetch_formal_awc: bool = True,
     awc_reference_stations: list[str] | None = None,
     station_ids: list[str] | None = None,
+    reuse_existing_raw: bool = True,
 ) -> dict[str, Any]:
     lane_map = _stations(lane_map_path)
     event_dates = _dates(event_dates)
@@ -956,27 +976,28 @@ def rebuild(
     fetch_receipts: list[dict[str, Any]] = []
     blockers: list[dict[str, str]] = []
 
-    existing_rows, existing_reference_rows = _load_existing_amsc(
-        set(amsc_stations),
-        event_dates[0],
-        event_dates[-1],
-        target_timezone=target_timezone,
-    )
-    rows.extend(existing_rows)
-    reference_rows.extend(existing_reference_rows)
-    rows.extend(_load_existing_awc(
-        set(awc_stations),
-        event_dates[0],
-        event_dates[-1],
-        target_timezone=target_timezone,
-    ))
-    reference_rows.extend(_load_existing_awc(
-        set(amsc_stations),
-        event_dates[0],
-        event_dates[-1],
-        reference_only=True,
-        target_timezone=target_timezone,
-    ))
+    if reuse_existing_raw:
+        existing_rows, existing_reference_rows = _load_existing_amsc(
+            set(amsc_stations),
+            event_dates[0],
+            event_dates[-1],
+            target_timezone=target_timezone,
+        )
+        rows.extend(existing_rows)
+        reference_rows.extend(existing_reference_rows)
+        rows.extend(_load_existing_awc(
+            set(awc_stations),
+            event_dates[0],
+            event_dates[-1],
+            target_timezone=target_timezone,
+        ))
+        reference_rows.extend(_load_existing_awc(
+            set(amsc_stations),
+            event_dates[0],
+            event_dates[-1],
+            reference_only=True,
+            target_timezone=target_timezone,
+        ))
     if fetch_amsc:
         tokens = token_candidates()
         if not tokens:
@@ -1157,6 +1178,14 @@ def rebuild(
         "raw_root": str(raw_root.resolve()),
         "boundary": {
             "historical_only": True,
+            "uses_existing_retained_raw": bool(reuse_existing_raw),
+            "fresh_official_awc_raw_only": bool(
+                not reuse_existing_raw
+                and not fetch_amsc
+                and fetch_awc
+                and fetch_formal_awc
+                and not reference_stations
+            ),
             "open_event_days_may_be_collected": True,
             "open_event_days_final_truth_frozen": False,
             "open_event_days_calibration_eligible": False,
@@ -1202,7 +1231,22 @@ def main() -> int:
     parser.add_argument("--skip-amsc-fetch", action="store_true", help="Reuse existing bounded AMSC raw objects and fetch only AWC.")
     parser.add_argument("--skip-awc-fetch", action="store_true", help="Fetch only AMSC and reuse the isolated AWC packets separately.")
     parser.add_argument("--skip-formal-awc-fetch", action="store_true", help="Do not fetch formal AWC-lane truth; reference fetch remains enabled.")
+    parser.add_argument(
+        "--fresh-official-awc-raw-only",
+        action="store_true",
+        help=(
+            "Fetch only fresh official AWC formal raw objects.  Existing "
+            "retained/temporary/derived objects and AMSC are not read."
+        ),
+    )
     args = parser.parse_args()
+    if args.fresh_official_awc_raw_only and (
+        args.reference_only
+        or args.skip_awc_fetch
+        or args.skip_formal_awc_fetch
+        or args.awc_reference_station
+    ):
+        raise RuntimeError("fresh_official_awc_raw_only_contract_invalid")
     import os
     global _RESEARCH_DIRECT
     _RESEARCH_DIRECT = args.transport == "direct"
@@ -1210,7 +1254,10 @@ def main() -> int:
     # runnable when the research proxy is offline.  Resolve a proxy only when
     # at least one source fetch is requested; otherwise network availability
     # is unrelated to the operation and must not block it.
-    needs_network = (not args.skip_amsc_fetch) or (not args.skip_awc_fetch)
+    fetch_amsc = not args.skip_amsc_fetch and not args.fresh_official_awc_raw_only
+    fetch_awc = not args.skip_awc_fetch
+    fetch_formal_awc = not args.skip_formal_awc_fetch
+    needs_network = fetch_amsc or fetch_awc
     research_proxy = (
         ""
         if _RESEARCH_DIRECT
@@ -1240,11 +1287,12 @@ def main() -> int:
             station_ids=station_ids,
             event_dates=event_dates,
         ),
-        fetch_amsc=not args.skip_amsc_fetch,
-        fetch_awc=not args.skip_awc_fetch,
-        fetch_formal_awc=not args.skip_formal_awc_fetch,
+        fetch_amsc=fetch_amsc,
+        fetch_awc=fetch_awc,
+        fetch_formal_awc=fetch_formal_awc,
         awc_reference_stations=[str(item).strip().upper() for item in args.awc_reference_station if str(item).strip()],
         station_ids=station_ids,
+        reuse_existing_raw=not args.fresh_official_awc_raw_only,
     )
     print(json.dumps({"schema": result["schema"], "research_proxy_url": research_proxy or "direct", "observation_count": result["observation_count"], "reference_observation_count": result["reference_observation_count"], "station_day_count": result["station_day_count"], "source_counts": result["source_counts"], "reference_source_counts": result["reference_source_counts"], "blocker_count": len(result["blockers"]), "output": str(args.output.resolve()), "observations_output": str(args.observations_output.resolve()), "reference_output": str(args.reference_output.resolve())}, ensure_ascii=False, sort_keys=True))
     return _result_exit_code(result, reference_only=args.reference_only)

@@ -1,0 +1,3564 @@
+{
+  "as_of_utc": "2026-08-02T19:28:16.986Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "candidate_only": true,
+    "current_p0_root_mutated": false,
+    "future_data_used_as_oos": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "p1_materialized": false,
+    "production_p0_materialized": false,
+    "production_p0m_materialized": false,
+    "read_only": true,
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "446422e4fdd57ff9db8629d3c3572c62a46dbdb05525f3fffdb9ddce93ebdfb6",
+  "future_data_policy": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+  "historical_event_date_cutoff": "2026-07-28",
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "p1_audit_input": {
+    "content_sha256": "acf56796be43f4f0f9df7946b12d69e30dd14a30ca0e4f6b27b5ae8ca3c86321",
+    "path": "/Users/xiong/weather/output/audits/p1_trajectory_45station_audit_20260802_recheck.json"
+  },
+  "resolution": {
+    "next_step": "accumulate two more disjoint historical 8-day blocks from closed AWC truth and bind each to immutable P0 candidate roots before any TAF-24 decision",
+    "p1_action": "complete strict-as-of AWC prefix and root-bound trajectory folds; no current P1 materialization from this candidate",
+    "taf_action": "reuse existing official AWC captures only; do not synthesize revision/TX or promote this bridge"
+  },
+  "rolling_input": {
+    "content_sha256": "bba9241d2e9747c9698dd1af1bce657860575c3211fc8dcfa818a50c03971530",
+    "path": "/Users/xiong/weather/output/audits/native_ensemble_historical_oos_rolling_candidate_20260803_0728.json"
+  },
+  "schema": "bayes_basket_target_historical_rolling_taf_p1_bridge_v1",
+  "state": "CANDIDATE_ONLY_BLOCKED",
+  "stations": [
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/CYYZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "CYYZ",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EDDM_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "EDDM",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EFHK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "EFHK",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 30,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EGLC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "EGLC",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EHAM_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "EHAM",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EPWA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "EPWA",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/FACT_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "FACT",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 29,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 29
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KATL_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KATL",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KAUS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 2,
+          "data_missing": 2,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KAUS",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 37,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KBKF_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 7,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 2,
+          "data_missing": 2,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KBKF",
+      "taf_capture": {
+        "distinct_event_day_count": 25,
+        "rolling_holdout_tx_overlap_count": 6,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-28"
+        ],
+        "row_count": 48,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 6,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 25,
+        "tx_row_count": 48
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "rolling_native_candidate_missing_or_rejected"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {},
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 2,
+          "data_missing": 2,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 0,
+      "rolling_oos_rejected_count": 1,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KDAL",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KHOU_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KHOU",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 36,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLAX_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KLAX",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 34,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLGA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 2,
+          "data_missing": 2,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KLGA",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "rolling_native_candidate_missing_or_rejected"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "current_p0_scope_missing",
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": false,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KMIA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "data_missing": 4,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 0,
+      "rolling_oos_rejected_count": 1,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KMIA",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 36,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KORD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KORD",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 36,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSEA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 2,
+          "data_missing": 2,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KSEA",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSFO_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "KSFO",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 38,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LEMD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "LEMD",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LFPB_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "LFPB",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LIMC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "LIMC",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LTAC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "LTAC",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "rolling_native_candidate_missing_or_rejected"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MMMX_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 6,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 0,
+      "rolling_holdout_count": 0,
+      "rolling_holdout_days": [],
+      "rolling_independence_families": [],
+      "rolling_min_train_days": [],
+      "rolling_oos_pass_count": 0,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "MMMX",
+      "taf_capture": {
+        "distinct_event_day_count": 25,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 26,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 25,
+        "tx_row_count": 26
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 0,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MPMG_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "MPMG",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/NZWN_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "NZWN",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 33,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OEJN_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "OEJN",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OPKC_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "OPKC",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RCSS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "RCSS",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 30,
+        "accepted_awc_row_count": 31,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RJTT_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "RJTT",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 32,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKPK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 11,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "RKPK",
+      "taf_capture": {
+        "distinct_event_day_count": 24,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 46,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 24,
+        "tx_row_count": 46
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 33,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKSI_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 11,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "RKSI",
+      "taf_capture": {
+        "distinct_event_day_count": 27,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 28,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 27,
+        "tx_row_count": 28
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 33,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "rolling_native_candidate_missing_or_rejected"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "current_p0_scope_missing",
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": false,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RPLL_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 0,
+      "rolling_oos_rejected_count": 1,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "RPLL",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 29,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SAEZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 8,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "SAEZ",
+      "taf_capture": {
+        "distinct_event_day_count": 25,
+        "rolling_holdout_tx_overlap_count": 7,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 26,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 7,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 25,
+        "tx_row_count": 26
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SBGR_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 9,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "SBGR",
+      "taf_capture": {
+        "distinct_event_day_count": 24,
+        "rolling_holdout_tx_overlap_count": 7,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27"
+        ],
+        "row_count": 62,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 7,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27"
+        ],
+        "tx_event_day_count": 24,
+        "tx_row_count": 62
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/VILK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "VILK",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WMKK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "WMKK",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 29,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "awc_taf_tx_overlap_missing",
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WSSS_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 0,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "WSSS",
+      "taf_capture": {
+        "distinct_event_day_count": 0,
+        "rolling_holdout_tx_overlap_count": 0,
+        "rolling_holdout_tx_overlap_days": [],
+        "row_count": 0,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 0,
+        "strict_asof_tx_overlap_days": [],
+        "tx_event_day_count": 0,
+        "tx_row_count": 0
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 29,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZBAA_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZBAA",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 71,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 71
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 31,
+        "accepted_awc_row_count": 31,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGGG_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZGGG",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 46,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 46
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 30,
+        "accepted_awc_row_count": 30,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGSZ_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZGSZ",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 45,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 45
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 30,
+        "accepted_awc_row_count": 30,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZHHH_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZHHH",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 46,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 46
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 30,
+        "accepted_awc_row_count": 30,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSPD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZSPD",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 45,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 45
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 31,
+        "accepted_awc_row_count": 31,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSQD_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZSQD",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 46,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 46
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 28,
+        "accepted_awc_row_count": 28,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUCK_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 10,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZUCK",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 47,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 47
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 29,
+        "accepted_awc_row_count": 29,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    },
+    {
+      "blockers": [
+        "p1_formal_trajectory_unbound",
+        "rolling_candidate_not_bound_to_current_p0_root",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "candidate_only": true,
+      "current_p0_root_bound": false,
+      "existing_current_p0_exact_join": {
+        "blockers": [
+          "taf_native_oos_sample_n_insufficient"
+        ],
+        "current_p0_scope_present": true,
+        "path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUUU_JJA_d2_18Z_taf_native_exact_join.json",
+        "sample_count": 9,
+        "state": "BLOCKED"
+      },
+      "p1_audit": {
+        "blocker_counts": {
+          "arrival_lineage_missing": 3,
+          "data_missing": 1,
+          "sample_insufficient": 4,
+          "trajectory_artifact_missing": 4,
+          "trajectory_oos_not_ready": 4
+        },
+        "formal_eligible_count": 0,
+        "scope_count": 4
+      },
+      "rolling_candidate_count": 1,
+      "rolling_holdout_count": 8,
+      "rolling_holdout_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28"
+      ],
+      "rolling_independence_families": [
+        "ECMWF",
+        "NOAA_GEFS"
+      ],
+      "rolling_min_train_days": [
+        20
+      ],
+      "rolling_oos_pass_count": 1,
+      "rolling_oos_rejected_count": 0,
+      "rolling_selected_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "state": "CANDIDATE_ONLY_BLOCKED",
+      "station_id": "ZUUU",
+      "taf_capture": {
+        "distinct_event_day_count": 28,
+        "rolling_holdout_tx_overlap_count": 8,
+        "rolling_holdout_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "row_count": 45,
+        "source": "target_ssot.calibration_historical_taf_capture",
+        "strict_asof_tx_overlap_count": 8,
+        "strict_asof_tx_overlap_days": [
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+          "2026-07-27",
+          "2026-07-28"
+        ],
+        "tx_event_day_count": 28,
+        "tx_row_count": 45
+      },
+      "truth": {
+        "accepted_awc_event_day_count": 30,
+        "accepted_awc_row_count": 30,
+        "rolling_holdout_truth_overlap_count": 8,
+        "source": "target_ssot.calibration_station_daily_high_truth"
+      }
+    }
+  ],
+  "summary": {
+    "current_p0_root_bound_count": 0,
+    "max_taf_tx_overlap_count": 8,
+    "p1_formal_eligible_scope_count": 0,
+    "rolling_candidate_missing_station_count": 1,
+    "rolling_oos_pass_station_count": 41,
+    "rolling_oos_rejected_station_count": 3,
+    "station_count": 45,
+    "taf_qualified_scope_count_at_24": 0,
+    "taf_tx_overlap_sample_count": 108,
+    "taf_tx_overlap_station_count": 14
+  },
+  "taf_audit_input": {
+    "content_sha256": "01dc31675041cb2f2becdffd58128eff82d5dc754359a98f5c63fc899679d68e",
+    "path": "/Users/xiong/weather/output/audits/taf_p0m_exact_join_45station_20260803_stable_reaudit.json"
+  },
+  "taf_minimum_sample_n": 24
+}

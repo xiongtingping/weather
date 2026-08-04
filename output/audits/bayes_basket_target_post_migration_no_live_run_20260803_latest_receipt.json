@@ -1,0 +1,50 @@
+{
+  "atomic_stage_receipt": {
+    "calls_order_gateway": false,
+    "content_sha256": "2eb5c076f91a1a0213ae7966b25ec6d0c31a66fdd7f9ff40ba93c277c4cbfed2",
+    "facts": {},
+    "forward_oos_boundary": {
+      "blocks_formal_promotion_or_live": false,
+      "blocks_production_no_live": false,
+      "future_data_blocks_formal_promotion_or_live": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_counts_as_oos": false,
+      "historical_strict_oos_required_for_formal_promotion_or_live": true
+    },
+    "historical_oos_boundary": {
+      "blocks_formal_promotion_or_live": false,
+      "blocks_production_no_live": false,
+      "future_data_blocks_formal_promotion_or_live": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_counts_as_oos": false,
+      "historical_strict_oos_required_for_formal_promotion_or_live": true
+    },
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "payload_content_sha256": "1acdd5e216b423abb3d3bdbd4bf0ef56dde7aa8a00ba5cbd2064612ac0981266",
+    "payload_schema": "bayes_basket_target_post_migration_no_live_run_v1",
+    "payload_state": "BLOCKED_FAIL_CLOSED",
+    "production_no_live": true,
+    "schema": "bayes_basket_target_m9_06_stage_receipt_v1",
+    "stage": "preflight",
+    "state": "BLOCKED_FAIL_CLOSED"
+  },
+  "calls_order_gateway": false,
+  "execution_mode": "production_no_live",
+  "historical_oos_boundary": {
+    "blocks_formal_promotion_or_live": false,
+    "blocks_production_no_live": false,
+    "future_data_blocks_formal_promotion_or_live": false,
+    "future_data_blocks_production_no_live": false,
+    "future_data_counts_as_oos": false,
+    "historical_strict_oos_required_for_formal_promotion_or_live": true
+  },
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "reason": "ResourceBoundError:target_input_stat_failed",
+  "receipt_sha256": "db5432fe3a27888fe688b024c713cacd95794b807c5fb6eab8bdf059d43da950",
+  "schema": "bayes_basket_target_post_migration_no_live_run_v1",
+  "stage": "coordinator_exception",
+  "state": "BLOCKED_FAIL_CLOSED"
+}

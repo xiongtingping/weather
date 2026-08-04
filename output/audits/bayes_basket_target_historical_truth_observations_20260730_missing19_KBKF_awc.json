@@ -1,0 +1,43 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_arrival_evidence": false,
+    "places_orders": false,
+    "writes_production_db": false
+  },
+  "canonical_ingress": true,
+  "evidence_sha256": "8727d578751bf5fb88f95ee892ba0268140dbe9ddbce0de48079a27d2423e344",
+  "generated_at_utc": "2026-08-01T02:35:11Z",
+  "historical_only": true,
+  "observation_count": 2,
+  "observations": [
+    {
+      "canonical_committed_at_utc": "2026-08-01T02:35:11Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-08-01T02:35:11Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "be898e08308343c84e3b359abcb60a729bb690901a4af76329908ace2a439c34",
+      "report_type": "SPECI",
+      "reported_temperature_c": 24.0,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-e91200c39d5f23c7e4f831ff28394c8a2f95a63e5966982c38e0ea450975095e",
+      "station_id": "KBKF",
+      "valid_at_utc": "2026-07-31T05:23:00Z"
+    },
+    {
+      "canonical_committed_at_utc": "2026-08-01T02:35:11Z",
+      "correction_suspected": false,
+      "first_seen_at_utc": "2026-08-01T02:35:11Z",
+      "qc_status": "ACCEPTED",
+      "raw_sha256": "23713bd0be5652ccf5b3b678c7d8023aebe692ab0b016a429b9a8b205d306f40",
+      "report_type": "SPECI",
+      "reported_temperature_c": 24.0,
+      "source_lane": "awc",
+      "source_poll_id": "awc-historical-e91200c39d5f23c7e4f831ff28394c8a2f95a63e5966982c38e0ea450975095e",
+      "station_id": "KBKF",
+      "valid_at_utc": "2026-07-31T05:44:00Z"
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_observation_evidence_v1",
+  "target_timezone": "America/Denver"
+}

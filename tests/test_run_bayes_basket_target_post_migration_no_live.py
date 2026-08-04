@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
 
 import pytest
 
@@ -59,7 +60,7 @@ def _round(
         "not_started_station_ids": [],
         "round_sha256": "a" * 64,
         "services": {
-            "com.weather.reported_trajectory_no": 101,
+            "com.weather.weather_basket_yes": 101,
             "com.weather.market_ws": 102,
             "com.weather.clob_order_service": 103,
         },
@@ -68,7 +69,7 @@ def _round(
             "wal_bytes": 0,
             "free_bytes": 4 * 1024 * 1024 * 1024,
             "resident_service_rss_bytes": {
-                "com.weather.reported_trajectory_no": 1024,
+                "com.weather.weather_basket_yes": 1024,
                 "com.weather.market_ws": 1024,
                 "com.weather.clob_order_service": 1024,
             },
@@ -216,6 +217,25 @@ def test_child_file_limit_covers_bounded_target_db_and_wal(
     ]
 
 
+def test_worker_timeout_is_materialized_as_fail_closed_return_code(tmp_path, monkeypatch) -> None:
+    stdout = tmp_path / "worker.stdout"
+    stderr = tmp_path / "worker.stderr"
+
+    def timed_out(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired("worker", 3)
+
+    monkeypatch.setattr(runner.subprocess, "run", timed_out)
+    result = runner._default_worker_runner(
+        ("worker",),
+        env={},
+        stdout_path=stdout,
+        stderr_path=stderr,
+        timeout_seconds=3,
+    )
+    assert result == runner.WORKER_TIMEOUT_RETURN_CODE
+    assert "worker_timeout_after_seconds=3" in stderr.read_text(encoding="utf-8")
+
+
 def test_runner_counts_training_facts_labels_and_version_vectors() -> None:
     with sqlite3.connect(":memory:") as conn:
         for table in (
@@ -339,9 +359,13 @@ def test_two_round_verifier_accepts_each_started_station_advancing() -> None:
     assert result["state"] == "PASS"
     assert result["calls_order_gateway"] is False
     assert result["orders_submitted"] == 0
-    assert result["forward_oos_boundary"] == {
+    assert result["historical_oos_boundary"] == {
         "blocks_production_no_live": False,
-        "blocks_formal_promotion_or_live": True,
+        "blocks_formal_promotion_or_live": False,
+        "future_data_counts_as_oos": False,
+        "future_data_blocks_production_no_live": False,
+        "future_data_blocks_formal_promotion_or_live": False,
+        "historical_strict_oos_required_for_formal_promotion_or_live": True,
     }
 
 

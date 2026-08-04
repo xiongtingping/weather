@@ -29,6 +29,7 @@ from .production_io import (
     load_materialized_probability_envelopes,
     load_production_artifacts,
     resolve_delta_v2_runtime_authority,
+    target_registry_source_lane,
 )
 from .performance_budget import load_performance_budget
 from .resource_bounds import assert_connection_target_capacity
@@ -507,11 +508,17 @@ def compile_p0_preselection(
     planning_budget_usdc: float,
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    expected_source_lane = target_registry_source_lane(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+    )
     envelopes = load_materialized_probability_envelopes(
         conn,
         station_id=station_id,
         event_date=event_date,
         evaluation_at_utc=evaluation_at_utc,
+        expected_source_lane=expected_source_lane,
     )
     envelope = select_current_stage(envelopes, at_utc=evaluation_at_utc)
     assert_current_probability_bridge(
@@ -539,7 +546,12 @@ def compile_p0_preselection(
         conn,
         station_id=station_id,
         evaluation_at_utc=evaluation_at_utc,
-        require_calibration=True,
+        # P0/P0-M probability authority is the committed native cross-
+        # ensemble envelope above.  Deterministic calibration artifacts are
+        # retired from the P0 pathway; this bundle is still required for the
+        # station policy/cash compiler but must not resurrect the old model
+        # gate for an otherwise valid native envelope.
+        require_calibration=False,
     )
     authority_manifest = cash_phase_authority_manifest
     if authority_manifest is None:
@@ -615,6 +627,7 @@ def compile_p0_preselection(
         require_regime_ssot=True,
         resource_probe_ok=True,
         delta_v2_owns_cadence=True,
+        expected_source_lane=expected_source_lane,
     )
     resolved_policy = compiled.get("resolved_station_policy")
     if (

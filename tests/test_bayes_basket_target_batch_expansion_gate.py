@@ -92,10 +92,10 @@ def _stores() -> tuple[sqlite3.Connection, sqlite3.Connection]:
         INSERT INTO basket_policy_training_fact
         VALUES('d2fact_2','decision_2','RKPK','2026-07-29');
         INSERT INTO auto_trade_decisions VALUES(
-          'decision_1','{"forward_observation_status":"ELIGIBLE"}'
+          'decision_1','{"evidence_role":"historical_strict_oos","forward_observation_status":"ELIGIBLE"}'
         );
         INSERT INTO auto_trade_decisions VALUES(
-          'decision_2','{"forward_observation_status":"ELIGIBLE"}'
+          'decision_2','{"evidence_role":"historical_strict_oos","forward_observation_status":"ELIGIBLE"}'
         );
         INSERT INTO calibration_station_daily_high_truth VALUES(
           'truth_1','RKPK','2026-07-29',1,1,'ACCEPTED',
@@ -160,6 +160,66 @@ def test_batch_expansion_does_not_wait_for_future_settlement_labels() -> None:
         ]
         is False
     )
+
+
+def test_missing_forward_observation_is_observational_telemetry_only() -> None:
+    ssot, forward = _stores()
+    forward.execute("DELETE FROM forward_observation")
+    result = evaluate_45station_no_live_expansion(
+        ssot, forward, _packet()
+    )
+    assert result["state"] == "READY"
+    assert result["blockers"] == []
+    assert result["rkpk_forward_observation_count"] == 0
+    assert result["future_observation_is_oos"] is False
+    assert result["forward_observational_scorecard"][
+        "blocks_production_no_live_or_batch_expansion"
+    ] is False
+
+
+def test_unresolved_forward_quarantine_is_observational_telemetry_only() -> None:
+    ssot, forward = _stores()
+    forward.execute(
+        "INSERT INTO forward_ingest_state VALUES('decision-q','QUARANTINED')"
+    )
+    result = evaluate_45station_no_live_expansion(
+        ssot, forward, _packet()
+    )
+    assert result["state"] == "READY"
+    assert result["blockers"] == []
+    assert result["rkpk_unresolved_quarantine_count"] == 1
+    assert result["future_observation_evidence_role"] == (
+        "observational_candidate_not_oos"
+    )
+
+
+def test_future_fact_does_not_enter_historical_strict_oos_scorecard() -> None:
+    ssot, forward = _stores()
+    ssot.execute(
+        "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?)",
+        (
+            "d2fact_future",
+            "decision_future",
+            "RKPK",
+            "2026-08-03",
+        ),
+    )
+    ssot.execute(
+        "INSERT INTO auto_trade_decisions VALUES(?,?)",
+        (
+            "decision_future",
+            '{"evidence_role":"observational_candidate_not_oos",'
+            '"forward_observation_status":"ELIGIBLE"}',
+        ),
+    )
+    result = evaluate_45station_no_live_expansion(
+        ssot, forward, _packet()
+    )
+    assert result["state"] == "READY"
+    assert result["blockers"] == []
+    assert result["rkpk_delta_v2_observational_candidate_not_oos_fact_count"] == 1
+    assert result["rkpk_delta_v2_historical_strict_oos_fact_count"] == 2
+    assert "2026-08-03" not in result["rkpk_event_dates"]
 
 
 def test_batch_expansion_becomes_ready_after_labels_and_projection() -> None:
@@ -349,7 +409,8 @@ def test_batch_expansion_fact_scan_is_resource_bounded() -> None:
         [
             (
                 decision_id,
-                '{"forward_observation_status":"ELIGIBLE"}',
+                '{"evidence_role":"historical_strict_oos",'
+                '"forward_observation_status":"ELIGIBLE"}',
             )
             for _, decision_id, _, _ in rows
         ],

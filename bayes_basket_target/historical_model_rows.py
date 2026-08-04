@@ -107,8 +107,18 @@ def load_historical_model_rows(
     as_of_utc: str,
     station_timezone_map: Mapping[str, str],
     require_reconstructed_at: bool = True,
+    repair_registry_timezone: bool = False,
 ) -> list[dict[str, Any]]:
-    """Return closed settlement-day rows with one canonical capture contract."""
+    """Return closed settlement-day rows with one canonical capture contract.
+
+    ``repair_registry_timezone`` is an explicit historical-only migration
+    switch.  A few retained native packets were materialized with the old
+    operational timezone.  When enabled, their local event date is recomputed
+    from the immutable valid-time and the station registry timezone; the old
+    date/timezone is retained as audit metadata.  Missing valid time or a
+    non-reconstructable row still fails closed.  Prospective/native arrival
+    callers leave this switch off.
+    """
 
     if not isinstance(payload, Mapping):
         raise ContractError("historical_rebuild_evidence_mapping_required")
@@ -139,11 +149,23 @@ def load_historical_model_rows(
         if not target_timezone:
             raise ContractError("historical_rebuild_settlement_timezone_missing")
         explicit_timezone = str(item.get("target_timezone") or "").strip()
-        if explicit_timezone != target_timezone:
-            raise ContractError(
-                "historical_rebuild_settlement_timezone_mismatch"
-            )
         event_date = str(item.get("event_date") or item.get("target_local_date") or "").strip()
+        timezone_repaired = False
+        legacy_event_date = event_date
+        legacy_timezone = explicit_timezone
+        if explicit_timezone != target_timezone:
+            if not repair_registry_timezone:
+                raise ContractError(
+                    "historical_rebuild_settlement_timezone_mismatch"
+                )
+            valid_raw = str(item.get("valid_time_utc") or "").strip()
+            if not valid_raw:
+                raise ContractError(
+                    "historical_rebuild_settlement_timezone_mismatch"
+                )
+            valid_at = _utc(valid_raw)
+            event_date = valid_at.astimezone(ZoneInfo(target_timezone)).date().isoformat()
+            timezone_repaired = True
         if not event_date:
             raise ContractError("historical_rebuild_event_date_missing")
         window = event_day_window(
@@ -156,6 +178,10 @@ def load_historical_model_rows(
         row = dict(item)
         row["event_date"] = event_date
         row["target_timezone"] = target_timezone
+        if timezone_repaired:
+            row["legacy_event_date"] = legacy_event_date
+            row["legacy_target_timezone"] = legacy_timezone
+            row["settlement_timezone_repaired_from_valid_time"] = True
         row["capture_mode"] = "historical_rebuild"
         row["model_run_initialization_utc"] = _timestamp_text(
             row.get("model_run_initialization_utc")

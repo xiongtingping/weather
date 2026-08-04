@@ -36,6 +36,14 @@ def ingest_canonical_observation_evidence(
     ).fetchone()
     if table is None:
         raise ContractError("target_observation_fact_table_missing")
+    columns = {
+        str(row[1])
+        for row in conn.execute(
+            "PRAGMA table_info(basket_target_observation_facts)"
+        )
+    }
+    if "settlement_timezone" not in columns:
+        raise ContractError("target_observation_fact_timezone_column_missing")
     rows = []
     for raw in evidence.get("observations") or []:
         if not isinstance(raw, Mapping) or raw.get("qc_status") != "ACCEPTED":
@@ -54,7 +62,7 @@ def ingest_canonical_observation_evidence(
         }
         if not all(required.values()):
             raise ContractError("canonical_fact_required_field_missing")
-        if required["source_lane"] not in {"AMSC", "AWC"}:
+        if required["source_lane"] != "AWC":
             raise ContractError("canonical_fact_source_lane_invalid")
         if required["report_type"] not in {"METAR", "SPECI"}:
             raise ContractError("canonical_fact_report_type_invalid")
@@ -67,11 +75,7 @@ def ingest_canonical_observation_evidence(
         )
         identity = {
             "schema": "basket_target_observation_fact_v1",
-            **{
-                key: value
-                for key, value in required.items()
-                if key != "settlement_timezone"
-            },
+            **required,
         }
         rows.append({
             **required,
@@ -95,10 +99,10 @@ def ingest_canonical_observation_evidence(
                 replayed += 1
                 continue
             conn.execute(
-                "INSERT INTO basket_target_observation_facts(observation_fact_id,observation_id,station_id,event_date,source_lane,report_type,raw_sha256,canonical_committed_at,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO basket_target_observation_facts(observation_fact_id,observation_id,station_id,event_date,settlement_timezone,source_lane,report_type,raw_sha256,canonical_committed_at,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     row["observation_fact_id"], row["observation_id"], row["station_id"], row["event_date"],
-                    row["source_lane"], row["report_type"], row["raw_sha256"], row["canonical_committed_at"],
+                    row["settlement_timezone"], row["source_lane"], row["report_type"], row["raw_sha256"], row["canonical_committed_at"],
                     row["content_sha256"], created_at_utc or row["canonical_committed_at"],
                 ),
             )

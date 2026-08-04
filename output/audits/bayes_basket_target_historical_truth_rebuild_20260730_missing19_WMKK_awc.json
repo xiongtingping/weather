@@ -1,0 +1,131 @@
+{
+  "blockers": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "fresh_official_awc_raw_only": true,
+    "historical_only": true,
+    "live_arrival_evidence": false,
+    "open_event_days_calibration_eligible": false,
+    "open_event_days_final_truth_frozen": false,
+    "open_event_days_may_be_collected": true,
+    "places_orders": false,
+    "uses_existing_retained_raw": false,
+    "writes_production_db": false
+  },
+  "event_dates": [
+    "2026-07-30"
+  ],
+  "event_day_windows": [
+    {
+      "as_of_utc": "2026-08-01T02:35:46Z",
+      "event_date": "2026-07-30",
+      "reason": "target_settlement_day_closed",
+      "state": "closed",
+      "target_day_end_utc": "2026-07-30T16:00:00Z",
+      "target_day_start_utc": "2026-07-29T16:00:00Z",
+      "target_timezone": "Asia/Kuala_Lumpur"
+    }
+  ],
+  "evidence_sha256": "970052f0ffcf1a42e264ec4fecce6f3ceb69fa5428aac7182fc420fdfe64320f",
+  "fetch_receipts": [
+    {
+      "purpose": "formal_truth",
+      "queries": [
+        {
+          "event_date": "2026-07-30",
+          "response_sha256": "23aecc7dc25790f070ac35881980b1038cce49706c39a14ebd8676b21771c4ac",
+          "returned_rows": 49,
+          "source_url": "https://aviationweather.gov/api/data/metar?ids=WMKK&format=json&date=20260730_1600&hours=24",
+          "stations": [
+            "WMKK"
+          ]
+        }
+      ],
+      "query_blockers": [],
+      "query_count": 1,
+      "reference_only": false,
+      "returned": 24,
+      "source_lane": "awc",
+      "transport_bounds": {
+        "address_resolution": "bounded_doh_connect_to",
+        "batch_budget_sec": 60.0,
+        "budget_exhausted": false,
+        "connect_to": [
+          "aviationweather.gov:443:150.171.110.6:443"
+        ],
+        "max_attempts": 1,
+        "timeout_sec": 15
+      }
+    }
+  ],
+  "generated_at_utc": "2026-08-01T02:35:46Z",
+  "observation_count": 24,
+  "observation_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_WMKK_awc.json",
+  "pending_event_dates": [],
+  "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/historical_truth_raw",
+  "receipt_sha256": "d079788d0381e42c36e5e2ef64c7e455294ec1a889c0ffb93013e33b7d9dfd11",
+  "reference_evidence_path": "/Users/xiong/weather/output/audits/bayes_basket_target_truth_reference_20260730_missing19_WMKK_awc.json",
+  "reference_observation_count": 0,
+  "reference_source_counts": {
+    "amsc_half_hour": 0,
+    "awc_hourly": 0
+  },
+  "schema": "bayes_basket_target_historical_truth_rebuild_evidence_v1",
+  "source_counts": {
+    "amsc": 0,
+    "awc": 24
+  },
+  "state": "CLOSED_HISTORICAL",
+  "station_day_count": 1,
+  "station_day_keys": [
+    "WMKK|2026-07-30"
+  ],
+  "station_lane_map": {
+    "CYYZ": "awc",
+    "EDDM": "awc",
+    "EFHK": "awc",
+    "EGLC": "awc",
+    "EHAM": "awc",
+    "EPWA": "awc",
+    "FACT": "awc",
+    "KATL": "awc",
+    "KAUS": "awc",
+    "KBKF": "awc",
+    "KDAL": "awc",
+    "KHOU": "awc",
+    "KLAX": "awc",
+    "KLGA": "awc",
+    "KMIA": "awc",
+    "KORD": "awc",
+    "KSEA": "awc",
+    "KSFO": "awc",
+    "LEMD": "awc",
+    "LFPB": "awc",
+    "LIMC": "awc",
+    "LTAC": "awc",
+    "MMMX": "awc",
+    "MPMG": "awc",
+    "NZWN": "awc",
+    "OEJN": "awc",
+    "OPKC": "awc",
+    "RCSS": "awc",
+    "RJTT": "awc",
+    "RKPK": "awc",
+    "RKSI": "awc",
+    "RPLL": "awc",
+    "SAEZ": "awc",
+    "SBGR": "awc",
+    "VILK": "awc",
+    "WMKK": "awc",
+    "WSSS": "awc",
+    "ZBAA": "awc",
+    "ZGGG": "awc",
+    "ZGSZ": "awc",
+    "ZHHH": "awc",
+    "ZSPD": "awc",
+    "ZSQD": "awc",
+    "ZUCK": "awc",
+    "ZUUU": "awc"
+  },
+  "target_timezone": "Asia/Kuala_Lumpur"
+}

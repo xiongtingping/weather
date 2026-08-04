@@ -1,0 +1,29 @@
+{
+  "as_of_utc": "2026-08-01T00:18:14.553Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "offline_only": true,
+    "orders_submitted": 0,
+    "production_p0_materialized": false,
+    "production_p0m_materialized": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "afff0ebfee36c3c3af7db037fbb3d8cc55d93ded49a8069b4bda2a4e766bf292",
+  "reports": [
+    {
+      "accumulating_count": 115,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/native_ensemble_rolling_taf_oos_epwa_awc_formal_probe_20260801T0024Z/EPWA_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "EPWA",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    }
+  ],
+  "schema": "native_ensemble_rolling_taf_oos_build_manifest_v1",
+  "station_count": 1
+}

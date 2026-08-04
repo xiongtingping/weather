@@ -18,7 +18,7 @@
     "max_valid_times_per_run": 32
   },
   "resource_budget": {
-    "max_response_bytes": 67108864,
+    "max_response_bytes": 134217728,
     "max_capture_bytes_per_point": 268435456,
     "min_free_bytes": 536870912,
     "max_process_rss_bytes": 805306368,

@@ -1,0 +1,14 @@
+{
+  "blocker_count": 0,
+  "calls_order_gateway": false,
+  "completed_station_count": 1,
+  "excluded_sample_count": 27,
+  "failed_station_count": 0,
+  "failures": [],
+  "orders_submitted": 0,
+  "outputs": [
+    "/Users/xiong/weather/output/audits/awc_taf_historical_45station_20260705_20260731_reused_awc/AWC_TAF_CYYZ_20260705_20260731.json"
+  ],
+  "sample_count": 0,
+  "station_count": 1
+}

@@ -77,17 +77,20 @@ def load_historical_rebuild_model_rows(
     *,
     as_of_utc: str,
     target_timezone: str,
+    station_timezone_map: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Normalize the same complete closed-day rows used by settlement history."""
 
+    timezone_map = dict(station_timezone_map or {
+        str(row.get("station_id") or "").strip().upper(): target_timezone
+        for row in evidence.get("model_rows", evidence.get("model_points", []))
+        if isinstance(row, Mapping)
+    })
     return load_historical_model_rows(
         evidence,
         as_of_utc=as_of_utc,
-        station_timezone_map={
-            str(row.get("station_id") or "").strip().upper(): target_timezone
-            for row in evidence.get("model_rows", evidence.get("model_points", []))
-            if isinstance(row, Mapping)
-        },
+        station_timezone_map=timezone_map,
+        repair_registry_timezone=station_timezone_map is not None,
     )
 
 
@@ -125,6 +128,24 @@ def _settlement_day_boundary_utc(
     if key is None:
         raise ContractError("calibration_settlement_boundary_invalid")
     return str(window[key])
+
+
+def _station_timezone(
+    station_id: str,
+    *,
+    target_timezone: str,
+    station_timezone_map: Mapping[str, Any] | None = None,
+) -> str:
+    if station_timezone_map is not None:
+        value = str(station_timezone_map.get(station_id) or "").strip()
+        if not value:
+            raise ContractError("calibration_station_timezone_missing:" + station_id)
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise ContractError("calibration_station_timezone_invalid:" + station_id) from exc
+        return value
+    return target_timezone
 
 
 def _paired_available_at_utc(
@@ -809,6 +830,7 @@ def build_calibration_evidence(
     historical_model_rows: Iterable[Mapping[str, Any]] | None = None,
     previous_ensemble_artifacts: Iterable[Mapping[str, Any]] | None = None,
     station_lane_map: Mapping[str, Any] | None = None,
+    station_timezone_map: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create deterministic calibration candidates and a fail-closed gate.
 
@@ -825,8 +847,18 @@ def build_calibration_evidence(
     )
     if not str(target_timezone or "").strip():
         raise ContractError("calibration_settlement_timezone_missing")
+    timezone_by_station = {
+        str(station).strip().upper(): str(value).strip()
+        for station, value in (station_timezone_map or {}).items()
+        if str(station).strip()
+    }
     for row in models:
-        if str(row.get("target_timezone") or "").strip() != target_timezone:
+        expected_timezone = _station_timezone(
+            str(row.get("station_id") or "").strip().upper(),
+            target_timezone=target_timezone,
+            station_timezone_map=timezone_by_station or None,
+        )
+        if str(row.get("target_timezone") or "").strip() != expected_timezone:
             raise ContractError("calibration_model_settlement_timezone_mismatch")
         for field in ("published_at_utc", "received_at_utc"):
             value = str(row.get(field) or "").strip()
@@ -972,27 +1004,41 @@ def build_calibration_evidence(
         observations,
         as_of_utc=_utc_text(as_of),
         target_timezone=target_timezone,
+        station_timezone_map=timezone_by_station or None,
         fail_on_incomplete_model_set=False,
     )
     run_cycle = str(replay.get("run_cycle") or "").strip()
     if not run_cycle:
         raise ContractError("strict_asof_run_cycle_missing")
     replay_lead_bucket = lead_bucket_for_maturity(str(replay.get("maturity_key") or ""))
-    model_days, model_quality = materialize_model_station_days(models, target_timezone=target_timezone)
+    model_days, model_quality = materialize_model_station_days(
+        models,
+        target_timezone=target_timezone,
+        station_timezone_map=timezone_by_station or None,
+    )
     truth_days, truth_quality = materialize_observation_station_days(observations)
     cross_check_days, cross_check_quality = materialize_observation_station_days(cross_check_observations)
     # The formal date boundary is the registry settlement timezone, not the
     # UTC calendar date or the operational/reporting ET boundary.
     anchor_local_date = as_of.astimezone(ZoneInfo(target_timezone)).date()
+    anchor_local_date_by_station = {
+        station: as_of.astimezone(ZoneInfo(value)).date()
+        for station, value in timezone_by_station.items()
+    }
 
     grouped_models: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     quarantined_model_days: list[dict[str, Any]] = []
     for row in model_days:
         event_date = str(row.get("event_date") or "").strip()
+        station_timezone = _station_timezone(
+            str(row.get("station_id") or "").strip().upper(),
+            target_timezone=target_timezone,
+            station_timezone_map=timezone_by_station or None,
+        )
         window = event_day_window(
             event_date,
             as_of_utc=_utc_text(as_of),
-            target_timezone=target_timezone,
+            target_timezone=station_timezone,
         )
         if window["state"] == "closed":
             grouped_models[(row["station_id"], event_date)].append(row)
@@ -1060,7 +1106,11 @@ def build_calibration_evidence(
                 "truth_id": truth.get("truth_id") or f"truth-{key[0]}-{key[1]}",
                 "paired_asof_utc": _paired_available_at_utc(
                     event_date=key[1],
-                    target_timezone=target_timezone,
+                    target_timezone=_station_timezone(
+                        key[0],
+                        target_timezone=target_timezone,
+                        station_timezone_map=timezone_by_station or None,
+                    ),
                     truth=truth,
                     model=row,
                 ),
@@ -1087,7 +1137,11 @@ def build_calibration_evidence(
             "station_id": station_id,
             "icao_code": station_id,
             "city_label": station_city.get(station_id, ""),
-            "timezone_name": target_timezone,
+            "timezone_name": _station_timezone(
+                station_id,
+                target_timezone=target_timezone,
+                station_timezone_map=timezone_by_station or None,
+            ),
             "source_lane": _truth_source_lane((truth_days.get((station_id, next(
                 (item["event_date"] for item in joined if item["station_id"] == station_id), ""
             ))) or {}).get("source_lane"), canonical_input=canonical_input is not None),
@@ -1099,14 +1153,19 @@ def build_calibration_evidence(
 
     truth_evidence = []
     for key, truth in sorted(truth_days.items()):
-        if date.fromisoformat(key[1]) >= anchor_local_date or key[0] not in station_ids:
+        station_anchor = anchor_local_date_by_station.get(key[0], anchor_local_date)
+        if date.fromisoformat(key[1]) >= station_anchor or key[0] not in station_ids:
             continue
         truth_id = truth.get("truth_id") or f"truth-{key[0]}-{key[1]}"
         identity = {
             "truth_id": truth_id,
             "station_id": key[0],
             "local_date": key[1],
-            "target_timezone": target_timezone,
+            "target_timezone": _station_timezone(
+                key[0],
+                target_timezone=target_timezone,
+                station_timezone_map=timezone_by_station or None,
+            ),
             "official_tmax_c": truth["observed_daily_max_c"],
             "source_lane": _truth_source_lane(
                 truth.get("source_lane"), canonical_input=canonical_input is not None
@@ -1139,7 +1198,11 @@ def build_calibration_evidence(
             "model_id": row["model_id"],
             "station_id": row["station_id"],
             "target_local_date": row["event_date"],
-            "target_timezone": target_timezone,
+            "target_timezone": _station_timezone(
+                row["station_id"],
+                target_timezone=target_timezone,
+                station_timezone_map=timezone_by_station or None,
+            ),
             "run_init_utc": row["run_init_utc"],
             "maturity_key": maturity_key,
             "published_at_utc": row.get("published_at_utc") or None,
@@ -1258,7 +1321,11 @@ def build_calibration_evidence(
         holdout_start = holdout[0].target_local_date
         training_cutoff = _settlement_day_boundary_utc(
             holdout_start,
-            target_timezone=target_timezone,
+            target_timezone=_station_timezone(
+                scope[0],
+                target_timezone=target_timezone,
+                station_timezone_map=timezone_by_station or None,
+            ),
             boundary="start",
         )
         train = [
@@ -1364,7 +1431,11 @@ def build_calibration_evidence(
             continue
         ensemble_training_cutoff = _settlement_day_boundary_utc(
             holdout_dates[0],
-            target_timezone=target_timezone,
+            target_timezone=_station_timezone(
+                station_id,
+                target_timezone=target_timezone,
+                station_timezone_map=timezone_by_station or None,
+            ),
             boundary="start",
         )
         paired_by_model_date = {
@@ -1650,17 +1721,22 @@ def build_calibration_evidence(
             "content_sha256": content_sha256(identity),
         }))
 
+    identity_timezone = target_timezone
+    if timezone_by_station and len(set(timezone_by_station.values())) > 1:
+        identity_timezone = "REGISTRY_BOUND_PER_STATION"
     evidence_identity = {
         "schema": SCHEMA,
         "as_of_utc": _utc_text(as_of),
-        "target_timezone": target_timezone,
+        "target_timezone": identity_timezone,
+        "station_timezones": dict(sorted(timezone_by_station.items())),
         "settlement_definition": SETTLEMENT_DEFINITION,
         "strict_asof_replay_sha256": replay["replay_sha256"],
         "input_artifacts": dict(input_artifacts or {}),
         "station_registry": station_registry,
         "truth_evidence": truth_evidence,
         "temporal_boundary": {
-            "target_timezone": target_timezone,
+            "target_timezone": identity_timezone,
+            "station_timezones": dict(sorted(timezone_by_station.items())),
             "as_of_utc": _utc_text(as_of),
             "closed_settlement_event_days_only": True,
             "maturity_keys": sorted({row["maturity_key"] for row in model_days}),

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
 from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
@@ -14,6 +16,12 @@ SCHEMA = "bayes_basket_target_taf_rotation_state_v1"
 MAX_CATALOG_SCOPES = 135
 MAX_SELECTED_SCOPES = 4
 MAX_BYTES = 1024 * 1024
+# The forward TAF physical summary uses this shared local window.  It is not a
+# temperature threshold; it merely prevents a post-peak bulletin from being
+# scheduled as new P0-M evidence for a daily high that has already passed its
+# forecast feature window.
+TAF_PHYSICAL_PEAK_WINDOW_START_HOUR_LOCAL = 6
+TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL = 15
 
 
 def scope_key(scope: Mapping[str, Any]) -> str:
@@ -64,6 +72,28 @@ def build_catalog(
             continue
         if day_state == "closed":
             continue
+        if day_state == "open":
+            try:
+                as_of = datetime.fromisoformat(
+                    str(as_of_utc).replace("Z", "+00:00")
+                )
+                if as_of.tzinfo is None:
+                    raise ValueError("timezone required")
+                local_now = as_of.astimezone(
+                    ZoneInfo(scope["settlement_timezone"])
+                )
+                peak_end = datetime.combine(
+                    local_now.date(),
+                    time(TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL),
+                    tzinfo=local_now.tzinfo,
+                )
+            except Exception:
+                continue
+            if local_now >= peak_end:
+                # This is an intentionally silent catalog exclusion, not a
+                # failed TAF receipt.  A later capture cannot establish
+                # strict-as-of physical evidence for the finished window.
+                continue
         scope["day_state"] = day_state
         prior = scopes.get(key)
         if prior is not None and prior != scope:
@@ -207,6 +237,8 @@ def persist_rotation_state(path: Path, value: Mapping[str, Any]) -> bool:
 
 __all__ = [
     "MAX_SELECTED_SCOPES",
+    "TAF_PHYSICAL_PEAK_WINDOW_START_HOUR_LOCAL",
+    "TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL",
     "SCHEMA",
     "build_catalog",
     "build_rotation_state",

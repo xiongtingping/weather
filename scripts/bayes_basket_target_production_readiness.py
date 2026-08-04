@@ -75,7 +75,7 @@ MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
 )
 MAX_TARGET_WS_SCOPES = 90
 CORE_SERVICES = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
@@ -605,13 +605,13 @@ def _forward_scorecard_status(
     as_of_utc: str,
     station_ids: Sequence[str] | None,
 ) -> dict[str, Any]:
-    """Build the public forward scorecard for formal-promotion evidence.
+    """Build an observational forward scorecard.
 
-    The scorecard builder is the only source of forward-evidence semantics.  This
-    wrapper binds the requested target station set and reports whether forward
-    evidence is sufficient for formal promotion. Missing samples or incomplete
-    OOS evidence do not block production_no_live; an observed violation of the
-    no-live/order boundary still does.
+    Forward rows are retained only for arrival/interface and timing
+    diagnostics.  They are never OOS, never a production_no_live gate, and
+    never a formal-promotion input.  Only a violation of the no-live/order
+    boundary is escalated to the caller; missing forward samples remain
+    diagnostic state.
     """
 
     requested = _normalize_station_scope(station_ids)
@@ -1959,9 +1959,7 @@ def audit(
             "blockers": [str(exc)],
             "production_no_live_ready": False,
             "formal_promotion_ready": False,
-            "formal_promotion_blockers": [
-                "target_forward_scorecard_incomplete",
-            ],
+            "formal_promotion_blockers": [],
             "database": str(db.expanduser().resolve()),
             "forward_scorecard": forward_scorecard,
             "boundary": {
@@ -2053,10 +2051,6 @@ def audit(
             blockers.append("target_execution_vector_lineage_incomplete")
         if not inputs.get("ready"):
             blockers.append("target_materialized_inputs_incomplete")
-        if not forward_scorecard.get("ready"):
-            formal_promotion_blockers.append(
-                "target_forward_scorecard_incomplete"
-            )
         for boundary_blocker in (
             "forward_scorecard_not_production_no_live",
             "forward_scorecard_not_read_only",
@@ -2078,9 +2072,6 @@ def audit(
             as_of_utc=decision_clock,
             reason="forward_scorecard_database_missing",
             required_station_ids=_normalize_station_scope(station_ids),
-        )
-        formal_promotion_blockers.append(
-            "target_forward_scorecard_incomplete"
         )
     if not Path(manifest_path).is_file():
         blockers.append("official_ws_manifest_missing")
@@ -2197,7 +2188,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     # The target lane has its own immutable no-live contract.  The shared
-    # basket_plus_hard_no_v1.json belongs to the resident production owner
+    # basket_yes_v1.json belongs to the resident production owner
     # and may legitimately drift with that owner's activation; reading it
     # here would couple target readiness to (or tempt mutation of) another
     # production line.

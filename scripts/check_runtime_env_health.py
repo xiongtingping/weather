@@ -271,7 +271,7 @@ def _proxy_status(values: dict[str, str]) -> dict[str, Any]:
     candidates: list[int] = []
     for raw in (
         values.get("PM_PROXY_PORTS", ""),
-        values.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897"),
+        values.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082"),
     ):
         for port in _parse_ports(raw):
             if port not in candidates:

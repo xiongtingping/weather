@@ -1,0 +1,14 @@
+{
+  "content_sha256": "30d27afc496d9df7e11b98afcb7068d0077584b6623fda8e7437c6b5ecbd53de",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "63a0682bffd0fa77ee64932476f919037bfa119e07749a88998d1a6f1a2ce054",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Manila",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "RPLL"
+}

@@ -3,16 +3,20 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from bayes_basket_target import ContractError, content_sha256
 from bayes_basket_target.production_io import (
+    STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA,
     compile_production_cycle_from_ssot,
     load_materialized_probability_envelopes,
     load_production_market_snapshot,
+    target_stage_zero_execution_anchor_from_cycle,
 )
+from bayes_basket_target.production_worker import TargetProductionWorker
 from bayes_basket_target.contracts import ProbabilityEnvelope
 from bayes_basket_target.native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
@@ -24,7 +28,11 @@ from bayes_basket_target.regime_materialization import (
     insert_regime_artifact,
 )
 from bayes_basket_target.cash_phase_authority import CashPhaseAuthorityManifest
+from bayes_basket_target.atomic_ledger import initialize_capital_pool
 from bayes_basket_target.ssot import apply_production_ssot_schema
+from bayes_basket_target.market_registry import (
+    apply_target_market_registry_schema,
+)
 from bayes_basket_target.delta_v2_artifact import (
     ACTIVATION_SCHEMA,
     ARTIFACT_SCHEMA,
@@ -35,6 +43,9 @@ from bayes_basket_target.delta_v2_fill_artifact import (
     FILL_DISTRIBUTION_ARTIFACT_SCHEMA,
     FILL_DISTRIBUTION_PROMOTION_SCHEMA,
     commit_delta_v2_fill_distribution_artifact,
+)
+from bayes_basket_target.forward_observation_store import (
+    read_forward_observation_packet,
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -78,6 +89,64 @@ def _insert_probability_row(
             envelope.content_sha256,
             "COMMITTED",
             created_at,
+        ),
+    )
+
+
+def _seed_target_registry_lane(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str = "ZUUU",
+    event_date: str = "2026-07-23",
+    source_lane: str,
+) -> None:
+    """Install the minimal immutable target-local authority snapshot."""
+
+    apply_target_market_registry_schema(conn)
+    snapshot_sha = "9" * 64
+    conn.execute(
+        "INSERT INTO basket_target_market_registry_snapshot("
+        "snapshot_sha256,source_schema,source_scope,exported_at_utc,"
+        "source_database_path,row_count,ingested_at_utc,content_sha256"
+        ") VALUES(?,?,?,?,?,?,?,?)",
+        (
+            snapshot_sha,
+            "reported_trajectory_market_registry_v1",
+            "shared_live_registry_export_only",
+            "2026-07-23T05:00:00Z",
+            "/test/shared-live.db",
+            1,
+            "2026-07-23T05:00:00Z",
+            "8" * 64,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry("
+        "snapshot_sha256,slug,event_date,outcome,city_slug,station_id,"
+        "settlement_timezone,settlement_unit,source_lane,source_eligible,"
+        "source_block_reason,resolution_url,rules_sha256,yes_token,no_token,"
+        "market_active,market_accepting_orders,registry_json,refreshed_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            snapshot_sha,
+            "highest-temperature-in-test",
+            event_date,
+            "38°C",
+            "test-city",
+            station_id,
+            "America/New_York",
+            "C",
+            source_lane,
+            1,
+            "",
+            "",
+            "7" * 64,
+            "yes-token",
+            "no-token",
+            1,
+            1,
+            json.dumps({"market_id": "market-1", "outcome": "38°C"}),
+            "2026-07-23T05:00:00Z",
         ),
     )
 
@@ -537,6 +606,129 @@ def _cash_authority(
     )
 
 
+def _stage_zero_compiled_cycle(conn: sqlite3.Connection) -> dict[str, object]:
+    _seed(conn, cash_promoted=False)
+    _seed_delta_v2(conn)
+    return compile_production_cycle_from_ssot(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-07-23",
+        evaluation_at_utc="2026-07-23T05:00:04Z",
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        policy_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        base_policy={"clip_max_notional_usdc": 3.0},
+        cash_phase_authority_manifest=_cash_authority(
+            conn,
+            authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        ),
+    )
+
+
+def _stage_zero_cycle_for_stage(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    compiled_cycle: dict[str, object] | None = None,
+) -> dict[str, object]:
+    compiled = (
+        _stage_zero_compiled_cycle(conn)
+        if compiled_cycle is None
+        else deepcopy(compiled_cycle)
+    )
+    if stage == "P0":
+        return compiled
+    p0_probability = ProbabilityEnvelope.from_mapping(
+        compiled["probability_envelope"]
+    )
+    lineage = {
+        **dict(p0_probability.lineage),
+        "p0_root_checkpoint_id": p0_probability.checkpoint_id,
+        "p0_root_content_sha256": p0_probability.content_sha256,
+    }
+    if stage == "P1":
+        lineage.update(
+            {
+                "canonical_observation_event_id": "obs-stage-zero-p1",
+                "canonical_observation_sha256": "1" * 64,
+                "canonical_observation_committed_at": "2026-07-23T05:00:01Z",
+                "hard_bound_id": "bound-stage-zero-p1",
+                "hard_excluded_buckets": "NONE",
+                "source_lane": "AWC",
+                "report_type": "METAR",
+                "metar_trajectory_activation_id": "formal-activation-stage-zero",
+                "metar_trajectory_artifact_id": "metar-trajectory-stage-zero",
+                "metar_trajectory_proof_sha256": "2" * 64,
+                "metar_conditional_path_state_sha256": "3" * 64,
+                "metar_future_temperature_curve_sha256": "4" * 64,
+                "metar_trajectory_applied_strength": "0.75",
+                "observation_likelihood_mode": (
+                    "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+                ),
+            }
+        )
+    probability = ProbabilityEnvelope.from_mapping(
+        {
+            **p0_probability.to_dict(),
+            "stage": stage,
+            "checkpoint_id": f"{stage.lower()}-stage-zero",
+            "decision_at_utc": "2026-07-23T05:00:01Z",
+            "lineage": lineage,
+        }
+    )
+    _insert_probability_row(
+        conn,
+        probability,
+        created_at="2026-07-23T05:00:01Z",
+    )
+    regime = build_regime_artifact(probability)
+    insert_regime_artifact(
+        conn,
+        regime,
+        created_at_utc="2026-07-23T05:00:01Z",
+    )
+    compiled["probability_envelope"] = probability.to_dict()
+    compiled["stage"] = stage
+    compiled["plan"]["lineage"].update(
+        {
+            "probability_stage": stage,
+            "probability_envelope_sha256": probability.content_sha256,
+            "probability_decision_at_utc": probability.decision_at_utc,
+            **(
+                {
+                    key: probability.lineage[key]
+                    for key in (
+                        "canonical_observation_event_id",
+                        "canonical_observation_sha256",
+                        "canonical_observation_committed_at",
+                        "hard_bound_id",
+                        "source_lane",
+                        "report_type",
+                    )
+                }
+                if stage == "P1"
+                else {}
+            ),
+        }
+    )
+    compiled["production_inputs"].update(
+        {
+            "regime_artifact_sha256": regime.content_sha256,
+            "regime_probability_sha256": probability.content_sha256,
+        }
+    )
+    compiled["production_cycle_sha256"] = content_sha256(
+        {
+            key: value
+            for key, value in compiled.items()
+            if key not in {"production_cycle_sha256", "compiled_plan_sha256"}
+        }
+    )
+    return compiled
+
+
 def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift() -> None:
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
@@ -576,6 +768,310 @@ def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift() -> 
         )
 
 
+def test_stage_zero_anchor_binds_complete_stage_cycles() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        compiled = _stage_zero_compiled_cycle(conn)
+
+        anchor = target_stage_zero_execution_anchor_from_cycle(compiled)
+        assert anchor["schema"] == STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA
+        assert anchor["probability_envelope"]["stage"] == "P0"
+        assert anchor["compiled_plan"] == compiled
+        assert anchor["content_sha256"] == content_sha256(
+            {key: value for key, value in anchor.items() if key != "content_sha256"}
+        )
+        assert anchor["official_ws_snapshot"]["snapshot_id"] == "quote-1"
+        assert anchor["inventory_snapshot"]["inventory_snapshot_id"] == "inv-snapshot-1"
+        assert anchor["order_state_snapshot"]["order_state_snapshot_id"] == "ord-snapshot-1"
+        assert "canonical_observation_event_id" not in anchor["probability_envelope"]["lineage"]
+
+        for stage in ("P0-M", "P1"):
+            stage_cycle = _stage_zero_cycle_for_stage(
+                conn,
+                stage=stage,
+                compiled_cycle=compiled,
+            )
+            stage_anchor = target_stage_zero_execution_anchor_from_cycle(stage_cycle)
+            assert stage_anchor["probability_envelope"]["stage"] == stage
+            assert stage_anchor["compiled_plan"] == stage_cycle
+            if stage == "P1":
+                mismatched_p1 = deepcopy(stage_cycle)
+                mismatched_p1["plan"]["lineage"]["hard_bound_id"] = (
+                    "bound-mismatch"
+                )
+                with pytest.raises(
+                    ContractError,
+                    match="stage_zero_execution_p1_plan_canonical_facts_mismatch",
+                ):
+                    target_stage_zero_execution_anchor_from_cycle(
+                        mismatched_p1
+                    )
+
+
+def test_stage_zero_anchor_fails_closed_on_stage_clock_and_cycle_drift() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        compiled = _stage_zero_compiled_cycle(conn)
+
+        p1_cycle = deepcopy(compiled)
+        p1_cycle["probability_envelope"]["stage"] = "P1"
+        p1_cycle["stage"] = "P1"
+        p1_cycle["plan"]["lineage"]["probability_stage"] = "P1"
+        with pytest.raises(
+            ContractError, match="stage_zero_execution_p1_canonical_facts_missing"
+        ):
+            target_stage_zero_execution_anchor_from_cycle(p1_cycle)
+
+        expiry_cycle = deepcopy(compiled)
+        expiry_cycle["evaluation_at_utc"] = "2026-07-23T05:00:05Z"
+        expiry_cycle["production_cycle_sha256"] = content_sha256(
+            {
+                key: value
+                for key, value in expiry_cycle.items()
+                if key not in {"production_cycle_sha256", "compiled_plan_sha256"}
+            }
+        )
+        with pytest.raises(ContractError, match="stage_zero_execution_quote_stale"):
+            target_stage_zero_execution_anchor_from_cycle(expiry_cycle)
+
+        tampered_cycle = deepcopy(compiled)
+        tampered_cycle["production_inputs"]["regime_artifact_sha256"] = "0" * 64
+        with pytest.raises(
+            ContractError, match="stage_zero_execution_production_cycle_sha_mismatch"
+        ):
+            target_stage_zero_execution_anchor_from_cycle(tampered_cycle)
+
+
+@pytest.mark.parametrize(
+    ("lineage_update", "lineage_remove"),
+    [
+        ({"metar_trajectory_activation_id": "NONE"}, None),
+        ({"metar_trajectory_applied_strength": "0"}, None),
+        ({"metar_trajectory_proof_sha256": "not-a-sha"}, None),
+        ({"metar_conditional_path_state_sha256": "not-a-sha"}, None),
+        ({"metar_future_temperature_curve_sha256": "not-a-sha"}, None),
+        ({"observation_likelihood_mode": "HARD_EXCLUSION_ONLY"}, None),
+        ({}, "metar_trajectory_artifact_id"),
+        ({}, "metar_conditional_path_state_sha256"),
+        ({}, "metar_future_temperature_curve_sha256"),
+    ],
+)
+def test_stage_zero_anchor_rejects_p1_without_formal_strong_likelihood(
+    lineage_update: dict[str, str],
+    lineage_remove: str | None,
+) -> None:
+    with sqlite3.connect(":memory:") as conn:
+        p1_cycle = _stage_zero_cycle_for_stage(conn, stage="P1")
+        lineage = p1_cycle["probability_envelope"]["lineage"]
+        lineage.update(lineage_update)
+        if lineage_remove is not None:
+            lineage.pop(lineage_remove)
+        with pytest.raises(
+            ContractError,
+            match="stage_zero_execution_p1_strong_likelihood_missing",
+        ):
+            target_stage_zero_execution_anchor_from_cycle(p1_cycle)
+
+
+@pytest.mark.parametrize("stage", ["P0", "P0-M", "P1"])
+def test_resident_stage_zero_commits_only_no_execution_target_rows(
+    stage: str,
+) -> None:
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        candidate = _stage_zero_cycle_for_stage(conn, stage=stage)
+        # Every materialized probability stage writes an exact d2 forward
+        # fact.  Seed the same target-local market authority a file-backed
+        # production target must already have; do not mask a missing-registry
+        # contract with a test-only fallback.
+        _seed_target_registry_lane(conn, source_lane="amsc")
+        if stage == "P1":
+            initialize_capital_pool(
+                conn,
+                balance_usdc=100.0,
+                capital_epoch_id="stage-zero-p1-fixture",
+                updated_at_utc="2026-07-23T05:00:04Z",
+                commit=False,
+            )
+        worker = object.__new__(TargetProductionWorker)
+        worker.commit_conn = conn
+        protected_tables = (
+            "basket_target_observation_facts",
+            "basket_target_bound_facts",
+            "basket_target_order_intents",
+            "basket_target_capital_reservations",
+            "basket_policy_training_fact",
+        )
+        before = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in protected_tables
+        }
+
+        result = worker._commit_current_stage_no_execution_candidate(
+            candidate,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            created_at_utc="2026-07-23T05:00:04Z",
+        )
+
+        assert result["state"] == "committed"
+        assert int(result.get("intents_written") or 0) == 0
+        assert int(result.get("reservations_written") or 0) == 0
+        after = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in protected_tables
+        }
+        if stage in {"P0", "P0-M"}:
+            # Pre-final facts bind only P0/P0-M, official WS, complete
+            # inventory/order-state and the NO_EXECUTION policy.  They must
+            # never manufacture a P1 observation/bound or reserve capital.
+            assert after == {
+                **before,
+                "basket_policy_training_fact": (
+                    before["basket_policy_training_fact"] + 1
+                ),
+            }
+            assert result["training_facts_written"] == 1
+            assert result["forward_observation_status"] == "ELIGIBLE"
+            fact = conn.execute(
+                "SELECT f.stage,f.feature_json,v.training_fact_id "
+                "FROM basket_policy_training_fact f "
+                "JOIN basket_target_execution_version_vectors v "
+                "ON v.training_fact_id=f.fact_id"
+            ).fetchone()
+            assert fact is not None
+            assert fact[0] == stage
+            assert fact[2]
+            feature = json.loads(str(fact[1]))
+            assert feature["no_execution_policy"]["policy"] == "NO_EXECUTION"
+            assert feature["execution_version_vectors"] == []
+            assert "canonical_observation_event_id" not in feature["plan"]["lineage"]
+            replay = worker._commit_current_stage_no_execution_candidate(
+                candidate,
+                station_id="ZUUU",
+                event_date="2026-07-23",
+                created_at_utc="2026-07-23T05:00:04Z",
+            )
+            assert replay["state"] == "already_committed"
+            assert replay["training_facts_written"] == 1
+            assert conn.execute(
+                "SELECT COUNT(*) FROM basket_policy_training_fact"
+            ).fetchone()[0] == after["basket_policy_training_fact"]
+        else:
+            # P1 is final authority: its canonical observation/bound and
+            # no-live zero reservation must be atomically bound to the
+            # blocked decision.  It still creates no executable intent.
+            assert after == {
+                **before,
+                "basket_target_observation_facts": (
+                    before["basket_target_observation_facts"] + 1
+                ),
+                "basket_target_bound_facts": (
+                    before["basket_target_bound_facts"] + 1
+                ),
+                "basket_target_capital_reservations": (
+                    before["basket_target_capital_reservations"] + 1
+                ),
+                "basket_policy_training_fact": (
+                    before["basket_policy_training_fact"] + 1
+                ),
+            }
+        decision = conn.execute(
+            "SELECT d.will_order,d.decided_state,d.reason_codes_json,"
+            "v.vector_policy "
+            "FROM auto_trade_decisions d "
+            "JOIN basket_target_execution_version_vectors v "
+            "ON v.cycle_id=d.cycle_id"
+        ).fetchone()
+        assert decision[0] == 0
+        assert decision[1] == "blocked"
+        assert decision[3] == "NO_EXECUTION"
+        reason_codes = json.loads(str(decision[2]))
+        assert isinstance(reason_codes, list) and reason_codes
+        if stage in {"P0", "P0-M"}:
+            assert reason_codes == ["p1_final_authority_pending"]
+
+
+def test_stage_zero_p0_and_p0m_flush_as_distinct_exact_stage_oos_records(
+    tmp_path: Path,
+) -> None:
+    """The next forward flush preserves both same-clock pre-final facts."""
+
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        p0_candidate = _stage_zero_cycle_for_stage(conn, stage="P0")
+        # DB canonicalizes the formal AWC lane as lowercase ``awc``.
+        _seed_target_registry_lane(conn, source_lane="awc")
+        worker = object.__new__(TargetProductionWorker)
+        worker.commit_conn = conn
+        worker.cash_phase_forward_store_root = tmp_path
+        worker.cash_phase_forward_store_path = tmp_path / "forward.sqlite3"
+
+        for stage, candidate in (("P0", p0_candidate),):
+            committed = worker._commit_current_stage_no_execution_candidate(
+                candidate,
+                station_id="ZUUU",
+                event_date="2026-07-23",
+                created_at_utc="2026-07-23T05:00:04Z",
+            )
+            assert committed["state"] == "committed"
+            assert committed["forward_observation_status"] == "ELIGIBLE"
+            assert committed["orders_submitted"] == 0
+            assert committed["calls_order_gateway"] is False
+
+            flushed = worker._flush_cash_phase_forward_observations()
+            assert flushed["state"] == "committed"
+            assert int(flushed.get("quarantined_count") or 0) == 0
+            assert flushed["orders_submitted"] == 0
+            assert flushed["calls_order_gateway"] is False
+
+            packet = read_forward_observation_packet(
+                worker.cash_phase_forward_store_path,
+                allowed_root=tmp_path,
+            )
+            records = packet["observations"]
+            expected_stages = {"P0"} if stage == "P0" else {"P0", "P0-M"}
+            assert {record["probability_stage"] for record in records} == expected_stages
+
+        # The P0 commit has advanced the durable stage boundary.  Only now
+        # may the later P0-M become visible; both have the same cycle clock
+        # and therefore exercise the stage discriminator in the packet key.
+        p0m_candidate = _stage_zero_cycle_for_stage(
+            conn,
+            stage="P0-M",
+            compiled_cycle=p0_candidate,
+        )
+        committed = worker._commit_current_stage_no_execution_candidate(
+            p0m_candidate,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            created_at_utc="2026-07-23T05:00:04Z",
+        )
+        assert committed["state"] == "committed"
+        assert committed["forward_observation_status"] == "ELIGIBLE"
+        assert committed["orders_submitted"] == 0
+        assert committed["calls_order_gateway"] is False
+        flushed = worker._flush_cash_phase_forward_observations()
+        assert flushed["state"] == "committed"
+        assert int(flushed.get("quarantined_count") or 0) == 0
+        assert flushed["orders_submitted"] == 0
+        assert flushed["calls_order_gateway"] is False
+
+        packet = read_forward_observation_packet(
+            worker.cash_phase_forward_store_path,
+            allowed_root=tmp_path,
+        )
+        records = packet["observations"]
+        assert len(records) == 2
+        assert {record["probability_stage"] for record in records} == {"P0", "P0-M"}
+        assert len({record["observation_key"] for record in records}) == 2
+        assert all(record["decision_at_utc"] == "2026-07-23T05:00:04.000Z" for record in records)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_capital_reservations"
+        ).fetchone()[0] == 0
+
+
 def test_production_io_rejects_quote_at_exact_expiry_boundary() -> None:
     with sqlite3.connect(":memory:") as conn:
         _seed(conn)
@@ -588,9 +1084,12 @@ def test_production_io_rejects_quote_at_exact_expiry_boundary() -> None:
             )
 
 
-def test_market_snapshot_restores_exact_prior_core_from_decision_receipt() -> None:
+@pytest.mark.parametrize("row_factory", [None, sqlite3.Row])
+def test_market_snapshot_restores_exact_prior_core_from_decision_receipt(
+    row_factory: object,
+) -> None:
     with sqlite3.connect(":memory:") as conn:
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = row_factory
         _seed(conn, cash_promoted=False)
         conn.execute(
             "INSERT INTO auto_trade_decisions("
@@ -925,6 +1424,241 @@ def test_probability_loader_does_not_hide_corrupt_high_stage_behind_p0_fallback(
                 station_id="ZUUU",
                 event_date="2026-07-23",
                 evaluation_at_utc="2026-07-23T05:00:04Z",
+            )
+
+
+def test_current_p1_source_lane_blocks_fallback_but_historical_lane_can_be_superseded() -> None:
+    """A wrong current P1 blocks; a newer authoritative P1 restores SSOT.
+
+    This is the append-only repair path for the old China/AWC P1 rows.  The
+    historical row remains in the table, but must never keep a later AMSC P1
+    from becoming the current stage.
+    """
+
+    with sqlite3.connect(":memory:") as conn:
+        root = _seed_native_probability_only(conn)
+        old_awc = _stage_envelope(
+            root,
+            stage="P1",
+            checkpoint_id="p1-old-awc",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        old_awc = ProbabilityEnvelope.from_mapping(
+            {
+                **old_awc.to_dict(),
+                "lineage": {**dict(old_awc.lineage), "source_lane": "AWC"},
+            }
+        )
+        _insert_probability_row(
+            conn,
+            old_awc,
+            created_at="2026-07-23T05:00:01Z",
+        )
+
+        with pytest.raises(
+            ContractError,
+            match="probability_p1_source_lane_mismatch",
+        ):
+            load_materialized_probability_envelopes(
+                conn,
+                station_id="ZUUU",
+                event_date="2026-07-23",
+                evaluation_at_utc="2026-07-23T05:00:02Z",
+                expected_source_lane="amsc",
+            )
+
+        p0m = _stage_envelope(
+            root,
+            stage="P0-M",
+            checkpoint_id="p0m-new-amsc",
+            decision_at="2026-07-23T05:00:02Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        _insert_probability_row(
+            conn,
+            p0m,
+            created_at="2026-07-23T05:00:02Z",
+        )
+        new_amsc = _stage_envelope(
+            p0m,
+            stage="P1",
+            checkpoint_id="p1-new-amsc",
+            decision_at="2026-07-23T05:00:03Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        new_amsc = ProbabilityEnvelope.from_mapping(
+            {
+                **new_amsc.to_dict(),
+                "lineage": {
+                    **dict(new_amsc.lineage),
+                    "p0_root_checkpoint_id": root.checkpoint_id,
+                    "p0_root_content_sha256": root.content_sha256,
+                    "prediction_root_stage": "P0-M",
+                    "prediction_root_checkpoint_id": p0m.checkpoint_id,
+                    "prediction_root_content_sha256": p0m.content_sha256,
+                    "source_lane": "AMSC",
+                },
+            }
+        )
+        _insert_probability_row(
+            conn,
+            new_amsc,
+            created_at="2026-07-23T05:00:03Z",
+        )
+
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+            expected_source_lane="amsc",
+        )
+        assert select_current_stage(
+            envelopes,
+            at_utc="2026-07-23T05:00:04Z",
+        ).checkpoint_id == "p1-new-amsc"
+
+
+def test_current_p1_accepts_p0_root_and_keeps_append_only_history() -> None:
+    """A valid P0-root P1 is current when no exact P0-M exists."""
+
+    with sqlite3.connect(":memory:") as conn:
+        root = _seed_native_probability_only(conn)
+        legacy = _stage_envelope(
+            root,
+            stage="P1",
+            checkpoint_id="p1-legacy-p0-root",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        legacy = ProbabilityEnvelope.from_mapping(
+            {
+                **legacy.to_dict(),
+                "lineage": {
+                    **dict(legacy.lineage),
+                    "prediction_root_stage": "P0",
+                    "prediction_root_checkpoint_id": root.checkpoint_id,
+                    "prediction_root_content_sha256": root.content_sha256,
+                    "source_lane": "AMSC",
+                },
+            }
+        )
+        _insert_probability_row(
+            conn,
+            legacy,
+            created_at="2026-07-23T05:00:01Z",
+        )
+
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:02Z",
+            expected_source_lane="amsc",
+        )
+        assert envelopes[-1].lineage["prediction_root_stage"] == "P0"
+
+        p0m = _stage_envelope(
+            root,
+            stage="P0-M",
+            checkpoint_id="p0m-authoritative",
+            decision_at="2026-07-23T05:00:02Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        _insert_probability_row(
+            conn,
+            p0m,
+            created_at="2026-07-23T05:00:02Z",
+        )
+        authoritative = _stage_envelope(
+            p0m,
+            stage="P1",
+            checkpoint_id="p1-p0m-root",
+            decision_at="2026-07-23T05:00:03Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        authoritative = ProbabilityEnvelope.from_mapping(
+            {
+                **authoritative.to_dict(),
+                "lineage": {
+                    **dict(authoritative.lineage),
+                    "p0_root_checkpoint_id": root.checkpoint_id,
+                    "p0_root_content_sha256": root.content_sha256,
+                    "prediction_root_stage": "P0-M",
+                    "prediction_root_checkpoint_id": p0m.checkpoint_id,
+                    "prediction_root_content_sha256": p0m.content_sha256,
+                    "source_lane": "AMSC",
+                },
+            }
+        )
+        _insert_probability_row(
+            conn,
+            authoritative,
+            created_at="2026-07-23T05:00:03Z",
+        )
+
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+            expected_source_lane="amsc",
+        )
+        assert select_current_stage(
+            envelopes,
+            at_utc="2026-07-23T05:00:04Z",
+        ).checkpoint_id == "p1-p0m-root"
+
+
+def test_target_registry_lane_mismatch_rejects_p1_before_p0_fallback() -> None:
+    """File-shaped target registry authority is stronger than P1 lineage."""
+
+    with sqlite3.connect(":memory:") as conn:
+        _seed(conn, cash_promoted=False)
+        _seed_delta_v2(conn)
+        _seed_target_registry_lane(conn, source_lane="amsc")
+        wrong_lane = _stage_envelope(
+            _envelope(),
+            stage="P1",
+            checkpoint_id="p1-registry-awc",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T06:00:00Z",
+        )
+        wrong_lane = ProbabilityEnvelope.from_mapping(
+            {
+                **wrong_lane.to_dict(),
+                "lineage": {
+                    **dict(wrong_lane.lineage),
+                    "source_lane": "AWC",
+                },
+            }
+        )
+        _insert_probability_row(
+            conn,
+            wrong_lane,
+            created_at="2026-07-23T05:00:01Z",
+        )
+
+        with pytest.raises(
+            ContractError,
+            match="probability_p1_source_lane_mismatch",
+        ):
+            compile_production_cycle_from_ssot(
+                conn,
+                station_id="ZUUU",
+                event_date="2026-07-23",
+                evaluation_at_utc="2026-07-23T05:00:04Z",
+                season_bin="summer",
+                maturity_bin="d1",
+                liquidity_bin="liquid",
+                strategy_version="target-v1",
+                policy_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+                base_policy={"clip_max_notional_usdc": 3.0},
+                cash_phase_authority_manifest=_cash_authority(
+                    conn,
+                    authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+                ),
             )
 
 

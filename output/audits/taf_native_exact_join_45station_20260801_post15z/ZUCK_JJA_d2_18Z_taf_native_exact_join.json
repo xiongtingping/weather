@@ -1,0 +1,843 @@
+{
+  "content_sha256": "d592abd19b19e3ad08589f9f0162519093b8d159c4287ed4916f88ccdb7d04c3",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "a7da21d8fc5d8a49fae198159cce2fe45faa709e14174b7ecb06d84db432ff52",
+  "run_cycle": "18Z",
+  "sample_count": 9,
+  "samples": [
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-22",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-20T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "b42ea8abad0da8514601020b8f5fd7afa4b28cca37b311aadc1e5b2161eb719f",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.09943181818181818,
+          "35°C": 0.02840909090909091,
+          "36°C": 0.05733962609970675,
+          "37°C": 0.12870637829912024,
+          "38°C": 0.20626063049853371,
+          "39°C": 0.2217408357771261,
+          "40°C": 0.12068933284457478,
+          "41°C": 0.08173478739002933,
+          "42°C": 0.0433125,
+          "43°C": 0.012374999999999999,
+          "44°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.44999999999999996,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-21"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-22T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-21T16:01:49Z",
+        "capture_content_sha256": "3a16910cc508f3cec778cf617cd918e3c6d93db33d0ced668cbc8ea340d88d5a",
+        "cloud_cover_fraction": 0.125,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 39.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "3a16910cc508f3cec778cf617cd918e3c6d93db33d0ced668cbc8ea340d88d5a",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-22",
+        "source_lane": "AWC",
+        "tmax_c": 40.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-23",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-21T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "aa9aa7a9e566bbcc56d31dc9d6648aa4a9630063eecaa7625b3d998cb42db665",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.09222661396574439,
+          "35°C": 0.026350461133069825,
+          "36°C": 0.03808627650983892,
+          "37°C": 0.10171337498406222,
+          "38°C": 0.18415865527646735,
+          "39°C": 0.1622817799311488,
+          "40°C": 0.16372119512091463,
+          "41°C": 0.187552552169663,
+          "42°C": 0.037636363636363634,
+          "43°C": 0.006272727272727274,
+          "44°C or higher": 0.0
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-23T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-22T16:00:35Z",
+        "capture_content_sha256": "96161e4bd7cf3702d2332a9f960cb1094ee0e6af54c6b9eedf62d86afa842548",
+        "cloud_cover_fraction": 0.125,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 39.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "96161e4bd7cf3702d2332a9f960cb1094ee0e6af54c6b9eedf62d86afa842548",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-23",
+        "source_lane": "AWC",
+        "tmax_c": 40.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-24",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-22T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "fddb42b91805c14cdd193ab206396a9c90667e8551399f551c982106ec040a87",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.11104479578392622,
+          "35°C": 0.04516864295125164,
+          "36°C": 0.06891032343066004,
+          "37°C": 0.10171337498406222,
+          "38°C": 0.177706064856135,
+          "39°C": 0.11855255216966298,
+          "40°C": 0.19508483148455097,
+          "41°C": 0.09400123252156914,
+          "42°C": 0.05645454545454546,
+          "43°C": 0.012545454545454547,
+          "44°C or higher": 0.018818181818181817
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-24T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-23T16:00:38Z",
+        "capture_content_sha256": "acfa10644163a8f77da5583bccad7c3cce1dafec3fde16a458e51417ac723b75",
+        "cloud_cover_fraction": 0.125,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 40.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "acfa10644163a8f77da5583bccad7c3cce1dafec3fde16a458e51417ac723b75",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-24",
+        "source_lane": "AWC",
+        "tmax_c": 40.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-25",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-23T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "516dac8d8f21202cb9e2b8e67147e88349f05a90a20f4c6bdb9e7e3022fb63f7",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.12986297760210802,
+          "35°C": 0.0326231884057971,
+          "36°C": 0.0692700497258702,
+          "37°C": 0.08307505631348548,
+          "38°C": 0.16516061031068047,
+          "39°C": 0.12500514258999534,
+          "40°C": 0.16981405924603682,
+          "41°C": 0.1063668239194186,
+          "42°C": 0.07491300097751712,
+          "43°C": 0.031363636363636364,
+          "44°C or higher": 0.012545454545454547
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-25T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-24T16:00:35Z",
+        "capture_content_sha256": "8fcd85160c730fc4c7482c7d7056c4cf7cc0babab98b6c738c97da4fc1334bdd",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 38.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "8fcd85160c730fc4c7482c7d7056c4cf7cc0babab98b6c738c97da4fc1334bdd",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-25",
+        "source_lane": "AWC",
+        "tmax_c": 39.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-26",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-24T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "9a5e8e8157fceb4a04d0581ffe349bdd4642eee39acce6421b0aa5e144278417",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.10477206851119894,
+          "35°C": 0.0326231884057971,
+          "36°C": 0.04417914063496111,
+          "37°C": 0.12644455777976116,
+          "38°C": 0.1343365633898593,
+          "39°C": 0.09382136937396404,
+          "40°C": 0.18235951379149137,
+          "41°C": 0.1002739597942964,
+          "42°C": 0.08100586510263932,
+          "43°C": 0.06882013685239492,
+          "44°C or higher": 0.031363636363636364
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-26T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-25T16:01:28Z",
+        "capture_content_sha256": "9b89dcad86d153eaaf75c6cad48c69e063afeec6bb1244bcc70ccb41dcc2f1ec",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 40.0,
+        "wind_speed_mps": 4.115552
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "9b89dcad86d153eaaf75c6cad48c69e063afeec6bb1244bcc70ccb41dcc2f1ec",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-26",
+        "source_lane": "AWC",
+        "tmax_c": 41.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-27",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-25T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "b0dae23161802b2694770634ea160b3322bdc426bf107bbda863a9796a1a8f93",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.1791454800459008,
+          "35°C": 0.05108164392876876,
+          "36°C": 0.06299732245314293,
+          "37°C": 0.07070946491563602,
+          "38°C": 0.13415670024225423,
+          "39°C": 0.08790836839644695,
+          "40°C": 0.13916987547282078,
+          "41°C": 0.15027591482850952,
+          "42°C": 0.09946432062561097,
+          "43°C": 0.01881818181818182,
+          "44°C or higher": 0.0062727272727272744
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-27T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-26T16:01:55Z",
+        "capture_content_sha256": "b5e46b160a493b12f4593c6851143213838546ab338372a26116e3fa86792482",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.1,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 38.0,
+        "wind_speed_mps": 3.7039968
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "b5e46b160a493b12f4593c6851143213838546ab338372a26116e3fa86792482",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "temp-awc-truth-ZUCK-2026-07-27",
+        "source_lane": "AWC",
+        "tmax_c": 40.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-28",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-26T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "4c29e7fbb4b4eea39f74bcfc3c1733ecb254afed188ad6f4ae637d674a746373",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.25405848102341794,
+          "35°C": 0.05735437120149603,
+          "36°C": 0.1065466870670237,
+          "37°C": 0.09544064771133495,
+          "38°C": 0.10924565429895022,
+          "39°C": 0.12500514258999534,
+          "40°C": 0.12680428407497132,
+          "41°C": 0.09418109566917424,
+          "42°C": 0.018818181818181817,
+          "43°C": 0.006272727272727274,
+          "44°C or higher": 0.006272727272727274
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-28T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-27T16:00:51Z",
+        "capture_content_sha256": "8ca138319d89072174fae850950b823ef50f34af75fce76c1ec68c939a50de53",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 38.0,
+        "wind_speed_mps": 3.086664
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "8ca138319d89072174fae850950b823ef50f34af75fce76c1ec68c939a50de53",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "rebuild29-truth-ZUCK-2026-07-28-r0-5dcd9f59d4ea",
+        "source_lane": "AWC",
+        "tmax_c": 36.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-29",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-27T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "563b4f2c29ca62b8feaf3e5086731b8b9f6103fa5313d0674bf64a30c687afc6",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.20405652598920482,
+          "35°C": 0.05735437120149603,
+          "36°C": 0.03181354923711165,
+          "37°C": 0.13881014917761061,
+          "38°C": 0.19025151940158955,
+          "39°C": 0.12572459518041568,
+          "40°C": 0.11407896638191169,
+          "41°C": 0.08790836839644695,
+          "42°C": 0.03118377321603128,
+          "43°C": 0.012545454545454547,
+          "44°C or higher": 0.006272727272727274
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-29T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-28T16:00:49Z",
+        "capture_content_sha256": "605042b5d3720baf4b30595f5a24c10e0223f0435825851ef8d4941c1b61a22d",
+        "cloud_cover_fraction": 0.375,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_date_addressed_historical_replay",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 37.0,
+        "wind_speed_mps": 4.115552
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "605042b5d3720baf4b30595f5a24c10e0223f0435825851ef8d4941c1b61a22d",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "NO_LIVE_REPLAY_CANDIDATE",
+        "canonical_truth_id": "rebuild29-truth-ZUCK-2026-07-29-r0-278b9e225fa5",
+        "source_lane": "AWC",
+        "tmax_c": 39.0
+      }
+    },
+    {
+      "calibration_scope": {
+        "lead_bucket": "d2",
+        "run_cycle": "18Z",
+        "season_bin": "JJA",
+        "settlement_definition": "official_daily_tmax_c"
+      },
+      "event_date": "2026-07-31",
+      "native_p0": {
+        "bucket_centers_c": {
+          "34°C or below": 34.0,
+          "35°C": 35.0,
+          "36°C": 36.0,
+          "37°C": 37.0,
+          "38°C": 38.0,
+          "39°C": 39.0,
+          "40°C": 40.0,
+          "41°C": 41.0,
+          "42°C": 42.0,
+          "43°C": 43.0,
+          "44°C or higher": 44.0
+        },
+        "decision_at_utc": "2026-07-29T18:00:00Z",
+        "ensemble_system_ids": [
+          "ECMWF_IFS_ENS_OPEN_PF50",
+          "NOAA_GEFS_05"
+        ],
+        "family_weight_caps": {
+          "ECMWF": 0.45,
+          "NOAA_GEFS": 0.75
+        },
+        "independence_family_ids": [
+          "ECMWF",
+          "NOAA_GEFS"
+        ],
+        "prediction_content_sha256": "3aa1c604115abf6391320eeb3484109c8a4b38ea7bb3e50a6b9f2405be37c99b",
+        "prediction_oos": true,
+        "probabilities": {
+          "34°C or below": 0.17269288962556845,
+          "35°C": 0.11308946406562116,
+          "36°C": 0.08145577797611459,
+          "37°C": 0.16981405924603682,
+          "38°C": 0.14024956436737643,
+          "39°C": 0.0943609588167793,
+          "40°C": 0.10852569169960474,
+          "41°C": 0.03826613965744401,
+          "42°C": 0.012545454545454547,
+          "43°C": 0.031363636363636364,
+          "44°C or higher": 0.037636363636363634
+        },
+        "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+        "system_family_ids": {
+          "ECMWF_IFS_ENS_OPEN_PF50": "ECMWF",
+          "NOAA_GEFS_05": "NOAA_GEFS"
+        },
+        "system_weights": {
+          "ECMWF_IFS_ENS_OPEN_PF50": 0.45,
+          "NOAA_GEFS_05": 0.55
+        },
+        "trained_through_event_date": "2026-07-22"
+      },
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_window": {
+        "end_utc": "2026-07-31T16:00:00Z"
+      },
+      "station_id": "ZUCK",
+      "taf": {
+        "available_at_utc": "2026-07-30T16:01:12Z",
+        "capture_content_sha256": "84487519b3b215ec07bbcfb3a693f079af95f7409f7597e74912f63ffb6c4072",
+        "cloud_cover_fraction": 0.125,
+        "precipitation_probability": 0.0,
+        "reference_only": false,
+        "source_class": "official_forward_native_receipt",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH",
+        "tx_c": 39.0,
+        "wind_speed_mps": 4.115552
+      },
+      "taf_lineage": {
+        "capture_content_sha256": "84487519b3b215ec07bbcfb3a693f079af95f7409f7597e74912f63ffb6c4072",
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "reference_only": false,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth": {
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
+        "canonical_truth_id": "truth_3aa10a9cfdd8c6e822ddd28a67402bbb44d35e8f",
+        "source_lane": "AWC",
+        "tmax_c": 36.0
+      }
+    }
+  ],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Shanghai",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "ZUCK"
+}

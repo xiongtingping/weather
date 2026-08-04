@@ -1,0 +1,14 @@
+{
+  "content_sha256": "39ca17f275c8405f5a72f851fa019ebccfe814cdf3901791898d96991838858f",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "653c33141d6e66fb1dfa665394eb0a4a29cff61af77b51584593071ddc645882",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Chicago",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KORD"
+}

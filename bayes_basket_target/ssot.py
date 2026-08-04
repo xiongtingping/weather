@@ -8,8 +8,11 @@ append-only, and the execution path has no order/gateway table in this schema.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
+from .canonical_ssot_schema import inspect_canonical_ssot_schema
+from .contracts import content_sha256
 from .probability_evidence_store import (
     DDL as PROBABILITY_EVIDENCE_DDL,
     TABLES as PROBABILITY_EVIDENCE_TABLES,
@@ -33,11 +36,40 @@ def _execute_sql_script_transactional(conn: sqlite3.Connection, script: str) -> 
 
 
 SCHEMA_VERSION = (
-    "bayes_basket_target_ssot_v7_native_ensemble_market_timezone_binding"
+    "bayes_basket_target_ssot_v8_canonical_calibration_timezone_identity"
 )
+
+CANONICAL_FACT_GUARD_DDL = """
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_no_update
+BEFORE UPDATE ON canonical_ssot_fact
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_no_delete
+BEFORE DELETE ON canonical_ssot_fact
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_ingress_only
+BEFORE INSERT ON canonical_ssot_fact
+WHEN canonical_ingress_authorized()!=1
+BEGIN SELECT RAISE(ABORT,'canonical_ingress_only'); END;
+"""
 
 DDL = """
 PRAGMA foreign_keys = ON;
+
+-- One append-only storage surface for the canonical model/truth/residual/
+-- activation contract.  Existing calibration_* tables remain projections for
+-- legacy readers, but new facts must first pass the canonical ingress and
+-- retain the exact JSON/hash/lineage that was validated there.
+CREATE TABLE IF NOT EXISTS canonical_ssot_fact (
+  fact_id TEXT PRIMARY KEY,
+  fact_type TEXT NOT NULL CHECK(fact_type IN ('model','truth','residual','activation','activation_supersession','ensemble_member','native_arrival','ensemble_member_arrival_binding','ensemble_member_receipt_manifest')),
+  scope_key TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
+  fact_json TEXT NOT NULL,
+  lineage_json TEXT NOT NULL,
+  ingested_at_utc TEXT NOT NULL,
+  UNIQUE(fact_type, content_sha256),
+  UNIQUE(fact_type, scope_key)
+);
 
 CREATE TABLE IF NOT EXISTS calibration_station_registry (
   station_id TEXT PRIMARY KEY,
@@ -49,6 +81,23 @@ CREATE TABLE IF NOT EXISTS calibration_station_registry (
   registry_version TEXT NOT NULL,
   source_role TEXT NOT NULL,
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64)
+);
+
+-- The station registry is an immutable historical identity record.  A source
+-- authority correction must therefore be appended as a separately signed
+-- projection, not applied as an UPDATE to an older AMSC row.  The only
+-- current production lane is global AWC; retained AMSC records are history
+-- and cannot be selected by this table.
+CREATE TABLE IF NOT EXISTS calibration_station_source_authority (
+  authority_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  source_lane TEXT NOT NULL CHECK(source_lane='AWC'),
+  authority_version TEXT NOT NULL,
+  activated_at_utc TEXT NOT NULL,
+  legacy_registry_content_sha256 TEXT NOT NULL CHECK(length(legacy_registry_content_sha256)=64),
+  lineage_json TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
+  UNIQUE(station_id,authority_version)
 );
 
 CREATE TABLE IF NOT EXISTS calibration_station_market_timezone_binding (
@@ -70,6 +119,7 @@ CREATE TABLE IF NOT EXISTS calibration_station_daily_high_truth (
   truth_id TEXT PRIMARY KEY,
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   local_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
   official_tmax_c REAL NOT NULL,
   source_lane TEXT NOT NULL CHECK(source_lane IN ('AMSC','AWC')),
   settlement_definition TEXT NOT NULL,
@@ -92,6 +142,7 @@ CREATE TABLE IF NOT EXISTS calibration_historical_asof_model_run (
   model_id TEXT NOT NULL CHECK(model_id IN ('ECMWF','GFS','ICON','GEM','CMA')),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
   run_init_utc TEXT NOT NULL,
   published_at_utc TEXT,
   received_at_utc TEXT,
@@ -415,6 +466,11 @@ CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_selection_evidence 
   season_bin TEXT NOT NULL,
   lead_bucket TEXT NOT NULL,
   run_cycle TEXT NOT NULL,
+  run_cycle_by_system_json TEXT,
+  run_cycle_by_system_sha256 TEXT CHECK(
+    run_cycle_by_system_sha256 IS NULL OR
+    length(run_cycle_by_system_sha256)=64
+  ),
   settlement_definition TEXT NOT NULL,
   method_version TEXT NOT NULL,
   candidate_system_ids_json TEXT NOT NULL,
@@ -444,6 +500,11 @@ CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_artifact (
   season_bin TEXT NOT NULL,
   lead_bucket TEXT NOT NULL,
   run_cycle TEXT NOT NULL,
+  run_cycle_by_system_json TEXT,
+  run_cycle_by_system_sha256 TEXT CHECK(
+    run_cycle_by_system_sha256 IS NULL OR
+    length(run_cycle_by_system_sha256)=64
+  ),
   settlement_definition TEXT NOT NULL,
   ensemble_system_ids_json TEXT NOT NULL,
   ensemble_system_count INTEGER NOT NULL CHECK(ensemble_system_count>=2),
@@ -457,6 +518,42 @@ CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_artifact (
   valid_from_utc TEXT NOT NULL,
   valid_until_utc TEXT NOT NULL,
   content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64)
+);
+
+-- An OOS rejection is authority evidence too.  Retain every exact-mask
+-- evaluation so a later rejection cannot be hidden behind a still-valid
+-- activation produced by an older passing evaluation.
+CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_oos_evaluation (
+  evaluation_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  season_bin TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  run_cycle TEXT NOT NULL,
+  run_cycle_by_system_json TEXT NOT NULL,
+  run_cycle_by_system_sha256 TEXT NOT NULL
+    CHECK(length(run_cycle_by_system_sha256)=64),
+  settlement_definition TEXT NOT NULL,
+  ensemble_system_ids_json TEXT NOT NULL,
+  available_system_set_hash TEXT NOT NULL CHECK(
+    length(available_system_set_hash)=64
+  ),
+  selection_evidence_sha256 TEXT NOT NULL CHECK(
+    length(selection_evidence_sha256)=64
+  ),
+  oos_state TEXT NOT NULL CHECK(oos_state IN (
+    'PRODUCTION_NO_LIVE_OOS_PASS','OOS_REJECTED'
+  )),
+  threshold_profile TEXT NOT NULL,
+  min_train_days INTEGER NOT NULL CHECK(min_train_days>=1),
+  min_holdout_days INTEGER NOT NULL CHECK(min_holdout_days>=1),
+  train_end_date TEXT NOT NULL,
+  holdout_start_date TEXT NOT NULL,
+  holdout_end_date TEXT NOT NULL,
+  oos_metrics_json TEXT NOT NULL,
+  climatology_baseline_metrics_json TEXT NOT NULL,
+  evaluated_at_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(train_end_date < holdout_start_date)
 );
 
 CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_oos_prediction (
@@ -473,6 +570,11 @@ CREATE TABLE IF NOT EXISTS calibration_cross_native_ensemble_oos_prediction (
   season_bin TEXT NOT NULL,
   lead_bucket TEXT NOT NULL,
   run_cycle TEXT NOT NULL,
+  run_cycle_by_system_json TEXT,
+  run_cycle_by_system_sha256 TEXT CHECK(
+    run_cycle_by_system_sha256 IS NULL OR
+    length(run_cycle_by_system_sha256)=64
+  ),
   settlement_definition TEXT NOT NULL,
   trained_through_event_date TEXT NOT NULL,
   decision_at_utc TEXT NOT NULL,
@@ -554,12 +656,38 @@ CREATE TABLE IF NOT EXISTS calibration_historical_taf_capture (
   source_class TEXT NOT NULL CHECK(
     source_class='official_date_addressed_historical_replay'
   ),
+  truth_label_authority TEXT NOT NULL CHECK(
+    truth_label_authority='FORMAL_STATION_LANE_TRUTH'
+  ),
   authority_scope TEXT NOT NULL CHECK(
     authority_scope='CALIBRATION_TRAIN_ONLY'
   ),
   content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
   CHECK(issued_at_utc<=provider_available_at_utc),
   CHECK(provider_available_at_utc<=decision_anchor_utc),
+  UNIQUE(station_id,event_date,source_sample_sha256)
+);
+
+-- A historical AMD/COR may already have been retained as a calibration
+-- receipt before the stricter station-day halt was introduced.  Preserve the
+-- receipt above, but append an explicit quarantine fact so every exact join
+-- can exclude the entire station day without deleting or rewriting history.
+CREATE TABLE IF NOT EXISTS calibration_historical_taf_correction_quarantine (
+  historical_taf_correction_quarantine_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  correction_kind TEXT NOT NULL CHECK(correction_kind IN ('AMD','COR')),
+  raw_taf_sha256 TEXT NOT NULL CHECK(length(raw_taf_sha256)=64),
+  source_sample_sha256 TEXT NOT NULL CHECK(length(source_sample_sha256)=64),
+  source_artifact_sha256 TEXT NOT NULL CHECK(length(source_artifact_sha256)=64),
+  source_class TEXT NOT NULL CHECK(
+    source_class='official_date_addressed_historical_replay'
+  ),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='CALIBRATION_TRAIN_ONLY'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
   UNIQUE(station_id,event_date,source_sample_sha256)
 );
 
@@ -589,6 +717,11 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_activation (
   season_bin TEXT NOT NULL,
   lead_bucket TEXT NOT NULL,
   run_cycle TEXT NOT NULL,
+  run_cycle_by_system_json TEXT,
+  run_cycle_by_system_sha256 TEXT CHECK(
+    run_cycle_by_system_sha256 IS NULL OR
+    length(run_cycle_by_system_sha256)=64
+  ),
   settlement_definition TEXT NOT NULL,
   available_system_set_hash_or_star TEXT NOT NULL,
   generation INTEGER NOT NULL CHECK(generation>=1),
@@ -779,14 +912,19 @@ CREATE INDEX IF NOT EXISTS calibration_native_historical_member_scope_idx ON cal
 CREATE INDEX IF NOT EXISTS calibration_native_historical_bucket_scope_idx ON calibration_native_ensemble_historical_member_bucket(ensemble_system_id,station_id,target_local_date,archive_query_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_native_system_artifact_scope_idx ON calibration_native_ensemble_system_artifact(ensemble_system_id,station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_cross_native_artifact_scope_idx ON calibration_cross_native_ensemble_artifact(station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
+CREATE INDEX IF NOT EXISTS calibration_cross_native_oos_evaluation_scope_idx ON calibration_cross_native_ensemble_oos_evaluation(station_id,season_bin,lead_bucket,run_cycle,available_system_set_hash,evaluated_at_utc,evaluation_id);
 CREATE INDEX IF NOT EXISTS calibration_cross_native_oos_prediction_scope_idx ON calibration_cross_native_ensemble_oos_prediction(station_id,event_date,season_bin,lead_bucket,run_cycle,decision_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_scope_idx ON calibration_forward_taf_capture(station_id,event_date,provider_available_at_utc,revision_sequence);
 CREATE INDEX IF NOT EXISTS calibration_historical_taf_capture_scope_idx ON calibration_historical_taf_capture(station_id,event_date,provider_available_at_utc);
+CREATE INDEX IF NOT EXISTS calibration_historical_taf_correction_quarantine_scope_idx ON calibration_historical_taf_correction_quarantine(station_id,event_date,settlement_timezone);
 CREATE INDEX IF NOT EXISTS calibration_native_activation_asof_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc,generation);
+CREATE INDEX IF NOT EXISTS calibration_station_source_authority_latest_idx ON calibration_station_source_authority(station_id,activated_at_utc,authority_id);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
 
 CREATE TRIGGER IF NOT EXISTS calibration_station_registry_no_update BEFORE UPDATE ON calibration_station_registry BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_station_registry_no_delete BEFORE DELETE ON calibration_station_registry BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_station_source_authority_no_update BEFORE UPDATE ON calibration_station_source_authority BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_station_source_authority_no_delete BEFORE DELETE ON calibration_station_source_authority BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_station_market_timezone_binding_no_update BEFORE UPDATE ON calibration_station_market_timezone_binding BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_station_market_timezone_binding_no_delete BEFORE DELETE ON calibration_station_market_timezone_binding BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_truth_no_update BEFORE UPDATE ON calibration_station_daily_high_truth BEGIN SELECT RAISE(ABORT,'append_only'); END;
@@ -817,12 +955,16 @@ CREATE TRIGGER IF NOT EXISTS calibration_cross_native_selection_no_update BEFORE
 CREATE TRIGGER IF NOT EXISTS calibration_cross_native_selection_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_selection_evidence BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_cross_native_artifact_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_cross_native_artifact_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_artifact BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_evaluation_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_oos_evaluation BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_evaluation_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_oos_evaluation BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_prediction_no_update BEFORE UPDATE ON calibration_cross_native_ensemble_oos_prediction BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_cross_native_oos_prediction_no_delete BEFORE DELETE ON calibration_cross_native_ensemble_oos_prediction BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_forward_taf_capture_no_update BEFORE UPDATE ON calibration_forward_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_forward_taf_capture_no_delete BEFORE DELETE ON calibration_forward_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_capture_no_update BEFORE UPDATE ON calibration_historical_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_capture_no_delete BEFORE DELETE ON calibration_historical_taf_capture BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_correction_quarantine_no_update BEFORE UPDATE ON calibration_historical_taf_correction_quarantine BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_historical_taf_correction_quarantine_no_delete BEFORE DELETE ON calibration_historical_taf_correction_quarantine BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_update BEFORE UPDATE ON calibration_native_ensemble_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_native_promotion_no_delete BEFORE DELETE ON calibration_native_ensemble_promotion BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS calibration_native_activation_no_update BEFORE UPDATE ON calibration_native_ensemble_activation BEGIN SELECT RAISE(ABORT,'append_only'); END;
@@ -1543,6 +1685,7 @@ CREATE TABLE IF NOT EXISTS basket_target_observation_facts (
   observation_id TEXT NOT NULL UNIQUE,
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
   source_lane TEXT NOT NULL CHECK(source_lane IN ('AMSC','AWC')),
   report_type TEXT NOT NULL CHECK(report_type IN ('METAR','SPECI')),
   raw_sha256 TEXT NOT NULL CHECK(length(raw_sha256)=64),
@@ -1571,7 +1714,7 @@ CREATE TABLE IF NOT EXISTS basket_target_execution_cycles (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
   settlement_timezone TEXT NOT NULL,
-  strategy_lane TEXT NOT NULL CHECK(strategy_lane IN ('basket','hard_no')),
+  strategy_lane TEXT NOT NULL CHECK(strategy_lane='basket'),
   plan_sha256 TEXT NOT NULL CHECK(length(plan_sha256)=64),
   requested_reserve_usdc REAL NOT NULL CHECK(requested_reserve_usdc>=0),
   state TEXT NOT NULL CHECK(state IN ('prepared','submitting','submitted','reconcile_required','settled')),
@@ -1586,7 +1729,7 @@ CREATE TABLE IF NOT EXISTS auto_trade_decisions (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
   settlement_timezone TEXT NOT NULL,
-  strategy_lane TEXT NOT NULL CHECK(strategy_lane IN ('basket','hard_no')),
+  strategy_lane TEXT NOT NULL CHECK(strategy_lane='basket'),
   decided_state TEXT NOT NULL CHECK(decided_state IN ('prepared','blocked','submitting','submitted','reconcile_required','settled')),
   will_order INTEGER NOT NULL CHECK(will_order IN (0,1)),
   target_execution_hard_deadline_at TEXT,
@@ -1602,7 +1745,7 @@ CREATE TABLE IF NOT EXISTS basket_target_order_intents (
   cycle_id TEXT NOT NULL,
   bucket TEXT NOT NULL,
   token_id TEXT NOT NULL,
-  side TEXT NOT NULL CHECK(side IN ('YES','NO')),
+  side TEXT NOT NULL CHECK(side='YES'),
   order_action TEXT NOT NULL CHECK(order_action IN ('BUY','SELL')),
   limit_price REAL NOT NULL CHECK(limit_price>0 AND limit_price<1),
   requested_size REAL NOT NULL CHECK(requested_size>0),
@@ -1629,7 +1772,7 @@ CREATE TABLE IF NOT EXISTS basket_target_capital_pool (
 CREATE TABLE IF NOT EXISTS basket_target_capital_reservations (
   reservation_id TEXT PRIMARY KEY,
   cycle_id TEXT NOT NULL UNIQUE,
-  strategy_lane TEXT NOT NULL CHECK(strategy_lane IN ('basket','hard_no')),
+  strategy_lane TEXT NOT NULL CHECK(strategy_lane='basket'),
   amount_usdc REAL NOT NULL CHECK(amount_usdc>=0),
   state TEXT NOT NULL CHECK(state IN ('active','released','consumed','expired')),
   idempotency_key TEXT NOT NULL UNIQUE,
@@ -1638,6 +1781,29 @@ CREATE TABLE IF NOT EXISTS basket_target_capital_reservations (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Pre-pure-YES databases may still contain historical hard-NO rows. Keep
+-- them readable, but fence every future write at the database boundary as
+-- well as in ``atomic_ledger``. INSERT-only guards never mutate legacy rows.
+CREATE TRIGGER IF NOT EXISTS basket_target_cycles_no_retired_lane_insert
+BEFORE INSERT ON basket_target_execution_cycles
+WHEN lower(NEW.strategy_lane) <> 'basket'
+BEGIN SELECT RAISE(ABORT,'strategy_lane_hard_no_retired'); END;
+
+CREATE TRIGGER IF NOT EXISTS basket_target_decisions_no_retired_lane_insert
+BEFORE INSERT ON auto_trade_decisions
+WHEN lower(NEW.strategy_lane) <> 'basket'
+BEGIN SELECT RAISE(ABORT,'strategy_lane_hard_no_retired'); END;
+
+CREATE TRIGGER IF NOT EXISTS basket_target_reservations_no_retired_lane_insert
+BEFORE INSERT ON basket_target_capital_reservations
+WHEN lower(NEW.strategy_lane) <> 'basket'
+BEGIN SELECT RAISE(ABORT,'strategy_lane_hard_no_retired'); END;
+
+CREATE TRIGGER IF NOT EXISTS basket_target_intents_no_no_side_insert
+BEFORE INSERT ON basket_target_order_intents
+WHEN upper(NEW.side) <> 'YES'
+BEGIN SELECT RAISE(ABORT,'no_order_side_retired'); END;
 
 CREATE TABLE IF NOT EXISTS basket_target_prepared_supersession_receipts (
   supersession_id TEXT PRIMARY KEY,
@@ -1836,8 +2002,310 @@ BEFORE DELETE ON basket_target_prepared_supersession_receipts BEGIN SELECT RAISE
 """
 
 
+# Open-Meteo is an explicitly labelled republisher.  These tables deliberately
+# have no foreign key into the native-only system registry: sharing the model
+# name is product identity, not proof of an official transport or arrival.
+REPUBLISHER_ENSEMBLE_DDL = """
+CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_product (
+  ensemble_system_id TEXT PRIMARY KEY,
+  canonical_name TEXT NOT NULL UNIQUE,
+  independence_family_id TEXT NOT NULL,
+  upstream_provider_id TEXT NOT NULL,
+  transport_provider_id TEXT NOT NULL CHECK(transport_provider_id='OPEN_METEO'),
+  source_role TEXT NOT NULL CHECK(source_role='aggregator_republisher'),
+  expected_member_count INTEGER NOT NULL CHECK(expected_member_count>=2),
+  member_identity_contract_version TEXT NOT NULL,
+  publication_contract_version TEXT NOT NULL,
+  native_arrival_index_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(native_arrival_index_eligible=0),
+  formal_p0_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(formal_p0_eligible=0),
+  valid_from_utc TEXT NOT NULL,
+  valid_until_utc TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64)
+);
+
+-- A republisher row is eligible for historical OOS only through an explicit,
+-- immutable contract.  The contract is deliberately separate from the
+-- native-arrival tables: a closed station day and an AWC truth as-of receipt
+-- prove that the sample is historical, but never prove native publication or
+-- formal/live authority.  New contract versions are appended when evidence
+-- is corrected; existing versions are never updated in place.
+CREATE TABLE IF NOT EXISTS calibration_republisher_historical_oos_contract (
+  historical_oos_contract_id TEXT PRIMARY KEY,
+  contract_version TEXT NOT NULL,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  run_cycle TEXT NOT NULL CHECK(run_cycle='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'),
+  station_day_closed INTEGER NOT NULL CHECK(station_day_closed=1),
+  station_day_end_utc TEXT NOT NULL,
+  station_day_closed_at_utc TEXT NOT NULL,
+  awc_truth_id TEXT NOT NULL
+    REFERENCES calibration_station_daily_high_truth(truth_id),
+  awc_truth_revision_no INTEGER NOT NULL CHECK(awc_truth_revision_no>=0),
+  awc_truth_asof_utc TEXT NOT NULL,
+  awc_truth_source_lane TEXT NOT NULL CHECK(awc_truth_source_lane='AWC'),
+  receipt_class TEXT NOT NULL
+    CHECK(receipt_class='HISTORICAL_ASOF_REPUBLISHER_RECEIPT'),
+  temporal_scope TEXT NOT NULL
+    CHECK(temporal_scope='CLOSED_HISTORICAL_AWC_TRUTH'),
+  future_event_count INTEGER NOT NULL CHECK(future_event_count=0),
+  historical_oos_eligible INTEGER NOT NULL
+    CHECK(historical_oos_eligible IN (0,1)),
+  republisher_receipt_sha256 TEXT NOT NULL
+    CHECK(length(republisher_receipt_sha256)=64),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  created_at_utc TEXT NOT NULL,
+  CHECK(
+    historical_oos_eligible=0
+    OR (
+      station_day_closed=1
+      AND length(trim(station_day_end_utc))>0
+      AND length(trim(station_day_closed_at_utc))>0
+      AND awc_truth_source_lane='AWC'
+      AND receipt_class='HISTORICAL_ASOF_REPUBLISHER_RECEIPT'
+      AND temporal_scope='CLOSED_HISTORICAL_AWC_TRUTH'
+      AND future_event_count=0
+    )
+  ),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,archive_lead_bucket,
+    run_cycle,contract_version
+  )
+);
+
+-- Bind the contract to the actual station/day/revision rather than trusting
+-- a caller-provided source-lane label.  This check is intentionally limited
+-- to the republisher contract and cannot alter native-arrival eligibility.
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_oos_contract_truth_guard
+BEFORE INSERT ON calibration_republisher_historical_oos_contract
+WHEN NEW.historical_oos_eligible=1
+  AND (
+    NOT EXISTS (
+      SELECT 1
+      FROM calibration_station_daily_high_truth AS t
+      WHERE t.truth_id=NEW.awc_truth_id
+        AND t.station_id=NEW.station_id
+        AND t.local_date=NEW.target_local_date
+        AND t.revision_no=NEW.awc_truth_revision_no
+        AND t.source_lane='AWC'
+        AND t.qc_status='ACCEPTED'
+        AND t.canonical_committed_at_utc IS NOT NULL
+        AND julianday(t.canonical_committed_at_utc)
+            <= julianday(NEW.awc_truth_asof_utc)
+    )
+    OR julianday(NEW.station_day_end_utc) IS NULL
+    OR julianday(NEW.station_day_closed_at_utc) IS NULL
+    OR julianday(NEW.awc_truth_asof_utc) IS NULL
+    OR julianday(NEW.station_day_closed_at_utc)
+       < julianday(NEW.station_day_end_utc)
+    OR julianday(NEW.awc_truth_asof_utc)
+       < julianday(NEW.station_day_end_utc)
+  )
+BEGIN
+  SELECT RAISE(ABORT,'historical_republisher_oos_truth_binding_invalid');
+END;
+
+CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_member_run (
+  republisher_member_run_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  member_role TEXT NOT NULL CHECK(member_role IN ('CONTROL','PERTURBED')),
+  received_at_utc TEXT NOT NULL,
+  lead_bucket TEXT NOT NULL,
+  raw_tmax_c REAL NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  extraction_version TEXT NOT NULL,
+  upstream_provider_id TEXT NOT NULL,
+  transport_provider_id TEXT NOT NULL CHECK(transport_provider_id='OPEN_METEO'),
+  aggregator_snapshot_at_utc TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  raw_object_ref TEXT NOT NULL,
+  source_object_sha256 TEXT NOT NULL CHECK(length(source_object_sha256)=64),
+  qc_status TEXT NOT NULL CHECK(qc_status IN ('ACCEPTED','QUARANTINED')),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,member_id,
+    extraction_version,source_object_sha256
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_member_bucket (
+  republisher_member_bucket_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  aggregator_snapshot_at_utc TEXT NOT NULL,
+  member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
+  member_count INTEGER NOT NULL CHECK(member_count>=2),
+  bucket_contract_sha256 TEXT NOT NULL CHECK(length(bucket_contract_sha256)=64),
+  bucket_intervals_json TEXT NOT NULL,
+  raw_bucket_probabilities_json TEXT NOT NULL,
+  source_role TEXT NOT NULL CHECK(source_role='aggregator_republisher'),
+  authority_scope TEXT NOT NULL CHECK(
+    authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'
+  ),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,
+    member_set_sha256,bucket_contract_sha256
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_historical_member_run (
+  historical_member_run_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  run_cycle TEXT NOT NULL CHECK(run_cycle='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'),
+  member_id TEXT NOT NULL,
+  member_role TEXT NOT NULL CHECK(member_role IN ('CONTROL','PERTURBED')),
+  raw_tmax_c REAL NOT NULL,
+  settlement_definition TEXT NOT NULL,
+  extraction_version TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  transport_provider_id TEXT NOT NULL CHECK(transport_provider_id='OPEN_METEO'),
+  native_run_init_utc TEXT CHECK(native_run_init_utc IS NULL),
+  offline_oos_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(offline_oos_eligible=0),
+  archive_query_at_utc TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  raw_object_ref TEXT NOT NULL,
+  source_object_sha256 TEXT NOT NULL CHECK(length(source_object_sha256)=64),
+  qc_status TEXT NOT NULL CHECK(qc_status IN ('ACCEPTED','QUARANTINED')),
+  authority_scope TEXT NOT NULL CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+  historical_oos_contract_id TEXT
+    REFERENCES calibration_republisher_historical_oos_contract(
+      historical_oos_contract_id
+    ),
+  historical_oos_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(historical_oos_eligible IN (0,1)),
+  holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(historical_oos_eligible=0 OR historical_oos_contract_id IS NOT NULL),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,archive_lead_bucket,
+    member_id,extraction_version,source_object_sha256
+  )
+);
+
+CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_historical_member_bucket (
+  historical_member_bucket_id TEXT PRIMARY KEY,
+  ensemble_system_id TEXT NOT NULL
+    REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
+  station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
+  target_local_date TEXT NOT NULL,
+  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  archive_query_at_utc TEXT NOT NULL,
+  member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
+  member_count INTEGER NOT NULL CHECK(member_count>=2),
+  bucket_contract_sha256 TEXT NOT NULL CHECK(length(bucket_contract_sha256)=64),
+  bucket_intervals_json TEXT NOT NULL,
+  raw_bucket_probabilities_json TEXT NOT NULL,
+  source_role TEXT NOT NULL CHECK(source_role='aggregator_republisher'),
+  authority_scope TEXT NOT NULL CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
+  historical_oos_contract_id TEXT
+    REFERENCES calibration_republisher_historical_oos_contract(
+      historical_oos_contract_id
+    ),
+  historical_oos_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK(historical_oos_eligible IN (0,1)),
+  holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  CHECK(historical_oos_eligible=0 OR historical_oos_contract_id IS NOT NULL),
+  UNIQUE(
+    ensemble_system_id,station_id,target_local_date,archive_lead_bucket,
+    member_set_sha256,bucket_contract_sha256
+  )
+);
+
+CREATE INDEX IF NOT EXISTS calibration_republisher_member_scope_idx
+ON calibration_republisher_ensemble_member_run(
+  ensemble_system_id,station_id,target_local_date,aggregator_snapshot_at_utc,member_id
+);
+CREATE INDEX IF NOT EXISTS calibration_republisher_member_bucket_scope_idx
+ON calibration_republisher_ensemble_member_bucket(
+  ensemble_system_id,station_id,target_local_date,aggregator_snapshot_at_utc
+);
+CREATE INDEX IF NOT EXISTS calibration_republisher_historical_member_scope_idx
+ON calibration_republisher_ensemble_historical_member_run(
+  ensemble_system_id,station_id,target_local_date,archive_lead_bucket,member_id
+);
+CREATE INDEX IF NOT EXISTS calibration_republisher_historical_oos_contract_scope_idx
+ON calibration_republisher_historical_oos_contract(
+  ensemble_system_id,station_id,target_local_date,archive_lead_bucket,run_cycle,
+  historical_oos_eligible,contract_version
+);
+CREATE INDEX IF NOT EXISTS calibration_republisher_historical_bucket_scope_idx
+ON calibration_republisher_ensemble_historical_member_bucket(
+  ensemble_system_id,station_id,target_local_date,archive_lead_bucket,archive_query_at_utc
+);
+
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_product_no_update
+BEFORE UPDATE ON calibration_republisher_ensemble_product
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_product_no_delete
+BEFORE DELETE ON calibration_republisher_ensemble_product
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_member_run_no_update
+BEFORE UPDATE ON calibration_republisher_ensemble_member_run
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_member_run_no_delete
+BEFORE DELETE ON calibration_republisher_ensemble_member_run
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_member_bucket_no_update
+BEFORE UPDATE ON calibration_republisher_ensemble_member_bucket
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_member_bucket_no_delete
+BEFORE DELETE ON calibration_republisher_ensemble_member_bucket
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_member_run_no_update
+BEFORE UPDATE ON calibration_republisher_ensemble_historical_member_run
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_member_run_no_delete
+BEFORE DELETE ON calibration_republisher_ensemble_historical_member_run
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_oos_contract_no_update
+BEFORE UPDATE ON calibration_republisher_historical_oos_contract
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_oos_contract_no_delete
+BEFORE DELETE ON calibration_republisher_historical_oos_contract
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_member_bucket_no_update
+BEFORE UPDATE ON calibration_republisher_ensemble_historical_member_bucket
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS calibration_republisher_historical_member_bucket_no_delete
+BEFORE DELETE ON calibration_republisher_ensemble_historical_member_bucket
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_no_update
+BEFORE UPDATE ON canonical_ssot_fact
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_no_delete
+BEFORE DELETE ON canonical_ssot_fact
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_ingress_only
+BEFORE INSERT ON canonical_ssot_fact
+WHEN canonical_ingress_authorized()!=1
+BEGIN SELECT RAISE(ABORT,'canonical_ingress_only'); END;
+"""
+
+
+CANONICAL_CONTRACT_TABLES = ("canonical_ssot_fact",)
 CALIBRATION_TABLES = (
     "calibration_station_registry",
+    "calibration_station_source_authority",
     "calibration_station_market_timezone_binding",
     "calibration_station_daily_high_truth",
     "calibration_historical_asof_model_run",
@@ -1857,6 +2325,7 @@ NATIVE_ENSEMBLE_FOUNDATION_TABLES = (
     "calibration_native_ensemble_system_artifact",
     "calibration_cross_native_ensemble_selection_evidence",
     "calibration_cross_native_ensemble_artifact",
+    "calibration_cross_native_ensemble_oos_evaluation",
     "calibration_cross_native_ensemble_oos_prediction",
     "calibration_forward_taf_capture",
     "calibration_native_ensemble_promotion",
@@ -1864,11 +2333,50 @@ NATIVE_ENSEMBLE_FOUNDATION_TABLES = (
 )
 NATIVE_ENSEMBLE_ADDITIVE_TABLES = (
     "calibration_historical_taf_capture",
+    "calibration_historical_taf_correction_quarantine",
 )
 NATIVE_ENSEMBLE_SCHEMA_TABLES = (
     *NATIVE_ENSEMBLE_FOUNDATION_TABLES,
     *NATIVE_ENSEMBLE_ADDITIVE_TABLES,
 )
+REPUBLISHER_ENSEMBLE_TABLES = (
+    "calibration_republisher_ensemble_product",
+    "calibration_republisher_historical_oos_contract",
+    "calibration_republisher_ensemble_member_run",
+    "calibration_republisher_ensemble_member_bucket",
+    "calibration_republisher_ensemble_historical_member_run",
+    "calibration_republisher_ensemble_historical_member_bucket",
+)
+NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_TABLES = {
+    "calibration_cross_native_ensemble_selection_evidence": (
+        "selection_evidence_id",
+        "selected_system_ids_json",
+    ),
+    "calibration_cross_native_ensemble_artifact": (
+        "cross_ensemble_artifact_id",
+        "ensemble_system_ids_json",
+    ),
+    "calibration_cross_native_ensemble_oos_evaluation": (
+        "evaluation_id",
+        "ensemble_system_ids_json",
+    ),
+    "calibration_cross_native_ensemble_oos_prediction": (
+        "prediction_id",
+        "ensemble_system_ids_json",
+    ),
+    "calibration_native_ensemble_activation": (
+        "activation_id",
+        None,
+    ),
+}
+NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_COLUMNS = frozenset({
+    "run_cycle_by_system_json",
+    "run_cycle_by_system_sha256",
+})
+NATIVE_ENSEMBLE_MIXED_RUN_CYCLE = "MIXED_NATIVE_CYCLES"
+HISTORICAL_TAF_TRUTH_LABEL_AUTHORITIES = frozenset({
+    "FORMAL_STATION_LANE_TRUTH",
+})
 
 
 def native_ensemble_foundation_schema_status(
@@ -1904,11 +2412,253 @@ def native_ensemble_foundation_schema_status(
     missing_member_columns = sorted(
         required_member_columns - member_columns
     )
+    missing_run_cycle_mapping_columns = {}
+    for table in NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_TABLES:
+        if table not in rows:
+            continue
+        table_columns = {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        missing_columns = sorted(
+            NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_COLUMNS - table_columns
+        )
+        if missing_columns:
+            missing_run_cycle_mapping_columns[table] = missing_columns
+    historical_taf_columns = (
+        {
+            str(row[1])
+            for row in conn.execute(
+                "PRAGMA table_info(calibration_historical_taf_capture)"
+            )
+        }
+        if "calibration_historical_taf_capture" in rows
+        else set()
+    )
+    missing_historical_taf_columns = sorted(
+        {"truth_label_authority"} - historical_taf_columns
+    )
     return {
-        "ok": not missing and not missing_member_columns,
+        "ok": (
+            not missing
+            and not missing_member_columns
+            and not missing_run_cycle_mapping_columns
+            and not missing_historical_taf_columns
+        ),
         "missing_tables": missing,
         "missing_member_columns": missing_member_columns,
+        "missing_run_cycle_mapping_columns":
+            missing_run_cycle_mapping_columns,
+        "missing_historical_taf_columns": missing_historical_taf_columns,
         "tables": list(NATIVE_ENSEMBLE_FOUNDATION_TABLES),
+    }
+
+
+def republisher_ensemble_schema_status(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Check the explicit Open-Meteo candidate lane, never native authority."""
+
+    rows = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    missing = sorted(set(REPUBLISHER_ENSEMBLE_TABLES) - rows)
+    return {
+        "ok": not missing,
+        "missing_tables": missing,
+        "tables": list(REPUBLISHER_ENSEMBLE_TABLES),
+    }
+
+
+def _migrate_republisher_historical_oos_contract(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Add the immutable historical Open-Meteo OOS contract to old DBs.
+
+    The republisher lane originally had only a train-only flag.  Existing
+    rows are preserved exactly and remain ineligible (the new columns default
+    to zero).  A row can become historical-OOS eligible only when a caller
+    appends a separately versioned contract bound to a closed station day and
+    an AWC truth as-of receipt.  This migration never changes the native
+    tables or promotes any existing evidence.
+    """
+
+    contract_table = "calibration_republisher_historical_oos_contract"
+    contract_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (contract_table,),
+    ).fetchone()
+    if contract_exists is None:
+        # ``REPUBLISHER_ENSEMBLE_DDL`` is normally executed by the caller
+        # first.  Keep this helper safe for a direct controlled migration too.
+        _execute_sql_script_transactional(conn, REPUBLISHER_ENSEMBLE_DDL)
+
+    # Legacy databases may already have a same-named table created before the
+    # truth-binding trigger was introduced.  ``IF NOT EXISTS`` is safe for the
+    # canonical table and keeps the migration append-only.
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS
+        calibration_republisher_historical_oos_contract_truth_guard
+        BEFORE INSERT ON calibration_republisher_historical_oos_contract
+        WHEN NEW.historical_oos_eligible=1
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM calibration_station_daily_high_truth AS t
+              WHERE t.truth_id=NEW.awc_truth_id
+                AND t.station_id=NEW.station_id
+                AND t.local_date=NEW.target_local_date
+                AND t.revision_no=NEW.awc_truth_revision_no
+                AND t.source_lane='AWC'
+                AND t.qc_status='ACCEPTED'
+                AND t.canonical_committed_at_utc IS NOT NULL
+                AND julianday(t.canonical_committed_at_utc)
+                    <= julianday(NEW.awc_truth_asof_utc)
+            )
+            OR julianday(NEW.station_day_end_utc) IS NULL
+            OR julianday(NEW.station_day_closed_at_utc) IS NULL
+            OR julianday(NEW.awc_truth_asof_utc) IS NULL
+            OR julianday(NEW.station_day_closed_at_utc)
+               < julianday(NEW.station_day_end_utc)
+            OR julianday(NEW.awc_truth_asof_utc)
+               < julianday(NEW.station_day_end_utc)
+          )
+        BEGIN
+          SELECT RAISE(ABORT,'historical_republisher_oos_truth_binding_invalid');
+        END
+        """
+    )
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS "
+        "calibration_republisher_historical_oos_contract_no_update "
+        "BEFORE UPDATE ON calibration_republisher_historical_oos_contract "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS "
+        "calibration_republisher_historical_oos_contract_no_delete "
+        "BEFORE DELETE ON calibration_republisher_historical_oos_contract "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+
+    added_columns: dict[str, list[str]] = {}
+    for table in (
+        "calibration_republisher_ensemble_historical_member_run",
+        "calibration_republisher_ensemble_historical_member_bucket",
+    ):
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if exists is None:
+            continue
+        columns = {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        additions: list[str] = []
+        if "historical_oos_contract_id" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN "
+                "historical_oos_contract_id TEXT "
+                "REFERENCES calibration_republisher_historical_oos_contract("
+                "historical_oos_contract_id)"
+            )
+            additions.append("historical_oos_contract_id")
+        if "historical_oos_eligible" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN "
+                "historical_oos_eligible INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(historical_oos_eligible IN (0,1))"
+            )
+            additions.append("historical_oos_eligible")
+        if additions:
+            added_columns[table] = additions
+
+        # Old tables may predate the table-level CHECK added above.  These
+        # insert guards preserve the append-only migration without rebuilding
+        # a populated immutable table.
+        is_member_run = table.endswith("member_run")
+        guard = (
+            "calibration_republisher_historical_member_run_oos_contract_guard"
+            if is_member_run
+            else "calibration_republisher_historical_member_bucket_oos_contract_guard"
+        )
+        scope_match = (
+            "c.ensemble_system_id=NEW.ensemble_system_id "
+            "AND c.station_id=NEW.station_id "
+            "AND c.target_local_date=NEW.target_local_date "
+            "AND c.archive_lead_bucket=NEW.archive_lead_bucket "
+            "AND c.run_cycle=NEW.run_cycle"
+            if is_member_run
+            else
+            "c.ensemble_system_id=NEW.ensemble_system_id "
+            "AND c.station_id=NEW.station_id "
+            "AND c.target_local_date=NEW.target_local_date "
+            "AND c.archive_lead_bucket=NEW.archive_lead_bucket"
+        )
+        conn.execute(
+            f"CREATE TRIGGER IF NOT EXISTS {guard} "
+            f"BEFORE INSERT ON {table} "
+            "WHEN NEW.historical_oos_eligible=1 "
+            "AND (NEW.historical_oos_contract_id IS NULL OR NOT EXISTS ("
+            "SELECT 1 FROM calibration_republisher_historical_oos_contract AS c "
+            "WHERE c.historical_oos_contract_id=NEW.historical_oos_contract_id "
+            "AND c.historical_oos_eligible=1 AND "
+            + scope_match
+            + ")) "
+            "BEGIN SELECT RAISE(ABORT,'historical_republisher_oos_contract_required'); END"
+        )
+
+    # The contract itself is append-only in the canonical DDL.  Validate the
+    # required columns before reporting readiness so a partially-created
+    # legacy table fails closed instead of silently accepting an under-specified
+    # OOS claim.
+    contract_columns = {
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({contract_table})")
+    }
+    required_contract_columns = {
+        "historical_oos_contract_id",
+        "contract_version",
+        "ensemble_system_id",
+        "station_id",
+        "target_local_date",
+        "archive_lead_bucket",
+        "run_cycle",
+        "station_day_closed",
+        "station_day_end_utc",
+        "station_day_closed_at_utc",
+        "awc_truth_id",
+        "awc_truth_revision_no",
+        "awc_truth_asof_utc",
+        "awc_truth_source_lane",
+        "receipt_class",
+        "temporal_scope",
+        "future_event_count",
+        "historical_oos_eligible",
+        "republisher_receipt_sha256",
+        "content_sha256",
+        "created_at_utc",
+    }
+    missing_contract_columns = sorted(
+        required_contract_columns - contract_columns
+    )
+    if missing_contract_columns:
+        raise RuntimeError(
+            "republisher_historical_oos_contract_schema_incomplete:"
+            + ",".join(missing_contract_columns)
+        )
+    return {
+        "state": "migrated" if added_columns else "already_current",
+        "added_columns": added_columns,
+        "historical_oos_contract_table": contract_table,
+        "historical_oos_contract_columns": sorted(contract_columns),
+        "existing_rows_promoted": 0,
     }
 
 
@@ -2117,15 +2867,470 @@ def _migrate_native_historical_source_contract(
         )
 
 
+def _migrate_historical_taf_truth_label_authority(
+    conn: sqlite3.Connection,
+) -> dict[str, int]:
+    """Add the historical TAF label without guessing legacy rows."""
+
+    table = "calibration_historical_taf_capture"
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    if exists is None:
+        return {"column_added": 0, "unlabelled_rows": 0}
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    added = 0
+    if "truth_label_authority" not in columns:
+        # SQLite cannot add a NOT NULL column to a populated table without a
+        # guessed value.  Legacy rows remain NULL and are rejected by ingress
+        # and exact join until their capture is rebuilt.
+        conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN truth_label_authority TEXT"
+        )
+        added = 1
+    invalid = conn.execute(
+        f"SELECT COUNT(*) FROM {table} "
+        "WHERE truth_label_authority IS NOT NULL "
+        "AND truth_label_authority!='FORMAL_STATION_LANE_TRUTH'"
+    ).fetchone()
+    if invalid is not None and int(invalid[0]) > 0:
+        raise RuntimeError("historical_taf_truth_label_authority_invalid_rows")
+    unlabelled = conn.execute(
+        f"SELECT COUNT(*) FROM {table} WHERE truth_label_authority IS NULL"
+    ).fetchone()
+    return {
+        "column_added": added,
+        "unlabelled_rows": int(unlabelled[0]) if unlabelled is not None else 0,
+    }
+
+
+def _canonical_native_run_cycle_mapping(
+    *,
+    system_ids_json: str,
+    run_cycle: str,
+) -> tuple[str, str]:
+    try:
+        raw_system_ids = json.loads(str(system_ids_json))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_system_ids_invalid"
+        ) from exc
+    if (
+        not isinstance(raw_system_ids, list)
+        or not raw_system_ids
+        or any(not str(system_id).strip() for system_id in raw_system_ids)
+    ):
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_system_ids_invalid"
+        )
+    system_ids = sorted(str(system_id) for system_id in raw_system_ids)
+    if len(system_ids) != len(set(system_ids)):
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_system_ids_invalid"
+        )
+    cycle = str(run_cycle or "").strip()
+    if not cycle or cycle == NATIVE_ENSEMBLE_MIXED_RUN_CYCLE:
+        raise RuntimeError(
+            "native_ensemble_same_cycle_backfill_scope_invalid"
+        )
+    mapping = {system_id: cycle for system_id in system_ids}
+    mapping_json = json.dumps(
+        mapping,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return mapping_json, content_sha256(mapping)
+
+
+def _validate_native_run_cycle_mapping(
+    *,
+    system_ids_json: str,
+    run_cycle: str,
+    mapping_json: str,
+    mapping_sha256: str,
+) -> None:
+    try:
+        raw_system_ids = json.loads(str(system_ids_json))
+        raw_mapping = json.loads(str(mapping_json))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_invalid"
+        ) from exc
+    if (
+        not isinstance(raw_system_ids, list)
+        or not isinstance(raw_mapping, dict)
+    ):
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_invalid"
+        )
+    system_ids = sorted(str(system_id) for system_id in raw_system_ids)
+    mapping = {
+        str(system_id): str(cycle)
+        for system_id, cycle in raw_mapping.items()
+    }
+    if (
+        len(system_ids) != len(set(system_ids))
+        or sorted(mapping) != system_ids
+        or any(not cycle.strip() for cycle in mapping.values())
+        or mapping_sha256 != content_sha256(mapping)
+        or str(mapping_json) != json.dumps(
+            mapping,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    ):
+        raise RuntimeError(
+            "native_ensemble_run_cycle_mapping_invalid"
+        )
+    run_cycle_value = str(run_cycle)
+    cycles = set(mapping.values())
+    if run_cycle_value == NATIVE_ENSEMBLE_MIXED_RUN_CYCLE:
+        if len(cycles) < 2:
+            raise RuntimeError(
+                "native_ensemble_mixed_run_cycle_mapping_invalid"
+            )
+    elif cycles != {run_cycle_value}:
+        raise RuntimeError(
+            "native_ensemble_same_run_cycle_mapping_invalid"
+        )
+
+
+def _migrate_native_run_cycle_mapping(
+    conn: sqlite3.Connection,
+) -> dict[str, int]:
+    """Add mapping columns and backfill only deterministic old scopes."""
+
+    tables = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    counts = {
+        "columns_added": 0,
+        "same_cycle_rows_backfilled": 0,
+        "legacy_mixed_rows_left_unset": 0,
+    }
+    for table in NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_TABLES:
+        if table not in tables:
+            continue
+        columns = {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        if "run_cycle_by_system_json" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table} "
+                "ADD COLUMN run_cycle_by_system_json TEXT"
+            )
+            counts["columns_added"] += 1
+        if "run_cycle_by_system_sha256" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table} "
+                "ADD COLUMN run_cycle_by_system_sha256 TEXT "
+                "CHECK(run_cycle_by_system_sha256 IS NULL OR "
+                "length(run_cycle_by_system_sha256)=64)"
+            )
+            counts["columns_added"] += 1
+
+    update_triggers = {
+        "calibration_cross_native_ensemble_selection_evidence":
+            "calibration_cross_native_selection_no_update",
+        "calibration_cross_native_ensemble_artifact":
+            "calibration_cross_native_artifact_no_update",
+        "calibration_cross_native_ensemble_oos_evaluation":
+            "calibration_cross_native_oos_evaluation_no_update",
+        "calibration_cross_native_ensemble_oos_prediction":
+            "calibration_cross_native_oos_prediction_no_update",
+        "calibration_native_ensemble_activation":
+            "calibration_native_activation_no_update",
+    }
+    for trigger in update_triggers.values():
+        conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+
+    for table, (primary_key, systems_column) in (
+        NATIVE_ENSEMBLE_RUN_CYCLE_MAPPING_TABLES.items()
+    ):
+        if table not in tables:
+            continue
+        if table == "calibration_native_ensemble_activation":
+            rows = conn.execute(
+                "SELECT activation_id,artifact_kind,artifact_id,"
+                "ensemble_system_id_or_star,run_cycle,"
+                "run_cycle_by_system_json,run_cycle_by_system_sha256 "
+                "FROM calibration_native_ensemble_activation"
+            ).fetchall()
+            normalized_rows = []
+            for row in rows:
+                if str(row[1]) == "CROSS_NATIVE_ENSEMBLE":
+                    artifact = conn.execute(
+                        "SELECT ensemble_system_ids_json "
+                        "FROM calibration_cross_native_ensemble_artifact "
+                        "WHERE cross_ensemble_artifact_id=?",
+                        (str(row[2]),),
+                    ).fetchone()
+                    if artifact is None:
+                        raise RuntimeError(
+                            "native_ensemble_activation_artifact_missing"
+                        )
+                    system_ids_json = str(artifact[0])
+                else:
+                    system_ids_json = json.dumps(
+                        [str(row[3])],
+                        separators=(",", ":"),
+                    )
+                normalized_rows.append((
+                    str(row[0]),
+                    str(row[4]),
+                    system_ids_json,
+                    row[5],
+                    row[6],
+                ))
+        else:
+            rows = conn.execute(
+                f"SELECT {primary_key},run_cycle,{systems_column},"
+                "run_cycle_by_system_json,run_cycle_by_system_sha256 "
+                f"FROM {table}"
+            ).fetchall()
+            normalized_rows = [
+                (
+                    str(row[0]),
+                    str(row[1]),
+                    str(row[2]),
+                    row[3],
+                    row[4],
+                )
+                for row in rows
+            ]
+        for (
+            row_id,
+            run_cycle,
+            system_ids_json,
+            mapping_json,
+            mapping_sha,
+        ) in normalized_rows:
+            if (mapping_json is None) != (mapping_sha is None):
+                raise RuntimeError(
+                    "native_ensemble_run_cycle_mapping_partial"
+                )
+            if mapping_json is not None:
+                _validate_native_run_cycle_mapping(
+                    system_ids_json=system_ids_json,
+                    run_cycle=run_cycle,
+                    mapping_json=str(mapping_json),
+                    mapping_sha256=str(mapping_sha),
+                )
+                continue
+            if run_cycle == NATIVE_ENSEMBLE_MIXED_RUN_CYCLE:
+                counts["legacy_mixed_rows_left_unset"] += 1
+                continue
+            canonical_json, canonical_sha = (
+                _canonical_native_run_cycle_mapping(
+                    system_ids_json=system_ids_json,
+                    run_cycle=run_cycle,
+                )
+            )
+            conn.execute(
+                f"UPDATE {table} SET run_cycle_by_system_json=?,"
+                f"run_cycle_by_system_sha256=? WHERE {primary_key}=?",
+                (canonical_json, canonical_sha, row_id),
+            )
+            counts["same_cycle_rows_backfilled"] += 1
+
+    for table, trigger in update_triggers.items():
+        if table in tables:
+            conn.execute(
+                f"CREATE TRIGGER IF NOT EXISTS {trigger} "
+                f"BEFORE UPDATE ON {table} "
+                "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+            )
+    return counts
+
+
+def _copy_legacy_open_meteo_republisher_rows(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Copy immutable legacy Open-Meteo rows into the republisher lane.
+
+    Earlier ingress versions stored Open-Meteo evidence in the native
+    candidate tables.  The rows are retained for audit, but the runtime must
+    read them through a clearly labelled republisher table.  This migration is
+    additive and idempotent: it never updates or deletes the legacy rows and
+    uses the original content-addressed identifiers.
+    """
+
+    product_rows = conn.execute(
+        "SELECT s.ensemble_system_id,s.canonical_name,"
+        "s.independence_family_id,s.provider_id,s.expected_member_count,"
+        "s.member_identity_contract_version,"
+        "s.publication_contract_version,s.valid_from_utc,s.valid_until_utc,"
+        "s.content_sha256 "
+        "FROM calibration_native_ensemble_system AS s "
+        "WHERE EXISTS (SELECT 1 FROM calibration_native_ensemble_member_run m "
+        "WHERE m.ensemble_system_id=s.ensemble_system_id "
+        "AND m.transport_provider_id='OPEN_METEO') "
+        "OR EXISTS (SELECT 1 FROM calibration_native_ensemble_member_bucket b "
+        "WHERE b.ensemble_system_id=s.ensemble_system_id "
+        "AND b.source_role='aggregator_republisher') "
+        "OR EXISTS (SELECT 1 FROM calibration_native_ensemble_historical_member_run h "
+        "WHERE h.ensemble_system_id=s.ensemble_system_id "
+        "AND h.transport_provider_id='OPEN_METEO') "
+        "OR EXISTS (SELECT 1 FROM calibration_native_ensemble_historical_member_bucket hb "
+        "WHERE hb.ensemble_system_id=s.ensemble_system_id "
+        "AND hb.source_role='aggregator_republisher') "
+        "ORDER BY s.ensemble_system_id"
+    ).fetchall()
+    products = 0
+    for row in product_rows:
+        conn.execute(
+            "INSERT OR IGNORE INTO calibration_republisher_ensemble_product("
+            "ensemble_system_id,canonical_name,independence_family_id,"
+            "upstream_provider_id,transport_provider_id,source_role,"
+            "expected_member_count,member_identity_contract_version,"
+            "publication_contract_version,native_arrival_index_eligible,"
+            "formal_p0_eligible,valid_from_utc,valid_until_utc,content_sha256"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                str(row[0]), str(row[1]), str(row[2]), str(row[3]),
+                "OPEN_METEO", "aggregator_republisher", int(row[4]),
+                str(row[5]), str(row[6]), 0, 0, str(row[7]), str(row[8]),
+                str(row[9]),
+            ),
+        )
+        products += int(conn.execute("SELECT changes()").fetchone()[0])
+
+    member_runs_before = int(conn.execute(
+        "SELECT count(*) FROM calibration_republisher_ensemble_member_run"
+    ).fetchone()[0])
+    conn.execute(
+        "INSERT OR IGNORE INTO calibration_republisher_ensemble_member_run("
+        "republisher_member_run_id,ensemble_system_id,station_id,"
+        "target_local_date,member_id,member_role,received_at_utc,lead_bucket,"
+        "raw_tmax_c,settlement_definition,extraction_version,"
+        "upstream_provider_id,transport_provider_id,"
+        "aggregator_snapshot_at_utc,source_url,raw_object_ref,"
+        "source_object_sha256,qc_status,authority_scope,content_sha256"
+        ") SELECT member_run_id,ensemble_system_id,station_id,"
+        "target_local_date,member_id,member_role,received_at_utc,lead_bucket,"
+        "raw_tmax_c,settlement_definition,extraction_version,provider_id,"
+        "'OPEN_METEO',aggregator_snapshot_at_utc,source_url,raw_object_ref,"
+        "source_object_sha256,qc_status,authority_scope,content_sha256 "
+        "FROM calibration_native_ensemble_member_run "
+        "WHERE transport_provider_id='OPEN_METEO'"
+    )
+    member_runs = int(conn.execute("SELECT changes()").fetchone()[0])
+    member_buckets_before = int(conn.execute(
+        "SELECT count(*) FROM calibration_republisher_ensemble_member_bucket"
+    ).fetchone()[0])
+    conn.execute(
+        "INSERT OR IGNORE INTO calibration_republisher_ensemble_member_bucket("
+        "republisher_member_bucket_id,ensemble_system_id,station_id,"
+        "target_local_date,aggregator_snapshot_at_utc,member_set_sha256,"
+        "member_count,bucket_contract_sha256,bucket_intervals_json,"
+        "raw_bucket_probabilities_json,source_role,authority_scope,"
+        "content_sha256"
+        ") SELECT member_bucket_id,ensemble_system_id,station_id,"
+        "target_local_date,aggregator_snapshot_at_utc,member_set_sha256,"
+        "member_count,bucket_contract_sha256,bucket_intervals_json,"
+        "raw_bucket_probabilities_json,'aggregator_republisher',"
+        "authority_scope,content_sha256 "
+        "FROM calibration_native_ensemble_member_bucket "
+        "WHERE source_role='aggregator_republisher'"
+    )
+    member_buckets = int(conn.execute("SELECT changes()").fetchone()[0])
+
+    historical_runs_before = int(conn.execute(
+        "SELECT count(*) FROM "
+        "calibration_republisher_ensemble_historical_member_run"
+    ).fetchone()[0])
+    conn.execute(
+        "INSERT OR IGNORE INTO "
+        "calibration_republisher_ensemble_historical_member_run("
+        "historical_member_run_id,ensemble_system_id,station_id,"
+        "target_local_date,archive_lead_bucket,run_cycle,member_id,"
+        "member_role,raw_tmax_c,settlement_definition,extraction_version,"
+        "provider_id,transport_provider_id,native_run_init_utc,"
+        "offline_oos_eligible,archive_query_at_utc,source_url,raw_object_ref,"
+        "source_object_sha256,qc_status,authority_scope,holdout_eligible,"
+        "content_sha256"
+        ") SELECT historical_member_run_id,ensemble_system_id,station_id,"
+        "target_local_date,archive_lead_bucket,run_cycle,member_id,"
+        "member_role,raw_tmax_c,settlement_definition,extraction_version,"
+        "provider_id,'OPEN_METEO',native_run_init_utc,0,"
+        "archive_query_at_utc,source_url,raw_object_ref,source_object_sha256,"
+        "qc_status,authority_scope,0,content_sha256 "
+        "FROM calibration_native_ensemble_historical_member_run "
+        "WHERE transport_provider_id='OPEN_METEO' "
+        "AND archive_lead_bucket='d0' "
+        "AND run_cycle='AGGREGATOR_UNKNOWN_NATIVE_CYCLE' "
+        "AND offline_oos_eligible=0 "
+        "AND holdout_eligible=0"
+    )
+    historical_runs = int(conn.execute("SELECT changes()").fetchone()[0])
+    historical_buckets_before = int(conn.execute(
+        "SELECT count(*) FROM "
+        "calibration_republisher_ensemble_historical_member_bucket"
+    ).fetchone()[0])
+    conn.execute(
+        "INSERT OR IGNORE INTO "
+        "calibration_republisher_ensemble_historical_member_bucket("
+        "historical_member_bucket_id,ensemble_system_id,station_id,"
+        "target_local_date,archive_lead_bucket,archive_query_at_utc,"
+        "member_set_sha256,member_count,bucket_contract_sha256,"
+        "bucket_intervals_json,raw_bucket_probabilities_json,source_role,"
+        "authority_scope,holdout_eligible,content_sha256"
+        ") SELECT historical_member_bucket_id,ensemble_system_id,station_id,"
+        "target_local_date,archive_lead_bucket,archive_query_at_utc,"
+        "member_set_sha256,member_count,bucket_contract_sha256,"
+        "bucket_intervals_json,raw_bucket_probabilities_json,"
+        "'aggregator_republisher',authority_scope,0,content_sha256 "
+        "FROM calibration_native_ensemble_historical_member_bucket "
+        "WHERE source_role='aggregator_republisher' "
+        "AND archive_lead_bucket='d0' AND holdout_eligible=0"
+    )
+    historical_buckets = int(conn.execute("SELECT changes()").fetchone()[0])
+    return {
+        "state": "copied" if any((products, member_runs, member_buckets,
+                                    historical_runs, historical_buckets))
+        else "already_current",
+        "products": products,
+        "member_runs": member_runs,
+        "member_buckets": member_buckets,
+        "historical_member_runs": historical_runs,
+        "historical_member_buckets": historical_buckets,
+        "existing_before": {
+            "member_runs": member_runs_before,
+            "member_buckets": member_buckets_before,
+            "historical_member_runs": historical_runs_before,
+            "historical_member_buckets": historical_buckets_before,
+        },
+    }
+
+
 def apply_native_ensemble_foundation_schema(
     conn: sqlite3.Connection,
     *,
     commit: bool = True,
+    copy_republisher_legacy: bool = False,
 ) -> dict[str, object]:
-    """Install only the additive native-ensemble tables/indexes/triggers."""
+    """Install native and explicitly separated republisher tables.
+
+    Existing Open-Meteo rows are copied only when the controlled migration
+    explicitly opts into ``copy_republisher_legacy``.  The legacy rows remain
+    immutable audit evidence in their original tables.
+    """
 
     conn.execute("SAVEPOINT native_ensemble_foundation")
     try:
+        _execute_sql_script_transactional(conn, REPUBLISHER_ENSEMBLE_DDL)
+        republisher_historical_oos_migration = (
+            _migrate_republisher_historical_oos_contract(conn)
+        )
         _migrate_native_historical_source_contract(conn)
         statement = ""
         for line in DDL.splitlines(keepends=True):
@@ -2143,6 +3348,12 @@ def apply_native_ensemble_foundation_schema(
             raise RuntimeError(
                 "native_ensemble_schema_source_incomplete"
             )
+        historical_taf_truth_label_migration = (
+            _migrate_historical_taf_truth_label_authority(conn)
+        )
+        run_cycle_mapping_migration = (
+            _migrate_native_run_cycle_mapping(conn)
+        )
         status = native_ensemble_foundation_schema_status(conn)
         if status["ok"] is not True:
             raise RuntimeError(
@@ -2161,6 +3372,18 @@ def apply_native_ensemble_foundation_schema(
             raise RuntimeError(
                 "native_ensemble_additive_schema_incomplete"
             )
+        republisher_copy = {
+            "state": "not_requested",
+            "products": 0,
+            "member_runs": 0,
+            "member_buckets": 0,
+            "historical_member_runs": 0,
+            "historical_member_buckets": 0,
+        }
+        if copy_republisher_legacy:
+            republisher_copy = _copy_legacy_open_meteo_republisher_rows(
+                conn
+            )
     except Exception:
         conn.execute("ROLLBACK TO native_ensemble_foundation")
         conn.execute("RELEASE native_ensemble_foundation")
@@ -2173,7 +3396,21 @@ def apply_native_ensemble_foundation_schema(
         "state": "READY",
         **status,
         "additive_tables": list(NATIVE_ENSEMBLE_ADDITIVE_TABLES),
-        "performs_legacy_backfill": False,
+        "run_cycle_mapping_migration":
+            run_cycle_mapping_migration,
+        "historical_taf_truth_label_migration": (
+            historical_taf_truth_label_migration
+        ),
+        "republisher_historical_oos_migration": (
+            republisher_historical_oos_migration
+        ),
+        "republisher_tables": list(REPUBLISHER_ENSEMBLE_TABLES),
+        "republisher_legacy_copy": republisher_copy,
+        "performs_legacy_backfill": bool(
+            run_cycle_mapping_migration[
+                "same_cycle_rows_backfilled"
+            ]
+        ),
         "calls_order_gateway": False,
         "live_submit_authorized": False,
     }
@@ -2346,7 +3583,16 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
 
     _execute_sql_script_transactional(
         conn,
-        DDL + MAKER_GRID_OOS_AUTHORITY_DDL + PROBABILITY_EVIDENCE_DDL,
+        DDL
+        + REPUBLISHER_ENSEMBLE_DDL
+        + MAKER_GRID_OOS_AUTHORITY_DDL
+        + PROBABILITY_EVIDENCE_DDL,
+    )
+    republisher_historical_oos_migration = (
+        _migrate_republisher_historical_oos_contract(conn)
+    )
+    historical_taf_truth_label_migration = (
+        _migrate_historical_taf_truth_label_authority(conn)
     )
     forward_taf_optional_tx_upgrade = (
         _upgrade_forward_taf_optional_tx_schema(conn)
@@ -2354,6 +3600,9 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
     _upgrade_calibration_activation_authority(conn)
     _upgrade_calibration_ensemble_governance(conn)
     _upgrade_empty_calibration_base_fact_schema(conn)
+    calibration_timezone_identity_upgrade = (
+        _upgrade_calibration_timezone_identity_columns(conn)
+    )
     calibration_model_pool_upgrade = (
         _upgrade_empty_calibration_model_pool_schema(conn)
     )
@@ -2373,15 +3622,25 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
         "schema": SCHEMA_VERSION,
         "ok": set(tables) == set(
             CALIBRATION_TABLES
-            + NATIVE_ENSEMBLE_FOUNDATION_TABLES
+            + NATIVE_ENSEMBLE_SCHEMA_TABLES
+            + REPUBLISHER_ENSEMBLE_TABLES
             + POLICY_TABLES
             + MAKER_GRID_OOS_AUTHORITY_TABLES
             + PROBABILITY_EVIDENCE_TABLES
         ),
         "tables": list(tables),
         "calibration_model_pool_upgrade": calibration_model_pool_upgrade,
+        "calibration_timezone_identity_upgrade": (
+            calibration_timezone_identity_upgrade
+        ),
         "forward_taf_optional_tx_upgrade": (
             forward_taf_optional_tx_upgrade
+        ),
+        "historical_taf_truth_label_migration": (
+            historical_taf_truth_label_migration
+        ),
+        "republisher_historical_oos_migration": (
+            republisher_historical_oos_migration
         ),
         "live_order_authorized": False,
         "writes_production_db": False,
@@ -2836,6 +4095,35 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         upgrade_fill_promotion_decision_constraint,
     )
 
+    canonical_preflight = inspect_canonical_ssot_schema(conn)
+    canonical_empty_upgrade: dict[str, object] = {"state": "not_required"}
+    if canonical_preflight["state"] in {"V3", "V4", "V5"}:
+        row_count = int(
+            conn.execute("SELECT COUNT(*) FROM canonical_ssot_fact").fetchone()[0]
+        )
+        if row_count:
+            required = {
+                "V3": "v4",
+                "V4": "v5",
+                "V5": "v6",
+            }[str(canonical_preflight["state"])]
+            raise RuntimeError(
+                f"canonical_contract_schema_{required}_migration_required"
+            )
+        # Some controlled installers create the canonical table before this
+        # full production schema pass.  An empty historical table has no fact
+        # identity to preserve, so replace only that empty shell with V6 DDL.
+        # Any non-empty store must use the separately receipted migration.
+        for trigger_name in canonical_preflight.get("trigger_names", ()):
+            conn.execute(f"DROP TRIGGER {trigger_name}")
+        conn.execute("DROP TABLE canonical_ssot_fact")
+        canonical_empty_upgrade = {
+            "state": f"empty_{str(canonical_preflight['state']).lower()}_replaced_with_v6",
+            "rows_preserved": 0,
+        }
+    elif canonical_preflight["state"] not in {"ABSENT", "V7"}:
+        raise RuntimeError("canonical_contract_schema_v6_migration_required")
+
     _assert_target_decision_table_compatible(conn)
     execution_vector_upgrade = upgrade_execution_vector_contract(conn)
     _execute_sql_script_transactional(
@@ -2847,6 +4135,12 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         + FILL_DISTRIBUTION_DDL
         + PRODUCTION_LEDGER_DDL
         + PROBABILITY_EVIDENCE_DDL,
+        # Keep the canonical table and its two append-only guards one schema
+        # unit; REPUBLISHER_ENSEMBLE_DDL is not part of this migration path.
+    )
+    _execute_sql_script_transactional(conn, CANONICAL_FACT_GUARD_DDL)
+    historical_taf_truth_label_migration = (
+        _migrate_historical_taf_truth_label_authority(conn)
     )
     forward_taf_optional_tx_upgrade = (
         _upgrade_forward_taf_optional_tx_schema(conn)
@@ -2862,6 +4156,9 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
     _upgrade_calibration_activation_authority(conn)
     _upgrade_calibration_ensemble_governance(conn)
     _upgrade_empty_calibration_base_fact_schema(conn)
+    calibration_timezone_identity_upgrade = (
+        _upgrade_calibration_timezone_identity_columns(conn)
+    )
     calibration_model_pool_upgrade = (
         _upgrade_empty_calibration_model_pool_schema(conn)
     )
@@ -2871,6 +4168,9 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         _upgrade_strict_delta_candidate_decision_constraint(conn)
     )
     settlement_timezone_upgrade = _upgrade_settlement_timezone_columns(conn)
+    observation_fact_timezone_upgrade = (
+        _upgrade_basket_target_observation_fact_settlement_timezone(conn)
+    )
     quote_freshness_upgrade = _upgrade_quote_freshness_columns(conn)
     if commit:
         conn.commit()
@@ -2880,29 +4180,46 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
             "SELECT name FROM sqlite_master WHERE type='table' AND "
                 "(name LIKE 'calibration_%' OR name LIKE 'basket_%' OR "
                 "name LIKE 'maker_grid_oos_%' "
-                "OR name='auto_trade_decisions') ORDER BY name"
+                "OR name='auto_trade_decisions' OR name='canonical_ssot_fact') ORDER BY name"
         )
     )
     expected = set(
-        CALIBRATION_TABLES
+        CANONICAL_CONTRACT_TABLES
+        + CALIBRATION_TABLES
+        + NATIVE_ENSEMBLE_SCHEMA_TABLES
         + POLICY_TABLES
         + MAKER_GRID_OOS_AUTHORITY_TABLES
         + PRODUCTION_TARGET_TABLES
         + PROBABILITY_EVIDENCE_TABLES
     )
+    canonical_inspection = inspect_canonical_ssot_schema(conn)
+    canonical_contract_schema_ok = (
+        canonical_inspection["ok"] is True
+        and canonical_inspection["state"] == "V7"
+    )
     return {
         "schema": SCHEMA_VERSION,
-        "ok": expected.issubset(set(tables)),
+        "ok": expected.issubset(set(tables)) and canonical_contract_schema_ok,
         "tables": list(tables),
         "target_tables": list(PRODUCTION_TARGET_TABLES),
+        "canonical_contract_schema_ok": canonical_contract_schema_ok,
+        "canonical_contract_schema_errors": canonical_inspection["errors"],
+        "canonical_empty_upgrade": canonical_empty_upgrade,
         "settlement_timezone_upgrade": settlement_timezone_upgrade,
+        "observation_fact_timezone_upgrade": observation_fact_timezone_upgrade,
         "quote_freshness_upgrade": quote_freshness_upgrade,
         "execution_deadline_upgrade": execution_deadline_upgrade,
         "execution_vector_upgrade": execution_vector_upgrade,
         "regime_superseded_upgrade": regime_superseded_upgrade,
         "calibration_model_pool_upgrade": calibration_model_pool_upgrade,
+        "calibration_timezone_identity_upgrade": (
+            calibration_timezone_identity_upgrade
+        ),
         "forward_taf_optional_tx_upgrade": (
             forward_taf_optional_tx_upgrade
+        ),
+        "historical_taf_truth_label_migration": (
+            historical_taf_truth_label_migration
         ),
         "strict_delta_candidate_upgrade": strict_delta_candidate_upgrade,
         "live_order_authorized": False,
@@ -3092,7 +4409,9 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
     }
     missing = sorted(
         set(
-            CALIBRATION_TABLES
+            CANONICAL_CONTRACT_TABLES
+            + CALIBRATION_TABLES
+            + NATIVE_ENSEMBLE_SCHEMA_TABLES
             + POLICY_TABLES
             + MAKER_GRID_OOS_AUTHORITY_TABLES
             + PRODUCTION_TARGET_TABLES
@@ -3104,6 +4423,11 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
         set(MAKER_GRID_OOS_AUTHORITY_TABLES) - rows
     )
     maker_grid_oos_schema_ok = not maker_grid_oos_missing_tables
+    canonical_inspection = inspect_canonical_ssot_schema(conn)
+    canonical_contract_schema_ok = (
+        canonical_inspection["ok"] is True
+        and canonical_inspection["state"] == "V7"
+    )
     probability_evidence_status = probability_evidence_schema_status(conn)
     probability_evidence_schema_ok = (
         probability_evidence_status.get("ok") is True
@@ -3156,6 +4480,15 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
         and regime_superseded_status.get("ok") is True
     )
     ledger_missing_columns = {
+        "basket_target_observation_facts": sorted(
+            {"settlement_timezone"}
+            - {
+                str(row[1])
+                for row in conn.execute(
+                    "PRAGMA table_info(basket_target_observation_facts)"
+                )
+            }
+        ) if "basket_target_observation_facts" in rows else ["table_missing"],
         "auto_trade_decisions": sorted(
             {"decision_id", "cycle_id", "plan_id", "decided_state", "will_order", "target_execution_hard_deadline_at", "reason_codes_json", "decision_sha256"}
             - {
@@ -3185,16 +4518,20 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
     )
     calibration_required_columns = {
         "calibration_station_registry": {"source_role"},
+        "calibration_station_source_authority": {
+            "authority_version", "activated_at_utc",
+            "legacy_registry_content_sha256", "lineage_json",
+        },
         "calibration_station_daily_high_truth": {
             "canonical_committed_at_utc", "timestamps_complete", "source_role",
-            "observation_ids_json", "authority_scope",
+            "observation_ids_json", "authority_scope", "settlement_timezone",
         },
         "calibration_historical_asof_model_run": {
             "timestamps_complete", "maturity_key", "provider_id", "provider_role",
             "source_class", "aggregator_or_republisher", "open_meteo",
             "source_url", "raw_object_ref", "asof_status", "capture_modes_json",
             "historical_replay_eligible", "prospective_strict_asof_eligible",
-            "authority_scope",
+            "authority_scope", "settlement_timezone",
         },
         "calibration_model_station_residual": {
             "maturity_key", "historical_replay_eligible",
@@ -3293,6 +4630,7 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
         "schema": SCHEMA_VERSION,
         "ok": (
             not missing
+            and canonical_contract_schema_ok
             and probability_stage_contract_ok
             and calibration_base_schema_ok
             and calibration_model_pool_schema_ok
@@ -3305,6 +4643,8 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
             and strict_delta_candidate_contract_ok
         ),
         "missing_tables": missing,
+        "canonical_contract_schema_ok": canonical_contract_schema_ok,
+        "canonical_contract_schema_errors": canonical_inspection["errors"],
         "probability_evidence_schema": probability_evidence_status,
         "target_tables_present": not (set(PRODUCTION_TARGET_TABLES) - rows),
         "probability_stage_contract_ok": probability_stage_contract_ok,
@@ -3430,6 +4770,7 @@ CREATE TABLE calibration_historical_asof_model_run__five_model_new (
   model_id TEXT NOT NULL CHECK(model_id IN ('ECMWF','GFS','ICON','GEM','CMA')),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
   run_init_utc TEXT NOT NULL,
   published_at_utc TEXT,
   received_at_utc TEXT,
@@ -4034,10 +5375,97 @@ def _upgrade_settlement_timezone_columns(
     return result
 
 
+def _upgrade_calibration_timezone_identity_columns(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Add only an unbound timezone field to legacy calibration facts.
+
+    Old calibration truth/model rows did not persist the market settlement
+    timezone.  There is no safe inferred value: station metadata, ET defaults
+    and a current registry snapshot are all different facts.  The migration
+    therefore adds a nullable column without a default.  New DDL makes the
+    field ``NOT NULL`` and ingress rejects legacy ``NULL`` references, leaving
+    old rows available solely for offline audit until an independently
+    evidenced canonical rebuild exists.
+    """
+
+    specs = (
+        "calibration_station_daily_high_truth",
+        "calibration_historical_asof_model_run",
+    )
+    result: dict[str, object] = {
+        "schema": "bayes_basket_target_calibration_timezone_identity_v1",
+        "added_nullable_without_backfill": [],
+        "legacy_rows_left_unbound": {},
+    }
+    for table in specs:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if exists is None:
+            continue
+        columns = {
+            str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        if "settlement_timezone" not in columns:
+            row_count = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN settlement_timezone TEXT"
+            )
+            result["added_nullable_without_backfill"].append(table)
+            result["legacy_rows_left_unbound"][table] = row_count
+            continue
+        result["legacy_rows_left_unbound"][table] = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM {table} "
+                "WHERE settlement_timezone IS NULL OR trim(settlement_timezone)=''"
+            ).fetchone()[0]
+        )
+    return result
+
+
+def _upgrade_basket_target_observation_fact_settlement_timezone(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Add the observation timezone column without fabricating legacy facts.
+
+    A legacy observation identity has no recoverable settlement-timezone
+    binding.  SQLite cannot add a required column to a populated table without
+    a default, so this additive migration intentionally leaves prior rows NULL.
+    The P1 bridge rejects such rows; no historical default or registry lookup
+    is permitted to turn them into formal truth.
+    """
+
+    table = "basket_target_observation_facts"
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    if "settlement_timezone" in columns:
+        return {
+            "schema": "basket_target_observation_fact_settlement_timezone_v1",
+            "state": "already_present",
+            "legacy_rows_left_unbound": 0,
+        }
+    legacy_rows = int(
+        conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    )
+    conn.execute(
+        f"ALTER TABLE {table} ADD COLUMN settlement_timezone TEXT"
+    )
+    return {
+        "schema": "basket_target_observation_fact_settlement_timezone_v1",
+        "state": "added_nullable_without_backfill",
+        "legacy_rows_left_unbound": legacy_rows,
+    }
+
+
 __all__ = [
+    "CANONICAL_CONTRACT_TABLES",
     "CALIBRATION_FIVE_MODEL_TABLES",
     "CALIBRATION_TABLES",
     "NATIVE_ENSEMBLE_FOUNDATION_TABLES",
+    "NATIVE_ENSEMBLE_SCHEMA_TABLES",
     "apply_native_ensemble_foundation_schema",
     "native_ensemble_foundation_schema_status",
     "DDL",

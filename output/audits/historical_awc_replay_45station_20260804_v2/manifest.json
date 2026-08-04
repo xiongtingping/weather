@@ -1,0 +1,1500 @@
+{
+  "as_of_utc": "2026-08-03T12:00:00Z",
+  "calls_order_gateway": false,
+  "content_sha256": "5c5080495c70cbe55e3d0d48394cc4e3e223ba18ae845170b7a1bec450df1b5a",
+  "end_date": "2026-07-29",
+  "input_artifacts": [
+    {
+      "file_sha256": "b9660025a7429aa0efccfa12cf7b9c55b10bca872b50fc1f9db1c98f8704fbc3",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/CYYZ/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "e66197bec91c0fd6529f7bdb29475b89a92a1292b35a7953417b405d37ed23dc",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/EDDM/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "6411dddf5bceefc454aa0b152524cfaab293710d81d379ae008b1b3e1b8199a5",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/EFHK/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "49e9b4a947a1670f962a4479cc3b527af3f54ebd65e91890917e10c6e8115e22",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/EGLC/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "639f1e21edd929ff2db75c674abc1a18e8093b6afd2cd75eb4d09bff7160f318",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/EHAM/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "3936d9967a2d2adb8d152ca0f3a174f534d76754ac3e3035a51d77c11d60725f",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/EPWA/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "7b2e83d3cbe1ccdc084e23542653a4f718bce7713cc0adecf84fd39641f6ffad",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/FACT/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "deadaa9c43c5cf410e72a0a2753c36ae3453175bb806471044248df9351f6ecf",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KATL/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "0539613223d37cb740d05460a743fd3b0f652b7945cb161e72fd78b1c6528cfd",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KAUS/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "547e3effb80f9db09407bf46254e807e412982a81f4f262b6bdae8cd92810d19",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KBKF/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "ec2a82fe43fb04dd4282d8cf4a5f6e7ec903746467f5e880cc14be646632c18a",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KDAL/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "7b7144f4dd61d6428c1dfdfe9b994abaa070ad810933140c371d5b8a46477166",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KHOU/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "fc2969fa2efa411dd1886dec4fd4465e7241f2784ab453c858780177a2e81f25",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KLAX/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "8f10e1b7c93700e258bb74e710a2740884bcd0f9ff5201479c26d5f3d258930c",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KLGA/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "6265a9f39791a0a40dd2454db66851faecc80ab1bbf4ba570c2b62f62433d5cd",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KMIA/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "20b24c73e0f406f815104a33ce81d8ae23c986da5dc48cb3d8e9050e3c4d3768",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KORD/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "79864453398647bcae33e38168145c005f92006d466425d885cd401ed5352367",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KSEA/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "f01f2a1ff8afe8a5d6e568d83398465601c469bff5ed6c2b77083595812f8156",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/KSFO/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "26148d18fc2257d0d4989fd594a885aab3569a0b52c489399d10d267960153f8",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LEMD/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "863c6530a820d535124098b4b2c541b9227dcc76972858fbe9ac731caa1ee9f1",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LFPB/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "fd54726d4c6889b00e5c00438ba32af66e87ad1d5e74055f3d9681f976efc29d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LIMC/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "824770872f8aed17f48cf67114f76604affabe48acacc48a0d7bd418aeeb6179",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/LTAC/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "048b44fb7a714b697a5d4b8d18bb79df279d87a36b731b1fa5a1f06a20db3a70",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/MMMX/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "d8fd2c1f86d29bc8575188e6e7630c8725397fb6cb27f5ad7ffae9f8ef144fa7",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/MPMG/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "5dba1bad58eda8c9c6554a7ed66ef122c4293c77f9431e0ee48d6131cc351ff8",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/NZWN/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "ea7f1af79e2269c817ee90128f31e3fa173d6d04c764ef9a0a072852af4b43bb",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/OEJN/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "dab74763dea7df194643c772f225cbe9f2b40984fb3ff66d56b3a97a065a7d5a",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/OPKC/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "fb702690928734179a3f277dec98677e4ea75fe7a9999d1806f3d2f610e4adf3",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/RJTT/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "b0c1985e37fea91d4538912b6f38075f8210ff9b3ea8c53dd097edb697ac2202",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/RKPK/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "90697bea9ac8bb8c8329f2cabee1944c5da22e909dd9544e798840311888f59c",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/RKSI/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "51f2f67588dcc77e9954db66926b9a16d8ce6e78f3b06d3d1ef48fec09aba870",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/RPLL/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "a627d684591cb3d50570bbc4dc04d7796e30ce3660795831054d4f21cf5a4726",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SAEZ/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "49b19e549ef2c12d0359de47b766ad63f6bdad8ea67bced73e99a769a1f1c09b",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/SBGR/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "5f166b1ba4b8a1b0e021c5cdb0600234f6e4f9da993d79bd78167ada73b5d48e",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/VILK/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "45bcccb6efa18de3a73d3b6d58d4fa2cfbce82340d57045883d6147dfd281efd",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/WMKK/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "5a9bc5f243b5ce685b7ace1bc7bd8b04ec93c9f8c3dac947567f2c217ce06c7f",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_45station_truth_29d_direct_20260730_v1/WSSS/historical_truth_observations.json"
+    },
+    {
+      "file_sha256": "98b577a8630f81374033d0c6f415e40aac0fe0cecc8c43e79e333e4154edbd85",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260714_awc_probe.json"
+    },
+    {
+      "file_sha256": "89994ee3c8cfd814a15eb0cf44a652710a4da9209737f7773d25cea0e41dda84",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260715_awc.json"
+    },
+    {
+      "file_sha256": "2588b085cfd6c8c54e4878d02ccc0d9df8525caa58480430323a0f9ce62ff244",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260715_awc_retry.json"
+    },
+    {
+      "file_sha256": "e5ad54aa6cec26d233b7a65020ec1fae7d307b9b2395f4b27bba6cd856cc431d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260716_awc.json"
+    },
+    {
+      "file_sha256": "44c1b6eae47f799a78a4e23b872eec45919c86ae664bb1638687aa7e4d86f3df",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260716_awc_retry2.json"
+    },
+    {
+      "file_sha256": "58c1a38fd39541acf502866a851aa0f00cf4fe5c40efc52c86f35e946971d74c",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260716_awc_retry3.json"
+    },
+    {
+      "file_sha256": "4efa7a0f392fea99634d60271f8db9020cf1b3bc738a87731c284df6dbf80267",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260717_awc.json"
+    },
+    {
+      "file_sha256": "3e3ea074bad3e00856d84a8437f0dba696bea7f692e56e041b82a5af18a44ed8",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260717_awc_final.json"
+    },
+    {
+      "file_sha256": "00e1d3304962eaa7b231c9a79b91dd867159f594c4b1d2abd5627fc18404f86d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260717_awc_retry2.json"
+    },
+    {
+      "file_sha256": "3b5b7611664c46199f2c7ececf517d19449180d32b18285a79d560fd48bbf5a5",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260717_awc_retry3.json"
+    },
+    {
+      "file_sha256": "6d18ebbe9c66eb520331eca13788fd1f6d2f4f2e1748dc5697a99a8c1912e761",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260718_awc.json"
+    },
+    {
+      "file_sha256": "667ed89178a6d81f07631fec633d880806f5a464c3bc578745f9a90855fc4b8f",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260718_awc_final.json"
+    },
+    {
+      "file_sha256": "1473ebd5f7274ca2d2c4efe0d98b5110031ac442fafb4262f354449401de24ae",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260718_awc_retry2.json"
+    },
+    {
+      "file_sha256": "2edd13e10538454270de74182aadcd3f9b6a6e79a9e0c6354f81793bae8105ae",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260719_awc.json"
+    },
+    {
+      "file_sha256": "a9c0d4fface221f476aeabebae894cec22ff9db1644f9e71d67829697e77485d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260719_awc_final.json"
+    },
+    {
+      "file_sha256": "0cc8e491f96159d6fe8fb1c8589d9f168cb54530c891957d0649cb9579affa16",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260719_awc_retry2.json"
+    },
+    {
+      "file_sha256": "f11762ab3e27bc4139690db425ffb60c6a9086b4a10ba9e2cfd0c7768cf76c75",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260720_awc.json"
+    },
+    {
+      "file_sha256": "8655f79e9f5d249bd6cdd6af6abd030892b1d8956a68ba6468bb47a1658b4f2a",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260720_awc_final.json"
+    },
+    {
+      "file_sha256": "0c2878392c48b95be3a5f009b30fc51233c2d3941ed5b0704722ba0f29acbffe",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260721_awc.json"
+    },
+    {
+      "file_sha256": "7ba82da405d9c87633c02470f909c397179ba047ac1078dccdc5e985c6e8735f",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260721_awc_final.json"
+    },
+    {
+      "file_sha256": "b2efc5c954b6fe405f49f051b978886d5ee1636d2e4c2c7ef6473d86d5c730e9",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260722_awc.json"
+    },
+    {
+      "file_sha256": "f75e4796d43b5d66a3e7ef6f86e7270a2519520969e9427f32925f87c8ba96a5",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260722_awc_retry.json"
+    },
+    {
+      "file_sha256": "d4669c678e24cc745796009c231a89727dbdb8e1e9b3c460610411abd9871bec",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_canonical_observation_evidence_20260723_awc_final.json"
+    },
+    {
+      "file_sha256": "6c63cbbcd221bbcdc88655b51e9ddf37dd1ab5e18784b845a8fdae4548c0adff",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260714_18_amsc_retry.json"
+    },
+    {
+      "file_sha256": "5b39ba2969964499a1389b0fa5c5c389acd626de5aab8631c9d433b8b00c3c39",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260714_18_amsc_verified_retry.json"
+    },
+    {
+      "file_sha256": "b6985cec7f3d67cd9c570f0b446f438283e9e6e5ad62458c6d7438d5b5fa9980",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260714_22_current.json"
+    },
+    {
+      "file_sha256": "fefc0bf358a167afcacb359d486b6a6e7ee739a6b776661bc49950e0109c4101",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260714_24_raw_rebuilt.json"
+    },
+    {
+      "file_sha256": "1c6564cc1457e1730b70f6e7ab96d7998f4562a3c7e3e7cbea4772ab26d52173",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260714_24_rebuild_20260725.json"
+    },
+    {
+      "file_sha256": "9d66a7d2259bb6c18a21f5edca72fdddd8949638e72a6f5cc941ce8f373135cf",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260721_23_current.json"
+    },
+    {
+      "file_sha256": "b708fb74a33546d34038244ec2a07ccbb44703f17f114ff125f36187c4c4ab56",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260722_23_awc_gapfill.json"
+    },
+    {
+      "file_sha256": "8bc838c30de0e80aa04837ef9e4b3fa9844649ce4d9676f56e273de31bb974c4",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260722_23_awc_proxy_gapfill.json"
+    },
+    {
+      "file_sha256": "ba30e646965fbee285d029d1c235589557877cebb210c83ec9364dab0a984ec4",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260723_current.json"
+    },
+    {
+      "file_sha256": "13fdfa616fa969c9aa678c4ddadba637475f16bc306dcd38aaa6e3701a828242",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260724_current_v1.json"
+    },
+    {
+      "file_sha256": "0de1db678a60568911d359bce97c17aff69a2bde21dc61fb3c1d98d4bf6123ed",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_KBKF_awc.json"
+    },
+    {
+      "file_sha256": "d5eba9748f0acd6a39221325be513173601b6ba3f4222f35aece7a07445e39df",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_KBKF_awc.json"
+    },
+    {
+      "file_sha256": "06fe03ba835c562cf6c39d65ebf2d13a47bdc919a15044b3f112817b71b070f8",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_KHOU_awc.json"
+    },
+    {
+      "file_sha256": "dd942d8bfa3e3d97460b4543ffae6b32b776a59d81d8b03214ef563d3a4138c6",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_KMIA_awc.json"
+    },
+    {
+      "file_sha256": "a1054e42e2c84bbe1266c9e6ad5d387a8a4816e3fbe7aef8af3568e6ed7a097d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_NZWN_awc.json"
+    },
+    {
+      "file_sha256": "a05a9c61bb2f62aebf6ddfa768d21a692342fcb8fda54b7f6bf043c57b8b0613",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_RCSS_awc.json"
+    },
+    {
+      "file_sha256": "e0fb2aee8de0c3a3667e15dfc2e1a30c03b430dab120f2cade0d43876635b2b3",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_RJTT_awc.json"
+    },
+    {
+      "file_sha256": "9364e0132b1dc141ce26a48e00971885e561f7696e3222264c7350040fc29ffc",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_RKSI_awc.json"
+    },
+    {
+      "file_sha256": "bda70ccc89d657494e4c9749634ec16cf22569c77cdd820345c7312a8efc2b41",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_SAEZ_awc.json"
+    },
+    {
+      "file_sha256": "5a8547c58abc074ff10346834ca8db7e7f7e4fdb2ec03d7734e12c9499d24f19",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_VILK_awc.json"
+    },
+    {
+      "file_sha256": "8641b800d8889aad923a08b550aa7f8037eaef052a0ec6b475fa57a918cbc7b6",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_WMKK_awc.json"
+    },
+    {
+      "file_sha256": "0393086917448c8f7531317ca8fc0bde66be311daef684427b3347bfaacc5a6d",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_WSSS_awc.json"
+    },
+    {
+      "file_sha256": "fcf5118feb0a197de863bff27942f5b6e72dd539d974d20cff8fdf6c9b49ccb6",
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_historical_truth_observations_20260730_missing19_china8_awc.json"
+    },
+    {
+      "file_sha256": "8d1fe236683d589947aabd48902f9331b94f86457d17565594b0df8199f75c21",
+      "path": "/Users/xiong/weather/output/audits/mmmx_awc_historical_truth_observations_20260803_0919z.json"
+    },
+    {
+      "file_sha256": "f7c0f00b3e49f6c14e2ddb43f4bbe45bec1c60fb411a8526283ee014fad08f3b",
+      "path": "/Users/xiong/weather/output/audits/mmmx_awc_historical_truth_observations_20260803_0923z_retry.json"
+    }
+  ],
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "schema": "bayes_basket_target_historical_awc_replay_45station_manifest_v1",
+  "start_date": "2026-07-01",
+  "station_count": 45,
+  "stations": [
+    {
+      "content_sha256": "87888b6c1c654d6020913ad24548f88fc7e1b51424cb8ef1355ce4dbc909cccd",
+      "covered_date_count": 24,
+      "file_sha256": "9114c10d5d7328a059e8c3e8e07cda00dafce75503cad4b706fd17c72b6b8ca6",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 657,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/CYYZ/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Toronto",
+      "station_id": "CYYZ"
+    },
+    {
+      "content_sha256": "d510d4846331d6dccbd256fb102228c476a4665bfbc449dafd705de47b5764e8",
+      "covered_date_count": 0,
+      "file_sha256": "7cdf1823308a16a93371962cbb605cc73c12cef647d5ea4c341894b3d014a4e6",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/EDDM/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Berlin",
+      "station_id": "EDDM"
+    },
+    {
+      "content_sha256": "21bb46f6017e4017ac27e1547c462c7486576bbc2a1b1fa5121513e84bb1edfd",
+      "covered_date_count": 0,
+      "file_sha256": "63c06e0daa6af6b3d3dbd23eb1ce928508f37a8a99f9100ca95068a1590bf44f",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/EFHK/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Helsinki",
+      "station_id": "EFHK"
+    },
+    {
+      "content_sha256": "07ab2f1ac35257a445716664eb77706fc17ba0484d08e7207e980a7217f7a83c",
+      "covered_date_count": 0,
+      "file_sha256": "2e2a52d5e1e72e78529399e765ef939a60a5e573730ed39fc65f0aeef3228a3e",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/EGLC/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/London",
+      "station_id": "EGLC"
+    },
+    {
+      "content_sha256": "0ad33a9bcd9f0cef188a8777f711a5187fca255aae20a618659fedf038cc2ef3",
+      "covered_date_count": 0,
+      "file_sha256": "9ed4316f71c955497ce5cae99a8f0f83eb2321b6365cbc38fa0155cf97350554",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/EHAM/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Amsterdam",
+      "station_id": "EHAM"
+    },
+    {
+      "content_sha256": "515788be7311f360938398ca13b8cbe94e9dc285d9b23f37b9f84d808a581ebb",
+      "covered_date_count": 25,
+      "file_sha256": "fcdeb47fc26e55e58872277a4c2460fea169cc345e46c1520c2d309b4b6c82d9",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 573,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/EPWA/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Warsaw",
+      "station_id": "EPWA"
+    },
+    {
+      "content_sha256": "90ddfaec50d3fbf2435bc2fdfd7e577d2990f41dd7fe80d8d06e69568ba728d6",
+      "covered_date_count": 25,
+      "file_sha256": "36a9ecb7e5ee192cee7a15aeed0ad62fcfafc82f422a2d0c51afd4b7ccda10b5",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 724,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/FACT/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Africa/Johannesburg",
+      "station_id": "FACT"
+    },
+    {
+      "content_sha256": "d05e655407fa689b5b2112052d9ffcc0b3ddc6af25bad9b34caa1de22f48df62",
+      "covered_date_count": 19,
+      "file_sha256": "50c680b4782a2ecc86be76da766ec3bfdacd184d0863d4040e167a548dd2b76b",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-20",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 109,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KATL/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/New_York",
+      "station_id": "KATL"
+    },
+    {
+      "content_sha256": "85b85af46bcdf4b41b9a6cc6383f994ad32bce51c19e660723ce9de1860f7f93",
+      "covered_date_count": 20,
+      "file_sha256": "6d60119d4273792b3ba91b4c1b01a4a9c600f8dc31248504513ebb964f666243",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-07",
+        "2026-07-09",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 92,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KAUS/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Chicago",
+      "station_id": "KAUS"
+    },
+    {
+      "content_sha256": "1a3a0af2741241f7633c084a47f497c7caee3606dac5c3bb590fcba9c09b635b",
+      "covered_date_count": 10,
+      "file_sha256": "b5ec99c3db48d74c69fa67b73fe0204a42e612228f351e4e62e76a13c43e00f4",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-05",
+        "2026-07-07",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 46,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KBKF/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Denver",
+      "station_id": "KBKF"
+    },
+    {
+      "content_sha256": "a29c91519edbd1ba9465db1af0e74fab9c7994d42763d01811ef045a468dfc07",
+      "covered_date_count": 11,
+      "file_sha256": "71e42ede8d0c64168c2f9521d9c1e728755785f151a6651584da7c410b41a7cf",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-23",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 40,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KDAL/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Chicago",
+      "station_id": "KDAL"
+    },
+    {
+      "content_sha256": "044d47ccf18af71b86f2a3e8ab417ffb38a728a47f553f3f99fb7771a5e1c1ed",
+      "covered_date_count": 14,
+      "file_sha256": "b239255dd0baba5a1f53dd5140503423d78d4ef7d275c4c11b9d91e2a1f38a00",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-06",
+        "2026-07-09",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 70,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KHOU/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Chicago",
+      "station_id": "KHOU"
+    },
+    {
+      "content_sha256": "88617c6bb514d414fb1b037d558a09dbf2100ef052b5e47a9aac4cf43da6b3df",
+      "covered_date_count": 23,
+      "file_sha256": "f01a8206161fc4101bf91ef9dbc70feb64cac4fa088d5cfe9feaf49af69df319",
+      "missing_dates": [
+        "2026-07-15",
+        "2026-07-18",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 70,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KLAX/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KLAX"
+    },
+    {
+      "content_sha256": "3e1c4115072283296f402fff0f3c24297d1f541b080714b8c274baa4192f4e39",
+      "covered_date_count": 17,
+      "file_sha256": "2f64a0bd02ba46f09f593db4b6ce98c09f81344c85278e303d222dca04f80175",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-11",
+        "2026-07-14",
+        "2026-07-17",
+        "2026-07-20",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 78,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KLGA/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/New_York",
+      "station_id": "KLGA"
+    },
+    {
+      "content_sha256": "7e1d58d3ba9a3018f7137bdad2e5ec27862de03d2703eb1b906df41382cf3cb1",
+      "covered_date_count": 18,
+      "file_sha256": "863436fc2d08e8f43088ffc4df2a9fe39b90ab5baefa41307e774fe49118f31d",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-09",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-20",
+        "2026-07-22",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 88,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KMIA/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/New_York",
+      "station_id": "KMIA"
+    },
+    {
+      "content_sha256": "6247db1f7638227f4c4ee192214590bed7382200886b5089e626db4f3eef18e0",
+      "covered_date_count": 16,
+      "file_sha256": "54dce70b26ca4ec9f5f3a7218741ad06e97c8a77e889b0a799215b99a038de7e",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 106,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KORD/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Chicago",
+      "station_id": "KORD"
+    },
+    {
+      "content_sha256": "fddf23b130027c86cf101ba184b93aef13829ed7b73eff7cff05625e87d1b2eb",
+      "covered_date_count": 16,
+      "file_sha256": "1c020b1798beaebed37743931d7feea5fbd5369d051ffd2893df9bd932c16e11",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-06",
+        "2026-07-11",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 77,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KSEA/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KSEA"
+    },
+    {
+      "content_sha256": "6f8869ba8d437b9d54cd70340aa3bab8df5be1cf131e5094316c42e38e863f63",
+      "covered_date_count": 17,
+      "file_sha256": "29eaa90c5114476a4d4de5ae3fa22a4a91b068fae129cb8a75377c023a5df4c9",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-21",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 77,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/KSFO/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Los_Angeles",
+      "station_id": "KSFO"
+    },
+    {
+      "content_sha256": "dd7378602c37a2f273a98e647f862f1ebd1bf74b2e6337fdb1c9608da36546cb",
+      "covered_date_count": 25,
+      "file_sha256": "f2d57225c4755684dc407e078986fc914a41c67f8e147b5b037537e86efd8135",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 577,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/LEMD/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Madrid",
+      "station_id": "LEMD"
+    },
+    {
+      "content_sha256": "40d483a75799b37cf3554319a693e584182c27ae98978f2cf691040613dac72c",
+      "covered_date_count": 25,
+      "file_sha256": "8f4cec7b8558395a3d5f080eebeb63f1c58e41f9ea8fe07f62019e3e57eaecba",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 573,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/LFPB/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Paris",
+      "station_id": "LFPB"
+    },
+    {
+      "content_sha256": "eab72f072200c470064501e8abe93ec17053fb9b2d74cdddc739c38a2a67560f",
+      "covered_date_count": 0,
+      "file_sha256": "418df7758889313ce918602e4cf6fca01f30122f03bb60c1655041937ea42690",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/LIMC/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Rome",
+      "station_id": "LIMC"
+    },
+    {
+      "content_sha256": "bd8c31718f2272cdc2753c84116c2fdf9d9de3b91ad6853c1fe37e2eee20e35d",
+      "covered_date_count": 4,
+      "file_sha256": "45997b7839279e3b829446e3b8daf61b5589006008cd34b070b5dbb6dede5dc4",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 11,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/LTAC/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Europe/Istanbul",
+      "station_id": "LTAC"
+    },
+    {
+      "content_sha256": "e70b480db1da6dc587d3c6f8eeae227ab57b4173a11b29c25e691be42b30a529",
+      "covered_date_count": 24,
+      "file_sha256": "e5cf47a0d9c42731d35d2faccdf3f8544965cb3e487c875cce3dff90429a437b",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 242,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/MMMX/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Mexico_City",
+      "station_id": "MMMX"
+    },
+    {
+      "content_sha256": "89f86fd7b61e1251a9c24ea6a02a491943800d5c54b0fc7390d49c69c54191af",
+      "covered_date_count": 25,
+      "file_sha256": "fa8e0d1f30d28973786a1b43ee4d36dc4af8e5169d893d8b0913670802c3c5cd",
+      "missing_dates": [
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 610,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/MPMG/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Panama",
+      "station_id": "MPMG"
+    },
+    {
+      "content_sha256": "802cff6f2059e7a1df73a024530e6194fae9c083147cf33b6c66359ed64fb19a",
+      "covered_date_count": 28,
+      "file_sha256": "5c3a1788d0244c830870639266310827c068b71efc011d3d917e0945c48d8012",
+      "missing_dates": [
+        "2026-07-29"
+      ],
+      "observation_count": 658,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/NZWN/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Pacific/Auckland",
+      "station_id": "NZWN"
+    },
+    {
+      "content_sha256": "ad1dfe9d113a5f6f90918ab19b8ac332cc62dd65e574738fcfb5201d5645dc2d",
+      "covered_date_count": 25,
+      "file_sha256": "c832ad5f57f1b3f5882b20a5f8715e273d6a1465344c99819689f741d38ae527",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 573,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/OEJN/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Riyadh",
+      "station_id": "OEJN"
+    },
+    {
+      "content_sha256": "bd60b07a9a18cb797f4ca0aa42960e78ba562b908a2d8279cc4bcdb3f5b2f05f",
+      "covered_date_count": 25,
+      "file_sha256": "251d77566101669d52759b14a0b0086aa2cbd4420ff2d0d19e258febd056482a",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 568,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/OPKC/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Karachi",
+      "station_id": "OPKC"
+    },
+    {
+      "content_sha256": "11b54533415f28abc052c11567f8e0a1f87bdff55146c3f0e077c9cd151e4796",
+      "covered_date_count": 0,
+      "file_sha256": "970cf7e6781c7dc9ceb2689b05a3c4977ea9d3ee46fb6b0724fc66a2877f04f3",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/RCSS/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Taipei",
+      "station_id": "RCSS"
+    },
+    {
+      "content_sha256": "fb1627f18c52965281828f6c96869607daa9b3e51658a48171a413c01bffc51e",
+      "covered_date_count": 25,
+      "file_sha256": "69f60ee394837aad34288cdf4121eb9584c4979afa99027ad8f084cb7b06dac3",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 573,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/RJTT/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Tokyo",
+      "station_id": "RJTT"
+    },
+    {
+      "content_sha256": "587c9f26b71ff253228622d4a03c0faade00bd4a3818f9f917edfff7ca60ecf3",
+      "covered_date_count": 25,
+      "file_sha256": "2bc7cf81218ceadbdefce9cb68c892412b397b6e5f2b4101a634b473fca97181",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 683,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/RKPK/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKPK"
+    },
+    {
+      "content_sha256": "64ac7c6ba9baa510def912d160a39e1bb04ca8202781bd2a80f4a966fad99644",
+      "covered_date_count": 25,
+      "file_sha256": "c9fa9ed3a08e1848622ac1203b138cd4dd17e64b627593e95ed11cb7c38cb7bd",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 574,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/RKSI/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Seoul",
+      "station_id": "RKSI"
+    },
+    {
+      "content_sha256": "c7c7ff17c7c79c7e6f4592a103ad86210d517a8c2bccbd9ce3a5485395eb282b",
+      "covered_date_count": 25,
+      "file_sha256": "1446ec53ca0d122c33f28e60118fea678483e49dffa101f4ed432edfbb16a224",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 587,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/RPLL/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Manila",
+      "station_id": "RPLL"
+    },
+    {
+      "content_sha256": "5551f3f2c7afcc0317559aa7daa75e9df38953a282ba698a0bb4d4de88ba193b",
+      "covered_date_count": 24,
+      "file_sha256": "8303a625dff365fa6e7af1dd8cf265c6abf6a6083dafed70baaae428e572a3a5",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 631,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/SAEZ/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "station_id": "SAEZ"
+    },
+    {
+      "content_sha256": "a670af99e60c95b66a976b4578577eff96a7211dc8bfed3517d1ae9fec563885",
+      "covered_date_count": 24,
+      "file_sha256": "6e2049bc56e8deb7a4c7660f0b896037131acb2ad220a18400dc52fc7573c010",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 591,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/SBGR/historical_awc_replay_evidence.json",
+      "settlement_timezone": "America/Sao_Paulo",
+      "station_id": "SBGR"
+    },
+    {
+      "content_sha256": "c6b983ce54058f5ea50354de9f649400a801db1d7a482de58297aefd526631a5",
+      "covered_date_count": 25,
+      "file_sha256": "6855950216038186c770466de342174ea6271d9de42f5c8ff82567d1ede40c27",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 571,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/VILK/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Kolkata",
+      "station_id": "VILK"
+    },
+    {
+      "content_sha256": "4e29c033ff1024f186c9c0a7b9a8a2e7637ac0ee0447710e856e69f4efcd2530",
+      "covered_date_count": 25,
+      "file_sha256": "f6ae9c40d7d0f59ea72330b4bfd09cf080656198582c7e20747c490f48274e75",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 592,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/WMKK/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Kuala_Lumpur",
+      "station_id": "WMKK"
+    },
+    {
+      "content_sha256": "a5e2d328b8cc3f883341043c3863547f9c22fa53ed766ded7920d2ab22bf509e",
+      "covered_date_count": 25,
+      "file_sha256": "7da8bb0716fe6d5377959b7e5cf5429453052980e362178bfc7ad14d739112ef",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 597,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/WSSS/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Singapore",
+      "station_id": "WSSS"
+    },
+    {
+      "content_sha256": "4abfd767c1e95b4a972097bcd030629afa4d5e47f8b866ffe7638c004505aecf",
+      "covered_date_count": 0,
+      "file_sha256": "8e96637dc1001d82c6316df8c769d1115e17d01a9bbb473573f670b28b46e12b",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZBAA/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZBAA"
+    },
+    {
+      "content_sha256": "cfd3c11c014fdd334827337dfcdd573fc8ef9f296a69c75b47aedfd6dd3ccc0b",
+      "covered_date_count": 0,
+      "file_sha256": "2bbc48dfc364f22c8a194a05339c68612d0c191ff18123f0f23f0a5276f7d8a5",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZGGG/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZGGG"
+    },
+    {
+      "content_sha256": "35c0777dd9c6a15f8a1bb10f9f9b54240c7b7e954217bf8be464e0eed1e5439e",
+      "covered_date_count": 0,
+      "file_sha256": "4cc3f5f7e8511c1cac1f6c6576ddac758aba2c1bd3e5c0b3e16b75e7954ec225",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZGSZ/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZGSZ"
+    },
+    {
+      "content_sha256": "631a08188931c28858aced80f65d47f65e0ecc2cb7d0baea8b31b4af5789916c",
+      "covered_date_count": 0,
+      "file_sha256": "9f5f2567cbd762d49a0748d1bdda47867022560056b4a48945a0fde130bde9c8",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZHHH/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZHHH"
+    },
+    {
+      "content_sha256": "1a73f594e51ddb6c1b522ae2784eb78b9ec98131a10590f5111566301d3844e2",
+      "covered_date_count": 0,
+      "file_sha256": "d19c4124a17b32b830bc9405fcd1981ecea9f3c8a80001a4a7c41cd646b5ca3e",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZSPD/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZSPD"
+    },
+    {
+      "content_sha256": "3eebacf6d8a70944552c9535c32113d8c296c9e6c7b273f99b9d8e2101663050",
+      "covered_date_count": 0,
+      "file_sha256": "08203512bdf1ab91f949e153d1a0efcd859469af835889220b1de54d28f4fc9e",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZSQD/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZSQD"
+    },
+    {
+      "content_sha256": "8b58452f24afa203d966baed79ff50e8e29ae219ccbb0bf5fe5e122bf67e411d",
+      "covered_date_count": 0,
+      "file_sha256": "1d6dd53f27d612fc135c387f0fab72621bdda2c30e1ccde6bc3dd5317d10bf2d",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZUCK/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZUCK"
+    },
+    {
+      "content_sha256": "4d4c06ae4d7d2fcc58065a3159377a233431bf9941ac78566b72cc5bb4597461",
+      "covered_date_count": 0,
+      "file_sha256": "5bd3fe13dae5fd32b6f11315227988ad0cba0592b611629a59f28831f692053f",
+      "missing_dates": [
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-04",
+        "2026-07-05",
+        "2026-07-06",
+        "2026-07-07",
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-11",
+        "2026-07-12",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15",
+        "2026-07-16",
+        "2026-07-17",
+        "2026-07-18",
+        "2026-07-19",
+        "2026-07-20",
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-23",
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-29"
+      ],
+      "observation_count": 0,
+      "path": "/Users/xiong/weather/output/audits/historical_awc_replay_45station_20260804_v2/ZUUU/historical_awc_replay_evidence.json",
+      "settlement_timezone": "Asia/Shanghai",
+      "station_id": "ZUUU"
+    }
+  ],
+  "summary": {
+    "blocked_station_count": 45,
+    "complete_station_count": 0,
+    "covered_station_day_count": 659,
+    "observation_count": 12018
+  },
+  "writes_production_db": false,
+  "writes_target_database": false
+}

@@ -76762,7 +76762,7 @@ def _basket_strategy_ui_ssot(
     """
 
     schema = "basket_strategy_ui_ssot_v1"
-    strategy_id = "weather_basket_plus_hard_no_v2"
+    strategy_id = "weather_basket_yes_v2"
     row_limit = max(1, min(int(limit or 24), 200))
 
     def _number(value: Any, default: float = 0.0) -> float:

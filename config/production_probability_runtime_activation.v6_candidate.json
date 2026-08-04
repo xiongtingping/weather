@@ -31,7 +31,7 @@
   "public_ssot_schema": "sequential_temperature_posterior_ssot_v4_reported_x",
   "release_readiness_sha256": "c255f0fd467e6eb861598ef69dd474bb383e5fa65a306df94bf073fe4d187be0",
   "research_evidence_excluded_from_blocking_gate_set": true,
-  "resident_service": "com.weather.reported_trajectory_no",
+  "resident_service": "com.weather.weather_basket_yes",
   "runtime_manifest_sha256": "26d5266746715a644b80173476f41035e26ccc88c3ffff212940ed240c6e20ee",
   "sample_volume_activation_role": "non_blocking_diagnostic_only",
   "schema": "production_probability_v6_activation_v1",

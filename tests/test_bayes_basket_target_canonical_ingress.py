@@ -9,6 +9,7 @@ from bayes_basket_target.p1_compiler import (
     canonical_materialization_packet,
     compile_station_p1_packets,
 )
+from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
 from bayes_basket_target.ssot import apply_production_ssot_schema
 
 
@@ -34,30 +35,56 @@ def _p0() -> ProbabilityEnvelope:
     })
 
 
-def _observation(conn: sqlite3.Connection, *, correction: int = 0) -> None:
-    conn.execute("""CREATE TABLE reported_trajectory_observations(
-        observation_id TEXT PRIMARY KEY, source_lane TEXT, station_id TEXT,
-        report_type TEXT, raw_sha256 TEXT, canonical_committed_at TEXT,
-        correction_suspected INTEGER)""")
-    conn.execute("INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?)", (
-        "obs-amsc-1", "amsc", "ZUUU", "METAR", "c" * 64,
-        "2026-07-23T05:10:00Z", correction,
-    ))
+def _p0m() -> ProbabilityEnvelope:
+    p0 = _p0()
+    return ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "stage": "P0-M",
+        "checkpoint_id": "p0m-canonical-test",
+        "decision_at_utc": "2026-07-23T05:05:00Z",
+        "posterior_version": "p0m-test",
+        "lineage": {
+            **p0.lineage,
+            "p0_root_checkpoint_id": p0.checkpoint_id,
+            "p0_root_content_sha256": p0.content_sha256,
+        },
+    })
+
+
+def _observation(
+    conn: sqlite3.Connection,
+    *,
+    source_lane: str = "AWC",
+    settlement_timezone: str = "America/New_York",
+    canonical_committed_at: str = "2026-07-23T05:10:00Z",
+) -> None:
+    conn.execute(
+        "INSERT INTO basket_target_observation_facts("
+        "observation_fact_id,observation_id,station_id,event_date,"
+        "settlement_timezone,source_lane,report_type,raw_sha256,"
+        "canonical_committed_at,content_sha256,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "obsfact-awc-1", "obs-awc-1", "ZUUU", "2026-07-23",
+            settlement_timezone, source_lane, "METAR", "c" * 64,
+            canonical_committed_at, "d" * 64, canonical_committed_at,
+        ),
+    )
 
 
 def _p1_kwargs(*, decision_at_utc: str = "2026-07-23T05:20:00Z") -> dict:
-    root = _p0()
+    root = _p0m()
     packet = compile_station_p1_packets(
         predecessor=root,
         observations=[{
-            "observation_id": "obs-amsc-1",
+            "observation_id": "obs-awc-1",
             "station_id": "ZUUU",
             "event_date_local": "2026-07-23",
             "reported_temperature_c": 38.2,
             "valid_at_utc": "2026-07-23T05:00:00Z",
             "canonical_committed_at_utc": "2026-07-23T05:10:00Z",
             "raw_sha256": "c" * 64,
-            "source_lane": "AMSC",
+            "source_lane": "AWC",
             "report_type": "METAR",
             "evidence_role": "FORMAL",
             "qc_status": "ACCEPTED",
@@ -99,6 +126,7 @@ def _p1_kwargs(*, decision_at_utc: str = "2026-07-23T05:20:00Z") -> dict:
 def test_canonical_event_bridge_is_exactly_once_and_does_not_write_on_preview() -> None:
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
         _observation(conn)
         kwargs = _p1_kwargs()
         preview = materialize_p1_from_canonical_observation(conn, **kwargs)
@@ -113,11 +141,12 @@ def test_canonical_event_bridge_is_exactly_once_and_does_not_write_on_preview() 
         assert "reported_temperature_c" not in lineage
 
 
-def test_correction_is_quarantined_and_no_p1_is_written() -> None:
+def test_p1_canonical_observation_bridge_rejects_amsc() -> None:
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)
-        _observation(conn, correction=1)
-        with pytest.raises(ContractError, match="correction_requires_review"):
+        apply_target_ledger_schema(conn)
+        _observation(conn, source_lane="AMSC")
+        with pytest.raises(ContractError, match="source_lane_invalid"):
             materialize_p1_from_canonical_observation(
                 conn,
                 **_p1_kwargs(),
@@ -127,14 +156,69 @@ def test_correction_is_quarantined_and_no_p1_is_written() -> None:
 def test_canonical_event_must_be_committed_before_p1_decision() -> None:
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)
-        _observation(conn)
-        conn.execute(
-            "UPDATE reported_trajectory_observations "
-            "SET canonical_committed_at=? WHERE observation_id=?",
-            ("2026-07-23T05:25:00Z", "obs-amsc-1"),
-        )
+        apply_target_ledger_schema(conn)
+        _observation(conn, canonical_committed_at="2026-07-23T05:25:00Z")
         with pytest.raises(ContractError, match="not_strict_asof"):
             materialize_p1_from_canonical_observation(
                 conn,
                 **_p1_kwargs(),
             )
+
+
+def test_legacy_observation_row_without_timezone_is_left_unbound_and_blocked() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute(
+            "CREATE TABLE basket_target_observation_facts("
+            "observation_fact_id TEXT PRIMARY KEY,observation_id TEXT NOT NULL UNIQUE,"
+            "station_id TEXT NOT NULL,event_date TEXT NOT NULL,"
+            "source_lane TEXT NOT NULL,report_type TEXT NOT NULL,"
+            "raw_sha256 TEXT NOT NULL,canonical_committed_at TEXT NOT NULL,"
+            "content_sha256 TEXT NOT NULL,created_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO basket_target_observation_facts VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "obsfact-legacy-1", "obs-awc-1", "ZUUU", "2026-07-23",
+                "AWC", "METAR", "c" * 64, "2026-07-23T05:10:00Z",
+                "d" * 64, "2026-07-23T05:10:00Z",
+            ),
+        )
+        receipt = apply_production_ssot_schema(conn)
+        assert receipt["observation_fact_timezone_upgrade"] == {
+            "schema": "basket_target_observation_fact_settlement_timezone_v1",
+            "state": "added_nullable_without_backfill",
+            "legacy_rows_left_unbound": 1,
+        }
+        assert conn.execute(
+            "SELECT settlement_timezone FROM basket_target_observation_facts "
+            "WHERE observation_id='obs-awc-1'"
+        ).fetchone() == (None,)
+        with pytest.raises(ContractError, match="settlement_timezone_missing"):
+            materialize_p1_from_canonical_observation(conn, **_p1_kwargs())
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_envelope"
+        ).fetchone()[0] == 0
+
+
+def test_persisted_observation_timezone_mismatch_blocks_p1() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
+        _observation(conn, settlement_timezone="Asia/Shanghai")
+        with pytest.raises(ContractError, match="settlement_timezone_mismatch"):
+            materialize_p1_from_canonical_observation(conn, **_p1_kwargs())
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_envelope"
+        ).fetchone()[0] == 0
+
+
+def test_invalid_persisted_observation_timezone_blocks_p1() -> None:
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        apply_target_ledger_schema(conn)
+        _observation(conn, settlement_timezone="Invalid/Timezone")
+        with pytest.raises(ContractError, match="settlement_timezone_invalid"):
+            materialize_p1_from_canonical_observation(conn, **_p1_kwargs())
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_envelope"
+        ).fetchone()[0] == 0

@@ -44,7 +44,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_daily_acceptance_no_live_v1"
 CORE_SERVICES = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
@@ -723,8 +723,13 @@ def _training_status(
     }
 
 
-def _forward_oos_status(conn: sqlite3.Connection, tables: set[str]) -> dict[str, Any]:
-    """Report forward evidence without making it a production readiness gate."""
+def _historical_oos_status(conn: sqlite3.Connection, tables: set[str]) -> dict[str, Any]:
+    """Report strict historical OOS evidence without gating no-live.
+
+    Future/forward rows are intentionally reported as observational candidates
+    only.  This status is a formal-promotion diagnostic; it never turns an
+    open event into an OOS sample.
+    """
 
     observed = {
         table: _count(conn, table)
@@ -732,10 +737,14 @@ def _forward_oos_status(conn: sqlite3.Connection, tables: set[str]) -> dict[str,
         if table.startswith("forward_") or "oos" in table.lower()
     }
     return {
-        "state": "REPORTED_ONLY",
+        "state": "HISTORICAL_ONLY_REPORTED",
+        "evidence_policy": "CLOSED_HISTORICAL_STRICT_ASOF",
         "promotion_scope": "FORMAL_PROMOTION_ONLY",
+        "future_data_evidence_role": "observational_candidate_not_oos",
+        "future_data_counts_as_oos": False,
         "blocks_production_no_live": False,
-        "blocks_parameter_or_weight_promotion": True,
+        "blocks_parameter_or_weight_promotion": False,
+        "historical_strict_oos_required_for_parameter_or_weight_promotion": True,
         "observed_table_counts": observed,
     }
 
@@ -827,7 +836,15 @@ def audit(
                     station,
                     daily_event_date,
                 )
-                forward_oos = _forward_oos_status(conn, tables)
+                historical_oos = _historical_oos_status(conn, tables)
+                # Keep a read-only compatibility projection for older audit
+                # readers, but make its gate values explicitly non-blocking;
+                # the canonical object is ``historical_oos`` above.
+                forward_oos_alias = {
+                    **historical_oos,
+                    "state": "REPORTED_ONLY",
+                    "blocks_parameter_or_weight_promotion": False,
+                }
                 checks.update({
                     "tables": {"count": len(tables)},
                     "daily_event_date": daily_event_date,
@@ -837,7 +854,8 @@ def audit(
                     "atomic_ledger": ledger,
                     "execution_boundary": execution,
                     "training": training,
-                    "forward_oos": forward_oos,
+                    "historical_oos": historical_oos,
+                    "forward_oos": forward_oos_alias,
                     "ledger_counts": ledger_counts,
                 })
                 blockers.extend(activation.get("blockers") or [])

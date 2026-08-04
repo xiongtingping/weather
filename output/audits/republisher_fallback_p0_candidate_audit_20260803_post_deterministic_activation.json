@@ -1,0 +1,1235 @@
+{
+  "as_of_utc": "2026-08-03T05:15:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "read_only_database": true,
+    "writes_production_p0": false,
+    "writes_production_p0m": false,
+    "writes_production_p1": false
+  },
+  "candidate_count": 0,
+  "content_sha256": "e116fef25a241dd1fe009c2f5d35e018db374e303d61f22f9573211c8a0628a2",
+  "event_date_filter": "2026-08-03",
+  "official_compiled_count": 0,
+  "official_inbox": {
+    "content_sha256": "5598987ad2460f7429e39e83aedf7630708f6dc61015e3506f61341f23642a95",
+    "path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/official_native_ensemble_forward_inbox_20260803.json"
+  },
+  "policy": {
+    "fallback_requires_same_station_event_day": true,
+    "future_data_is_not_oos": true,
+    "metadata_normalization_does_not_change_raw_receipt": true,
+    "official_native_first": true,
+    "republisher_is_not_formal_live_authority": true,
+    "republisher_is_not_native_arrival": true,
+    "republisher_is_not_p1": true
+  },
+  "republisher_fallback_compiled_count": 0,
+  "republisher_inbox": {
+    "content_sha256": "7ef6488dd411721ecbf0ae161a199fa9a13e62db35ae50b0680cb6fc20753e9b",
+    "path": "/Users/xiong/weather/data/runtime/bayes_basket_target_nwp/native_ensemble_forward_inbox_20260803_open_meteo_refresh_2300.json"
+  },
+  "rows": [
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "648c357a5009129ac421002b1540102f230e8fbee4912e8a1a0e5acc0a9dd0cb",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "326cbd606a4297a207cc84339f9b8f093c5aaa7aede2f8e123522673b9d5631d",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "dcb6f97e3c2d614281d5c651eeeb4b79d1f63c200b0a4e20af5a0fa8f482eb1b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "dcb6f97e3c2d614281d5c651eeeb4b79d1f63c200b0a4e20af5a0fa8f482eb1b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "a80924eb0b46cd13867e5faf45c1f239e86fd92ac75dabae6f7db0c6b93aa004",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "398915528d860c8cdf4b63aef8c21b0962542d3b97dfc335a89cace5f12e2df6",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "398915528d860c8cdf4b63aef8c21b0962542d3b97dfc335a89cace5f12e2df6",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "a5810b632dc98af5d895a95f08c75eac1cb5d863e10131279f2bb3d134eaa0e4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "894e8d64921045099e49f33d74face725feb9bc6e10c5c9cea4c02f4a7d86202",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "29294dfd2b071c8ec4e08012254cdedbd579ed29094b8ca8bd4675841bb746cf",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "29294dfd2b071c8ec4e08012254cdedbd579ed29094b8ca8bd4675841bb746cf",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "f76b8bdead97ba1c57133e10ade17fa0ec8994db46c6c334279f6e7e1cecefbb",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "73089e47ea0b46b8d1530c4580df10184a0ca0374c1cfd41041249b81b40ecbd",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "73089e47ea0b46b8d1530c4580df10184a0ca0374c1cfd41041249b81b40ecbd",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "0fad9ddf287b9b1c7cb29b7d5a9b1ac643055f5e7942ec2a22e98251cdc1b848",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "9666b36ba827da25f494d4c86670df66eef386ae106757699e20192b94074514",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "9666b36ba827da25f494d4c86670df66eef386ae106757699e20192b94074514",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "5811c7c125dca62d9f638032d2d81722344ed4ce20a1c179c286194644b74808",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "668c73839d312e36d8d6485ec90582d49b313a49a2e4c6b25ccf347515c446c0",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "668c73839d312e36d8d6485ec90582d49b313a49a2e4c6b25ccf347515c446c0",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "9a1b98eb9f0c103a954c86495ed39a0b5a89c68727f612cf5d7897cc2dca41f4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "19611816ceadfc8398251bb1b9ddb774e0f69eca915f9a90afbd403c9fddf7c5",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "19611816ceadfc8398251bb1b9ddb774e0f69eca915f9a90afbd403c9fddf7c5",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "db202a5b07cccec59e78e504e1f02dbeb3779c0eaf4406316cdd030423909290",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "5d41d10df8596090f3ed34f1cfe7d296599f2834841fc750b3638dbb85927792",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "5d41d10df8596090f3ed34f1cfe7d296599f2834841fc750b3638dbb85927792",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6c41ada03d3d36532fbe968df7c69bff8f98281a66aac219af3532f3ed8dadad",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "2833c77a7dcde125c80a2a3beccd7c587135d06c8e53f5568cfdcecf0c840b19",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "2833c77a7dcde125c80a2a3beccd7c587135d06c8e53f5568cfdcecf0c840b19",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "086ad131605b0bf51486d59992f536d3e023ebc1f74bde7e505f0fa27092effa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "68129cf92c5c59e700237f48e7dedabe6705b2d0df0afa622b9bfc67f3d82368",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "68129cf92c5c59e700237f48e7dedabe6705b2d0df0afa622b9bfc67f3d82368",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "9f45d20c150141d7f44701ae681d7fd9997d4095a4ceaa29f6e0377942b1117c",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "61c085ed02129b3ab4a6de07e7c0c47eec528244a9343014b9d2d8a0a847d432",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "61c085ed02129b3ab4a6de07e7c0c47eec528244a9343014b9d2d8a0a847d432",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "db87cc531e5df2be0b0ab80f9e49fd0c82ce50e57a05e564234aa0627b806656",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "abef21f46f10997d6c8575ec848dc221c173a4cbfe1f14fa1b85e156b3dea9af",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "abef21f46f10997d6c8575ec848dc221c173a4cbfe1f14fa1b85e156b3dea9af",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "0477e56b1719efb690e64e14e153a76b73cabb6799d77a40fcfed53ca7f0b8b3",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "4a0fc0bda012e8b2a70c313b5eb6d94184b074f6499e0ee92958fcaafd50fcda",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "4a0fc0bda012e8b2a70c313b5eb6d94184b074f6499e0ee92958fcaafd50fcda",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "0a41ccd5da91c79696086ce37f267b25788c9381b33c35f0c9d06d8f2d7dc1d7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "690d529f3384799a5c121f38f406177c903cdc4597c5c02f3919ccb154f89df1",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "690d529f3384799a5c121f38f406177c903cdc4597c5c02f3919ccb154f89df1",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b8d875e58cbd2d642dfa116d7134973ad949b687f32d81470c9a59e7249c3500",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "4c979f16f772588ede09761118f746d6d181db679edbad82c54b0be6b70f45c5",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "27e32f2ea322f8c1439b5d334913aa109f1a7e4bb7c7f212f97b6724e9da4a71",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "4b23f1c896880aa8592f45fae6794467f6e488c495429283012be33a8d11f4f9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b3ed96f00a48c72633d823199194b5067b47cdcd7304bd365f3716afdd1ff2b8",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "92e191cb247ff5cc893f234d02d682dcf5bb408cdfb6d283beec048152a0defb",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "b604a018e6c127b1b22709d790e89efa75243ed935ba1f099ad17461910ebaaa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "b604a018e6c127b1b22709d790e89efa75243ed935ba1f099ad17461910ebaaa",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "8be06e253f6a41d86dc2678ff18feb9b8456fa9e3f33b31dee79313370c710b3",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "5c1907e2621118724066a624f188883dc88a90c73d79bf0c99479e930f208da7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "5c1907e2621118724066a624f188883dc88a90c73d79bf0c99479e930f208da7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "ed1f82608ba61f8ea91817c0a8a1475b9083e47b6f246e5b6fbb00d8baedea53",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "492ceb51ca4589b355725c19b81c80aa8ce9839936a2f9a8d95ada74a62874e3",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "492ceb51ca4589b355725c19b81c80aa8ce9839936a2f9a8d95ada74a62874e3",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "12b2934682da1bf46a9ef307a23cc3f7f5de6c0f859790df22f707b44b1b1425",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "55590f0fe7aada155581a94ab61a383c4333428b89eb9ccb08b86c8ff99ed944",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "55590f0fe7aada155581a94ab61a383c4333428b89eb9ccb08b86c8ff99ed944",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "8a4b5d0db14c615d0148ae5a2473087ca10275a793c8f9b9dc223bb591d1a588",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "b7b2686e283ac9290728282e42947b05d5c934c19336ccf19f1b29f9d9b2e4c9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "b7b2686e283ac9290728282e42947b05d5c934c19336ccf19f1b29f9d9b2e4c9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "fd6f027144846790139745ed0b863b95fb86d175ecd58fed7cb5a237bfaba612",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "151624bdc8e27a9774623bca70c6387a4301d35247aa73b6cc829214825566c4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "151624bdc8e27a9774623bca70c6387a4301d35247aa73b6cc829214825566c4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "133118f62d2228f24120d1fc0bb5cc640aece3661efc38bed98265f444b18d2d",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "7b8897d82f2d9a7d31ce2bcf8e740df7545d70f1ecce8c3f803b1ab24bf118db",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "7b8897d82f2d9a7d31ce2bcf8e740df7545d70f1ecce8c3f803b1ab24bf118db",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "44474fb78d2d986bc0c536970cd013fa67a2ce9a64e7d07e252ec1a1b72d3a85",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "d5c834529e5bad3f226e1d03064c59afcb09d4f3d84683438bcb0591252891e4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "d5c834529e5bad3f226e1d03064c59afcb09d4f3d84683438bcb0591252891e4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "325c403d019e7ad4f85c5299cc41f0a31a258b34a43b113f0adf5fef595ec0d4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "7cf80a6ed88f9f6378bc0dc4150c68e7c1113e30526e448ab25917c02b0beaf8",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "7cf80a6ed88f9f6378bc0dc4150c68e7c1113e30526e448ab25917c02b0beaf8",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "408a5b8f112fd10e900194d0ac934acfcddfaef8ea5b4aac4f7e4fc0e42f503f",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "c645d018a34db9cfd56f14acee421cd47282e5d2d996e5ec1f70f639fda7d9d7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "c645d018a34db9cfd56f14acee421cd47282e5d2d996e5ec1f70f639fda7d9d7",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6933350500fe56f8c1639cf50bc0c273634fa91e7386d52816fcae2c0e0f2b37",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "30096f0be609bfcdbcdc105c895234db6682e40192d431a3c28740275b782b45",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "30096f0be609bfcdbcdc105c895234db6682e40192d431a3c28740275b782b45",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "2b8e8b1b83b98c657b8032eaed827557b51b4a0e684c5c46778698905e2939d0",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "eccbcf1d6a18cf0080dd37b13f1ee9367ea7bccde5fb6b6917083bf57e45fffc",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": false,
+      "selected": {
+        "reason": "packet_missing_for_exact_station_day",
+        "source_class": "aggregator_republisher",
+        "state": "NOT_AVAILABLE"
+      },
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "ca44cf6661cfa0adbcb527d9b3c6cce238a628e01b3e373dce5f678966aa984a",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "49f0f173d659e593e21f14cfa2e5c98760b42603f696330a900064b16db8eac9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "49f0f173d659e593e21f14cfa2e5c98760b42603f696330a900064b16db8eac9",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "b7e7243142f3c5bd4dab1a31fd0717de695596de1342dd7c868fa5f717da18fb",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "b4d662d6b09f4db6af31d9142e5cd03fd61bb57cbf1321b74cb62f1602dc338e",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "b4d662d6b09f4db6af31d9142e5cd03fd61bb57cbf1321b74cb62f1602dc338e",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "2e95d00570334ad081baeef999a3035142424ec8bce72ddaf71aa1b8beae50dc",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "b31352200441f9dad93135a1372bc227dbc9093f8d07eafd0858e51238554c21",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "b31352200441f9dad93135a1372bc227dbc9093f8d07eafd0858e51238554c21",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6b40f1ffac5e8a6969a000a60d6beca21893b6a6abc7d7dea5ec513a9141c340",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "5ed61e2c94bc7a909fd61c837ce326e11b738f98726476308c602142d0b4d279",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "5ed61e2c94bc7a909fd61c837ce326e11b738f98726476308c602142d0b4d279",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "1d31975b9f57d12dfeb5dc8d00cb58c3e2ecd0b72cd678a47c40c13e7206cd8d",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "64354e5251963c8c30bb9257771c5f562ba94c04ca761b75287b485263b49b22",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "64354e5251963c8c30bb9257771c5f562ba94c04ca761b75287b485263b49b22",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "11fdd133a9be361967b4cde57aa6788dd5cf2dc2d8f905b44e07e0b1682bc231",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "49c2928a0e42b0c5f99d73b76babc5929aed06044efc90cb4db80b5aa006e97b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "49c2928a0e42b0c5f99d73b76babc5929aed06044efc90cb4db80b5aa006e97b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "6c55cb45035820343532231f57035c03cafbacc7d7473fa48348b891f8d620d4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "f88d62a95bc6510e5ecb1ee3d9e906f108ec8d080ec2e381827ea03fd872365b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "f88d62a95bc6510e5ecb1ee3d9e906f108ec8d080ec2e381827ea03fd872365b",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "32c0f7b176f1cad1629d040460db0bfd7875c4f02a944357bf1bea5ebfb21496",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "9fc2120c9be02c9605b6d6554da1c767d943c32c0d03b5955a2c549bce8706e4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "9fc2120c9be02c9605b6d6554da1c767d943c32c0d03b5955a2c549bce8706e4",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "5f73fba36e1903cd89a7536bfc8f6a75ee8522dfb49724b0a96c4e5d5df8235d",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "a4a0fb2bc8765435a7c4de93eceb33b75a7ea1f545f7b2ee2c7ed498d972c970",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "a4a0fb2bc8765435a7c4de93eceb33b75a7ea1f545f7b2ee2c7ed498d972c970",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "0bd0b37e72360676af898354345d871e2eee6ed0cf11c792c498b8558b438080",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "bd554bd962cebef452af1029a6b7fc797bc4d8d541c4f284c02afc343e074958",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "bd554bd962cebef452af1029a6b7fc797bc4d8d541c4f284c02afc343e074958",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-08-03",
+      "official_attempt": {
+        "packet_content_sha256": "524a452b750b04b9e35d4459f6f97dc30c2aa0a793d5e0b6945e4cc50bc5c1df",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "official_native",
+        "state": "BLOCKED"
+      },
+      "official_packet_present": true,
+      "official_preferred": true,
+      "republisher_attempt": {
+        "packet_content_sha256": "b6fed7ce2a0f53650c1b0841cf401840fecc68f7a25aaccbb40f7d64baf65bee",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "republisher_formal_p0_eligible": false,
+      "republisher_native_arrival_index_eligible": false,
+      "republisher_packet_present_same_station_day": true,
+      "selected": {
+        "packet_content_sha256": "b6fed7ce2a0f53650c1b0841cf401840fecc68f7a25aaccbb40f7d64baf65bee",
+        "reason": "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale",
+        "source_class": "aggregator_republisher",
+        "state": "BLOCKED"
+      },
+      "station_id": "ZUUU"
+    }
+  ],
+  "schema": "bayes_basket_target_republisher_fallback_p0_candidate_audit_v1",
+  "station_count": 45
+}

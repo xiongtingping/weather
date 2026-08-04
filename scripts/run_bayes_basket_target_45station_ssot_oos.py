@@ -38,6 +38,7 @@ DEFAULT_OUTPUT = (
 )
 MAX_STATIONS = 45
 MAX_DAYS = 120
+HISTORICAL_AWC_ROLE = "AWC_HISTORICAL_REPLAY_INGRESS"
 
 
 def _utc_now() -> str:
@@ -135,6 +136,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             as_of_utc=as_of_utc,
             target_timezone=str(station["timezone_name"]),
         )
+        if str(row.get("source_role") or "") == "TEMPORARY_AWC_CALIBRATION_LABEL":
+            raise ContractError("ssot_oos_temporary_awc_truth_retired")
+        if (
+            str(row.get("source_lane") or "").upper() != "AWC"
+            or str(row.get("source_role") or "") != HISTORICAL_AWC_ROLE
+        ):
+            raise ContractError("ssot_oos_historical_awc_lineage_invalid")
         truth_map[key] = row
 
     model_map: dict[tuple[str, str, str, str], dict[str, Any]] = {}
@@ -157,11 +165,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         if station_dates != expected_dates:
             raise ContractError(f"ssot_oos_truth_dates_incomplete:{station_id}")
-        temporary_awc = any(
-            truth_map[(station_id, target)]["source_role"]
-            == "TEMPORARY_AWC_CALIBRATION_LABEL"
-            for target in expected_dates
-        )
         coordinates = station_coordinates(station_id)
         season_bin = _meteorological_season(
             target_date=first.fromordinal(
@@ -235,7 +238,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "source_lineage_sha256": content_sha256(lineage),
                 "source_model_run_count": len(lineage),
                 "source_truth_count": len(expected_dates),
-                "temporary_awc_calibration_truth": temporary_awc,
                 "oos": oos,
                 "authority": {
                     "offline_oos_complete": oos.get("state")
@@ -246,11 +248,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "production_no_live_review_eligible":
                         probability_passed,
                     "formal_p0_activation_eligible": False,
-                    "formal_blockers": (
-                        ["temporary_awc_calibration_truth"]
-                        if temporary_awc
-                        else ["historical_replay_has_no_native_arrival"]
-                    ),
+                    "formal_blockers": [
+                        "historical_replay_has_no_native_arrival"
+                    ],
                 },
                 "boundary": {
                     "writes_production_database": False,
@@ -269,7 +269,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "selected_models": selected,
                 "selected_weights": dict(winner.get("selected_weights") or {}),
                 "probability_non_degradation_vs_uniform": probability_passed,
-                "temporary_awc_calibration_truth": temporary_awc,
                 "artifact_path": str(path),
                 "artifact_sha256": payload["content_sha256"],
             })
@@ -296,10 +295,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 row["probability_non_degradation_vs_uniform"]
                 for row in summaries
             ),
-            "temporary_awc_station_count": len({
-                row["station_id"] for row in summaries
-                if row["temporary_awc_calibration_truth"]
-            }),
             "formal_p0_activation_eligible_scope_count": 0,
         },
         "boundary": {

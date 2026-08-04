@@ -1,4 +1,4 @@
-"""Official Polymarket-rule registry for trajectory-NO markets."""
+"""Official Polymarket-rule registry for the AWC/P1 YES-basket lane."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from reported_trajectory_no_runtime import normalize_market_buckets
+from weather_basket_yes_runtime import normalize_market_buckets
 from reported_trajectory_country_sources import station_source_route
 
 try:
@@ -25,13 +25,14 @@ except ImportError:  # pragma: no cover - stdlib fallback for minimal service im
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_CONFIG = ROOT / "config" / "trading" / "reported_trajectory_no_v1.json"
+DEFAULT_CONFIG = ROOT / "config" / "trading" / "awc_truth_ingress_v1.json"
 GAMMA_ENDPOINT = "https://gamma-api.polymarket.com/events"
 SCHEMA_VERSION = "reported_trajectory_market_registry_v1"
 MAX_GAMMA_PAGES = 4
 SLUG_RE = re.compile(r"^highest-temperature-in-(?P<city>.+)-on-[a-z]+-\d{1,2}-\d{4}$")
 WU_STATION_RE = re.compile(r"https?://(?:www\.)?wunderground\.com/history/daily/[^\s.]+/(?P<station>[A-Z0-9]{4})(?:[.\s]|$)", re.I)
 URL_RE = re.compile(r"https?://[^\s]+")
+STATION_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
 
 
 class GammaFetchError(RuntimeError):
@@ -98,7 +99,9 @@ def _gamma_proxy_candidates() -> list[tuple[str, str | None]]:
     dotenv = _dotenv_network_values()
     raw_values: list[str] = []
     for key in ("PM_GAMMA_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"):
-        value = str(dotenv.get(key) or os.environ.get(key) or "").strip()
+        # A launch wrapper may repair a stale .env localhost port before the
+        # direct HTTP client starts. Prefer that live environment choice.
+        value = str(os.environ.get(key) or dotenv.get(key) or "").strip()
         if value:
             raw_values.append(value)
 
@@ -117,10 +120,10 @@ def _gamma_proxy_candidates() -> list[tuple[str, str | None]]:
         candidates.append((f"proxy:{parsed.hostname}:{parsed.port}", normalized))
 
     port_values = [
-        dotenv.get("PM_PROXY_PORTS", ""),
         os.environ.get("PM_PROXY_PORTS", ""),
-        dotenv.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897"),
-        os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897"),
+        os.environ.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082"),
+        dotenv.get("PM_PROXY_PORTS", ""),
+        dotenv.get("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082"),
     ]
     for raw_ports in port_values:
         for raw_port in re.split(r"[,\s]+", str(raw_ports or "")):
@@ -132,9 +135,12 @@ def _gamma_proxy_candidates() -> list[tuple[str, str | None]]:
             seen.add(normalized)
             candidates.append((f"proxy:127.0.0.1:{int(raw_port)}", normalized))
 
+    # Gamma registry transport is independent from the CLOB transport.  A
+    # stale/unavailable CLOB proxy must never make the official market
+    # registry age out (which would then fail closed every AWC report via the
+    # fresh-registry admission gate).  Only an explicit Gamma-specific flag
+    # may force proxy-only operation.
     force_proxy = _truthy(dotenv.get("PM_GAMMA_FORCE_PROXY") or os.environ.get("PM_GAMMA_FORCE_PROXY"))
-    if not force_proxy:
-        force_proxy = _truthy(dotenv.get("PM_CLOB_FORCE_PROXY") or os.environ.get("PM_CLOB_FORCE_PROXY"))
     if not force_proxy and not _truthy(dotenv.get("PM_CLOB_FORCE_DIRECT") or os.environ.get("PM_CLOB_FORCE_DIRECT")):
         candidates.append(("direct", None))
     elif _truthy(dotenv.get("PM_CLOB_FORCE_DIRECT") or os.environ.get("PM_CLOB_FORCE_DIRECT")):
@@ -217,42 +223,100 @@ def _sha(value: Any) -> str:
     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
+def _station_scope(policy: Mapping[str, Any], field: str) -> set[str] | None:
+    """Return one explicit station scope or ``None`` for an unsafe config."""
+
+    raw = policy.get(field)
+    if not isinstance(raw, list):
+        return None
+    stations: set[str] = set()
+    for value in raw:
+        station = str(value or "").strip().upper()
+        if not STATION_ID_RE.fullmatch(station) or station in stations:
+            return None
+        stations.add(station)
+    return stations
+
+
+def _provider_scope(policy: Mapping[str, Any], stations: set[str]) -> dict[str, str] | None:
+    """Validate the explicit AMSC-provider binding for its station scope."""
+
+    raw = policy.get("official_provider_ids")
+    if not isinstance(raw, Mapping):
+        return None
+    providers: dict[str, str] = {}
+    for raw_station, raw_provider in raw.items():
+        station = str(raw_station or "").strip().upper()
+        provider = str(raw_provider or "").strip()
+        if not STATION_ID_RE.fullmatch(station) or not provider or station in providers:
+            return None
+        providers[station] = provider
+    return providers if set(providers) == stations else None
+
+
+def _city_scope(policy: Mapping[str, Any], field: str) -> set[str] | None:
+    """Validate the city projection retained for the legacy polling worker."""
+
+    raw = policy.get(field)
+    if not isinstance(raw, list):
+        return None
+    cities: set[str] = set()
+    for value in raw:
+        city = str(value or "").strip().lower()
+        if not city or city in cities:
+            return None
+        cities.add(city)
+    return cities
+
+
 def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, Mapping) or value.get("schema") != "reported_trajectory_no_config_v1":
-        raise ValueError("reported_trajectory_no_config_invalid")
-    if value.get("production_source_allowlist") not in (["amsc"], ["amsc", "awc"]):
-        raise ValueError("reported_trajectory_no_source_allowlist_invalid")
-    if value.get("production_source_allowlist") == ["amsc", "awc"]:
-        awc = value.get("source_policy", {}).get("awc", {})
-        if awc.get("enabled") is not True or awc.get("production_ingest") is not True:
-            raise ValueError("reported_trajectory_no_awc_source_not_enabled")
-    order = value.get("order_policy") if isinstance(value.get("order_policy"), Mapping) else {}
+    if not isinstance(value, Mapping) or value.get("schema") != "reported_trajectory_awc_ingress_config_v1":
+        raise ValueError("reported_trajectory_awc_ingress_config_invalid")
+    if value.get("production_source_allowlist") != ["awc"]:
+        raise ValueError("reported_trajectory_awc_ingress_source_allowlist_invalid")
+    source_policy = value.get("source_policy") if isinstance(value.get("source_policy"), Mapping) else {}
+    awc = source_policy.get("awc", {}) if isinstance(source_policy.get("awc"), Mapping) else {}
+    amsc = source_policy.get("amsc", {}) if isinstance(source_policy.get("amsc"), Mapping) else {}
+    amsc_stations = _station_scope(amsc, "station_ids")
+    awc_excluded_stations = _station_scope(awc, "exclude_station_ids")
+    amsc_providers = _provider_scope(amsc, amsc_stations or set())
+    amsc_cities = _city_scope(amsc, "city_slugs")
+    awc_excluded_cities = _city_scope(awc, "exclude_city_slugs")
+    guards = value.get("guards") if isinstance(value.get("guards"), Mapping) else {}
     if (
-        float(order.get("maximum_buy_price", 0)) != 0.99
-        or order.get("order_type") != "FAK"
-        or order.get("unified_capital_pool") is not True
-        or order.get("deploy_all_available") is not False
-        or float(order.get("maximum_order_notional_usdc", 0)) != 50.0
-        or order.get("collateral_balance_check") is not False
+        amsc.get("enabled") is not False
+        or amsc.get("production_ingest") is not False
+        or amsc.get("role") != "retired_history_only"
+        or amsc_stations != set()
+        or amsc_providers is None
+        or amsc_cities != set()
+        or awc.get("enabled") is not True
+        or awc.get("production_ingest") is not True
+        or awc.get("global_primary") is not True
+        or awc.get("replaces_amsc") is not True
+        or awc_excluded_stations != set()
+        or awc_excluded_cities != set()
+        or guards.get("source_lanes_disjoint") is not True
+        or guards.get("awc_global_primary") is not True
+        or guards.get("awc_replaces_amsc") is not True
+        or guards.get("awc_fallback_for_amsc_forbidden") is not True
+        or guards.get("amsc_fallback_for_awc_forbidden") is not True
     ):
-        raise ValueError("reported_trajectory_no_order_policy_invalid")
-    exit_policy = value.get("exit_policy") if isinstance(value.get("exit_policy"), Mapping) else {}
-    if float(exit_policy.get("limit_price", 0)) != 0.99 or exit_policy.get("order_type") != "GTC":
-        raise ValueError("reported_trajectory_no_exit_policy_invalid")
+        raise ValueError("reported_trajectory_awc_ingress_global_contract_invalid")
     poll = value.get("poll_policy") if isinstance(value.get("poll_policy"), Mapping) else {}
     try:
         gamma_pages = int(poll.get("market_registry_gamma_max_pages", 0))
         refresh_sec = float(poll.get("market_registry_refresh_sec", 0))
         retry_sec = float(poll.get("market_registry_retry_sec", 0))
     except (TypeError, ValueError) as exc:
-        raise ValueError("reported_trajectory_no_registry_poll_policy_invalid") from exc
+        raise ValueError("reported_trajectory_awc_ingress_registry_poll_policy_invalid") from exc
     if (
         not 1 <= gamma_pages <= MAX_GAMMA_PAGES
         or not 60.0 <= refresh_sec <= 3600.0
         or not 10.0 <= retry_sec <= refresh_sec
     ):
-        raise ValueError("reported_trajectory_no_registry_poll_policy_invalid")
+        raise ValueError("reported_trajectory_awc_ingress_registry_poll_policy_invalid")
     return dict(value)
 
 
@@ -347,18 +411,32 @@ def materialize_event_registry(
     timezones = config.get("settlement_timezones") if isinstance(config.get("settlement_timezones"), Mapping) else {}
     timezone_name = str(timezones.get(city) or "").strip()
     sources = config.get("source_policy") if isinstance(config.get("source_policy"), Mapping) else {}
-    amsc_cities = {str(item) for item in (sources.get("amsc") or {}).get("city_slugs", [])}
+    amsc_policy = (sources.get("amsc") or {}) if isinstance(sources.get("amsc"), Mapping) else {}
     awc_policy = (sources.get("awc") or {}) if isinstance(sources.get("awc"), Mapping) else {}
-    awc_exclude = {str(item) for item in awc_policy.get("exclude_city_slugs", [])}
-    if city in amsc_cities:
-        source_lane = "amsc"
-    elif awc_policy.get("enabled") is True and city not in awc_exclude:
-        source_lane = "awc"
-    else:
-        source_lane = "blocked"
+    amsc_stations = _station_scope(amsc_policy, "station_ids") or set()
+    awc_excluded_stations = _station_scope(awc_policy, "exclude_station_ids") or set()
+    global_awc = (
+        amsc_policy.get("enabled") is False
+        and amsc_policy.get("production_ingest") is False
+        and amsc_policy.get("role") == "retired_history_only"
+        and not amsc_stations
+        and not (_city_scope(amsc_policy, "city_slugs") or set())
+        and awc_policy.get("enabled") is True
+        and awc_policy.get("production_ingest") is True
+        and awc_policy.get("global_primary") is True
+        and awc_policy.get("replaces_amsc") is True
+        and not awc_excluded_stations
+        and not (_city_scope(awc_policy, "exclude_city_slugs") or set())
+    )
+    source_lane = "awc" if global_awc else "blocked"
     blocks: list[str] = []
     if source_lane == "blocked":
         blocks.append("no_enabled_official_source_lane")
+    if not str(origin_route.get("provider_id") or "").strip():
+        blocks.append("official_source_route_unmapped")
+    elif str(origin_route.get("adapter") or "").strip().lower() == "amsc":
+        # AMSC remains a historical/offline provider only.
+        blocks.append("amsc_production_route_forbidden")
     if not station:
         blocks.append("official_resolution_is_not_wunderground_airport_station")
     if not timezone_name:
@@ -412,6 +490,7 @@ def materialize_event_registry(
             "source_disjoint": True,
             "origin_country_code": origin_route.get("country_code", ""),
             "preferred_origin_source_id": origin_route.get("provider_id", ""),
+            "preferred_origin_adapter": origin_route.get("adapter", ""),
             "preferred_origin_authority": origin_route.get("authority", ""),
             "preferred_origin_access": origin_route.get("access", ""),
             "preferred_origin_url": origin_route.get("official_url", ""),

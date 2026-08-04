@@ -1,0 +1,49 @@
+{
+  "binding_requirements": {
+    "accepted_awc_settlement_label": true,
+    "confirmed_yes_fill_event": true,
+    "non_simulated_authoritative_execution_receipt": true,
+    "official_clob_ws_snapshot": true,
+    "strict_policy_fact_authority": "HISTORICAL_STRICT_OOS"
+  },
+  "blockers": [
+    "no_policy_fact_with_historical_strict_oos_authority",
+    "no_order_event_receipts",
+    "no_confirmed_yes_fill",
+    "no_execution_receipts",
+    "no_non_simulated_execution_receipts"
+  ],
+  "boundary": {
+    "forbids_synthetic_fills": true,
+    "forward_or_simulated_evidence_is_not_oos": true,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "read_only": true,
+    "writes_database": false
+  },
+  "content_sha256": "25fc2197911c0695e767aa36cbf287c0fa53f5ce6d42171cd53a54db863ed084",
+  "counts": {
+    "authoritative_execution_receipts": 0,
+    "execution_receipts": 0,
+    "fill_events": 0,
+    "non_simulated_execution_receipts": 0,
+    "official_ws_snapshots": 4663,
+    "order_events": 0,
+    "order_intents": 685,
+    "policy_facts": 1491,
+    "policy_facts_historical_strict_oos": 0,
+    "policy_labels": 1083
+  },
+  "findings": {
+    "candidate_order_intents_are_not_fill_evidence": true,
+    "official_ws_and_settlement_evidence_present_but_unbound": true,
+    "simulated_or_absent_execution_cannot_be_promoted": true
+  },
+  "input_reference": {
+    "prior_inventory": "output/audits/station_policy_exact_stage_scorecard_45station_utility_v2_recheck_20260802T230000Z.json",
+    "prior_inventory_content_sha256": "4af27fc7e7cd5e473d19e03482027ca43b6523c18f7f3256a3d4d5d44579dc33"
+  },
+  "minimum_executable_next_step": "capture one closed-day, real YES execution chain atomically: policy fact with HISTORICAL_STRICT_OOS authority + official CLOB WS snapshot + authoritative non-simulated FILL/PARTIAL_FILL receipt linked to its intent + accepted AWC settlement label; then run validate_historical_station_policy_utility_binding without scoring or promotion.",
+  "schema": "station_policy_realized_utility_binding_preflight_v1",
+  "state": "NO_LEGALLY_BINDABLE_HISTORICAL_UTILITY_ROWS"
+}

@@ -73,6 +73,14 @@ def _now_utc() -> str:
 
 def _configured_proxy(explicit: str = "") -> str | None:
     value = str(explicit or os.environ.get("PM_MARKET_WS_PROXY") or "").strip()
+    # The resident market listener uses ``direct_then_env`` as a transport
+    # policy (direct official WS first, proxy only as a fallback).  The
+    # single-socket target publisher cannot express a two-candidate policy;
+    # prefer the direct official socket here rather than treating the policy
+    # name as a malformed URL or accidentally falling back to a stale port
+    # port from the research network config.
+    if value.lower() in {"direct_then_env", "direct+env", "fallback"}:
+        return None
     if not value:
         candidates: list[str] = []
         try:

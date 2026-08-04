@@ -1,0 +1,18 @@
+{
+  "blockers": [
+    "durable_replay_core_direction_predecessor_drift"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_submit_authorized": false,
+    "network_access": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "query_only": true,
+    "read_only": true,
+    "writes_production_db": false
+  },
+  "content_sha256": "42b457aab55689e1905be7b25ca5467b38e73042ac8a90b962b2c0c35ec30f38",
+  "schema": "bayes_basket_target_p1_atomic_chain_smoke_v1",
+  "state": "BLOCKED"
+}

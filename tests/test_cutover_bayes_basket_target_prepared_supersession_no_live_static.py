@@ -27,3 +27,5 @@ def test_cutover_is_target_only_and_retains_no_live_boundary() -> None:
     assert "prepared_supersession_pool_reservation_mismatch" in text
     assert '"calls_order_gateway": False' in text
     assert '"orders_submitted": 0' in text
+    assert "weather_basket_yes_pid=$target_pid_before->$target_pid_after" in text
+    assert "reported_trajectory_no_pid=" not in text

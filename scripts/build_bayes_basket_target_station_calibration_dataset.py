@@ -3,8 +3,9 @@
 
 The input is one or more historical canonical-observation evidence packets.
 This command never opens a production database.  It applies the station lane
-contract, settlement timezone, closed-day rule, and AMSC whole-hour rule, then
-emits the compact daily-high dataset consumed by the five-model OOS builder.
+contract, settlement timezone, closed-day rule, and official AWC report-type
+rule, then emits the compact daily-high dataset consumed by the five-model OOS
+builder.
 """
 
 from __future__ import annotations
@@ -25,22 +26,24 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
-from bayes_basket_target.resource_bounds import load_bounded_json  # noqa: E402
-from bayes_basket_target.source_policy import (  # noqa: E402
-    AWC_HOUR_REFERENCE_FOR_AMSC,
+from bayes_basket_target.calibration_ingress import (  # noqa: E402
+    HISTORICAL_AWC_REPLAY,
+    NO_LIVE_REPLAY,
 )
-
-
+from bayes_basket_target.contracts import (  # noqa: E402
+    ContractError,
+    assert_timestamp_not_future,
+    content_sha256,
+)
+from bayes_basket_target.resource_bounds import load_bounded_json  # noqa: E402
 SCHEMA = "bayes_basket_station_calibration_dataset_v1"
-INPUT_SCHEMA = "bayes_basket_target_canonical_observation_evidence_v1"
-REFERENCE_INPUT_SCHEMA = "bayes_basket_target_truth_reference_evidence_v1"
-TEMPORARY_AWC_LABEL_AUTHORITY = "TEMPORARY_AWC_CALIBRATION_LABEL"
+INPUT_SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v2"
 MAX_INPUT_FILES = 64
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_OBSERVATIONS = 100_000
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 MIN_FREE_BYTES = 512 * 1024 * 1024
+FORMAL_EVIDENCE_ROLE = "FORMAL"
 
 
 def _utc(value: Any) -> datetime:
@@ -70,6 +73,65 @@ def _window(day_text: str, timezone_name: str) -> tuple[datetime, datetime]:
     return start, end
 
 
+def _sha256(value: Any, *, label: str) -> str:
+    result = str(value or "").strip().lower()
+    if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
+        raise ContractError(f"{label}_invalid")
+    return result
+
+
+def _verify_historical_awc_evidence(
+    payload: Mapping[str, Any],
+    *,
+    settlement_timezone: str,
+) -> str:
+    """Require one exact historical-AWC evidence envelope.
+
+    Historical replay is usable only as an explicit no-live fact.  In
+    particular, a caller cannot relabel a reference packet as AWC merely by
+    supplying the requested lane on this CLI.
+    """
+
+    supplied = _sha256(
+        payload.get("evidence_sha256"),
+        label="calibration_truth_input_evidence_sha",
+    )
+    identity = {
+        str(key): value
+        for key, value in payload.items()
+        if key != "evidence_sha256"
+    }
+    if supplied != content_sha256(identity):
+        raise ContractError("calibration_truth_input_evidence_sha_mismatch")
+    boundary = payload.get("boundary")
+    checks = payload.get("checks")
+    if (
+        payload.get("target_timezone") != settlement_timezone
+        or payload.get("historical_only") is not True
+        or payload.get("canonical_ingress") is not True
+        or payload.get("source_lane") != "AWC"
+        or payload.get("source_role") != HISTORICAL_AWC_REPLAY
+        or payload.get("authority_scope") != NO_LIVE_REPLAY
+        or not isinstance(boundary, Mapping)
+        or not isinstance(checks, Mapping)
+        or checks.get("station_day_metar_envelope_explicit") is not True
+        or any(
+            boundary.get(key) is not False
+            for key in (
+                "writes_production_db",
+                "calls_order_gateway",
+                "places_orders",
+                "live_arrival_evidence",
+                "enters_realtime_truth",
+                "enters_p1",
+                "enters_hard_no",
+            )
+        )
+    ):
+        raise ContractError("calibration_truth_input_lineage_invalid")
+    return supplied
+
+
 def build(
     *,
     payloads: Sequence[Mapping[str, Any]],
@@ -79,14 +141,11 @@ def build(
     start_date: str,
     end_date: str,
     as_of_utc: str,
-    temporary_awc_calibration_label: bool = False,
 ) -> dict[str, Any]:
     station = str(station_id or "").strip().upper()
     lane = str(source_lane or "").strip().upper()
-    if not station or lane not in {"AMSC", "AWC"}:
+    if not station or lane != "AWC":
         raise ContractError("calibration_truth_scope_invalid")
-    if temporary_awc_calibration_label and lane != "AWC":
-        raise ContractError("temporary_awc_calibration_label_scope_invalid")
     try:
         ZoneInfo(settlement_timezone)
     except Exception as exc:
@@ -95,28 +154,33 @@ def build(
     last = date.fromisoformat(end_date)
     if first > last or (last - first).days >= 120:
         raise ContractError("calibration_truth_date_range_invalid")
-    as_of = _utc(as_of_utc)
+    as_of = _utc(assert_timestamp_not_future(as_of_utc))
 
     deduplicated: dict[str, dict[str, Any]] = {}
+    truth_ready_dates: set[str] = set()
     input_shas: list[str] = []
     examined = 0
     for payload in payloads:
         input_schema = str(payload.get("schema") or "")
-        allowed_schema = (
-            REFERENCE_INPUT_SCHEMA
-            if temporary_awc_calibration_label
-            else INPUT_SCHEMA
-        )
-        if input_schema != allowed_schema:
+        if input_schema != INPUT_SCHEMA:
             raise ContractError("calibration_truth_input_schema_invalid")
-        input_shas.append(
-            str(payload.get("evidence_sha256") or payload.get("content_sha256") or "")
+        input_sha = _verify_historical_awc_evidence(
+            payload,
+            settlement_timezone=settlement_timezone,
         )
-        observations = payload.get(
-            "reference_observations"
-            if temporary_awc_calibration_label
-            else "observations"
-        )
+        input_shas.append(input_sha)
+        ready = payload.get("truth_ready_dates")
+        blocked = payload.get("truth_blocked_dates")
+        if (
+            not isinstance(ready, list)
+            or any(not isinstance(item, str) for item in ready)
+            or not isinstance(blocked, list)
+            or any(not isinstance(item, str) for item in blocked)
+            or set(ready) & set(blocked)
+        ):
+            raise ContractError("calibration_truth_day_readiness_invalid")
+        truth_ready_dates.update(ready)
+        observations = payload.get("observations")
         if not isinstance(observations, list):
             raise ContractError("calibration_truth_observations_invalid")
         for raw in observations:
@@ -128,37 +192,30 @@ def build(
             if str(raw.get("station_id") or "").strip().upper() != station:
                 continue
             if str(raw.get("source_lane") or "").strip().upper() != lane:
-                if temporary_awc_calibration_label:
-                    # The isolated reference packet may also retain AMSC
-                    # half-hour rows.  They remain reference-only and are
-                    # ignored; only explicitly tagged AWC rows are consumed.
-                    continue
                 raise ContractError("calibration_truth_cross_lane_forbidden")
-            if temporary_awc_calibration_label:
-                if (
-                    raw.get("evidence_role") != "REFERENCE_ONLY"
-                    or raw.get("reference_reason")
-                    != AWC_HOUR_REFERENCE_FOR_AMSC
-                ):
-                    raise ContractError(
-                        "temporary_awc_calibration_label_lineage_invalid"
-                    )
-            elif str(raw.get("qc_status") or "") != "ACCEPTED":
+            if (
+                raw.get("source_role") != HISTORICAL_AWC_REPLAY
+                or raw.get("authority_scope") != NO_LIVE_REPLAY
+                or raw.get("settlement_timezone") != settlement_timezone
+                or raw.get("evidence_role") != FORMAL_EVIDENCE_ROLE
+                or raw.get("reference_only") is not False
+            ):
+                raise ContractError("calibration_truth_observation_lineage_invalid")
+            if str(raw.get("qc_status") or "") != "ACCEPTED":
                 continue
             report_type = str(raw.get("report_type") or "").upper()
             valid_at = _utc(raw.get("valid_at_utc"))
-            # The formal China/Taiwan truth lane is AMSC whole-hour METAR only.
-            # Half-hour reports and AWC observations for these stations remain
-            # reference evidence and cannot enter this dataset.
-            if lane == "AMSC" and (
-                report_type != "METAR"
-                or valid_at.minute != 0
-                or valid_at.second != 0
+            if report_type not in {"METAR", "SPECI"}:
+                continue
+            if (
+                report_type == "METAR"
+                and (valid_at.minute != 0 or valid_at.second != 0)
             ):
                 continue
-            if lane == "AWC" and report_type not in {"METAR", "SPECI"}:
-                continue
-            temperature = float(raw.get("reported_temperature_c"))
+            try:
+                temperature = float(raw.get("reported_temperature_c"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError("calibration_truth_temperature_invalid") from exc
             if not math.isfinite(temperature):
                 raise ContractError("calibration_truth_temperature_invalid")
             local_date = valid_at.astimezone(
@@ -169,11 +226,25 @@ def build(
             identity = {
                 "station_id": station,
                 "source_lane": lane,
+                "source_role": HISTORICAL_AWC_REPLAY,
+                "authority_scope": NO_LIVE_REPLAY,
+                "settlement_timezone": settlement_timezone,
+                "evidence_role": FORMAL_EVIDENCE_ROLE,
+                "reference_only": False,
+                "qc_status": "ACCEPTED",
                 "report_type": report_type,
                 "valid_at_utc": _utc_text(valid_at),
                 "reported_temperature_c": temperature,
-                "raw_sha256": str(raw.get("raw_sha256") or ""),
+                "raw_sha256": str(raw.get("raw_sha256") or "").lower(),
             }
+            if (
+                len(identity["raw_sha256"]) != 64
+                or any(
+                    char not in "0123456789abcdef"
+                    for char in identity["raw_sha256"]
+                )
+            ):
+                raise ContractError("calibration_truth_raw_sha_invalid")
             key = content_sha256(identity)
             previous = deduplicated.get(key)
             if previous is not None and previous != identity:
@@ -197,7 +268,7 @@ def build(
             by_date.get(target, []),
             key=lambda row: (row["valid_at_utc"], row["raw_sha256"]),
         )
-        if end > as_of or not rows:
+        if end > as_of or not rows or target not in truth_ready_dates:
             missing_dates.append(target)
             cursor += timedelta(days=1)
             continue
@@ -209,8 +280,11 @@ def build(
                 "start_utc": _utc_text(start),
                 "end_utc": _utc_text(end),
             },
+            "settlement_timezone": settlement_timezone,
             "truth": {
                 "source_lane": lane,
+                "source_role": HISTORICAL_AWC_REPLAY,
+                "authority_scope": NO_LIVE_REPLAY,
                 "tmax_c": maximum,
                 "observations": rows,
             },
@@ -226,11 +300,9 @@ def build(
         "station_id": station,
         "settlement_timezone": settlement_timezone,
         "source_lane": lane,
-        "label_authority": (
-            TEMPORARY_AWC_LABEL_AUTHORITY
-            if temporary_awc_calibration_label
-            else "FORMAL_STATION_LANE_TRUTH"
-        ),
+        "source_role": HISTORICAL_AWC_REPLAY,
+        "authority_scope": NO_LIVE_REPLAY,
+        "label_authority": "FORMAL_STATION_LANE_TRUTH",
         "start_date": start_date,
         "end_date": end_date,
         "as_of_utc": _utc_text(as_of),
@@ -240,9 +312,12 @@ def build(
         "checks": {
             "cross_lane_fallback_used": False,
             "closed_days_only": True,
-            "amsc_whole_hour_only": lane == "AMSC",
-            "temporary_awc_calibration_label":
-                temporary_awc_calibration_label,
+            "formal_awc_truth_only": True,
+            "awc_hourly_metar_and_speci_only": True,
+            "historical_awc_replay_only": True,
+            "input_evidence_content_hashes_verified": True,
+            "settlement_timezone_exact_match": True,
+            "reference_only_excluded": True,
             "sample_count": len(samples),
             "complete_date_coverage": not missing_dates,
         },
@@ -293,15 +368,7 @@ def main() -> int:
     parser.add_argument("--observation-artifact", action="append", type=Path, required=True)
     parser.add_argument("--station-id", required=True)
     parser.add_argument("--settlement-timezone", required=True)
-    parser.add_argument("--source-lane", choices=("AMSC", "AWC"), required=True)
-    parser.add_argument(
-        "--temporary-awc-calibration-label",
-        action="store_true",
-        help=(
-            "Accept only isolated AWC reference evidence for an AMSC-owned "
-            "station and mark it as a temporary historical calibration label."
-        ),
-    )
+    parser.add_argument("--source-lane", choices=("AWC",), required=True)
     parser.add_argument("--start-date", required=True)
     parser.add_argument("--end-date", required=True)
     parser.add_argument(
@@ -324,7 +391,6 @@ def main() -> int:
         start_date=args.start_date,
         end_date=args.end_date,
         as_of_utc=args.as_of_utc,
-        temporary_awc_calibration_label=args.temporary_awc_calibration_label,
     )
     _write(args.output.expanduser().resolve(), result)
     print(json.dumps({

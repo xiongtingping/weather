@@ -14,7 +14,7 @@
   "activation_generation": 1,
   "authority_scope": "PRODUCTION_NO_LIVE",
   "decision": "NO_LIVE_ACTIVATED",
-  "oos_gate_version": "delta-v2-forward-oos-v1",
+  "oos_gate_version": "delta-v2-historical-oos-v1",
   "oos_gate_passed": false,
   "valid_from_utc": "2026-07-29T15:57:00Z",
   "valid_until_utc": "2026-08-31T00:00:00Z",

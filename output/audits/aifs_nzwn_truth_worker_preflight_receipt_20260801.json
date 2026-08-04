@@ -1,0 +1,388 @@
+{
+  "atomic_stage_receipt": {
+    "calls_order_gateway": false,
+    "content_sha256": "ef4e8876f1830d355897ee780b40aa723b62f580398aa2e8ba8fc31f91cbf924",
+    "facts": {
+      "station_scope": {
+        "max_station_count": 45,
+        "mode": "allowlist",
+        "station_ids": [
+          "NZWN"
+        ]
+      }
+    },
+    "forward_oos_boundary": {
+      "blocks_formal_promotion_or_live": true,
+      "blocks_production_no_live": false
+    },
+    "live_submit_authorized": false,
+    "orders_submitted": 0,
+    "payload_content_sha256": "c034fe3107ac8636278a14546c2bec74ca3d4475f86d38fbfdcd986b691de66a",
+    "payload_schema": "bayes_basket_target_post_migration_no_live_run_v1",
+    "payload_state": "BLOCKED_FAIL_CLOSED",
+    "production_no_live": true,
+    "schema": "bayes_basket_target_m9_06_stage_receipt_v1",
+    "stage": "preflight",
+    "state": "BLOCKED_FAIL_CLOSED"
+  },
+  "calls_order_gateway": false,
+  "completed_at_utc": "2026-08-01T12:03:25.854Z",
+  "execution_mode": "production_no_live",
+  "forward_oos_boundary": {
+    "blocks_formal_promotion_or_live": true,
+    "blocks_production_no_live": false
+  },
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "places_orders": false,
+  "preflight": {
+    "activation": {
+      "execution_mode": "production_no_live",
+      "path": "/Users/xiong/weather/config/trading/bayes_basket_target_production_no_live_activation_v1.json",
+      "sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45"
+    },
+    "blockers": [
+      "market_manifest_outside_station_scope"
+    ],
+    "cash_phase_authority": {
+      "as_of_utc": "2026-08-01T12:03:25.724Z",
+      "blockers": [],
+      "calls_order_gateway": false,
+      "content_sha256": "cdb44b458e170b8fa63f8d7d3aeae3d2aa9beb320eb70cd5f2d174c5549e120e",
+      "live_submit_authorized": false,
+      "orders_submitted": 0,
+      "ready_station_ids": [
+        "NZWN"
+      ],
+      "required_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "schema": "cash_phase_preflight_authority_v1",
+      "state": "PASS",
+      "station_authority": {
+        "NZWN": {
+          "artifact_sha256": "b6b0d0f17cbe37e0bc3f7b826bfc17ae570416afabd33649856e955d5d389b9d",
+          "manifest_sha256": "f9be56d9df3c9efeabbd261de4ddc2116c1c11bff8e8f2b9f00250846fb56fe2",
+          "policy_version": "source-clip-clock-v20260716-17-partial-candidate-NZWN",
+          "state": "READY",
+          "valid_until_utc": "2026-08-23T00:00:00Z"
+        }
+      },
+      "station_scope": {
+        "mode": "allowlist",
+        "station_ids": [
+          "NZWN"
+        ]
+      },
+      "unready_station_ids": []
+    },
+    "forward_oos_boundary": {
+      "blocks_formal_promotion_or_live": true,
+      "blocks_production_no_live": false
+    },
+    "legacy_fallback_used": false,
+    "market_manifest": {
+      "event_dates": [
+        "2026-08-01"
+      ],
+      "path": "/Users/xiong/weather/data/bayes_basket_target_official_ws_manifest.json",
+      "sha256": "b0b9cd575d3e2c53a1e1b1c83fca1c540b5294f807085dedc867731f9c275e25",
+      "station_ids": [
+        "CYYZ",
+        "EDDM",
+        "EFHK",
+        "EGLC",
+        "EHAM",
+        "EPWA",
+        "FACT",
+        "KATL",
+        "KAUS",
+        "KBKF",
+        "KLAX",
+        "KLGA",
+        "KMIA",
+        "KORD",
+        "KSEA",
+        "KSFO",
+        "LEMD",
+        "LFPB",
+        "LIMC",
+        "LTAC",
+        "MMMX",
+        "MPMG",
+        "OEJN",
+        "OPKC",
+        "RCSS",
+        "RJTT",
+        "RKPK",
+        "RKSI",
+        "RPLL",
+        "SAEZ",
+        "SBGR",
+        "VILK",
+        "WMKK",
+        "WSSS",
+        "ZBAA",
+        "ZGGG",
+        "ZGSZ",
+        "ZHHH",
+        "ZSPD",
+        "ZSQD",
+        "ZUCK",
+        "ZUUU"
+      ]
+    },
+    "native_ensemble_authority": {
+      "accepted_authority_scopes": [
+        "FORMAL_PROMOTED",
+        "PRODUCTION_NO_LIVE_ONLY"
+      ],
+      "as_of_utc": "2026-08-01T12:03:25.724Z",
+      "blockers": [],
+      "calls_order_gateway": false,
+      "content_sha256": "cedadd20486e3e27965b0db6ed56e39d93bc68749a35bd991dcf7eecc371a8f8",
+      "live_submit_authorized": false,
+      "native_schema_status": {
+        "missing_historical_taf_columns": [],
+        "missing_member_columns": [],
+        "missing_run_cycle_mapping_columns": {},
+        "missing_tables": [],
+        "ok": true,
+        "tables": [
+          "calibration_native_ensemble_system",
+          "calibration_native_ensemble_member_run",
+          "calibration_native_ensemble_member_bucket",
+          "calibration_native_ensemble_historical_member_run",
+          "calibration_native_ensemble_historical_member_bucket",
+          "calibration_native_ensemble_system_artifact",
+          "calibration_cross_native_ensemble_selection_evidence",
+          "calibration_cross_native_ensemble_artifact",
+          "calibration_cross_native_ensemble_oos_evaluation",
+          "calibration_cross_native_ensemble_oos_prediction",
+          "calibration_forward_taf_capture",
+          "calibration_native_ensemble_promotion",
+          "calibration_native_ensemble_activation"
+        ]
+      },
+      "observed_cross_activation_count": 3,
+      "official_native_transports": [
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3"
+      ],
+      "orders_submitted": 0,
+      "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+      "production_no_live_soft_blockers": [],
+      "ready_station_ids": [
+        "NZWN"
+      ],
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "schema": "native_ensemble_preflight_authority_v1",
+      "state": "PASS",
+      "station_authority": {
+        "NZWN": {
+          "candidate_count": 3,
+          "selected": {
+            "activation_id": "native-activation-5d777c8e1f2a22044861b369",
+            "activation_sha256": "5d777c8e1f2a22044861b369b8da90f56f88496f25364bb257cd434b58cfa81f",
+            "cross_artifact_sha256": "c14005d76200c55a007a6e9abfdc0218c7bff242e79e987bd6cacd21b84f7d74",
+            "cross_ensemble_artifact_id": "native-cross-artifact-c14005d76200c55a007a6e9a",
+            "ensemble_system_ids": [
+              "ECMWF_IFS_ENS_OPEN_PF50",
+              "NOAA_GEFS_05"
+            ],
+            "generation": 3,
+            "independence_family_ids": [
+              "ECMWF",
+              "NOAA_GEFS"
+            ],
+            "lead_bucket": "d2",
+            "run_cycle": "18Z",
+            "run_cycle_by_system": {
+              "ECMWF_IFS_ENS_OPEN_PF50": "18Z",
+              "NOAA_GEFS_05": "18Z"
+            },
+            "season_bin": "JJA",
+            "selection_evidence_sha256": "e358c49561a9923365f4007e45f19cf6f6096e2f5e345e1a76d67863c912c7c2",
+            "strict_oos_prediction_count": 9,
+            "valid_until_utc": "2026-08-31T04:02:54.262000Z"
+          },
+          "state": "STRICT_OOS_READY"
+        }
+      },
+      "station_scope": {
+        "mode": "allowlist",
+        "station_ids": [
+          "NZWN"
+        ]
+      },
+      "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+      "unready_station_ids": []
+    },
+    "protected_processes": {
+      "clob_order_service": 3923,
+      "market_ws": 3855,
+      "weather_basket_yes": 3765
+    },
+    "release": {
+      "activation_sha256": "26d60c506b5712d89f1c354b2b5db21f8971df532b94f88dd5e93d1990179c45",
+      "artifact_role": "native_ensemble_ssot_authority",
+      "artifact_sha256": "48393312aa27f62a60e45f23fedc007f00d67280d0f8fa38d563a4dde3e115eb",
+      "execution_mode": "production_no_live",
+      "legacy_fallback_used": false,
+      "release_sha256": "e5886d3746cf39a70f643020f5830bd867fb63675b77669d6bbf4fb0c2423381",
+      "schema": "bayes_basket_target_m9_06_release_identity_v1",
+      "schema_sha256": "4368be4596c43dff19c93ff960df1a2f299aed1050809f7903c0581bd189b69d",
+      "station_ids": [
+        "NZWN"
+      ],
+      "station_scope_mode": "canonical_allowlist"
+    },
+    "resources": {
+      "blockers": [],
+      "free_bytes": 34520526848,
+      "limits": {
+        "max_input_bytes": 16777216,
+        "max_output_bytes": 16777216,
+        "max_rss_bytes": 4294967296,
+        "max_target_db_bytes": 4294967296,
+        "max_target_wal_bytes": 536870912,
+        "minimum_free_bytes": 2147483648
+      },
+      "rss_bytes": 44482560,
+      "state": "PASS",
+      "target_db_bytes": 1574313984,
+      "target_wal_bytes": 31048352
+    },
+    "schema_status": {
+      "calibration_base_schema_ok": true,
+      "calibration_missing_columns": {
+        "calibration_ensemble_artifact": [],
+        "calibration_historical_asof_model_run": [],
+        "calibration_model_station_residual": [],
+        "calibration_station_daily_high_truth": [],
+        "calibration_station_registry": [],
+        "calibration_station_source_authority": []
+      },
+      "calibration_model_pool_schema": {
+        "candidate_models": [
+          "ECMWF",
+          "GFS",
+          "ICON",
+          "GEM",
+          "CMA"
+        ],
+        "missing_or_legacy_tables": [],
+        "ok": true,
+        "tables": {
+          "calibration_historical_asof_model_run": {
+            "five_model_check": true,
+            "present": true
+          },
+          "calibration_model_artifact": {
+            "five_model_check": true,
+            "present": true
+          },
+          "calibration_model_station_residual": {
+            "five_model_check": true,
+            "present": true
+          }
+        }
+      },
+      "calibration_model_pool_schema_ok": true,
+      "ledger_missing_columns": {
+        "auto_trade_decisions": [],
+        "basket_target_order_intents": []
+      },
+      "ledger_schema_ok": true,
+      "maker_grid_oos_missing_tables": [],
+      "maker_grid_oos_schema_ok": true,
+      "missing_tables": [],
+      "ok": true,
+      "policy_training_constraint_ok": true,
+      "policy_training_missing_columns": {
+        "basket_policy_training_fact": [],
+        "basket_policy_training_label": []
+      },
+      "policy_training_schema_ok": true,
+      "probability_evidence_schema": {
+        "calls_order_gateway": false,
+        "missing_tables": [],
+        "ok": true,
+        "places_orders": false,
+        "schema": "bayes_basket_probability_evidence_authority_v1",
+        "tables": [
+          "basket_probability_evidence_artifact",
+          "basket_probability_evidence_promotion",
+          "basket_probability_evidence_activation",
+          "basket_probability_update_proof"
+        ]
+      },
+      "probability_stage_contract_ok": true,
+      "quote_freshness_missing_columns": [],
+      "regime_missing_columns": [],
+      "regime_schema_ok": true,
+      "regime_superseded_schema": {
+        "columns_exact": true,
+        "committed_partial_unique_ok": true,
+        "controlled_update_trigger_ok": true,
+        "legacy_no_update_absent": true,
+        "missing_columns": [],
+        "no_delete_trigger_ok": true,
+        "ok": true,
+        "supports_superseded": true,
+        "table_present": true
+      },
+      "schema": "bayes_basket_target_ssot_v7_native_ensemble_market_timezone_binding",
+      "settlement_timezone_missing_columns": {},
+      "strict_delta_candidate_contract_ok": true,
+      "target_tables_present": true
+    },
+    "state": "BLOCKED_FAIL_CLOSED",
+    "station_scope": {
+      "max_station_count": 45,
+      "mode": "allowlist",
+      "station_ids": [
+        "NZWN"
+      ]
+    },
+    "table_counts": {
+      "auto_trade_decisions": 9707,
+      "basket_confirmed_inventory_snapshot": 2823,
+      "basket_official_ws_snapshot": 4209,
+      "basket_order_state_snapshot": 2819,
+      "basket_policy_training_fact": 1444,
+      "basket_policy_training_label": 623,
+      "basket_probability_envelope": 2350,
+      "basket_target_capital_reservations": 1439,
+      "basket_target_execution_cycles": 9707,
+      "basket_target_execution_version_vectors": 10048,
+      "basket_target_order_events": 0,
+      "basket_target_order_intents": 685
+    }
+  },
+  "receipt_sha256": "9c0fda3ed31ae370a8f059c60003d6bbf0275a9f58abe7019235aaf0cb10fe41",
+  "schema": "bayes_basket_target_post_migration_no_live_run_v1",
+  "stage": "preflight",
+  "started_at_utc": "2026-08-01T12:03:25.668Z",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "station_scope": {
+    "max_station_count": 45,
+    "mode": "allowlist",
+    "station_ids": [
+      "NZWN"
+    ]
+  },
+  "target_db_fingerprint_after": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785585791567977455,
+    "size": 1574313984
+  },
+  "target_db_fingerprint_before": {
+    "device": 16777233,
+    "inode": 1235462603,
+    "mtime_ns": 1785585791567977455,
+    "size": 1574313984
+  },
+  "worker_invoked": false
+}

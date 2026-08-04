@@ -10,6 +10,7 @@ import pytest
 from bayes_basket_target.cash_phase import BasketCashPhasePolicyArtifact
 from bayes_basket_target.cash_phase_authority import CashPhaseAuthorityManifest
 from bayes_basket_target.contracts import ContractError
+from bayes_basket_target.activation import load_target_activation
 from bayes_basket_target.resident_market_ingress import (
     _complete_quote_scopes,
     _policy_for_scope,
@@ -116,6 +117,16 @@ def _cash_authority(
         valid_until_utc=policy.valid_until_utc,
         authority_scope=authority_scope,
     )
+
+
+def test_committed_activation_routes_target_worker_to_weather_basket_yes() -> None:
+    activation = load_target_activation(
+        Path(__file__).parents[1]
+        / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+    )
+    assert activation["next_consumers"] == [
+        "weather_basket_yes_internal_target_worker"
+    ]
 
 
 def test_resident_no_live_market_ingress_materializes_manifest_and_q0(tmp_path: Path) -> None:

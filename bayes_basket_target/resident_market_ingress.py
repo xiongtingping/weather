@@ -1,7 +1,7 @@
 """Resident-owned market evidence materialization for ``production_no_live``.
 
 The market WS service publishes only the official, content-addressed manifest.
-This adapter runs inside the existing ``reported_trajectory_no`` service and
+This adapter runs inside the existing ``weather_basket_yes`` service and
 joins that manifest with target-owned q=0 inventory, target-owned quiescent
 order state, and a promoted cash-phase artifact.  It never contacts an
 exchange, reads legacy ticks/positions, or creates an order.

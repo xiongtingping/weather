@@ -1,0 +1,685 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "network_fetches": 0,
+    "orders_submitted": 0,
+    "preserves_taf_24_sample_gate": true,
+    "production_p0m_materialized": false,
+    "read_only": true,
+    "writes_database": false
+  },
+  "content_sha256": "e675f85fe97b5af2c621e2dad3d7634142824a19147c03cab4b02920eb6d6272",
+  "entries": [
+    {
+      "artifact_content_sha256": "0c3d7235cc21beb7c3d87f8ee6b696af4559159a83288b6d9801196ec5ecffa7",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/CYYZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "CYYZ",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "2fc9e6bad562ef52e997334e6618048bc071c6c90386b686dd8474befd642d71",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EDDM_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "EDDM",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "cb6a1435e6df70dcafc96e7ce81e9951927efe5db9c2b355f39c0327b812f058",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EFHK_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "EFHK",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "7d7a00321cf20aafeca5d90d7392532ae29bfec1af81803c2575bb4a3408882b",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EGLC_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "EGLC",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "2243c28a64de482257b0755693defcb35466c6027eae3baa135dd9b36741f1c4",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EHAM_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "EHAM",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "4235054846c0ebc35d4870a605bce058d033e6ed35b0cd07e218ef2c3c26ebee",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/EPWA_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "EPWA",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "a61330f4e89d39838f2b33e66ea9b4208700482d2e9bcf9b4bf596b1353d01c9",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/FACT_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "FACT",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "a8f3a98d5a510db13664d9b28a2050895b3c0e4c5e75a5d63cc4bcdeeddc100c",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KATL_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KATL",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d242f28acdb000fecb71369b2c87ae9acfe7b7b3c108fd6d484e68d0b51eb424",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KAUS_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KAUS",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "614cc5448a0bec1e54fcf0de8330f40fcd1a58e50a3b94d07920193ac95ad8ea",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KBKF_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 7,
+      "season_bin": "JJA",
+      "station_id": "KBKF",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "86fad672c839b2548d5fa01e560dd013c3b2ccd0bcc962386d2bc2d1f0baa6ec",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KHOU_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KHOU",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "6ee869dba5f0baf166755f59494807f54b701204ba7be936c2efb1ec46201b46",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLAX_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KLAX",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "0dcc9904e3537503e7ff4bc29fc393b88454c591589b4b09c690e2b84c363c1c",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KLGA_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KLGA",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "8596e405fc058d34126190f62ca6bd7abfc1eed6b90bf758278a10ee74489904",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KMIA_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KMIA",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "fc254e1d78f6d704bb0637e416a5287f6b29d4fd7542b06a3f7d3018cbc894be",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KORD_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KORD",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "f8f00cdfaeb314bb2093d91ac24d73c4fcdde7ed15f98632204479a87b78efc8",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSEA_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KSEA",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "1afd93778e69e0f00d8682e0a341a7ab11b777c782e83067bdbf5ed5bc77b90a",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/KSFO_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "KSFO",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "23e3036417238d940e8decc30e2c62186b6e747db9d982966437942fdf26b981",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LEMD_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "LEMD",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "639c283532eb1bee7203d1191904c38f1c3acbbfe2c08bd0df32f7e37b2f3503",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LFPB_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "LFPB",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "c43dff29f7db4a096251bb80f87d37feda57b4b44071057775756dacf4abc118",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LIMC_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "LIMC",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "41785f409ff82d4489d7aac63a6262e1c950182a3c9ec81ba2fe6d9ee00e310c",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/LTAC_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "LTAC",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "a84eab51cf8f14219e7ea9c626445aacb01593e0e3c6f57f7c0c0d3bd9b43340",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MMMX_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 6,
+      "season_bin": "JJA",
+      "station_id": "MMMX",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d2380f05ccd4cd101c390525993f905c69d93c22e6980ecdda0af65c1cf63971",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/MPMG_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "MPMG",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "c9a12e9015c39aac34ad02c3b59b22f60f6f0a94fbb74b1125d5843a91b36942",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/NZWN_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "NZWN",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "dd8b38a2fb90ac46346d77433a720749f822d9b0aa3ae6b7b7e2af89d5ac17f1",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OEJN_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "OEJN",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "5dcfaee05059d39465cfc3437e33a62e17ec6b125b9fcd023231d65d98eb2ebb",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/OPKC_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "OPKC",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d5d2d22eb27d342017e06a1bf922f9fb2a778dc5a125014a91e019db1dae8c0a",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RCSS_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "RCSS",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "872632a2ae2869ab0ee2168dfadf211dc6daf0987499959ee8d5bbe2f65aac9a",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RJTT_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "RJTT",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "42ac34331aefcd833ca5b4ca837d62178fb1d08ceb6eade849d5dc148efa66dc",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKPK_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 11,
+      "season_bin": "JJA",
+      "station_id": "RKPK",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "a120af292717f0a580d548b4757b94c698b9690af4c28f187194abfe0ca25c12",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RKSI_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 11,
+      "season_bin": "JJA",
+      "station_id": "RKSI",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "5919b7e8e3918c5ea79fabff1a9ef0e5baf050007986ca859c9d0fda385376bc",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/RPLL_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "RPLL",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "3bd07adc3f0fad510546cd8022dbf43ae8e50517b30191d57e1a486d8c88bf57",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SAEZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 8,
+      "season_bin": "JJA",
+      "station_id": "SAEZ",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "07d6bd57d5198b9bbf3b5472fd5b004a5681506704c41015e24f16592e61a643",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/SBGR_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 9,
+      "season_bin": "JJA",
+      "station_id": "SBGR",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "5bd7fbf1b231aad18eb4a00a43bc545a2e189e726c014ce7ffe15353e9734fdf",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/VILK_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "VILK",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d21ea640aedcead9d9f5b4f957b1c66e463c96b63cf49fc6df22f23f465bc332",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WMKK_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "WMKK",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d48ae091827a16c2b7a7b377106df01c13867b3fefc324dd042f8b8569dcd06e",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/WSSS_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 0,
+      "season_bin": "JJA",
+      "station_id": "WSSS",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "7d8e27d7e42656f9340b60f42ac93d508c36932ac468c16d7cacc699caa21471",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZBAA_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZBAA",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "14aeaf727ec27397641e1d4abde1a7bd1c5cfcd4fcd9d312b1a37cd888b5fe5d",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGGG_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZGGG",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "7ef070e21d89f1b8683e29fad712c705599ac9acebf15831cfafc2c7f364b54b",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZGSZ_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZGSZ",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "d1485254ff9be029878da62749cc02ee8e1bef027dffab1db63f0e080c002a8c",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZHHH_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZHHH",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "c164bda8b6cdfaf902d0132ec847a196d50dfe33dab17cc5b296b7488d334f5b",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSPD_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZSPD",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "4c54850439ea0f7609de773b88ed5f6c667ab20fdb74d9afd1ed3b25bb60e4fb",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZSQD_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 0,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZSQD",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "c18cef39256218ac5c61b3746c358f21d72bff3f079ff0dabadbac99c19f2001",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUCK_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 1,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 10,
+      "season_bin": "JJA",
+      "station_id": "ZUCK",
+      "wrote": true
+    },
+    {
+      "artifact_content_sha256": "972f75f9c6351d3928d519513f24d9d1fab8f28d7a937f2403a0ceff7d8963bd",
+      "artifact_path": "/Users/xiong/weather/output/audits/persisted_native_taf_exact_join_20260803/ZUUU_JJA_d2_18Z_taf_native_exact_join.json",
+      "ensemble_system_ids": [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05"
+      ],
+      "excluded_correction_sample_count": 2,
+      "lead_bucket": "d2",
+      "run_cycle": "18Z",
+      "sample_count": 9,
+      "season_bin": "JJA",
+      "station_id": "ZUUU",
+      "wrote": true
+    }
+  ],
+  "future_event_count": 0,
+  "official_native_systems": [
+    "ECCC_GEM_GLOBAL_ENS",
+    "ECMWF_IFS_ENS_OPEN_PF50",
+    "NOAA_GEFS_05"
+  ],
+  "oos_data_policy": "HISTORICAL_CLOSED_DAY_ONLY",
+  "schema": "persisted_native_taf_exact_join_rebuild_v1",
+  "scope_count": 44,
+  "state": "REBUILT_READ_ONLY",
+  "station_count": 44
+}

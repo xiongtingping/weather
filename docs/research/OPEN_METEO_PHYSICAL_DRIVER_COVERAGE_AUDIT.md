@@ -12,22 +12,23 @@ effective_from: 2026-07-15
 
 ## 1. 结论先行
 
-Open-Meteo **足够支撑物理状态空间方案的数据结构原型和研究探针，但不足以独立支撑整套最高温系统，更不能按当前 L1 合同进入生产概率链**。
+Open-Meteo **足够支撑物理状态空间方案的数据结构原型和研究探针；在官方 native 对象不可用时，还可在独立 lineage 下补位 no-live P0/P0-M，但不足以独立支撑整套最高温系统**。
 
 更直白地说：
 
 1. 它能提供大部分 `U_t` 弱驱动：2 m 温度/露点、云、雨、风、气压、短波辐射、土壤、850/700 hPa 环境场；集合 API 还能提供成套天气情景。
 2. GFS 是本次探测中字段最全的 transport：额外返回 PBL、感热通量、潜热通量；ECMWF 9 km HRES 也返回 PBL。
-3. 它不能提供机场 canonical METAR/SPECI、TAF 原文与修订身份、AMSC 最终物理 `X`、市场结算 `S/B`，因此不能替代强观测、预测报文或结算源。
+3. 它不能提供机场 canonical METAR/SPECI、TAF 原文与修订身份、AMSC 最终物理 `X`、市场结算 `S/B`，因此不能替代强观测、预测报文或结算源；它只能在 native 缺失时作为 no-live P0/P0-M fallback。
 4. 它没有完整能量闭合：没有统一可比的四分量净辐射、地表储热、完整 `C_eff` 或站点级水平平流。现有字段只能约束隐状态和诊断量，不能把 NWP 字段当成真实状态。
-5. 当前已签署合同 [OFFICIAL_NWP_WEAK_SOURCE_CUTOVER.md](../contracts/OFFICIAL_NWP_WEAK_SOURCE_CUTOVER.md) 明确要求 ECMWF/DWD/NOAA/JMA 直连，Open-Meteo 已退出 production，不得成为 live、artifact 或 fallback。
+5. 当前合同 [OFFICIAL_NWP_WEAK_SOURCE_CUTOVER.md](../contracts/OFFICIAL_NWP_WEAK_SOURCE_CUTOVER.md) 要求 ECMWF/DWD/NOAA/JMA native 直连优先；Open-Meteo 只能作为有 lineage、历史 strict-as-of 激活的 no-live fallback，不得成为 native arrival、P1 或 formal/live authority。
 
 因此，正确定位是：
 
 ```text
-Open-Meteo = 研究期字段可得性探针 / schema 原型 / legacy 对照
+Open-Meteo = native 缺失时的有界 no-live P0/P0-M fallback
+           + 研究期字段可得性探针 / schema 原型 / legacy 对照
            ≠ canonical observation
-           ≠ 官方生产 NWP transport
+           ≠ native arrival / P1 / formal-live authority
            ≠ 结算源
            ≠ 最终最高温答案
 ```
@@ -123,7 +124,7 @@ Open-Meteo 集合 API 的 individual members 只保留最多约 3 天历史；�
 
 ### Critical — 生产治理不相容
 
-当前 L1 合同明确禁止 Open-Meteo 进入 production：`open_meteo=false`、`aggregator_or_republisher=false` 是 snapshot validator 的硬条件。任何“字段更方便所以恢复 Open-Meteo fallback”的实现都违反现行合同。若未来要改变，必须先以新 ADR/L1 合同显式取代旧合同，不能在 adapter 内偷渡。
+当前 L1 合同禁止 Open-Meteo 冒充 native：native snapshot 仍要求 `open_meteo=false`、`aggregator_or_republisher=false`。但 native 对象缺失、失效或未及时到达时，独立 republisher ingress 可生成带 `aggregator_republisher` lineage 的 no-live P0/P0-M fallback；没有历史 strict-as-of OOS activation 时必须保持 candidate/fail-closed，不能进入 P1、native arrival 或 formal/live authority。
 
 ### High — 来源和 run 身份不能只靠 forecast payload
 
@@ -183,7 +184,7 @@ PBL、垂直速度、辐射、土壤和通量都有模型依赖。字段 key 存
 2. 禁止把 `current` 当观测；
 3. 禁止把 `daily temperature_2m_max` 当第一性原理模型的最终答案；
 4. 禁止把空值填 0、跨 run 补值或用另一模型同名字段替代；
-5. 禁止让 Open-Meteo research artifact 进入新 P0、posterior、decision 或 order；
+5. 允许的 Open-Meteo fallback 只能进入 no-live P0/P0-M candidate；没有历史 strict-as-of OOS activation 时不得进入 posterior、decision 或 order；任何 forward 数据均为 `observational_candidate_not_oos`；
 6. 禁止把同 provider 的 deterministic/ensemble/member 当独立来源重复计权；
 7. 禁止按同字段名把 legacy Open-Meteo v3.1 系数迁移到官方 GRIB 特征。
 
@@ -243,7 +244,7 @@ GEFS / ECMWF EPS / ICON EPS members
 - [ ] ensemble 保存 member identity，不把成员当 provider；
 - [ ] daily max 不进入 hourly trajectory；
 - [ ] 所有产物标记 `research_only=true`、`production_weight_input=false`；
-- [ ] production import graph 与 runtime catalog 均拒绝 Open-Meteo；
+- [ ] production import graph 与 runtime catalog 拒绝无 lineage 的 Open-Meteo；有 lineage 的 fallback 只能在 native 缺失且历史 OOS activation 通过时进入 no-live P0/P0-M；
 - [ ] 任何合同变更先走 ADR/L1，不在代码中隐式放宽。
 
 ## 10. 对当前第一性原理方案的具体完善

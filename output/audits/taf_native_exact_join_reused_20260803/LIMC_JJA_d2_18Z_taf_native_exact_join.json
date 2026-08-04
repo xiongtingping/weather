@@ -1,0 +1,23 @@
+{
+  "content_sha256": "c43dff29f7db4a096251bb80f87d37feda57b4b44071057775756dacf4abc118",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "87413e4a10f0ab6b854c2dce3475a6c3f2ca12751b55366e15d9f48ebd5786f4",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Rome",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LIMC"
+}

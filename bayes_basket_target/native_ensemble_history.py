@@ -17,7 +17,10 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
-from .native_ensemble_store import _insert_content_addressed
+from .native_ensemble_store import (
+    _insert_content_addressed,
+    republisher_product_identity,
+)
 from .open_meteo_ensemble import (
     API_URL,
     ENSEMBLE_SYSTEMS,
@@ -27,7 +30,7 @@ from .open_meteo_ensemble import (
     _member_bucket_probabilities,
 )
 from .p0_producer import bucket_intervals_from_registry_rows
-from .ssot import native_ensemble_foundation_schema_status
+from .ssot import republisher_ensemble_schema_status
 
 
 SCHEMA = "open_meteo_native_ensemble_historical_archive_v1"
@@ -55,6 +58,7 @@ def capture_historical_archive(
     registry_rows: Sequence[Mapping[str, Any]],
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
+    ensemble_system_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     station = str(station_id or "").strip().upper()
     days = sorted(set(str(value or "").strip() for value in event_dates))
@@ -89,13 +93,30 @@ def capture_historical_archive(
         for bucket, (lower, upper) in intervals.items()
     }
     bucket_contract_sha = content_sha256(frozen_intervals)
+    selected_system_ids = tuple(
+        sorted(
+            {
+                str(value or "").strip()
+                for value in (
+                    ENSEMBLE_SYSTEMS
+                    if ensemble_system_ids is None
+                    else ensemble_system_ids
+                )
+                if str(value or "").strip()
+            }
+        )
+    )
+    if not selected_system_ids or any(
+        value not in ENSEMBLE_SYSTEMS for value in selected_system_ids
+    ):
+        raise ContractError("native_ensemble_history_system_selection_invalid")
     query = urlencode({
         "latitude": float(latitude),
         "longitude": float(longitude),
         "daily": VARIABLE,
         "models": ",".join(
-            str(config["api_model"])
-            for config in ENSEMBLE_SYSTEMS.values()
+            str(ENSEMBLE_SYSTEMS[system_id]["api_model"])
+            for system_id in selected_system_ids
         ),
         "timezone": settlement_timezone,
         "start_date": days[0],
@@ -110,7 +131,8 @@ def capture_historical_archive(
     for event_date in days:
         systems: list[dict[str, Any]] = []
         unavailable: list[dict[str, str]] = []
-        for system_id, config in ENSEMBLE_SYSTEMS.items():
+        for system_id in selected_system_ids:
+            config = ENSEMBLE_SYSTEMS[system_id]
             try:
                 members = _extract_target_members(
                     payload,
@@ -178,6 +200,7 @@ def capture_historical_archive(
         "bucket_contract_sha256": bucket_contract_sha,
         "bucket_intervals": frozen_intervals,
         "captures": captures,
+        "selected_system_ids": list(selected_system_ids),
         "archive_contract": {
             "documentation_url": DOCUMENTATION_URL,
             "provider_describes_past_days_as_archived_forecasts": True,
@@ -199,8 +222,8 @@ def ingest_historical_archive(
     conn: sqlite3.Connection,
     archive: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
-        raise ContractError("native_ensemble_foundation_schema_required")
+    if republisher_ensemble_schema_status(conn)["ok"] is not True:
+        raise ContractError("republisher_ensemble_schema_required")
     if archive.get("schema") != SCHEMA:
         raise ContractError("native_ensemble_history_schema_invalid")
     identity = {
@@ -286,34 +309,17 @@ def ingest_historical_archive(
                     raise ContractError(
                         "native_ensemble_history_system_invalid"
                     )
-                system_identity = {
-                    "ensemble_system_id": system_id,
-                    "canonical_name": config["canonical_name"],
-                    "independence_family_id": config[
-                        "independence_family_id"
-                    ],
-                    "provider_id": config["provider_id"],
-                    "source_class": "NATIVE_ENSEMBLE_PROVIDER",
-                    "aggregator_or_republisher": 0,
-                    "expected_member_count": config[
-                        "expected_member_count"
-                    ],
-                    "member_identity_contract_version": (
-                        "open_meteo_control_plus_perturbed_v1"
-                    ),
-                    "publication_contract_version": (
-                        "native_timestamps_required_for_formal_v1"
-                    ),
-                    "valid_from_utc": "2026-07-31T00:00:00Z",
-                    "valid_until_utc": "9999-12-31T23:59:59Z",
-                }
+                # Historical Open-Meteo is a training candidate only.  Keep
+                # the product catalog outside the native registry so a
+                # shared upstream model name cannot become arrival evidence.
+                system_identity = republisher_product_identity(system_id)
                 system_row = {
                     **system_identity,
                     "content_sha256": content_sha256(system_identity),
                 }
                 counts["systems"] += _insert_content_addressed(
                     conn,
-                    table="calibration_native_ensemble_system",
+                    table="calibration_republisher_ensemble_product",
                     primary_key="ensemble_system_id",
                     row=system_row,
                 )
@@ -348,7 +354,7 @@ def ingest_historical_archive(
                 existing_members = conn.execute(
                     "SELECT member_id,member_role,raw_tmax_c,provider_id,"
                     "transport_provider_id,authority_scope,holdout_eligible "
-                    "FROM calibration_native_ensemble_"
+                    "FROM calibration_republisher_ensemble_"
                     "historical_member_run "
                     "WHERE ensemble_system_id=? AND station_id=? "
                     "AND target_local_date=? "
@@ -407,7 +413,7 @@ def ingest_historical_archive(
                         "SELECT bucket_intervals_json,"
                         "raw_bucket_probabilities_json,source_role,"
                         "authority_scope,holdout_eligible "
-                        "FROM calibration_native_ensemble_"
+                        "FROM calibration_republisher_ensemble_"
                         "historical_member_bucket "
                         "WHERE ensemble_system_id=? AND station_id=? "
                         "AND target_local_date=? "
@@ -474,7 +480,7 @@ def ingest_historical_archive(
                         "SELECT member_role,raw_tmax_c,provider_id,"
                         "transport_provider_id,authority_scope,"
                         "holdout_eligible "
-                        "FROM calibration_native_ensemble_"
+                        "FROM calibration_republisher_ensemble_"
                         "historical_member_run "
                         "WHERE ensemble_system_id=? AND station_id=? "
                         "AND target_local_date=? "
@@ -514,7 +520,7 @@ def ingest_historical_archive(
                             _insert_content_addressed(
                                 conn,
                                 table=(
-                                    "calibration_native_ensemble_"
+                                    "calibration_republisher_ensemble_"
                                     "historical_member_run"
                                 ),
                                 primary_key=(
@@ -552,7 +558,7 @@ def ingest_historical_archive(
                     "SELECT bucket_intervals_json,"
                     "raw_bucket_probabilities_json,source_role,"
                     "authority_scope,holdout_eligible "
-                    "FROM calibration_native_ensemble_"
+                    "FROM calibration_republisher_ensemble_"
                     "historical_member_bucket "
                     "WHERE ensemble_system_id=? AND station_id=? "
                     "AND target_local_date=? "
@@ -585,7 +591,7 @@ def ingest_historical_archive(
                         _insert_content_addressed(
                             conn,
                             table=(
-                                "calibration_native_ensemble_"
+                                "calibration_republisher_ensemble_"
                                 "historical_member_bucket"
                             ),
                             primary_key=(

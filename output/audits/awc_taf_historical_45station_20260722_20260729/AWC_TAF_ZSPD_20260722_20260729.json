@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": true,
+    "replacement_required_when_canonical_history_available": true,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "ba13b0770c1a4c45d43c0944e46c55eb8d51e0a912c21ba18c4d0627baee7afd",
+  "content_sha256": "f4be66f2238e812f00d44d8461f5f975cea6fed4dec48defcf5d021fc639acee",
   "end_date": "2026-07-29",
   "excluded_sample_count": 0,
   "excluded_samples": [],
@@ -32,12 +37,14 @@
         "taf_response_sha256": "c2a0cd972a9fde446d34c8921b0eb4cd4bc954e3844e20e7b5b0ab3e35eb5eb1",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-21T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-af2fbe99e04e638382b7118e5446a086",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-22T16:00:00Z",
         "start_utc": "2026-07-21T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-21T16:00:15Z",
@@ -412,8 +419,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.0
-      }
+        "tmax_c": 35.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-22T17:00:00Z",
@@ -424,12 +443,14 @@
         "taf_response_sha256": "57a860b551632d7af46da2dd6a96c4a21d14ebb4ce3d3f525b0a8cc59e0218c2",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-22T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-9834eba9f8573fa3f5e5ec5e1c7526fe",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-23T16:00:00Z",
         "start_utc": "2026-07-22T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-22T16:00:32Z",
@@ -783,8 +804,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.0
-      }
+        "tmax_c": 35.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-23T17:00:00Z",
@@ -795,12 +828,14 @@
         "taf_response_sha256": "3512c10dd19b196726c7ec9056ccadd1eef18d5f6b8ee9d693701442abdfb854",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-23T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-0290b01b13e6c3d86f639c1d65c17120",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-24T16:00:00Z",
         "start_utc": "2026-07-23T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-23T16:00:39Z",
@@ -1154,8 +1189,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 36.0
-      }
+        "tmax_c": 36.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-24T17:00:00Z",
@@ -1166,12 +1213,14 @@
         "taf_response_sha256": "993b0d014875b6fbcce8ff012f8ff7739f8d18bedfd0bbf16e662cb9e8f1f283",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-24T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-57128c038ddfd18cf27fb2954d7b1078",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-25T16:00:00Z",
         "start_utc": "2026-07-24T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-24T16:00:23Z",
@@ -1525,8 +1574,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.0
-      }
+        "tmax_c": 35.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-25T17:00:00Z",
@@ -1537,12 +1598,14 @@
         "taf_response_sha256": "9a0292ed27061886ad5a0c67fbcd460c8d87d15a332e1255ba7473519fb0a784",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-25T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-3d7084c2137ba84a51c0d4330350c453",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-26T16:00:00Z",
         "start_utc": "2026-07-25T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-25T16:00:16Z",
@@ -1896,8 +1959,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.0
-      }
+        "tmax_c": 35.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-26T17:00:00Z",
@@ -1908,12 +1983,14 @@
         "taf_response_sha256": "3633298981260f83cfd7e9a64b6f66d381421f1dc4c53c91ec4bae5550d721ea",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-26T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-9f2f03e244044d92d6d04b652961350e",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-27T16:00:00Z",
         "start_utc": "2026-07-26T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-26T16:01:26Z",
@@ -2267,8 +2344,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 34.0
-      }
+        "tmax_c": 34.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-27T17:00:00Z",
@@ -2279,12 +2368,14 @@
         "taf_response_sha256": "00b3f5cca61c9e67eb174ad931fdf261cc9e4b7c17fad8437a456d0b27013895",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-27T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-962cacf38f90370f81bce82ebc360d43",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-28T16:00:00Z",
         "start_utc": "2026-07-27T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-27T16:00:18Z",
@@ -2638,8 +2729,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 33.0
-      }
+        "tmax_c": 33.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     },
     {
       "decision_anchor_utc": "2026-07-28T17:00:00Z",
@@ -2650,12 +2753,14 @@
         "taf_response_sha256": "252fc0f90c9fd6582355f52aedc1d43d0aaae300e63627cce1f39dff3d70f0f5",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=ZSPD&format=json&time=issue&date=2026-07-28T17%3A00%3A00Z"
       },
+      "reference_only": true,
       "sample_id": "taf-sample-2b24bbba823489d724762815d8819509",
       "settlement_timezone": "Asia/Shanghai",
       "settlement_window": {
         "end_utc": "2026-07-29T16:00:00Z",
         "start_utc": "2026-07-28T16:00:00Z"
       },
+      "source_lane": "AMSC",
       "station_id": "ZSPD",
       "taf": {
         "available_time_utc": "2026-07-28T16:00:19Z",
@@ -3009,13 +3114,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 35.0
-      }
+        "tmax_c": 35.0,
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": true,
+        "replacement_required_when_canonical_history_available": true,
+        "station_source_lane": "AMSC",
+        "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+      },
+      "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "Asia/Shanghai",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AMSC",
   "start_date": "2026-07-22",
-  "station_id": "ZSPD"
+  "station_id": "ZSPD",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": true,
+    "replacement_required_when_canonical_history_available": true,
+    "station_source_lane": "AMSC",
+    "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
+  },
+  "truth_label_authority": "TEMPORARY_AWC_CALIBRATION_LABEL"
 }

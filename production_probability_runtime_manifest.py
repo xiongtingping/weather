@@ -1,4 +1,8 @@
-"""Current-file identity for the sole production probability runtime."""
+"""Content identity for the retired historical probability runtime.
+
+This module is retained only so old receipts remain reproducible.  It is not
+an activation or production-source authority for the weather basket service.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent
+AUTHORITY_SCOPE = "RETIRED_HISTORY_ONLY"
+PRODUCTION_RUNTIME_AUTHORIZED = False
 RUNTIME_FILES = (
     "production_probability_runtime_manifest.py",
     "production_probability_activation_contract.py",
@@ -20,15 +26,12 @@ RUNTIME_FILES = (
     "physical_x_bucket_contract_runtime.py",
     "temperature_prior_runtime.py",
     "joint_weak_live_evidence_runtime.py",
+    "amsc_taf_revision_runtime.py",
     "independent_weak_live_source_runtime.py",
     "joint_forecast_weak_likelihood_runtime.py",
     "joint_weak_baseline_artifact_runtime.py",
     "joint_weak_bias_calibration_runtime.py",
     "weak_likelihood_source_set_runtime.py",
-    "amsc_taf_revision_runtime.py",
-    "amsc_half_hour_trigger_runtime.py",
-    "amsc_poll_slot_runtime.py",
-    "amsc_raw_history_archive.py",
     "external_forecast_snapshot_runtime.py",
     "weak_forecast_revision_bayes_runtime.py",
     "weak_forecast_evidence_snapshot_runtime.py",
@@ -37,14 +40,12 @@ RUNTIME_FILES = (
     "weak_forecast_revision_transaction_runtime.py",
     "production_weak_forecast_revision_writer.py",
     "production_weak_forecast_revision_event_runtime.py",
-    "scripts/apply_amsc_taf_forecast_revision_from_plan.py",
-    "scripts/fetch_zuuu_metar_taf.py",
-    "scripts/append_strict_asof_forecast_p1_ingress.py",
     "scripts/strict_asof_forecast_capture_readiness.py",
     "weather_source_acquisition_manager.py",
     "source_observation_runtime.py",
     "source_observation_replay_eligibility_runtime.py",
     "strict_asof_forecast_capture_runtime.py",
+    "strict_asof_forecast_candidate_scan.py",
     "strict_asof_forecast_p1_ingress_writer.py",
     "strict_asof_forecast_source_observation_runtime.py",
     "initial_posterior_checkpoint_shadow.py",
@@ -77,14 +78,9 @@ RUNTIME_FILES = (
     "production_sequential_bayes_transaction_b_host.py",
     "production_sequential_bayes_event_runtime.py",
     "production_canonical_event_drain_runtime.py",
-    "production_amsc_archive_probability_ingress.py",
-    "scripts/apply_amsc_probability_fast_lane_from_plan.py",
-    "scripts/amsc_probability_pending_queue.py",
     "scripts/archive_db_wal_keeper.py",
-    "p2_canonical_amsc_forward_writer.py",
     "canonical_observation_runtime.py",
     "canonical_observation_writer.py",
-    "strict_amsc_hard_observation_reader.py",
     "weather_fact_snapshot_writer.py",
     "zuuu_metar_reporting_schedule.py",
     "production_probability_successor_activation_contract.py",
@@ -102,7 +98,13 @@ RUNTIME_FILES = (
     "production_reported_x_weak_revision_event_runtime.py",
     "taf_revision_candidate_selection_runtime.py",
     "production_reported_x_canonical_event_drain_runtime.py",
-    "production_reported_x_amsc_archive_probability_ingress.py",
+)
+RETIRED_NETWORK_ENTRYPOINTS = (
+    "scripts/fetch_zuuu_metar_taf.py",
+)
+RETIRED_HISTORY_ONLY_FILES = (
+    "amsc_raw_history_archive.py",
+    "amsc_taf_revision_runtime.py",
 )
 RETIREMENT_FILES = (
     "scripts/run_amsc_zuuu_metar_taf_poll_immutable.sh",
@@ -135,7 +137,10 @@ def _sha(value: Any) -> str:
 def build_current_runtime_manifest(root: Path | str = ROOT) -> dict[str, Any]:
     base = Path(root).expanduser().resolve()
     return {
-        "schema": "production_probability_runtime_manifest_v1",
+        "schema": "retired_probability_runtime_manifest_v1",
+        "authority_scope": AUTHORITY_SCOPE,
+        "production_runtime_authorized": PRODUCTION_RUNTIME_AUTHORIZED,
+        "network_entrypoints": [],
         "files": {
             name: hashlib.sha256((base / name).read_bytes()).hexdigest()
             for name in RUNTIME_FILES
@@ -200,21 +205,22 @@ def audit_runtime_manifest_dependency_closure(root: Path | str = ROOT) -> dict[s
 
 def build_current_retirement_receipt(root: Path | str = ROOT) -> dict[str, Any]:
     base = Path(root).expanduser().resolve()
-    retirement_text = "\n".join(
-        (base / name).read_text(encoding="utf-8") for name in RETIREMENT_FILES
-    )
+    existing = [name for name in RETIREMENT_FILES if (base / name).exists()]
     return {
-        "schema": "legacy_probability_writer_retirement_receipt_v1",
+        "schema": "legacy_probability_writer_retirement_receipt_v2",
+        "authority_scope": AUTHORITY_SCOPE,
         "files": {
-            name: hashlib.sha256((base / name).read_bytes()).hexdigest()
+            name: (
+                hashlib.sha256((base / name).read_bytes()).hexdigest()
+                if (base / name).is_file()
+                else None
+            )
             for name in RETIREMENT_FILES
         },
-        "legacy_probability_writer_absent": all(
-            token not in retirement_text for token in LEGACY_PROBABILITY_WRITER_TOKENS
-        ),
-        "production_probability_ingress_enabled_by_deployment": all(
-            token in retirement_text for token in PRODUCTION_PROBABILITY_INGRESS_TOKENS
-        ),
+        "existing_retired_entrypoints": sorted(existing),
+        "legacy_probability_writer_absent": not existing,
+        "production_probability_ingress_enabled_by_deployment": False,
+        "production_runtime_authorized": False,
     }
 
 
@@ -223,8 +229,12 @@ def current_retirement_receipt_sha256(root: Path | str = ROOT) -> str:
 
 
 __all__ = [
+    "AUTHORITY_SCOPE",
+    "PRODUCTION_RUNTIME_AUTHORIZED",
     "RUNTIME_FILES",
     "RETIREMENT_FILES",
+    "RETIRED_HISTORY_ONLY_FILES",
+    "RETIRED_NETWORK_ENTRYPOINTS",
     "audit_runtime_manifest_dependency_closure",
     "build_current_runtime_manifest",
     "build_current_retirement_receipt",

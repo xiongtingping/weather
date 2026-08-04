@@ -12,6 +12,8 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .materialization import materialize_p1
 from .metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
@@ -197,7 +199,12 @@ def _fallback_trajectory_artifact(
     maturity_bin: str,
     as_of_utc: str,
 ) -> MetarTrajectoryLikelihoodArtifact:
-    """Create a content-addressed alpha-zero artifact for hard-bound continuity."""
+    """Create an offline hard-bound-only replay artifact.
+
+    Production callers must resolve a formally promoted trajectory artifact
+    before invoking the compiler; this identity-LR fallback is retained only
+    for explicit offline diagnostics and historical replay.
+    """
 
     return build_metar_trajectory_likelihood_artifact({
         "activation_id": "NONE",
@@ -249,6 +256,7 @@ def compile_station_p1_packets(
     registry_rows: Sequence[Mapping[str, Any]],
     compilation_at_utc: str,
     freshness_seconds: int = 3600,
+    decision_floor_at_utc: str | None = None,
     consumed_observation_ids: set[str] | None = None,
     trajectory_artifact: (
         MetarTrajectoryLikelihoodArtifact | Mapping[str, Any] | None
@@ -274,7 +282,7 @@ def compile_station_p1_packets(
         )
     )
     if root is None or root.stage not in {"P0", "P0-M"}:
-        raise ContractError("p1_prediction_root_missing")
+        raise ContractError("p1_prediction_root_stage_invalid")
     if (
         root.station_id != previous.station_id
         or root.event_date != previous.event_date
@@ -312,6 +320,17 @@ def compile_station_p1_packets(
     running_high_c: float | None = None
     generation = 0
     last_decision = _parse_utc(previous.decision_at_utc)
+    if decision_floor_at_utc is not None:
+        floor = _parse_utc(decision_floor_at_utc)
+        if floor > compile_at:
+            raise ContractError("p1_decision_floor_future")
+        if floor > last_decision:
+            # A root rebase can replay a prefix whose old P1 branch used the
+            # same observation timestamp.  Keep the append-only stage clock
+            # strictly after every visible P1 branch, not only the selected
+            # predecessor, so stage routing never sees same-instant competing
+            # authorities.
+            last_decision = floor
     trajectory_prefix: list[MetarTrajectoryObservation] = []
     for sequence, observation in enumerate(ordered, start=1):
         if (
@@ -370,11 +389,34 @@ def compile_station_p1_packets(
                 },
                 "canonical_committed_at_utc": _stamp(committed),
                 "temperature_c": reported_c,
+                "raw_text": str(observation.get("raw_text") or "").strip()
+                or None,
             })
         )
         if observation_id in consumed:
             continue
         high_advanced = old_high is None or reported_c > old_high
+        if not high_advanced:
+            continue
+        explicit_artifact = (
+            trajectory_artifact
+            if isinstance(trajectory_artifact, MetarTrajectoryLikelihoodArtifact)
+            else MetarTrajectoryLikelihoodArtifact.from_mapping(
+                trajectory_artifact
+            )
+            if isinstance(trajectory_artifact, Mapping)
+            else None
+        )
+        if (
+            explicit_artifact is not None
+            and explicit_artifact.method_version
+            in {
+                METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+                METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+            }
+            and len(trajectory_prefix) < 3
+        ):
+            continue
         decision = max(
             committed,
             last_decision + timedelta(microseconds=1),
@@ -476,14 +518,16 @@ def select_p1_replay_base(
     set[str],
     bool,
 ]:
-    """Select the newest dynamic P0 branch and incremental replay cursor.
+    """Select the newest available P0/P0-M branch and replay cursor.
 
     A replay cursor is durable history, not necessarily a currently
     consumable probability.  It may therefore be stale while a delayed
     formal observation is being applied.  The resident writer must append
     that deterministic replay result even when it is already stale, so the
-    observation is consumed exactly once.  Stage selection independently
-    rejects a stale P1 for decisions and never falls back to P0.
+    observation is consumed exactly once.  P1 is rooted at the newest
+    compatible P0-M when that checkpoint exists; otherwise it is rooted at
+    the current P0.  Both cases bind the exact root checkpoint and content
+    hash, so an old P1 from another root cannot become a replay cursor.
     """
 
     rows = [
@@ -513,44 +557,69 @@ def select_p1_replay_base(
         == root_id
     ]
     base = (
-        _select_replay_checkpoint(
-            branch_taf,
-            as_of_utc=as_of_utc,
-        )
+        _select_replay_checkpoint(branch_taf, as_of_utc=as_of_utc)
         if branch_taf
         else latest_p0
     )
-    branch_p1 = [
-        row
-        for row in rows
-        if row.stage == "P1"
-        and row.decision_at_utc <= as_of_utc
-        and (
-            str(
-                row.lineage.get("prediction_root_checkpoint_id")
-                or ""
-            )
-            == base.checkpoint_id
-            or (
-                not row.lineage.get("prediction_root_checkpoint_id")
-                and str(row.lineage.get("p0_root_checkpoint_id") or "")
-                == root_id
-            )
-        )
-    ]
+    if base.stage == "P0":
+        p0_root_content = base.content_sha256
+    else:
+        p0_root_content = str(
+            base.lineage.get("p0_root_content_sha256") or ""
+        ).lower()
+        if len(p0_root_content) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in p0_root_content
+        ):
+            raise ContractError("p1_replay_p0m_root_lineage_missing")
+        if p0_root_content != latest_p0.content_sha256:
+            raise ContractError("p1_replay_p0m_root_lineage_mismatch")
+    branch_p1: list[ProbabilityEnvelope] = []
+    for row in rows:
+        if row.stage != "P1" or row.decision_at_utc > as_of_utc:
+            continue
+        lineage = row.lineage
+        if lineage.get("prediction_root_stage") != base.stage:
+            continue
+        if str(lineage.get("prediction_root_checkpoint_id") or "") != base.checkpoint_id:
+            continue
+        if str(lineage.get("prediction_root_content_sha256") or "").lower() != base.content_sha256:
+            continue
+        if str(lineage.get("p0_root_checkpoint_id") or "") != root_id:
+            continue
+        p0_content = str(lineage.get("p0_root_content_sha256") or "").lower()
+        # Early P0-root P1 rows predate the explicit ancestor-content field;
+        # for that branch the prediction-root content is the exact P0
+        # ancestor and is safe to derive.  P0-M-root rows must carry the
+        # explicit P0 ancestor and never receive this compatibility shortcut.
+        if not p0_content and lineage.get("prediction_root_stage") == "P0":
+            p0_content = str(lineage.get("prediction_root_content_sha256") or "").lower()
+        if p0_content == p0_root_content:
+            branch_p1.append(row)
     if branch_p1:
         predecessor = _select_replay_checkpoint(
             branch_p1,
             as_of_utc=as_of_utc,
         )
-        consumed = {
-            str(
-                row.lineage.get(
-                    "canonical_observation_event_id"
-                ) or ""
+        consumed: set[str] = set()
+        for row in branch_p1:
+            # Each P1 row carries the complete canonical prefix used to
+            # recompute it.  Replaying only the last event would feed the
+            # already-consumed prefix back into the compiler and then fail
+            # append-only insertion with p1_canonical_event_already_consumed.
+            prefix = str(
+                row.lineage.get("canonical_observation_ids") or ""
             )
-            for row in branch_p1
-        } - {""}
+            consumed.update(
+                item.strip()
+                for item in prefix.split(",")
+                if item.strip()
+            )
+            event_id = str(
+                row.lineage.get("canonical_observation_event_id") or ""
+            ).strip()
+            if event_id:
+                consumed.add(event_id)
         return base, predecessor, consumed, False
     return base, base, set(), any(row.stage == "P1" for row in rows)
 

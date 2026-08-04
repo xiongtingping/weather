@@ -45,7 +45,6 @@ from .native_ensemble_oos import (
     _probabilities,
 )
 from .native_ensemble_training_facts import (
-    TEMPORARY_AWC_CALIBRATION_LABEL,
     _rebin_probabilities,
 )
 from .ssot import native_ensemble_foundation_schema_status
@@ -505,14 +504,18 @@ def _bucket_intervals_for_candidate(
             "SELECT bucket_intervals_json FROM "
             "calibration_native_ensemble_historical_member_bucket "
             "WHERE ensemble_system_id=? AND station_id=? "
+            # Historical bucket facts are keyed by their immutable member
+            # set and archive receipt.  ``run_cycle`` exists on the related
+            # member-run facts, but intentionally is not duplicated in this
+            # append-only bucket table.  A second result remains an explicit
+            # ambiguity and therefore fails closed below.
             "AND target_local_date=? AND archive_lead_bucket=? "
-            "AND run_cycle=? ORDER BY archive_query_at_utc LIMIT 2",
+            "ORDER BY archive_query_at_utc LIMIT 2",
             (
                 system_id,
                 str(candidate["station_id"]),
                 str(prediction["event_date"]),
                 str(candidate["lead_bucket"]),
-                str(candidate["run_cycle_by_system"][system_id]),
             ),
         ).fetchall()
         if len(found) > 1:
@@ -563,7 +566,7 @@ def _taf_truth_for_prediction(
         "SELECT official_tmax_c,canonical_committed_at_utc,truth_id,source_lane,authority_scope "
         "FROM calibration_station_daily_high_truth "
         "WHERE station_id=? AND local_date=? AND settlement_definition=? "
-        "AND qc_status='ACCEPTED' AND authority_scope IN "
+        "AND source_lane='AWC' AND qc_status='ACCEPTED' AND authority_scope IN "
         "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
         "ORDER BY revision_no DESC LIMIT 1",
         (station_id, event_date, settlement_definition),
@@ -575,11 +578,19 @@ def _taf_truth_for_prediction(
         "precipitation_probability,wind_speed_mps,content_sha256,source_class,truth_label_authority "
         "FROM calibration_historical_taf_capture "
         "WHERE station_id=? AND event_date=? AND settlement_timezone=? "
-        "AND tx_available=1 AND tx_c IS NOT NULL "
+        # Historical TAF captures have required ``tx_c`` by schema.  The
+        # optional ``tx_available`` flag belongs only to forward receipts;
+        # querying it here would reject every exact join against the real
+        # append-only historical table once rolling OOS becomes READY.
+        "AND tx_c IS NOT NULL "
         "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
-        "AND truth_label_authority IN ('FORMAL_STATION_LANE_TRUTH','TEMPORARY_AWC_CALIBRATION_LABEL') "
+        "AND truth_label_authority='FORMAL_STATION_LANE_TRUTH' "
         "AND provider_available_at_utc>? AND provider_available_at_utc<? "
-        "ORDER BY provider_available_at_utc,revision_sequence LIMIT 1",
+        # Historical captures are append-only and deliberately have no
+        # revision sequence: a replay can retain distinct source samples for
+        # the same bulletin time.  Resolve that legitimate tie by immutable
+        # content identity instead of referring to the forward-only column.
+        "ORDER BY provider_available_at_utc,content_sha256 LIMIT 1",
         (
             station_id,
             event_date,
@@ -600,8 +611,8 @@ def build_rolling_taf_exact_joins(
     """Join each complete rolling native series to later historical AWC TAF.
 
     Returned joins use the existing exact-join schema, so the regular TAF
-    fitter performs its unchanged 24-sample and lineage validation.  A
-    temporary China AWC label remains explicit calibration-only lineage.
+    fitter performs its unchanged 24-sample and lineage validation.  Only
+    formal global-AWC TAF lineage can enter the joined series.
     """
 
     if rolling_manifest.get("schema") != SCHEMA:
@@ -658,7 +669,7 @@ def build_rolling_taf_exact_joins(
                 centers = {bucket: float(bucket) for bucket in probabilities}
                 rebinned, live_centers = _rebin_probabilities(probabilities, centers, intervals)
                 label = str(taf[7] or "")
-                reference_only = label == TEMPORARY_AWC_CALIBRATION_LABEL
+                reference_only = False
                 prediction_sha = str(prediction["prediction_content_sha256"])
                 prediction_shas.append(prediction_sha)
                 taf_lineages.append({
@@ -728,6 +739,15 @@ def build_rolling_taf_exact_joins(
         identity = {
             "schema": EXACT_JOIN_SCHEMA,
             "source_class": SOURCE_CLASS,
+            # The downstream TAF artifact is keyed by this full scope.  Keep
+            # it in the signed envelope as well as every sample so a bounded
+            # replay never has to infer provenance from an output filename.
+            "station_id": str(first["station_id"]),
+            "season_bin": str(first["season_bin"]),
+            "lead_bucket": str(first["lead_bucket"]),
+            "run_cycle": str(first["run_cycle"]),
+            "settlement_definition": str(first["settlement_definition"]),
+            "settlement_timezone": str(first["settlement_timezone"]),
             "nwp_crossfit_prediction_artifact_sha256": crossfit_sha,
             "sample_count": len(samples),
             "samples": samples,

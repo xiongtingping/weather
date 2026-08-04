@@ -120,11 +120,11 @@ def default_replay_rows() -> tuple[dict[str, str], dict[str, str], list[dict[str
         _row("zba-awc-53", station_id="ZBAA", lane="awc", report_type="METAR", valid_at="2026-07-28T13:53:00Z", temperature=101, expected_role="BLOCKED", expected_reason=SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN),
         _row("rtp-minute-00", station_id="RCTP", lane="amsc", report_type="METAR", valid_at="2026-07-28T04:00:00Z", temperature=28, expected_role="FORMAL"),
         _row("rtp-speci-30", station_id="RCTP", lane="amsc", report_type="SPECI", valid_at="2026-07-28T04:30:17Z", temperature=29, expected_role="FORMAL"),
-        # AWC-owned stations keep their own official publication minute.
-        _row("katl-awc-53", station_id="KATL", lane="awc", report_type="METAR", valid_at="2026-07-28T13:53:00Z", temperature=35, expected_role="FORMAL"),
+        # AWC routine METAR is formal only on the unified :00 cadence.
+        _row("katl-awc-00", station_id="KATL", lane="awc", report_type="METAR", valid_at="2026-07-28T13:00:00Z", temperature=35, expected_role="FORMAL"),
         _row("katl-awc-speci", station_id="KATL", lane="awc", report_type="SPECI", valid_at="2026-07-28T14:07:02Z", temperature=36, expected_role="FORMAL"),
         _row("katl-amsc-cross", station_id="KATL", lane="amsc", report_type="METAR", valid_at="2026-07-28T14:00:00Z", temperature=80, expected_role="BLOCKED", expected_reason=SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN),
-        _row("egll-awc-53", station_id="EGLL", lane="awc", report_type="METAR", valid_at="2026-07-28T13:53:00Z", temperature=24, expected_role="FORMAL"),
+        _row("egll-awc-00", station_id="EGLL", lane="awc", report_type="METAR", valid_at="2026-07-28T13:00:00Z", temperature=24, expected_role="FORMAL"),
     ]
     return lanes, timezones, rows
 
@@ -253,7 +253,7 @@ def audit_official_ingress_routes(
             "amsc_30_reference_only": "zba-minute-30" in reference_ids,
             "amsc_other_minute_fail_closed": "zba-minute-15" in blocked_ids,
             "speci_any_minute_formal": {"zba-speci-00", "rtp-speci-30", "katl-awc-speci"}.issubset(formal_ids),
-            "awc_owned_53_formal": {"katl-awc-53", "egll-awc-53"}.issubset(formal_ids),
+            "awc_owned_00_formal": {"katl-awc-00", "egll-awc-00"}.issubset(formal_ids),
             "awc_hour_for_amsc_reference_only": "zba-awc-hour" in reference_ids,
             "cross_lane_fallback_blocked": {"zba-awc-53", "katl-amsc-cross"}.issubset(blocked_ids),
             "multi_station_same_day_isolated": actual_truth_max == expected_truth_max,

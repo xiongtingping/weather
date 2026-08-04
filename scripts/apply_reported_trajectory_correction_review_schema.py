@@ -17,13 +17,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError
-from reported_trajectory_no_schema import (
+from weather_basket_yes_schema import (
     apply_reported_trajectory_correction_review_schema,
 )
 
 
 DEFAULT_DB = ROOT / "data" / "archive.db"
-SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
 MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
 

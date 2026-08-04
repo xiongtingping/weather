@@ -13,7 +13,7 @@ from scripts.bayes_basket_target_production_closure_audit import (
 
 
 SOURCE_FILES = (
-    "scripts/reported_trajectory_no_daemon.py",
+    "scripts/weather_basket_yes_daemon.py",
     "scripts/market_ws_listener.py",
     "scripts/clob_order_service.mjs",
     "bayes_basket_target/runtime.py",
@@ -101,14 +101,14 @@ strategy_lane = 'hard_no'
     )
     _write_text(
         tmp_path,
-        "scripts/reported_trajectory_no_daemon.py",
+        "scripts/weather_basket_yes_daemon.py",
         """
 DEFAULT_DB = 'data/archive.db'
 DEFAULT_TARGET_DB = 'data/bayes_basket_target_ssot.db'
 parser = 'args.db default DEFAULT_DB'
-engine = ReportedTrajectoryNoEngine(conn, config=config)
+lane_workers = True
 commit_conn = open_target_writer_if_enabled(DEFAULT_TARGET_DB)
-worker = TargetProductionWorker(DEFAULT_TARGET_DB, commit_conn=commit_conn, canonical_source_db_path=args.db)
+worker = TargetProductionWorker(DEFAULT_TARGET_DB, commit_conn=commit_conn)
 TARGET_ONLY = True
 execution_mode = 'production_no_live'
 live_submit_authorized = False
@@ -177,7 +177,7 @@ class TargetProductionWorker:
     _write_plist(
         tmp_path,
         TARGET_SERVICE_LABELS[0],
-        "reported_trajectory_no_daemon.sh",
+        "weather_basket_yes_daemon.sh",
         environment=user_env,
     )
     _write_plist(
@@ -296,8 +296,8 @@ def test_gamma_registry_metadata_rest_is_not_clob_book_rest(tmp_path: Path) -> N
     root = _fixture(tmp_path)
     _write_text(
         root,
-        "scripts/reported_trajectory_no_daemon.py",
-        (root / "scripts/reported_trajectory_no_daemon.py").read_text(encoding="utf-8")
+        "scripts/weather_basket_yes_daemon.py",
+        (root / "scripts/weather_basket_yes_daemon.py").read_text(encoding="utf-8")
         + "\nfetch_gamma_events_window()\nmarket_registry_metadata = True\n",
     )
     result = _run(root)
@@ -330,10 +330,10 @@ strategy_lane = 'hard_no'
 
 def test_target_writer_archive_database_crossing_fails_closed(tmp_path: Path) -> None:
     root = _fixture(tmp_path)
-    daemon = (root / "scripts/reported_trajectory_no_daemon.py").read_text(encoding="utf-8")
+    daemon = (root / "scripts/weather_basket_yes_daemon.py").read_text(encoding="utf-8")
     _write_text(
         root,
-        "scripts/reported_trajectory_no_daemon.py",
+        "scripts/weather_basket_yes_daemon.py",
         daemon + "\nTargetProductionWorker(DEFAULT_DB, commit_conn=commit_conn)\n",
     )
     result = _run(root)
@@ -534,7 +534,7 @@ def test_target_source_cross_read_fails_even_with_valid_resealed_hashes(tmp_path
     _write_text(
         root,
         "bayes_basket_target/runtime.py",
-        "legacy_path = 'config/trading/basket_plus_hard_no_v1.json'\n"
+        "legacy_path = 'config/trading/basket_yes_v1.json'\n"
         "runtime_contract = 'materialized probability P0 P0-M P1 regime official WS'\n",
     )
     manifest = _load_manifest(root)

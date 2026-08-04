@@ -401,6 +401,38 @@ def _prepare_products(
     return products
 
 
+def _republisher_fallback_authority(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the explicit no-live authority attached to an Open-Meteo scope.
+
+    The inbox is scope-unique, so an Open-Meteo packet reaches this function
+    only when the native packet is absent at that capture instant.  That
+    absence is a selection fact, not a claim that Open-Meteo is native.  The
+    returned receipt keeps the distinction visible to the downstream basket
+    binding and requires a separately activated historical OOS artifact.
+    """
+
+    raw = packet.get("source_authority")
+    if not isinstance(raw, Mapping):
+        raise ContractError("scenario_cli_republisher_source_authority_missing")
+    if raw.get("source_role") != "aggregator_republisher":
+        raise ContractError("scenario_cli_republisher_source_role_invalid")
+    if raw.get("formal_p0_eligible") is not False:
+        raise ContractError("scenario_cli_republisher_formal_p0_must_be_false")
+    return {
+        "authority_mode": "PRODUCTION_NO_LIVE_REPUBLISHER_FALLBACK",
+        "source_role": "aggregator_republisher",
+        "native_source_unavailable": True,
+        "production_no_live_fallback_eligible": True,
+        "historical_oos_activation_required": True,
+        "native_arrival_index_eligible": False,
+        "native_formal_p0_eligible": False,
+        "formal_p0_eligible": False,
+        "oos_event_temporal_scope": "observational_candidate_not_oos",
+        "future_event_count": 0,
+        "upstream_source_authority": dict(raw),
+    }
+
+
 def _packet_index(
     packets: Sequence[Mapping[str, Any]],
 ) -> dict[tuple[str, str], Mapping[str, Any]]:
@@ -528,6 +560,11 @@ def build_scenario_roles_artifact(
             raise ContractError("scenario_cli_batch_member_bound_exceeded")
         source_kind = str(packet["_source_kind"])
         source_kinds.add(source_kind)
+        fallback_authority = (
+            _republisher_fallback_authority(packet)
+            if source_kind == "open_meteo_aggregator"
+            else None
+        )
         selection = select_native_ensemble_scenario_roles(
             products=products,
             bucket_ordinals=contract["bucket_ordinals"],
@@ -569,6 +606,7 @@ def build_scenario_roles_artifact(
             "event_date": target_date,
             "settlement_timezone": contract["settlement_timezone"],
             "source_kind": source_kind,
+            "fallback_authority": fallback_authority,
             "source_packet_content_sha256": str(
                 packet["_packet_content_sha256"]
             ),
@@ -596,6 +634,10 @@ def build_scenario_roles_artifact(
         "station_scope": [row["station_id"] for row in candidates],
         "station_count": len(candidates),
         "source_kinds": sorted(source_kinds),
+        "republisher_fallback_scope_count": sum(
+            row["source_kind"] == "open_meteo_aggregator"
+            for row in candidates
+        ),
         "input_inbox_schema": str(verified_inbox["schema"]),
         "input_inbox_content_sha256": inbox_hash,
         "market_registry_snapshot_sha256": str(

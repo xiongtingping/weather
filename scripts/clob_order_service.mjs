@@ -19,6 +19,12 @@ const DB_PATH = process.env.PM_ARCHIVE_DB || path.join(DATA_DIR, "archive.db");
 const LIVE_PAUSE_FILE = process.env.PM_LIVE_PAUSE_FILE || path.join(DATA_DIR, "live_paused.flag");
 const HELD_YES_INVENTORY_FILE = process.env.PM_HELD_YES_INVENTORY_FILE
   || path.join(DATA_DIR, "reported_trajectory_held_yes_tokens.json");
+const HELD_YES_WS_MANIFEST_FILE = process.env.PM_HELD_YES_WS_MANIFEST_PATH
+  || path.join(DATA_DIR, "market_ws_held_yes_quotes.json");
+const HELD_YES_WS_SHARD_DIR = process.env.PM_HELD_YES_WS_SHARD_DIR
+  || path.join(DATA_DIR, "market_ws_held_yes_quote_shards");
+const HELD_YES_WS_MANIFEST_SCHEMA = "clob_ws_held_yes_quote_manifest_v1";
+const HELD_YES_WS_TOKEN_SCHEMA = "clob_ws_held_yes_token_quote_snapshot_v1";
 const SERVICE_NAME = "clob_order_service";
 const RETIRED_STRATEGY_IDS = new Set([
   "weather_copy_follow_v1",
@@ -442,8 +448,8 @@ async function configureProxy() {
     const ports = [
       ...parsePortList(env("PM_PROXY_PORTS", "")),
       ...scutilProxyPorts(),
-      ...parsePortList(env("PM_PROXY_LOCAL_FALLBACK_PORTS", "7897")),
-      7897,
+      ...parsePortList(env("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")),
+      1082,
     ].filter((port, idx, arr) => arr.indexOf(port) === idx);
     for (const port of ports) {
       const candidate = `http://127.0.0.1:${port}`;
@@ -1330,6 +1336,124 @@ export class ClobOrderService {
     }
   }
 
+  readActiveHeldYesInventoryTokenIDs() {
+    try {
+      const payload = JSON.parse(fs.readFileSync(HELD_YES_INVENTORY_FILE, "utf8"));
+      if (payload?.schema !== "reported_trajectory_held_yes_inventory_v1"
+          || payload?.complete !== true
+          || !Array.isArray(payload?.active_token_ids)
+          || !Array.isArray(payload?.token_ids)
+          || payload?.active_token_ids_source !== "official_local_clob_execution_guard_snapshot"
+          || !String(payload?.active_token_ids_observed_at || "").trim()
+          || !/^[0-9a-f]{64}$/.test(String(payload?.active_token_ids_receipt_sha256 || "").toLowerCase())
+          || payload.active_token_ids.length > 64) return null;
+      const active = payload.active_token_ids.map((raw) => String(raw || "").trim());
+      const known = new Set(payload.token_ids.map((raw) => String(raw || "").trim()));
+      if (active.some((tokenID) => !/^\d+$/.test(tokenID))
+          || active.length !== new Set(active).size
+          || active.some((tokenID) => !known.has(tokenID))) return null;
+      return [...active].sort();
+    } catch {
+      return null;
+    }
+  }
+
+  readHeldYesWsQuoteSnapshot(maxAgeMs, tokenID) {
+    const requested = String(tokenID || "").trim();
+    const scopeTokenIDs = this.readActiveHeldYesInventoryTokenIDs();
+    if (!requested || !this.registeredPositionTokens.has(requested)
+        || !scopeTokenIDs || !scopeTokenIDs.includes(requested)) {
+      throw new Error("held_yes_ws_token_not_registered_or_scope_invalid");
+    }
+    const expectedScopeSha = crypto.createHash("sha256")
+      .update(scopeTokenIDs.join("\0"))
+      .digest("hex");
+    const manifest = JSON.parse(fs.readFileSync(HELD_YES_WS_MANIFEST_FILE, "utf8"));
+    const suppliedManifestHash = String(manifest?.snapshot_sha256 || "");
+    const unsignedManifest = { ...manifest };
+    delete unsignedManifest.snapshot_sha256;
+    const calculatedManifestHash = crypto.createHash("sha256")
+      .update(canonicalJson(unsignedManifest)).digest("hex");
+    const manifestObservedMs = Date.parse(String(manifest?.connection_observed_at || ""));
+    const manifestAgeMs = Number.isFinite(manifestObservedMs)
+      ? Date.now() - manifestObservedMs : Number.POSITIVE_INFINITY;
+    const manifestScope = Array.isArray(manifest?.scope_token_ids)
+      ? manifest.scope_token_ids.map((raw) => String(raw || "").trim()) : [];
+    const completeTokenIDs = Array.isArray(manifest?.complete_book_token_ids)
+      ? manifest.complete_book_token_ids.map((raw) => String(raw || "").trim()) : [];
+    const declaredShardDir = String(manifest?.quote_shard_dir || "");
+    const scopeExact = manifestScope.length === scopeTokenIDs.length
+      && manifestScope.every((token, index) => token === scopeTokenIDs[index]);
+    const completeExact = completeTokenIDs.length === new Set(completeTokenIDs).size
+      && completeTokenIDs.every((token) => scopeTokenIDs.includes(token));
+    if (manifest?.schema !== HELD_YES_WS_MANIFEST_SCHEMA
+        || !["ready", "partial_evidence"].includes(String(manifest?.state || ""))
+        || manifest?.source !== "official_polymarket_clob_websocket"
+        || manifest?.evidence_only !== true
+        || manifest?.authorizes_order !== false
+        || manifest?.quote_storage !== "sha256_token_shards_v1"
+        || !declaredShardDir
+        || path.resolve(declaredShardDir) !== path.resolve(HELD_YES_WS_SHARD_DIR)
+        || !scopeExact
+        || manifest?.scope_sha256 !== expectedScopeSha
+        || !completeExact
+        || !completeTokenIDs.includes(requested)
+        || suppliedManifestHash.length !== 64
+        || suppliedManifestHash !== calculatedManifestHash
+        || !Number.isFinite(manifestAgeMs)
+        || manifestAgeMs < 0
+        || manifestAgeMs > maxAgeMs) {
+      throw new Error("held_yes_ws_manifest_invalid_or_stale");
+    }
+    const filename = `${crypto.createHash("sha256").update(requested).digest("hex")}.json`;
+    const tokenSnapshot = JSON.parse(fs.readFileSync(path.join(HELD_YES_WS_SHARD_DIR, filename), "utf8"));
+    const suppliedTokenHash = String(tokenSnapshot?.snapshot_sha256 || "");
+    const unsignedToken = { ...tokenSnapshot };
+    delete unsignedToken.snapshot_sha256;
+    const calculatedTokenHash = crypto.createHash("sha256")
+      .update(canonicalJson(unsignedToken)).digest("hex");
+    const tokenScope = Array.isArray(tokenSnapshot?.scope_token_ids)
+      ? tokenSnapshot.scope_token_ids.map((raw) => String(raw || "").trim()) : [];
+    const tokenScopeExact = tokenScope.length === scopeTokenIDs.length
+      && tokenScope.every((token, index) => token === scopeTokenIDs[index]);
+    const quote = tokenSnapshot?.quote;
+    const bookObservedMs = Date.parse(String(quote?.book_observed_at || ""));
+    const bookAgeMs = Number.isFinite(bookObservedMs)
+      ? Date.now() - bookObservedMs : Number.POSITIVE_INFINITY;
+    if (tokenSnapshot?.schema !== HELD_YES_WS_TOKEN_SCHEMA
+        || tokenSnapshot?.token_id !== requested
+        || tokenSnapshot?.scope_sha256 !== expectedScopeSha
+        || !tokenScopeExact
+        || tokenSnapshot?.source !== "official_polymarket_clob_websocket"
+        || tokenSnapshot?.evidence_only !== true
+        || tokenSnapshot?.authorizes_order !== false
+        || suppliedTokenHash.length !== 64
+        || suppliedTokenHash !== calculatedTokenHash
+        || !quote
+        || quote?.token_id !== requested
+        || quote?.source !== "clob_ws"
+        || quote?.source_detail !== "book"
+        || !Array.isArray(quote?.bids)
+        || !Array.isArray(quote?.asks)
+        || !Number.isFinite(bookAgeMs)
+        || bookAgeMs < 0
+        || bookAgeMs > maxAgeMs) {
+      throw new Error("held_yes_ws_token_quote_invalid_or_stale");
+    }
+    return {
+      parsed: {
+        schema: HELD_YES_WS_MANIFEST_SCHEMA,
+        connection_observed_at: manifest.connection_observed_at,
+        quotes_by_token: { [requested]: quote },
+      },
+      age_ms: Math.max(manifestAgeMs, bookAgeMs),
+      book_age_ms: bookAgeMs,
+      snapshot_sha256: suppliedManifestHash,
+      token_snapshot_sha256: suppliedTokenHash,
+      evidence_source: "held_yes_auxiliary_official_clob_ws",
+    };
+  }
+
   readLatestWsQuoteSnapshot(maxAgeMs, tokenID = "", allowPartialTopology = false, tokenIDs = []) {
     const snapshotPath = env(
       "PM_MARKET_WS_LATEST_QUOTES_PATH", path.join(DATA_DIR, "market_ws_latest_quotes.json"),
@@ -1573,7 +1697,12 @@ export class ClobOrderService {
     this.refreshRegisteredPositionTokensFromInventory();
     const livePaused = livePausePresent();
     const marketMaxAgeMs = Math.max(100, Math.floor(positiveNumber(
-      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "1000"), 1000,
+      // The WS listener publishes an atomic topology snapshot on each
+      // inbound book/update.  A quiet book must remain valid for the same
+      // bounded freshness window used by the production performance budget
+      // (120s); a one-second default spuriously blocks otherwise complete
+      // official WS evidence whenever no tick arrives.
+      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "120000"), 120000,
     )));
     const balanceMaxAgeMs = Math.max(marketMaxAgeMs, Math.floor(positiveNumber(
       env("PM_CLOB_BALANCE_CACHE_MAX_AGE_MS", "3000"), 3000,
@@ -1910,12 +2039,17 @@ export class ClobOrderService {
     if (side === "BUY" && (!Number.isFinite(notional) || notional <= 0)) {
       throw new Error("execution_guard_buy_notional_invalid");
     }
+    // A registered token is populated at startup/health from the bounded
+    // held-YES projection.  Do not reread inventory on every guard request:
+    // the guard must not turn an unrelated inventory refresh into a change of
+    // the exact event-time evidence boundary.
+    const registeredHeldYesToken = side === "SELL" && this.registeredPositionTokens.has(tokenID);
 
     // This endpoint is deliberately local-only.  Official WS depth and
     // continuously prefetched balances are evaluated below; a stale cache
     // fails closed instead of adding an event-time REST round trip.
     const maxAgeMs = Math.max(100, Math.floor(positiveNumber(
-      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "1000"), 1000,
+      env("PM_CLOB_LOCAL_EVIDENCE_MAX_AGE_MS", "120000"), 120000,
     )));
     const balanceMaxAgeMs = Math.max(maxAgeMs, Math.floor(positiveNumber(
       env("PM_CLOB_BALANCE_CACHE_MAX_AGE_MS", "3000"), 3000,
@@ -1923,10 +2057,30 @@ export class ClobOrderService {
     const evidenceErrors = [];
     let ws = null;
     let wsReadError = "";
-    try {
-      ws = this.readLatestWsQuoteSnapshot(maxAgeMs, tokenID);
-    } catch (err) {
-      wsReadError = redactErrorText(err?.message || String(err || ""));
+    let wsEvidenceSource = "primary_official_clob_ws";
+    if (registeredHeldYesToken) {
+      try {
+        ws = this.readHeldYesWsQuoteSnapshot(maxAgeMs, tokenID);
+        wsEvidenceSource = String(ws.evidence_source || "held_yes_auxiliary_official_clob_ws");
+      } catch (heldErr) {
+        // A current-day held token can also have a fully valid primary shard.
+        // Accept only that independently verified official alternative; a
+        // historical token with neither book remains fail-closed.
+        const heldError = redactErrorText(heldErr?.message || String(heldErr || ""));
+        try {
+          ws = this.readLatestWsQuoteSnapshot(maxAgeMs, tokenID);
+          wsEvidenceSource = "primary_official_clob_ws";
+        } catch (primaryErr) {
+          const primaryError = redactErrorText(primaryErr?.message || String(primaryErr || ""));
+          wsReadError = [heldError, primaryError].filter(Boolean).join(";");
+        }
+      }
+    } else {
+      try {
+        ws = this.readLatestWsQuoteSnapshot(maxAgeMs, tokenID);
+      } catch (err) {
+        wsReadError = redactErrorText(err?.message || String(err || ""));
+      }
     }
     const quote = ws?.parsed?.quotes_by_token?.[tokenID] || null;
     const bids = Array.isArray(quote?.bids) ? quote.bids : [];
@@ -1948,6 +2102,7 @@ export class ClobOrderService {
       quote_value_observed_at: quote?.created_at || "",
       book_value_observed_at: quote?.book_observed_at || "",
       continuity_attested_at: ws?.parsed?.connection_observed_at || "",
+      evidence_source: wsEvidenceSource,
     };
     const collateralAgeMs = Number.POSITIVE_INFINITY;
     const collateral = null;
@@ -2012,6 +2167,7 @@ export class ClobOrderService {
       },
       source: SERVICE_NAME,
       evidence_source: "local_prefetched_clob_evidence",
+      ws_evidence_source: wsEvidenceSource,
       service_pid: process.pid,
     };
   }

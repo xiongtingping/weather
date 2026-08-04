@@ -64,6 +64,18 @@ MODEL_PROFILES = {
         "provider_id": "cma_grapes_global_open_meteo",
         "model_param": "cma_grapes_global",
     },
+    "AIFS": {
+        "provider_id": "ecmwf_aifs_single_open_meteo",
+        "model_param": "ecmwf_aifs025_single",
+    },
+    "ICON-EU": {
+        "provider_id": "icon_eu_open_meteo",
+        "model_param": "icon_eu",
+    },
+    "ICON-D2": {
+        "provider_id": "icon_d2_open_meteo",
+        "model_param": "icon_d2",
+    },
 }
 VARIABLE = "temperature_2m"
 DEFAULT_STATION_MAP = ROOT / "config/trading/bayes_basket_target_station_lane_map_v1.json"

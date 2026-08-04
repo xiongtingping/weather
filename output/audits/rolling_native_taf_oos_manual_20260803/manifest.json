@@ -1,0 +1,39 @@
+{
+  "as_of_utc": "2026-08-03T05:31:21.344Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "offline_only": true,
+    "orders_submitted": 0,
+    "production_p0_materialized": false,
+    "production_p0m_materialized": false,
+    "writes_target_database": false
+  },
+  "content_sha256": "0d7325543ae263196c9f71b906676033a705333249a3eda62c10bfd0a79912c7",
+  "reports": [
+    {
+      "accumulating_count": 53,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/rolling_native_taf_oos_manual_20260803/CYYZ_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "CYYZ",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    },
+    {
+      "accumulating_count": 53,
+      "candidate_count": 0,
+      "exact_join_outputs": [],
+      "rolling_output": "/Users/xiong/weather/output/audits/rolling_native_taf_oos_manual_20260803/FACT_rolling_native_oos.json",
+      "state": "ACCUMULATING",
+      "station_id": "FACT",
+      "taf_exact_join_count": 0,
+      "taf_exact_join_sample_count": 0
+    }
+  ],
+  "schema": "native_ensemble_rolling_taf_oos_build_manifest_v1",
+  "station_count": 2
+}

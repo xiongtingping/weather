@@ -3,9 +3,8 @@
 
 This orchestrator is deliberately outside the production hot path.  It
 retrieves official AWC historical METAR labels, builds one station-local truth
-dataset, then runs d1/d2 five-model Previous Runs OOS.  For AMSC-owned
-stations, AWC labels require the explicit temporary calibration authority and
-remain forbidden from realtime truth, P1 and hard-NO consumers.
+dataset, then runs d1/d2 five-model Previous Runs OOS.  Only formal AWC
+canonical-observation evidence is eligible for the truth dataset.
 """
 
 from __future__ import annotations
@@ -13,20 +12,30 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, time as wall_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.calibration_ingress import (  # noqa: E402
+    HISTORICAL_AWC_REPLAY,
+    NO_LIVE_REPLAY,
+)
+from bayes_basket_target.contracts import (  # noqa: E402
+    ContractError,
+    assert_timestamp_not_future,
+    content_sha256,
+)
 from bayes_basket_target.resource_bounds import load_bounded_json  # noqa: E402
 from bayes_basket_target.station_registry import (  # noqa: E402
     coordinate_registry_manifest,
@@ -110,8 +119,8 @@ def _load_scope(
                 f"five_model_45station_timezone_ambiguous:{station}"
             )
         normalized_lane = str(lane).strip().lower()
-        if normalized_lane not in {"amsc", "awc"}:
-            raise ContractError("five_model_45station_lane_invalid")
+        if normalized_lane != "awc":
+            raise ContractError("five_model_45station_lane_not_awc")
         result[station] = {
             "source_lane": normalized_lane,
             "settlement_timezone": next(iter(values)),
@@ -150,6 +159,244 @@ def _run(command: list[str], *, accepted_codes: set[int] = {0}) -> dict[str, Any
     return json.loads(lines[-1]) if lines else {}
 
 
+def _sha256(value: Any, *, label: str) -> str:
+    result = str(value or "").strip().lower()
+    if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
+        raise ContractError(f"{label}_invalid")
+    return result
+
+
+def _utc(value: Any, *, label: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise ContractError(f"{label}_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ContractError(f"{label}_timezone_required")
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_text(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(
+        timespec="seconds"
+    ).replace("+00:00", "Z")
+
+
+def _settlement_window(event_date: str, timezone_name: str) -> tuple[str, str]:
+    try:
+        local_date = date.fromisoformat(event_date)
+        zone = ZoneInfo(timezone_name)
+    except (ValueError, KeyError) as exc:
+        raise ContractError("five_model_45station_truth_timezone_invalid") from exc
+    start = datetime.combine(local_date, wall_time.min, tzinfo=zone)
+    end = datetime.combine(local_date + timedelta(days=1), wall_time.min, tzinfo=zone)
+    return _utc_text(start), _utc_text(end)
+
+
+def _validate_formal_awc_truth(
+    payload: Mapping[str, Any],
+    *,
+    station: str,
+    scope: Mapping[str, str],
+    days: list[str],
+) -> None:
+    checks = payload.get("checks")
+    boundary = payload.get("boundary")
+    try:
+        as_of = _utc(
+            assert_timestamp_not_future(
+                str(payload.get("as_of_utc") or ""),
+                name="five_model_45station_truth_as_of_utc",
+            ),
+            label="five_model_45station_truth_as_of_utc",
+        )
+    except ContractError as exc:
+        raise ContractError(
+            f"five_model_45station_formal_awc_truth_invalid:{station}"
+        ) from exc
+    content_sha = _sha256(
+        payload.get("content_sha256"),
+        label="five_model_45station_truth_content_sha256",
+    )
+    if content_sha != content_sha256({
+        key: value for key, value in payload.items() if key != "content_sha256"
+    }):
+        raise ContractError(
+            f"five_model_45station_formal_awc_truth_invalid:{station}"
+        )
+    if (
+        payload.get("schema")
+        != "bayes_basket_station_calibration_dataset_v1"
+        or payload.get("station_id") != station
+        or payload.get("settlement_timezone") != scope["settlement_timezone"]
+        or payload.get("source_lane") != "AWC"
+        or payload.get("source_role") != HISTORICAL_AWC_REPLAY
+        or payload.get("authority_scope") != NO_LIVE_REPLAY
+        or payload.get("label_authority") != "FORMAL_STATION_LANE_TRUTH"
+        or payload.get("start_date") != days[0]
+        or payload.get("end_date") != days[-1]
+        or not isinstance(checks, Mapping)
+        or not isinstance(boundary, Mapping)
+        or checks.get("closed_days_only") is not True
+        or checks.get("formal_awc_truth_only") is not True
+        or checks.get("awc_hourly_metar_and_speci_only") is not True
+        or checks.get("historical_awc_replay_only") is not True
+        or checks.get("input_evidence_content_hashes_verified") is not True
+        or checks.get("settlement_timezone_exact_match") is not True
+        or checks.get("reference_only_excluded") is not True
+        or checks.get("complete_date_coverage") is not True
+        or payload.get("missing_dates") != []
+        or any(
+            boundary.get(key) is not False
+            for key in (
+                "writes_production_database",
+                "calls_order_gateway",
+                "places_orders",
+                "live_submit_authorized",
+                "enters_realtime_truth",
+                "enters_p1",
+                "enters_hard_no",
+            )
+        )
+    ):
+        raise ContractError(
+            f"five_model_45station_formal_awc_truth_invalid:{station}"
+        )
+    evidence_shas = payload.get("input_evidence_sha256s")
+    samples = payload.get("samples")
+    if (
+        not isinstance(evidence_shas, list)
+        or not evidence_shas
+        or len(set(evidence_shas)) != len(evidence_shas)
+        or any(
+            _sha256(value, label="five_model_45station_input_evidence_sha")
+            != str(value).lower()
+            for value in evidence_shas
+        )
+        or not isinstance(samples, list)
+        or len(samples) != len(days)
+    ):
+        raise ContractError(
+            f"five_model_45station_formal_awc_truth_invalid:{station}"
+        )
+    seen_dates: set[str] = set()
+    seen_observations: set[tuple[str, str, str]] = set()
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise ContractError(
+                f"five_model_45station_formal_awc_truth_invalid:{station}"
+            )
+        event_date = str(sample.get("event_date") or "")
+        if (
+            event_date not in days
+            or event_date in seen_dates
+            or sample.get("station_id") != station
+            or sample.get("settlement_timezone")
+            != scope["settlement_timezone"]
+            or sample.get("sample_id") != "truth-" + content_sha256({
+                key: value for key, value in sample.items()
+                if key != "sample_id"
+            })[:32]
+        ):
+            raise ContractError(
+                f"five_model_45station_formal_awc_truth_invalid:{station}"
+            )
+        seen_dates.add(event_date)
+        expected_start, expected_end = _settlement_window(
+            event_date, scope["settlement_timezone"]
+        )
+        window = sample.get("settlement_window")
+        truth = sample.get("truth")
+        if (
+            not isinstance(window, Mapping)
+            or window.get("start_utc") != expected_start
+            or window.get("end_utc") != expected_end
+            or as_of < _utc(
+                expected_end,
+                label="five_model_45station_window_end",
+            )
+            or not isinstance(truth, Mapping)
+            or truth.get("source_lane") != "AWC"
+            or truth.get("source_role") != HISTORICAL_AWC_REPLAY
+            or truth.get("authority_scope") != NO_LIVE_REPLAY
+            or not isinstance(truth.get("observations"), list)
+            or not truth["observations"]
+        ):
+            raise ContractError(
+                f"five_model_45station_formal_awc_truth_invalid:{station}"
+            )
+        temperatures: list[float] = []
+        for observation in truth["observations"]:
+            if not isinstance(observation, Mapping):
+                raise ContractError(
+                    f"five_model_45station_formal_awc_truth_invalid:{station}"
+                )
+            report_type = str(observation.get("report_type") or "").upper()
+            valid_at = _utc(
+                observation.get("valid_at_utc"),
+                label="five_model_45station_observation_valid_at",
+            )
+            raw_sha = _sha256(
+                observation.get("raw_sha256"),
+                label="five_model_45station_observation_raw_sha",
+            )
+            if (
+                observation.get("station_id") != station
+                or observation.get("source_lane") != "AWC"
+                or observation.get("source_role") != HISTORICAL_AWC_REPLAY
+                or observation.get("authority_scope") != NO_LIVE_REPLAY
+                or observation.get("settlement_timezone")
+                != scope["settlement_timezone"]
+                or observation.get("evidence_role") != "FORMAL"
+                or observation.get("reference_only") is not False
+                or observation.get("qc_status") != "ACCEPTED"
+                or report_type not in {"METAR", "SPECI"}
+                or (
+                    report_type == "METAR"
+                    and (valid_at.minute != 0 or valid_at.second != 0)
+                )
+                or not (
+                    _utc(window["start_utc"], label="five_model_45station_window_start")
+                    <= valid_at
+                    < _utc(window["end_utc"], label="five_model_45station_window_end")
+                )
+            ):
+                raise ContractError(
+                    f"five_model_45station_formal_awc_truth_invalid:{station}"
+                )
+            observation_key = (report_type, _utc_text(valid_at), raw_sha)
+            if observation_key in seen_observations:
+                raise ContractError(
+                    f"five_model_45station_formal_awc_truth_invalid:{station}"
+                )
+            seen_observations.add(observation_key)
+            try:
+                temperature = float(observation.get("reported_temperature_c"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(
+                    f"five_model_45station_formal_awc_truth_invalid:{station}"
+                ) from exc
+            if not math.isfinite(temperature):
+                raise ContractError(
+                    f"five_model_45station_formal_awc_truth_invalid:{station}"
+                )
+            temperatures.append(temperature)
+        try:
+            tmax = float(truth.get("tmax_c"))
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                f"five_model_45station_formal_awc_truth_invalid:{station}"
+            ) from exc
+        if not math.isfinite(tmax) or tmax != max(temperatures):
+            raise ContractError(
+                f"five_model_45station_formal_awc_truth_invalid:{station}"
+            )
+    if seen_dates != set(days):
+        raise ContractError(
+            f"five_model_45station_formal_awc_truth_invalid:{station}"
+        )
+
+
 def _truth_slice(
     *,
     station: str,
@@ -165,9 +412,7 @@ def _truth_slice(
     station_root = output_root / station
     receipt = station_root / "historical_truth_rebuild.json"
     observations = station_root / "historical_truth_observations.json"
-    references = station_root / "historical_truth_references.json"
     dataset = station_root / "calibration_truth_dataset.json"
-    lane = scope["source_lane"]
     if truth_artifact_root is not None:
         external = (
             truth_artifact_root.expanduser().resolve()
@@ -175,16 +420,9 @@ def _truth_slice(
             / "calibration_truth_dataset.json"
         )
         payload = load_bounded_json(external)
-        if (
-            payload.get("station_id") != station
-            or payload.get("settlement_timezone")
-            != scope["settlement_timezone"]
-            or str(payload.get("start_date") or "") > days[0]
-            or str(payload.get("end_date") or "") < days[-1]
-        ):
-            raise ContractError(
-                f"five_model_45station_external_truth_invalid:{station}"
-            )
+        _validate_formal_awc_truth(
+            payload, station=station, scope=scope, days=days
+        )
         return {
             "station_id": station,
             "state": (
@@ -211,16 +449,10 @@ def _truth_slice(
             "--transport", truth_transport,
             "--output", str(receipt),
             "--observations-output", str(observations),
-            "--reference-output", str(references),
             "--raw-root", str(raw_root),
         ]
         for day in days:
             command.extend(["--event-date", day])
-        if lane == "amsc":
-            command.extend([
-                "--reference-only",
-                "--awc-reference-station", station,
-            ])
         _run(command, accepted_codes={0, 2})
         dataset_command = [
             sys.executable,
@@ -229,7 +461,7 @@ def _truth_slice(
                 / "scripts/build_bayes_basket_target_station_calibration_dataset.py"
             ),
             "--observation-artifact",
-            str(references if lane == "amsc" else observations),
+            str(observations),
             "--station-id", station,
             "--settlement-timezone", scope["settlement_timezone"],
             "--source-lane", "AWC",
@@ -237,10 +469,11 @@ def _truth_slice(
             "--end-date", days[-1],
             "--output", str(dataset),
         ]
-        if lane == "amsc":
-            dataset_command.append("--temporary-awc-calibration-label")
         _run(dataset_command, accepted_codes={0, 2})
     payload = load_bounded_json(dataset)
+    _validate_formal_awc_truth(
+        payload, station=station, scope=scope, days=days
+    )
     return {
         "station_id": station,
         "state": (
@@ -348,7 +581,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start-date", required=True)
     parser.add_argument("--end-date", required=True)
-    parser.add_argument("--proxy-url", default="http://127.0.0.1:7897")
+    parser.add_argument("--proxy-url", default="http://127.0.0.1:1082")
     parser.add_argument(
         "--truth-transport",
         choices=("configured_proxy", "direct"),

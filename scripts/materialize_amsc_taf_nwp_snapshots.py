@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from reported_trajectory_no_schema import apply_reported_trajectory_no_schema  # noqa: E402
+from weather_basket_yes_schema import apply_weather_basket_yes_schema  # noqa: E402
 from reported_trajectory_snapshot_materializer import (  # noqa: E402
     materialize_amsc_taf,
     materialize_official_nwp_station_snapshots,
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     conn = sqlite3.connect(args.db.expanduser().resolve(), timeout=60.0)
     conn.row_factory = sqlite3.Row
     try:
-        apply_reported_trajectory_no_schema(conn)
+        apply_weather_basket_yes_schema(conn)
         stations = _load_stations(args.catalog.expanduser().resolve())
         result: dict[str, Any] = {
             "schema": "amsc_taf_nwp_snapshot_materialization_run_v1",

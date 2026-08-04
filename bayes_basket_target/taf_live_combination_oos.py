@@ -39,10 +39,15 @@ from .contracts import (
     content_sha256,
 )
 from .resource_bounds import (
+    MIB,
     MAX_JSON_INPUT_BYTES,
     assert_process_memory_budget,
     load_bounded_json,
     write_bounded_json_if_changed,
+)
+from .taf_oos_contract import (
+    HISTORICAL_OOS_TEMPORAL_SCOPE,
+    assert_historical_taf_oos,
 )
 
 
@@ -55,7 +60,10 @@ MIN_LIVE_COMBINATION_SAMPLE_N = 24
 MAX_ROWS = 366
 MAX_RAW_FILES = 96
 MAX_RAW_FILE_BYTES = 16 * 1024 * 1024
-MAX_TOTAL_INPUT_BYTES = 64 * 1024 * 1024
+# A 45-station strict-OOS packet can legitimately contain many compact
+# station/day receipts.  Keep each file bounded, while allowing the aggregate
+# packet enough room to pass through the no-live evaluator.
+MAX_TOTAL_INPUT_BYTES = 256 * MIB
 MIN_PROBABILITY = 1e-12
 RIDGE = 1.0
 
@@ -503,6 +511,23 @@ def _normalize_observations(
                 raise ContractError("live_combination_as_of_after_truth_close")
         if taf.get("available_time_utc") is not None and _utc("live_combination_taf_available_time", taf["available_time_utc"]) >= closed_at:
             raise ContractError("live_combination_taf_as_of_after_truth_close")
+        temporal = assert_historical_taf_oos(
+            sample,
+            event_date=event_date,
+            truth_closed_at=closed_at,
+            transport_values=tuple(
+                (nwp.get("transport_provider_ids") or [])
+                if isinstance(nwp.get("transport_provider_ids"), list)
+                else tuple(
+                    str(item.get("provider_id") or item.get("transport_provider_id") or "")
+                    for item in (nwp.get("model_rows") or [])
+                    if isinstance(item, Mapping)
+                )
+            ) + (taf.get("source_class"),),
+            name="live_combination",
+        )
+        if str(taf.get("source_class") or "") == "official_forward_native_receipt":
+            raise ContractError("live_combination_forward_taf_not_oos")
         model_rows = nwp.get("model_rows")
         if isinstance(model_rows, list):
             for model_row in model_rows:
@@ -560,6 +585,7 @@ def _normalize_observations(
             "decision_at_utc": str(nwp.get("decision_at_utc") or sample.get("decision_anchor_utc") or ""),
             "row_live_fingerprint_sha256": None if row_fingerprint is None else _sha("live_combination_row_live_fingerprint_sha256", row_fingerprint),
             "selection_evidence_sha256": None if nwp.get("selection_evidence_sha256") is None else _sha("live_combination_row_selection_evidence_sha256", nwp.get("selection_evidence_sha256")),
+            **temporal,
         })
         assert_process_memory_budget()
     return normalized, cache, total[0]
@@ -720,7 +746,7 @@ def evaluate_taf_live_combination_oos(
             "calibration_lineage": {model: {"calibration_artifact_id": calibrations[model].calibration_artifact_id, "content_sha256": calibrations[model].content_sha256} for model in models},
             "weight_method": ensemble.weight_method, "max_weight_delta": ensemble.max_weight_delta,
         },
-        "nested_oos": {"split": "nested_rolling_origin", "minimum_inner_train_days": minimum_train_days, "final_live_weights_replayed_on_outer_labels": False, "online_weight_update": False},
+        "nested_oos": {"split": "nested_rolling_origin", "minimum_inner_train_days": minimum_train_days, "final_live_weights_replayed_on_outer_labels": False, "online_weight_update": False, "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE},
         "sample_n": len(evaluated), "effective_sample_n": effective_n, "minimum_sample_n": minimum_sample_n,
         "baseline_oos_metrics": base_metrics, "taf_live_combination_oos_metrics": taf_metrics,
         "nll_not_worse": nll_not_worse, "crps_not_worse": crps_not_worse,

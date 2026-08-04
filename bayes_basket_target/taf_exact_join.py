@@ -2,7 +2,9 @@
 
 TAF may only be calibrated against a P0 prediction that was produced by a
 strict OOS/cross-fit, minimum-two-model ensemble at the same decision anchor.
-This module deliberately performs no network or database I/O.
+An explicit ``historical_republisher_replay`` lineage is accepted only for the
+separate no-live candidate lane; it never grants native arrival or live
+authority.  This module deliberately performs no network or database I/O.
 """
 
 from __future__ import annotations
@@ -12,6 +14,11 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from .contracts import ContractError, content_sha256
+from .taf_oos_contract import (
+    HISTORICAL_OOS_TEMPORAL_SCOPE,
+    assert_historical_taf_oos,
+)
+from .settlement_time import settlement_day_window
 
 
 TAF_EXACT_JOIN_SCHEMA = "bayes_basket_taf_increment_calibration_dataset_v2"
@@ -80,18 +87,48 @@ def _model_lineage(row: Mapping[str, Any], *, decision_at: datetime) -> tuple[st
         _text("raw_object_ref", item.get("raw_object_ref"))
         if item.get("raw_object_verified") is not True:
             raise ContractError("taf_exact_join_raw_object_verification_required")
-        if _utc("model_published_at_utc", item.get("published_at_utc")) > decision_at:
-            raise ContractError("taf_exact_join_model_published_after_decision")
         availability_class = _text(
             "availability_class", item.get("availability_class")
         )
         if availability_class == "native_receipt":
+            if _utc("model_published_at_utc", item.get("published_at_utc")) > decision_at:
+                raise ContractError("taf_exact_join_model_published_after_decision")
             if _utc("model_available_at_utc", item.get("available_at_utc")) > decision_at:
                 raise ContractError("taf_exact_join_model_available_after_decision")
         elif availability_class == "official_publication_schedule_historical_replay":
+            if _utc("model_published_at_utc", item.get("published_at_utc")) > decision_at:
+                raise ContractError("taf_exact_join_model_published_after_decision")
             if item.get("available_at_utc") not in {None, ""}:
                 raise ContractError(
                     "taf_exact_join_historical_native_arrival_forbidden"
+                )
+        elif availability_class == "historical_republisher_replay":
+            # Open-Meteo is an explicit retrospective fallback.  It has no
+            # native publication/arrival timestamp, so the immutable model
+            # run/replay anchor is checked instead.  This branch is candidate
+            # only and never grants native arrival, P1, or live authority.
+            replay_anchor = _utc(
+                "historical_replay_anchor_utc",
+                item.get("historical_replay_anchor_utc")
+                or item.get("published_at_utc"),
+            )
+            if replay_anchor > decision_at:
+                raise ContractError("taf_exact_join_replay_anchor_after_decision")
+            if item.get("available_at_utc") not in {None, ""}:
+                raise ContractError(
+                    "taf_exact_join_republisher_arrival_forbidden"
+                )
+            if item.get("receipt_class") != "HISTORICAL_ASOF_REPUBLISHER_RECEIPT":
+                raise ContractError(
+                    "taf_exact_join_republisher_receipt_class_required"
+                )
+            _text(
+                "historical_oos_contract_id",
+                item.get("historical_oos_contract_id"),
+            )
+            if item.get("historical_oos_eligible") is not True:
+                raise ContractError(
+                    "taf_exact_join_republisher_historical_oos_required"
                 )
         else:
             raise ContractError("taf_exact_join_availability_class_invalid")
@@ -184,6 +221,26 @@ def build_taf_exact_join(
             window = taf_row.get("settlement_window")
             if not isinstance(taf, Mapping) or not isinstance(truth, Mapping) or not isinstance(window, Mapping):
                 raise ContractError("taf_exact_join_taf_truth_window_incomplete")
+            truth_closed = _utc(
+                "taf_exact_join_truth_closed_at",
+                window.get("end_utc")
+                or settlement_day_window(
+                    event_date, taf_row.get("settlement_timezone")
+                )["target_day_end_utc"],
+            )
+            temporal = assert_historical_taf_oos(
+                taf_row,
+                event_date=event_date,
+                truth_closed_at=truth_closed,
+                transport_values=tuple(
+                    str(item.get("provider_id") or item.get("transport_provider_id") or "")
+                    for item in (nwp.get("model_rows") or [])
+                    if isinstance(item, Mapping)
+                ),
+                name="taf_exact_join",
+            )
+            if str(taf.get("source_class") or "") == "official_forward_native_receipt":
+                raise ContractError("taf_exact_join_forward_taf_not_oos")
             if nwp_decision > _utc(
                 "taf_available_time_utc", taf.get("available_time_utc")
             ):
@@ -241,7 +298,9 @@ def build_taf_exact_join(
                     "selected_models": list(models),
                     "combined_tmax_c": float(nwp["combined_tmax_c"]),
                     "model_rows": [dict(item) for item in nwp["model_rows"]],
+                    **temporal,
                 },
+                **temporal,
             })
         except (ContractError, KeyError, TypeError, ValueError) as exc:
             blockers.append({
@@ -268,6 +327,7 @@ def build_taf_exact_join(
             "places_orders": False,
             "minimum_selected_models": 2,
             "strict_oos_crossfit_required": True,
+            "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
         },
         "resource_bounds": {
             "max_rows": max_rows,

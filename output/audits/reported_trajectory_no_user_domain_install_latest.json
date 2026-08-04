@@ -1,8 +1,8 @@
 {
   "calls_order_gateway": false,
-  "content_sha256": "b7fad895bd8801e70fc3e0d1d2d94ef7edc505df6e23aa2e64d32adb93c8cbca",
+  "content_sha256": "56b16969c6167db95efdd04ce839a8524703b84677fc342f138715def9966e2e",
   "domain": "gui/501",
-  "installed_at_utc": "2026-07-31T05:21:33Z",
+  "installed_at_utc": "2026-08-01T09:04:37Z",
   "live_pause_retained": true,
   "live_submit_authorized": false,
   "orders_submitted": 0,

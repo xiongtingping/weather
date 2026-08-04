@@ -315,58 +315,17 @@ def persist_tier_a_forecast_p1_proposal(
     conn: sqlite3.Connection,
     proposal: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Append one verified Tier-A forecast observation or fail closed.
+    """Retired authority boundary: forecasts are P0/P0-M inputs, never P1.
 
-    This function never starts, commits, or rolls back a transaction.  It is
-    intended for an explicitly authorized outer migration/ingress transaction.
+    The typed rejection occurs before inspecting the proposal or database, so
+    every legacy CLI receives the same deterministic zero-write result while
+    historical read-only parsers remain available for audit.
     """
 
-    schema = verify_strict_forecast_p1_ingress_schema(conn)
-    if schema["ok"] is not True:
-        raise StrictForecastP1IngressError("strict_forecast_p1_schema_not_ready")
-    row, _observation = _row_from_tier_a_proposal(proposal)
-    existing_rows = _existing_rows(conn, row)
-    if existing_rows:
-        if len(existing_rows) == 1 and _equivalent(existing_rows[0], row):
-            return {
-                "schema": SCHEMA_VERSION,
-                "ok": True,
-                "state": "idempotent",
-                "source_event_id": row["source_event_id"],
-                "source_observation_id": row["source_observation_id"],
-                "writes_posterior": False,
-                "places_orders": False,
-            }
-        raise StrictForecastP1IngressError("strict_forecast_p1_immutable_replay_drift")
-    placeholders = ",".join("?" for _ in INSERT_COLUMNS)
-    quoted_columns = ",".join(f'"{column}"' for column in INSERT_COLUMNS)
-    try:
-        conn.execute(
-            f"INSERT INTO source_observations({quoted_columns}) VALUES({placeholders})",
-            tuple(row[column] for column in INSERT_COLUMNS),
-        )
-    except sqlite3.IntegrityError as exc:
-        existing_rows = _existing_rows(conn, row)
-        if len(existing_rows) == 1 and _equivalent(existing_rows[0], row):
-            return {
-                "schema": SCHEMA_VERSION,
-                "ok": True,
-                "state": "idempotent_after_concurrent_append",
-                "source_event_id": row["source_event_id"],
-                "source_observation_id": row["source_observation_id"],
-                "writes_posterior": False,
-                "places_orders": False,
-            }
-        raise StrictForecastP1IngressError("strict_forecast_p1_append_integrity_error") from exc
-    return {
-        "schema": SCHEMA_VERSION,
-        "ok": True,
-        "state": "appended",
-        "source_event_id": row["source_event_id"],
-        "source_observation_id": row["source_observation_id"],
-        "writes_posterior": False,
-        "places_orders": False,
-    }
+    del conn, proposal
+    raise StrictForecastP1IngressError(
+        "forecast_or_nwp_cannot_materialize_p1_use_p0_or_p0m_pipeline"
+    )
 
 
 __all__ = [

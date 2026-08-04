@@ -34,6 +34,12 @@ RESERVATION_SCHEMA = "delta_basket_reservation_price_v2"
 PORTFOLIO_SELECTION_SCHEMA = "delta_basket_portfolio_selection_v2"
 KERNEL_VERSION = "delta_basket_score_kernel_v2"
 
+# A bundle evaluation retains every joint fill outcome in its auditable result.
+# Keep the retained set small enough for the bounded JSON handoff and well
+# below the process-memory guard.  This is a kernel constant: a policy artifact
+# must never be able to increase the runtime resource envelope.
+MAX_BUNDLE_JOINT_OUTCOME_ROWS = 4_096
+
 REQUIRED_HARD_GATES = (
     "unique_ssot",
     "lineage_complete",
@@ -874,6 +880,160 @@ def select_action_v2(
     }
 
 
+def _bounded_maker_bundle_candidates(
+    by_bucket: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    required: Sequence[str],
+    probabilities: Mapping[str, Any],
+    execution_weights: ExecutionWeightsV2,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    """Retain a complete Maker candidate set within a fixed outcome budget.
+
+    The old selector counted every joint-fill row globally but compared it to
+    a three-dimensional bound.  A valid basket may require more than three
+    buckets, so ordinary five-bucket candidate grids could fail part-way
+    through evaluation.  Calculate the exact Cartesian row count first,
+    retain one valid candidate per required bucket, then add alternatives only
+    while the fixed resource limit remains satisfied.  If one candidate per
+    bucket cannot fit, no complete basket can be evaluated safely and the
+    caller remains fail-closed.
+    """
+
+    outcome_row_limit = min(
+        MAX_BUNDLE_JOINT_OUTCOME_ROWS,
+        execution_weights.maximum_candidates ** 3,
+    )
+    if outcome_row_limit <= 0:
+        raise ContractError("delta_v2_bundle_outcome_bound_exceeded")
+
+    def outcome_count(row: Mapping[str, Any]) -> int:
+        action = row.get("action")
+        if not isinstance(action, Mapping):
+            raise ContractError("delta_v2_action_mapping_required")
+        return len(_fill_distribution(
+            row.get("fill_distribution"),
+            mode=str(action.get("order_mode") or "").upper(),
+        ))
+
+    def candidate_key(row: Mapping[str, Any]) -> tuple[float, float, str]:
+        action = row.get("action")
+        if not isinstance(action, Mapping):
+            raise ContractError("delta_v2_action_mapping_required")
+        # When the resource budget forces a choice, retain the smaller-capital
+        # alternative first.  This changes no hard gate and cannot authorize a
+        # trade; it only keeps the lower-reservation complete basket available.
+        return (
+            _nonnegative(
+                "delta_v2_bundle_candidate_reserved",
+                row.get("capital_reserved_usdc"),
+            ),
+            _nonnegative(
+                "delta_v2_bundle_candidate_maximum_shares",
+                action.get("maximum_shares"),
+            ),
+            str(row.get("content_sha256") or ""),
+        )
+
+    normalized: dict[str, list[dict[str, Any]]] = {}
+    selected: dict[str, list[dict[str, Any]]] = {}
+    requested_outcomes_by_bucket: dict[str, int] = {}
+    selected_outcomes_by_bucket: dict[str, int] = {}
+    for bucket in required:
+        rows = [dict(row) for row in by_bucket[bucket]]
+        rows.sort(key=candidate_key)
+        # Validate even alternatives that will not be retained.  Malformed
+        # inputs remain invalid rather than silently disappearing in pruning.
+        sizes = [outcome_count(row) for row in rows]
+        normalized[bucket] = rows
+        requested_outcomes_by_bucket[bucket] = sum(sizes)
+        selected[bucket] = [rows[0]]
+        selected_outcomes_by_bucket[bucket] = sizes[0]
+
+    requested_joint_outcome_count = math.prod(
+        requested_outcomes_by_bucket.values()
+    )
+    selected_joint_outcome_count = math.prod(
+        selected_outcomes_by_bucket.values()
+    )
+    if selected_joint_outcome_count > outcome_row_limit:
+        raise ContractError("delta_v2_bundle_outcome_bound_exceeded")
+
+    next_indexes = {bucket: 1 for bucket in required}
+    while True:
+        additions: list[tuple[float, float, str, str, int]] = []
+        for bucket in required:
+            index = next_indexes[bucket]
+            rows = normalized[bucket]
+            if index >= len(rows):
+                continue
+            candidate = rows[index]
+            candidate_outcomes = outcome_count(candidate)
+            current_outcomes = selected_outcomes_by_bucket[bucket]
+            projected = (
+                selected_joint_outcome_count
+                // current_outcomes
+                * (current_outcomes + candidate_outcomes)
+            )
+            if projected > outcome_row_limit:
+                continue
+            action = candidate["action"]
+            expected_fill = sum(
+                float(row["probability"]) * float(row["fill_fraction"])
+                for row in _fill_distribution(
+                    candidate.get("fill_distribution"),
+                    mode=str(action.get("order_mode") or "").upper(),
+                )
+            ) * float(action["maximum_shares"])
+            # The allocation is deterministic and only constructs a bounded
+            # feasible set.  The original joint score and hard gates still
+            # decide whether any retained basket can be authorized.
+            additions.append((
+                -_probability(
+                    "delta_v2_bundle_candidate_probability",
+                    probabilities[bucket],
+                ),
+                -expected_fill,
+                bucket,
+                str(candidate.get("content_sha256") or ""),
+                candidate_outcomes,
+            ))
+        if not additions:
+            break
+        _probability_rank, _fill_rank, bucket, _sha, candidate_outcomes = min(
+            additions
+        )
+        candidate = normalized[bucket][next_indexes[bucket]]
+        selected[bucket].append(candidate)
+        selected_outcomes_by_bucket[bucket] += candidate_outcomes
+        selected_joint_outcome_count = math.prod(
+            selected_outcomes_by_bucket.values()
+        )
+        next_indexes[bucket] += 1
+
+    retained_hashes = {
+        str(row.get("content_sha256") or "")
+        for rows in selected.values()
+        for row in rows
+    }
+    return selected, {
+        "outcome_row_limit": outcome_row_limit,
+        "requested_joint_outcome_count": requested_joint_outcome_count,
+        "evaluated_joint_outcome_count": selected_joint_outcome_count,
+        "requested_candidate_action_count": sum(
+            len(rows) for rows in normalized.values()
+        ),
+        "evaluated_candidate_action_count": sum(
+            len(rows) for rows in selected.values()
+        ),
+        "pruned_action_sha256s": sorted(
+            str(row.get("content_sha256") or "")
+            for rows in normalized.values()
+            for row in rows
+            if str(row.get("content_sha256") or "") not in retained_hashes
+        ),
+    }
+
+
 def select_complete_maker_bundle_v2(
     actions: Sequence[Mapping[str, Any]],
     *,
@@ -952,11 +1112,56 @@ def select_complete_maker_bundle_v2(
     for rows in by_bucket.values():
         rows.sort(key=lambda row: str(row.get("content_sha256") or ""))
 
+    duplicate_action_sha256s: list[str] = []
+    for bucket, rows in by_bucket.items():
+        unique_rows: list[dict[str, Any]] = []
+        seen_hashes: set[str] = set()
+        for row in rows:
+            action_sha256 = str(row.get("content_sha256") or "")
+            if action_sha256 in seen_hashes:
+                # Identical immutable action evaluations add no feasible
+                # basket state.  Descriptor clipping can legitimately produce
+                # this shape (for example, two cash clips both limited by the
+                # same remaining share gap); never multiply it into the joint
+                # outcome lattice.
+                duplicate_action_sha256s.append(action_sha256)
+                continue
+            seen_hashes.add(action_sha256)
+            unique_rows.append(row)
+        by_bucket[bucket] = unique_rows
+
+    deduplicated_candidate_count = sum(
+        len(rows) for rows in by_bucket.values()
+    )
     missing = sorted(bucket for bucket, rows in by_bucket.items() if not rows)
     evaluated: list[dict[str, Any]] = []
     combination_count = 0
     outcome_count = 0
+    resource_bound = {
+        "outcome_row_limit": min(
+            MAX_BUNDLE_JOINT_OUTCOME_ROWS,
+            execution_weights.maximum_candidates ** 3,
+        ),
+        "requested_joint_outcome_count": 0,
+        "evaluated_joint_outcome_count": 0,
+        "requested_candidate_action_count": len(actions),
+        "deduplicated_candidate_action_count": deduplicated_candidate_count,
+        "evaluated_candidate_action_count": 0,
+        "duplicate_action_sha256s": sorted(duplicate_action_sha256s),
+        "pruned_action_sha256s": [],
+    }
     if not missing and required:
+        by_bucket, resource_bound = _bounded_maker_bundle_candidates(
+            by_bucket,
+            required=required,
+            probabilities=probabilities,
+            execution_weights=execution_weights,
+        )
+        resource_bound.update({
+            "raw_candidate_action_count": len(actions),
+            "deduplicated_candidate_action_count": deduplicated_candidate_count,
+            "duplicate_action_sha256s": sorted(duplicate_action_sha256s),
+        })
         combination_bound = execution_weights.maximum_candidates ** min(
             len(required), 2
         )
@@ -995,7 +1200,7 @@ def select_complete_maker_bundle_v2(
             expected_delta = 0.0
             for outcomes in product(*distributions):
                 outcome_count += 1
-                if outcome_count > execution_weights.maximum_candidates ** 3:
+                if outcome_count > resource_bound["outcome_row_limit"]:
                     raise ContractError("delta_v2_bundle_outcome_bound_exceeded")
                 probability = math.prod(
                     _probability(
@@ -1141,6 +1346,7 @@ def select_complete_maker_bundle_v2(
         "kernel_version": KERNEL_VERSION,
         "required_buckets": list(required),
         "candidate_action_count": len(actions),
+        "joint_outcome_resource_bound": resource_bound,
         "bundle_candidate_count": len(evaluated),
         "selected_bundle_sha256": (
             winner["content_sha256"] if winner is not None else None

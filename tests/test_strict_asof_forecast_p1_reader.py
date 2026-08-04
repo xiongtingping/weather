@@ -5,7 +5,7 @@ import sqlite3
 from external_forecast_snapshot_runtime import build_external_forecast_raw_envelope
 from sequential_bayes_schema_contract import apply_forward_schema
 from strict_asof_forecast_capture_runtime import classify_strict_asof_forecast_capture
-from strict_asof_forecast_p1_ingress_writer import persist_tier_a_forecast_p1_proposal
+from strict_asof_forecast_p1_ingress_writer import INSERT_COLUMNS, _row_from_tier_a_proposal
 from strict_asof_forecast_p1_reader import load_strict_forecast_p1_source_observations
 from strict_asof_forecast_source_observation_runtime import build_tier_a_forecast_source_observation_proposal
 
@@ -58,11 +58,23 @@ def _proposal() -> dict:
     )
 
 
+def _seed_retired_forecast_observation(conn: sqlite3.Connection, proposal: dict) -> None:
+    """Seed historical reader fixtures without reviving the retired writer."""
+
+    row, _observation = _row_from_tier_a_proposal(proposal)
+    columns = ",".join(f'"{name}"' for name in INSERT_COLUMNS)
+    placeholders = ",".join("?" for _ in INSERT_COLUMNS)
+    conn.execute(
+        f"INSERT INTO source_observations({columns}) VALUES({placeholders})",
+        tuple(row[name] for name in INSERT_COLUMNS),
+    )
+
+
 def test_reader_rehydrates_only_bound_strict_forecast_observations() -> None:
     conn = sqlite3.connect(":memory:")
     _initialize_source_observations(conn)
     apply_forward_schema(conn)
-    persist_tier_a_forecast_p1_proposal(conn, _proposal())
+    _seed_retired_forecast_observation(conn, _proposal())
 
     result = load_strict_forecast_p1_source_observations(conn, event_date="2026-07-12")
 
@@ -78,7 +90,7 @@ def test_reader_accepts_forward_added_generation_columns_without_weakening_p1() 
     _initialize_source_observations(conn)
     apply_forward_schema(conn)
     conn.execute("ALTER TABLE posterior_checkpoints ADD COLUMN future_generation_sha256 TEXT")
-    persist_tier_a_forecast_p1_proposal(conn, _proposal())
+    _seed_retired_forecast_observation(conn, _proposal())
 
     result = load_strict_forecast_p1_source_observations(conn, event_date="2026-07-12")
 
@@ -94,7 +106,7 @@ def test_reader_fails_closed_on_column_json_binding_drift() -> None:
     conn = sqlite3.connect(":memory:")
     _initialize_source_observations(conn)
     apply_forward_schema(conn)
-    persist_tier_a_forecast_p1_proposal(conn, _proposal())
+    _seed_retired_forecast_observation(conn, _proposal())
     conn.execute("UPDATE source_observations SET raw_sha256='tampered'")
 
     result = load_strict_forecast_p1_source_observations(conn, event_date="2026-07-12")
@@ -124,8 +136,8 @@ def test_reader_quarantines_only_tampered_source_and_keeps_other_tier_a_source()
         "raw_provider_response_present": True,
         "hourly_curve": [{"valid_time_local": "2026-07-12T15:00:00+08:00", "temperature_c": 32.0}],
     }
-    persist_tier_a_forecast_p1_proposal(conn, first)
-    persist_tier_a_forecast_p1_proposal(conn, build_tier_a_forecast_source_observation_proposal(
+    _seed_retired_forecast_observation(conn, first)
+    _seed_retired_forecast_observation(conn, build_tier_a_forecast_source_observation_proposal(
         capture=classify_strict_asof_forecast_capture(raw_envelope=envelope, normalized_forecast=forecast),
         normalized_forecast=forecast, station_id="ZUUU", raw_ref="research://forecast/gfs/capture.json.gz",
     ))

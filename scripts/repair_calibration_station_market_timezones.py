@@ -93,6 +93,10 @@ def main() -> int:
             "BEFORE DELETE ON calibration_station_market_timezone_binding "
             "BEGIN SELECT RAISE(ABORT,'append_only'); END"
         )
+        # A binding is required for every canonical station, even when the
+        # legacy registry happened to already carry the same timezone.  The
+        # previous query selected only mismatches, leaving an invisible
+        # missing-binding hole for 12 stations and blocking d2 builders.
         rows = conn.execute(
             "WITH market_tz AS ("
             " SELECT station_id,MIN(settlement_timezone) timezone_name,"
@@ -104,10 +108,16 @@ def main() -> int:
             "c.source_lane,c.settlement_definition,c.registry_version,"
             "c.source_role,m.timezone_name,m.timezone_count,"
             "(SELECT COUNT(*) FROM calibration_station_daily_high_truth t "
-            " WHERE t.station_id=c.station_id) "
+            " WHERE t.station_id=c.station_id),"
+            "b.binding_id,b.settlement_timezone,b.content_sha256 "
             "FROM calibration_station_registry c JOIN market_tz m "
             "ON m.station_id=c.station_id "
-            "WHERE c.timezone_name<>m.timezone_name "
+            "LEFT JOIN calibration_station_market_timezone_binding b "
+            "ON b.station_id=c.station_id "
+            "WHERE b.station_id IS NULL "
+            "OR c.timezone_name<>m.timezone_name "
+            "OR b.settlement_timezone<>m.timezone_name "
+            "OR b.market_registry_timezone_count<>1 "
             "ORDER BY c.station_id"
         ).fetchall()
         repairs: list[dict[str, Any]] = []
@@ -224,7 +234,7 @@ def main() -> int:
             "JOIN market_tz m USING(station_id) "
             "LEFT JOIN calibration_station_market_timezone_binding b "
             "USING(station_id) "
-            "WHERE c.timezone_name<>m.timezone_name AND ("
+            "WHERE (b.station_id IS NULL OR c.timezone_name<>m.timezone_name) AND ("
             "b.station_id IS NULL OR b.settlement_timezone<>m.timezone_name "
             "OR b.market_registry_timezone_count<>1)"
         ).fetchone()[0]

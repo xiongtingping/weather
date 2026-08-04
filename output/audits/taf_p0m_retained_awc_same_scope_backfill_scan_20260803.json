@@ -1,0 +1,500 @@
+{
+  "boundary": {
+    "amd_cor_quarantine_enforced": true,
+    "forbids_forged_tx": true,
+    "forward_data_counted_as_oos": false,
+    "network_fetches": 0,
+    "official_awc_only": true,
+    "orders_submitted": 0,
+    "writes_database": false
+  },
+  "content_sha256": "95fbeaf475b2d393b994665d78ded4779330da01740a495695a0e78c973e73f0",
+  "inputs": {
+    "exact_audit_content_sha256": "90381af9453d35030f9c515834a9d32e7464ef5e0c85d92432382dc9dc090de2",
+    "exact_join_dir": "/Users/xiong/weather/output/audits/taf_native_exact_join_historical_correction_quarantine_20260803",
+    "p0_inbox_content_sha256": "03ecdb5ed376089c73c0bd40e49415de3a4fcc59d62fd8cf10dd187b9923786e"
+  },
+  "minimum_taf_native_oos_sample_n": 24,
+  "schema": "taf_p0m_retained_awc_same_scope_backfill_scan_v1",
+  "state": "NO_NEW_EXACT_JOIN_FROM_RETAINED_AWC",
+  "station_results": [
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "CYYZ"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "EDDM"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "EFHK"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 36,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "EGLC"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "EHAM"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "EPWA"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 37,
+      "station_id": "FACT"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 26,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KATL"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 43,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KAUS"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 36,
+      "exact_dates": 4,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 15,
+      "station_id": "KBKF"
+    },
+    {
+      "blockers": [
+        "current_p0_scope_missing",
+        "no_historical_cross_native_p0_prediction"
+      ],
+      "current_scope_p0_dates": 0,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KDAL"
+    },
+    {
+      "blockers": [
+        "retained_official_awc_taf_tx_missing",
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 9,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KHOU"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KLAX"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KLGA"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 10,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KMIA"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KORD"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KSEA"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 43,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "KSFO"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "LEMD"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 52,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "LFPB"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "LIMC"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "LTAC"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 26,
+      "exact_dates": 0,
+      "new_exact_dates": 1,
+      "new_exact_event_dates": [
+        "2026-07-30"
+      ],
+      "retained_awc_taf_candidate_dates": 2,
+      "station_id": "MMMX"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 43,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "MPMG"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "NZWN"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "OEJN"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "OPKC"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 36,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "RCSS"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "RJTT"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 11,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 40,
+      "station_id": "RKPK"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 44,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 37,
+      "station_id": "RKSI"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 19,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "RPLL"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 27,
+      "exact_dates": 6,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 15,
+      "station_id": "SAEZ"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 52,
+      "exact_dates": 9,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 40,
+      "station_id": "SBGR"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 36,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "VILK"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 35,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "WMKK"
+    },
+    {
+      "blockers": [
+        "no_retained_awc_taf_candidate_for_current_p0_dates"
+      ],
+      "current_scope_p0_dates": 18,
+      "exact_dates": 0,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 0,
+      "station_id": "WSSS"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZBAA"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZGGG"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZGSZ"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZHHH"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZSPD"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 36,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 32,
+      "station_id": "ZSQD"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 10,
+      "new_exact_dates": 0,
+      "new_exact_event_dates": [],
+      "retained_awc_taf_candidate_dates": 48,
+      "station_id": "ZUCK"
+    },
+    {
+      "blockers": [],
+      "current_scope_p0_dates": 53,
+      "exact_dates": 8,
+      "new_exact_dates": 1,
+      "new_exact_event_dates": [
+        "2026-07-31"
+      ],
+      "retained_awc_taf_candidate_dates": 42,
+      "station_id": "ZUUU"
+    }
+  ],
+  "summary": {
+    "exact_sample_count_total": 128,
+    "kdal_current_scope_p0_dates": 0,
+    "khou_retained_awc_candidate_dates": 0,
+    "new_exact_date_count": 2,
+    "qualified_scope_count_at_24": 0,
+    "station_count": 45
+  }
+}

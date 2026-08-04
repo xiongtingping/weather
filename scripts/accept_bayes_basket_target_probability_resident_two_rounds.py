@@ -43,7 +43,11 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 from bayes_basket_target.target_ssot_replay import (  # noqa: E402
     replay_durable_target_chain,
 )
-from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
+from bayes_basket_target.resource_bounds import (  # noqa: E402
+    MAX_TARGET_DB_BYTES,
+    MAX_TARGET_WAL_BYTES,
+    write_bounded_json,
+)
 from scripts.bayes_basket_target_production_readiness import (  # noqa: E402
     _probability_evidence_runtime_status,
 )
@@ -55,7 +59,7 @@ MIGRATION_SCHEMA = (
     "bayes_basket_target_probability_migration_resident_acceptance_v1"
 )
 CORE_SERVICES = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
@@ -71,8 +75,8 @@ STATION_TABLES = (
 )
 MAX_CORE_ROWS = 512
 MAX_JSON_BYTES = 1024 * 1024
-MAX_DB_BYTES = 4096 * 1024 * 1024
-MAX_WAL_BYTES = 64 * 1024 * 1024
+MAX_DB_BYTES = MAX_TARGET_DB_BYTES
+MAX_WAL_BYTES = MAX_TARGET_WAL_BYTES
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 CANONICAL_STATION_IDS = tuple(
     coordinate_registry_manifest()["station_ids"]
@@ -764,9 +768,11 @@ def capture_round(
         "station_results": station_results,
         "forbidden_execution_counts": forbidden,
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": {
-            "blocks_production_no_live": False,
-            "blocks_formal_promotion_or_live": True,
+        "historical_oos_boundary": {
+            "future_data_counts_as_oos": False,
+            "future_data_blocks_production_no_live": False,
+            "future_data_blocks_formal_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_promotion_or_live": True,
         },
         "production_no_live": True,
         "calls_order_gateway": False,
@@ -899,9 +905,11 @@ def compare_rounds(
         "scoped_station_counts": second_counts,
         "station_results": second_results,
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": {
-            "blocks_production_no_live": False,
-            "blocks_formal_promotion_or_live": True,
+        "historical_oos_boundary": {
+            "future_data_counts_as_oos": False,
+            "future_data_blocks_production_no_live": False,
+            "future_data_blocks_formal_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_promotion_or_live": True,
         },
         "production_no_live": True,
         "calls_order_gateway": False,
@@ -944,9 +952,11 @@ def migration_round_from_strict(
         "strict_state": receipt.get("state"),
         "materialization_pending_blockers": sorted(set(pending)),
         "blockers": sorted(set(safety)),
-        "forward_oos_boundary": {
-            "blocks_production_no_live": False,
-            "blocks_formal_promotion_or_live": True,
+        "historical_oos_boundary": {
+            "future_data_counts_as_oos": False,
+            "future_data_blocks_production_no_live": False,
+            "future_data_blocks_formal_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_promotion_or_live": True,
         },
     })
     return {
@@ -1094,9 +1104,11 @@ def compare_migration_rounds(
         "scoped_station_counts": second_counts,
         "materialization_pending_blockers": pending,
         "blockers": sorted(set(blockers)),
-        "forward_oos_boundary": {
-            "blocks_production_no_live": False,
-            "blocks_formal_promotion_or_live": True,
+        "historical_oos_boundary": {
+            "future_data_counts_as_oos": False,
+            "future_data_blocks_production_no_live": False,
+            "future_data_blocks_formal_promotion_or_live": False,
+            "historical_strict_oos_required_for_formal_promotion_or_live": True,
         },
         "production_no_live": True,
         "calls_order_gateway": False,

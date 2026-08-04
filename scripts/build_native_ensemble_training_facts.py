@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persist forward TAF facts and build native-P0/TAF/truth exact joins."""
+"""Persist TAF facts or read existing SSOT facts into exact-join evidence."""
 
 from __future__ import annotations
 
@@ -96,22 +96,43 @@ def main() -> int:
     parser.add_argument("--all-live-scopes", action="store_true")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--ingest-only", action="store_true")
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help=(
+            "Build exact-join evidence from existing SSOT facts only; do not "
+            "apply schema or ingest the TAF inbox."
+        ),
+    )
     args = parser.parse_args()
     db = args.db.expanduser().resolve(strict=True)
-    taf_inbox = load_bounded_json(
-        args.taf_inbox.expanduser().resolve(strict=True)
-    )
-    if not isinstance(taf_inbox, dict):
-        raise RuntimeError("native_training_taf_inbox_invalid")
-    with sqlite3.connect(db) as conn:
-        apply_production_ssot_schema(conn)
-        taf_receipt = ingest_forward_taf_inbox(conn, taf_inbox)
-        conn.commit()
+    if args.read_only and args.ingest_only:
+        raise RuntimeError("native_training_read_only_ingest_only_conflict")
+    if args.read_only:
+        connection = sqlite3.connect(
+            f"{db.as_uri()}?mode=ro",
+            uri=True,
+        )
+        connection.execute("PRAGMA query_only=ON")
+        taf_receipt: dict[str, Any] | None = None
+    else:
+        connection = sqlite3.connect(db)
+        taf_inbox = load_bounded_json(
+            args.taf_inbox.expanduser().resolve(strict=True)
+        )
+        if not isinstance(taf_inbox, dict):
+            connection.close()
+            raise RuntimeError("native_training_taf_inbox_invalid")
+        apply_production_ssot_schema(connection)
+        taf_receipt = ingest_forward_taf_inbox(connection, taf_inbox)
+        connection.commit()
+    with connection as conn:
         if args.ingest_only:
             print(json.dumps({
                 "state": "COMMITTED",
                 "taf_ingress": taf_receipt,
                 "exact_join": None,
+                "writes_database": True,
                 "production_no_live": True,
                 "calls_order_gateway": False,
                 "orders_submitted": 0,
@@ -216,7 +237,7 @@ def main() -> int:
                 "wrote": wrote,
             })
     print(json.dumps({
-        "state": "COMMITTED",
+        "state": "VALIDATED_NOT_COMMITTED" if args.read_only else "COMMITTED",
         "taf_ingress": taf_receipt,
         "scope_count": len(results),
         "sample_count": sum(
@@ -224,6 +245,7 @@ def main() -> int:
             for result in results
         ),
         "results": results,
+        "writes_database": not args.read_only,
         "production_no_live": True,
         "calls_order_gateway": False,
         "orders_submitted": 0,

@@ -375,7 +375,11 @@ def capture_provider(
             "hard_no_eligible": False,
             "formal_calibration_eligible": False,
             "production_activation_eligible": False,
-            "requires_separate_forward_oos_artifact": True,
+            # Forward/observational packets are never OOS.  Only a separate
+            # closed-day AWC historical contract can activate this
+            # republisher as a no-live P0/P0-M fallback.
+            "requires_separate_historical_oos_artifact": True,
+            "forward_evidence_role": "observational_candidate_not_oos",
         },
         "boundary": {
             "writes_target_database": False,

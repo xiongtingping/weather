@@ -1,0 +1,23 @@
+{
+  "content_sha256": "41785f409ff82d4489d7aac63a6262e1c950182a3c9ec81ba2fe6d9ee00e310c",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "cdddf61715b48fa9ec1543d3584b6723e07e54f3efd7c77bb39cd687d300d299",
+  "observational_forward_event_count": 4,
+  "observational_forward_event_dates": [
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Europe/Istanbul",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "LTAC"
+}

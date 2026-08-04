@@ -47,7 +47,10 @@ from .database import (
     resolve_target_ws_manifest,
 )
 from .et_history import event_day_window
-from .production import commit_production_candidate_atomic
+from .production import (
+    commit_production_candidate_atomic,
+    commit_production_stage_zero_execution_atomic,
+)
 from .execution_reconciliation import (
     validate_persisted_candidate_consumption_cas,
 )
@@ -60,11 +63,16 @@ from .production_io import (
     load_materialized_probability_envelopes,
     load_post_fill_recompute_requests,
     target_atomic_facts_from_cycle,
+    target_registry_source_lane,
+    target_stage_zero_execution_anchor_from_cycle,
 )
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m
 from .probability_bridge import materialize_probability_bridge
-from .metar_trajectory import MetarTrajectoryLikelihoodArtifact
+from .metar_trajectory import (
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    MetarTrajectoryLikelihoodArtifact,
+)
 from .p1_compiler import (
     compile_station_p1_packets,
     select_p1_replay_base,
@@ -106,8 +114,8 @@ from .official_native_forward_packet import (
 )
 from .native_ensemble_contract import P0_PROBABILITY_PATHWAY
 from .native_ensemble_oos import (
-    NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS,
-    NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS,
+    DEFAULT_MIN_HOLDOUT_DAYS,
+    DEFAULT_MIN_TRAIN_DAYS,
     build_native_ensemble_oos,
     persist_native_ensemble_oos,
 )
@@ -115,8 +123,18 @@ from .native_ensemble_p0 import (
     compile_native_ensemble_p0,
     persist_native_ensemble_forward_prediction,
 )
+from .native_ensemble_authority import (
+    DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST,
+    NativeOosSnapshot,
+    load_native_oos_snapshot_manifest,
+)
 from .native_ensemble_store import ingest_forward_packet
 from .native_ensemble_training_facts import ingest_forward_taf_inbox
+from .republisher_fallback_activation import (
+    RepublisherFallbackActivation,
+    load_republisher_fallback_activation,
+    preflight_republisher_fallback_activation,
+)
 from .p0_preselection import (
     commit_p0_preselection,
     compile_p0_preselection,
@@ -138,6 +156,10 @@ from .ssot import production_ssot_schema_status
 from .settlement_truth import materialize_settled_training_truths
 from .settlement_time import settlement_day_window
 from .station_registry import coordinate_registry_manifest, station_coordinates
+from .taf_artifact_registry import (
+    SCHEMA as TAF_ARTIFACT_REGISTRY_SCHEMA,
+    validate_taf_artifact_registry,
+)
 from .taf_revision import (
     TafRevisionArtifact,
     compile_taf_revision_proof,
@@ -169,7 +191,12 @@ MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
 MAX_POST_FILL_RECOMPUTES_PER_PASS = 128
-MAX_REGIME_ARTIFACTS_PER_PASS = 256
+# A single resident pass can legitimately expose multiple committed envelope
+# generations for a station/day (P0/P1 corrections and replay-safe lineage).
+# The 45-station scope currently expands to 265 envelopes; keep a bounded
+# ceiling above that real shape while retaining a hard upper bound for the
+# resource guard.
+MAX_REGIME_ARTIFACTS_PER_PASS = 512
 MAX_FORWARD_DECISIONS_PER_PASS = MAX_FORWARD_STORE_BATCH_ROWS
 MAX_FORWARD_DECISION_JSON_BYTES = 262_144
 MAX_FORWARD_SCAN_BYTES = 16 * 1024 * 1024
@@ -292,6 +319,7 @@ DEFAULT_TARGET_ACTIVATION = (
     / "bayes_basket_target_production_no_live_activation_v1.json"
 )
 DEFAULT_TARGET_MARKET_MANIFEST = DEFAULT_TARGET_WS_MANIFEST
+DEFAULT_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST = DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST
 CANONICAL_TARGET_STATIONS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
@@ -420,6 +448,380 @@ def _blocked(reason: str, *, station_id: str | None = None, event_date: str | No
     return result
 
 
+_ENSEMBLE_CANDIDATE_MEMBER_TABLES = (
+    "calibration_republisher_ensemble_member_run",
+    # Retained pre-migration Open-Meteo rows stay explicitly republisher
+    # lineage.  They are read here to finish closed-day historical OOS
+    # evidence and may serve the separate no-live P0 fallback contract; native
+    # arrival/P1 authority remains independently fail-closed.
+    "calibration_native_ensemble_member_run",
+)
+
+_ENSEMBLE_CANDIDATE_BUCKET_TABLES = (
+    "calibration_republisher_ensemble_member_bucket",
+    "calibration_native_ensemble_member_bucket",
+)
+
+
+def _existing_ensemble_candidate_tables(
+    conn: sqlite3.Connection,
+    *,
+    tables: Sequence[str],
+) -> tuple[str, ...]:
+    """Return only installed candidate tables from the fixed SSOT allowlist."""
+
+    present = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    return tuple(table for table in tables if table in present)
+
+
+def _candidate_ensemble_station_ids(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+) -> list[str]:
+    """List bounded OOS candidates from both republisher and legacy lanes."""
+
+    tables = _existing_ensemble_candidate_tables(
+        conn,
+        tables=_ENSEMBLE_CANDIDATE_MEMBER_TABLES,
+    )
+    if not tables:
+        return []
+    source = " UNION ".join(
+        "SELECT station_id FROM " + table
+        + " WHERE authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'"
+        for table in tables
+    )
+    return [
+        str(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT station_id FROM ("
+            + source
+            + ") ORDER BY station_id LIMIT ?",
+            (limit,),
+        )
+    ]
+
+
+def _candidate_ensemble_scopes_without_truth(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+) -> list[tuple[str, str, str]]:
+    """Return bounded candidate station-days still lacking accepted AWC truth."""
+
+    tables = _existing_ensemble_candidate_tables(
+        conn,
+        tables=_ENSEMBLE_CANDIDATE_MEMBER_TABLES,
+    )
+    if not tables:
+        return []
+    source = " UNION ".join(
+        "SELECT station_id,target_local_date FROM " + table
+        + " WHERE authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'"
+        for table in tables
+    )
+    rows = conn.execute(
+        "WITH candidate_scopes AS ("
+        + source
+        + ") SELECT DISTINCT m.station_id,m.target_local_date,"
+        "r.settlement_timezone FROM candidate_scopes m "
+        "JOIN basket_target_market_registry r "
+        "ON r.station_id=m.station_id "
+        "AND r.event_date=m.target_local_date "
+        "AND r.source_eligible=1 "
+        "WHERE NOT EXISTS ("
+        "SELECT 1 FROM calibration_station_daily_high_truth t "
+        "WHERE t.station_id=m.station_id "
+        "AND t.local_date=m.target_local_date "
+        "AND t.source_lane='AWC' "
+        "AND t.qc_status='ACCEPTED'"
+        ") ORDER BY m.target_local_date,m.station_id LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [
+        (str(station), str(event_date), str(settlement_timezone))
+        for station, event_date, settlement_timezone in rows
+    ]
+
+
+def _open_meteo_packet_bucket_exists(
+    conn: sqlite3.Connection,
+    *,
+    ensemble_system_id: str,
+    station_id: str,
+    event_date: str,
+    member_set_sha256: str,
+    bucket_contract_sha256: str,
+) -> bool:
+    """Check new republisher storage first, then immutable legacy rows."""
+
+    for table in _existing_ensemble_candidate_tables(
+        conn,
+        tables=_ENSEMBLE_CANDIDATE_BUCKET_TABLES,
+    ):
+        exists = conn.execute(
+            "SELECT 1 FROM " + table + " "
+            "WHERE ensemble_system_id=? AND station_id=? "
+            "AND target_local_date=? AND member_set_sha256=? "
+            "AND bucket_contract_sha256=? "
+            "AND source_role='aggregator_republisher' "
+            "AND authority_scope='PRODUCTION_NO_LIVE_CANDIDATE' LIMIT 1",
+            (
+                ensemble_system_id,
+                station_id,
+                event_date,
+                member_set_sha256,
+                bucket_contract_sha256,
+            ),
+        ).fetchone()
+        if exists is not None:
+            return True
+    return False
+
+
+def _preferred_forward_packets_for_p0(
+    packets: Sequence[Mapping[str, Any]],
+) -> tuple[
+    dict[tuple[str, str], Mapping[str, Any]],
+    dict[tuple[str, str], Mapping[str, Any]],
+    dict[tuple[str, str], Mapping[str, Any]],
+]:
+    """Choose official packets per scope, retaining governed fallback scope.
+
+    This function only resolves input precedence.  It does not grant the
+    Open-Meteo packet P0 authority: ``compile_native_ensemble_p0`` later
+    requires its own closed-AWC historical strict-OOS proof and activation.
+    """
+
+    official_by_scope: dict[tuple[str, str], Mapping[str, Any]] = {}
+    republisher_by_scope: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for packet in packets:
+        schema = str(packet.get("schema") or "")
+        if schema not in {
+            OPEN_METEO_FORWARD_PACKET_SCHEMA,
+            OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA,
+        }:
+            continue
+        scope = (
+            str(packet.get("station_id") or "").strip().upper(),
+            str(packet.get("event_date") or ""),
+        )
+        if not all(scope):
+            raise ContractError("native_forward_scope_invalid")
+        target = (
+            official_by_scope
+            if schema == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+            else republisher_by_scope
+        )
+        current = target.get(scope)
+        if current is not None and current != packet:
+            raise ContractError(
+                "native_forward_scope_content_conflict:"
+                + ("official" if target is official_by_scope else "republisher")
+            )
+        target[scope] = packet
+    # An official packet always wins its station-day.  A republisher packet is
+    # retained only for scopes with no native packet at this evidence instant.
+    selected = dict(republisher_by_scope)
+    selected.update(official_by_scope)
+    return selected, official_by_scope, republisher_by_scope
+
+
+def _forward_packet_in_cycle_scope(
+    packet: Mapping[str, Any],
+    *,
+    station_allowlist: Sequence[str] = (),
+    event_date_allowlist: Sequence[str] = (),
+) -> bool:
+    """Keep only packets owned by the current resident cycle scope."""
+
+    station = str(packet.get("station_id") or "").strip().upper()
+    event_date = str(packet.get("event_date") or "").strip()
+    allowed_stations = {
+        str(value or "").strip().upper()
+        for value in station_allowlist
+        if str(value or "").strip()
+    }
+    allowed_event_dates = {
+        str(value or "").strip()
+        for value in event_date_allowlist
+        if str(value or "").strip()
+    }
+    return (
+        bool(station)
+        and bool(event_date)
+        and (
+            not allowed_stations
+            or station in allowed_stations
+        )
+        and (
+            not allowed_event_dates
+            or event_date in allowed_event_dates
+        )
+    )
+
+
+def _compile_native_ensemble_p0_runtime(
+    conn: sqlite3.Connection,
+    *,
+    forward_packet: Mapping[str, Any],
+    decision_at_utc: str,
+    native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compile P0 with the immutable native pointer when production enables it.
+
+    The optional keyword is omitted for isolated unit/research callers so
+    existing compiler fixtures remain independent of the production cutoff
+    file.  The resident production writer always supplies a validated
+    snapshot (or an invalid sentinel, which the compiler rejects fail closed).
+    """
+
+    kwargs: dict[str, Any] = {
+        "forward_packet": forward_packet,
+        "decision_at_utc": decision_at_utc,
+    }
+    if native_oos_snapshot is not None:
+        kwargs["native_oos_snapshot"] = native_oos_snapshot
+    return compile_native_ensemble_p0(conn, **kwargs)
+
+
+def _compile_native_p0_with_republisher_fallback(
+    conn: sqlite3.Connection,
+    *,
+    scope: tuple[str, str],
+    preferred_packet: Mapping[str, Any],
+    official_packet: Mapping[str, Any] | None,
+    republisher_packet: Mapping[str, Any] | None,
+    decision_at_utc: str,
+    native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
+    republisher_fallback_activation: RepublisherFallbackActivation
+    | Mapping[str, Any]
+    | None = None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]], str]:
+    """Compile official P0 first, then retry the same scope via republisher.
+
+    Packet presence is not the same as native availability: an official
+    packet can be incomplete, stale, or fail its exact activation/transport
+    checks.  In that case a separately captured Open-Meteo packet is a valid
+    *candidate* for the compiler, but only ``compile_native_ensemble_p0`` can
+    admit it after the historical strict-OOS and lineage gates.  Keeping the
+    retry here (rather than weakening ``_preferred_forward_packets_for_p0``)
+    preserves official precedence while closing the unavailable-native gap.
+    """
+
+    # Prefer the separately indexed official packet rather than trusting the
+    # caller's convenience ``preferred_packet``.  This matters when a caller
+    # has already tentatively selected an Open-Meteo packet: a fresh official
+    # packet for the same station-day must still compile first.  Conversely,
+    # a stale official packet is intentionally attempted and recorded before
+    # the governed republisher retry; it must not be treated as fresh merely
+    # because this function is running now.
+    preferred_schema = str(preferred_packet.get("schema") or "")
+    official_candidate = official_packet
+    if (
+        official_candidate is None
+        and preferred_schema == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+    ):
+        official_candidate = preferred_packet
+    republisher_candidate = republisher_packet
+    if (
+        republisher_candidate is None
+        and preferred_schema == OPEN_METEO_FORWARD_PACKET_SCHEMA
+    ):
+        republisher_candidate = preferred_packet
+
+    candidates: list[tuple[str, Mapping[str, Any]]] = []
+
+    def append_candidate(
+        source_class: str,
+        packet: Mapping[str, Any] | None,
+    ) -> None:
+        if packet is None or any(
+            existing_packet == packet
+            for _existing_source, existing_packet in candidates
+        ):
+            return
+        candidates.append((source_class, packet))
+
+    append_candidate("official_native", official_candidate)
+    append_candidate("aggregator_republisher", republisher_candidate)
+    if not candidates:
+        # Keep malformed/legacy callers fail-closed through the compiler,
+        # while preserving truthful source labeling in the failure receipt.
+        append_candidate(
+            (
+                "aggregator_republisher"
+                if preferred_schema == OPEN_METEO_FORWARD_PACKET_SCHEMA
+                else "official_native"
+            ),
+            preferred_packet,
+        )
+
+    failures: list[dict[str, Any]] = []
+    for source_class, packet in candidates:
+        fallback_receipt: Mapping[str, Any] | None = None
+        if (
+            source_class == "aggregator_republisher"
+            and republisher_fallback_activation is not None
+        ):
+            # The official attempt above is the native-availability probe.
+            # A republisher packet is never sent to the native compiler until
+            # the independent pointer/cross-activation linkage has passed.
+            try:
+                fallback_receipt = preflight_republisher_fallback_activation(
+                    conn,
+                    activation=republisher_fallback_activation,
+                    packet=packet,
+                    decision_at_utc=decision_at_utc,
+                    native_unavailable=True,
+                )
+            except Exception as exc:
+                failures.append({
+                    "station_id": scope[0],
+                    "event_date": scope[1],
+                    "source_class": source_class,
+                    "schema": str(packet.get("schema") or ""),
+                    "reason": f"{type(exc).__name__}:{exc}",
+                })
+                continue
+        try:
+            compiled = _compile_native_ensemble_p0_runtime(
+                conn,
+                forward_packet=packet,
+                decision_at_utc=decision_at_utc,
+                native_oos_snapshot=native_oos_snapshot,
+            )
+            if (
+                not isinstance(compiled, Mapping)
+                or compiled.get("schema")
+                != "calibrated_native_cross_ensemble_p0_packet_v1"
+            ):
+                raise ContractError("native_p0_compiler_result_invalid")
+            if fallback_receipt is not None:
+                # Keep the proof beside the compiled handoff without
+                # mutating the compiler's content-addressed P0 packet.
+                compiled = dict(compiled)
+                compiled["republisher_fallback_activation"] = dict(
+                    fallback_receipt
+                )
+            return dict(compiled), failures, source_class
+        except Exception as exc:
+            failures.append({
+                "station_id": scope[0],
+                "event_date": scope[1],
+                "source_class": source_class,
+                "schema": str(packet.get("schema") or ""),
+                "reason": f"{type(exc).__name__}:{exc}",
+            })
+    return None, failures, ""
+
+
 def _native_ensemble_truth_signatures(
     conn: sqlite3.Connection,
     *,
@@ -428,18 +830,31 @@ def _native_ensemble_truth_signatures(
         MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION
     ),
 ) -> dict[str, str]:
-    """Hash every bounded accepted truth identity matched to member scope."""
+    """Hash accepted truth identity for every native or republisher scope."""
+
+    tables = _existing_ensemble_candidate_tables(
+        conn,
+        tables=_ENSEMBLE_CANDIDATE_MEMBER_TABLES,
+    )
+    if not tables:
+        return {}
+    source = " UNION ".join(
+        "SELECT station_id,target_local_date FROM " + table
+        + " WHERE authority_scope='PRODUCTION_NO_LIVE_CANDIDATE'"
+        for table in tables
+    )
 
     rows = conn.execute(
-        "WITH matched AS ("
+        "WITH candidate_scopes AS ("
+        + source
+        + "), matched AS ("
         "SELECT DISTINCT m.station_id,t.local_date,t.content_sha256 "
-        "FROM calibration_native_ensemble_member_run m "
+        "FROM candidate_scopes m "
         "JOIN calibration_station_daily_high_truth t "
         "ON t.station_id=m.station_id "
         "AND t.local_date=m.target_local_date "
-        "AND t.qc_status='ACCEPTED' "
-        "WHERE m.authority_scope="
-        "'PRODUCTION_NO_LIVE_CANDIDATE'"
+        "AND t.source_lane='AWC' "
+        "AND t.qc_status='ACCEPTED'"
         "), selected_stations AS ("
         "SELECT DISTINCT station_id FROM matched "
         "ORDER BY station_id LIMIT ?"
@@ -484,6 +899,66 @@ def _upsert_native_p0_inbox(
 ) -> dict[str, Any]:
     """Merge bounded compiled native P0 packets by station-day identity."""
 
+    # This is a transient handoff inbox, not a historical evidence store.
+    # Retaining an expired packet makes a later, otherwise admissible
+    # station-day P0 fail as a whole.  Official native packets and the
+    # separately-labelled, strict-OOS republisher fallback are retained.
+    # Legacy/unknown minimal packets without an envelope remain usable in
+    # no-op replay tests; ``materialize_resident_p0`` is the strict validator
+    # before SSOT writes.  The fallback never inherits native authority.
+    generated_at = datetime.fromisoformat(
+        generated_at_utc.replace("Z", "+00:00")
+    ).astimezone(timezone.utc)
+
+    def retain_existing(row: Mapping[str, Any]) -> bool:
+        packet = row.get("packet")
+        if not isinstance(packet, Mapping):
+            return False
+        envelope = packet.get("native_probability_envelope")
+        if not isinstance(envelope, Mapping):
+            return True
+        lineage = envelope.get("lineage")
+        if not isinstance(lineage, Mapping):
+            return False
+        provider = str(lineage.get("native_transport_provider") or "")
+        if provider in {
+            "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+            "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+        }:
+            pass
+        elif (
+            provider == "OPEN_METEO"
+            and str(
+                lineage.get("aggregator_fallback_p0_eligible") or ""
+            ).lower() == "true"
+            and str(
+                lineage.get("republisher_fallback_p0_eligible") or ""
+            ).lower() == "true"
+            and str(lineage.get("transport_lineage_class") or "")
+            == "aggregator_republisher"
+            and str(
+                lineage.get("native_arrival_index_eligible") or ""
+            ).lower() == "false"
+            and str(lineage.get("native_formal_p0_eligible") or "")
+            .lower() == "false"
+        ):
+            pass
+        else:
+            return False
+        fresh_until_raw = str(envelope.get("fresh_until_utc") or "")
+        if not fresh_until_raw:
+            # Test/replay fixtures without a real envelope timestamp remain
+            # subject to the downstream validator.  Real compiled packets
+            # always carry this field and are pruned above on expiry.
+            return True
+        try:
+            fresh_until = datetime.fromisoformat(
+                fresh_until_raw.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            return False
+        return fresh_until > generated_at
+
     existing_rows: list[dict[str, Any]] = []
     if path.is_file():
         existing = load_bounded_json(path)
@@ -506,6 +981,7 @@ def _upsert_native_p0_inbox(
             if isinstance(item, Mapping)
             and item.get("source_class")
             == "calibrated_native_cross_ensemble"
+            and retain_existing(item)
         ]
     merged_by_scope = {
         (
@@ -522,7 +998,10 @@ def _upsert_native_p0_inbox(
             return 0
         envelope = packet.get("native_probability_envelope")
         if not isinstance(envelope, Mapping):
-            return 0
+            # Keep the deliberately minimal legacy handoff fixture usable;
+            # real packets always carry an envelope and are validated below
+            # before any SSOT write.
+            return 2 if "native_probability_envelope" not in packet else 0
         lineage = envelope.get("lineage")
         if not isinstance(lineage, Mapping):
             return 0
@@ -532,7 +1011,22 @@ def _upsert_native_p0_inbox(
             "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
         }:
             return 2
-        if provider == "OPEN_METEO":
+        if (
+            provider == "OPEN_METEO"
+            and str(
+                lineage.get("aggregator_fallback_p0_eligible") or ""
+            ).lower() == "true"
+            and str(
+                lineage.get("republisher_fallback_p0_eligible") or ""
+            ).lower() == "true"
+            and str(lineage.get("transport_lineage_class") or "")
+            == "aggregator_republisher"
+            and str(
+                lineage.get("native_arrival_index_eligible") or "")
+            .lower() == "false"
+            and str(lineage.get("native_formal_p0_eligible") or "")
+            .lower() == "false"
+        ):
             return 1
         return 0
 
@@ -558,6 +1052,12 @@ def _upsert_native_p0_inbox(
             ],
             "packet": dict(packet),
         }
+        if source_priority(candidate_row) == 0:
+            # Aggregator/re-publisher data remains excluded unless the
+            # compiler attached an activated strict-OOS fallback proof.  Such
+            # a packet is still lower authority than official native data and
+            # is never admitted to hard-NO/P1 or native-arrival indexes.
+            continue
         current = merged_by_scope.get(scope)
         if (
             current is None
@@ -672,6 +1172,50 @@ def _manifest_content_sha_matches(value: Mapping[str, Any]) -> bool:
     })
 
 
+def _resident_open_event_dates(path: Path) -> tuple[str, ...]:
+    """Return the current open station-day dates from the resident WS handoff.
+
+    The forward NWP inbox is intentionally append-only and may retain several
+    observational dates.  A production cycle must therefore get its event-day
+    scope from the resident market handoff, not from whichever dates happen to
+    be present in that inbox.  This helper is deliberately conservative: a
+    missing, malformed, or multi-date open handoff yields no inferred scope and
+    lets the normal downstream fail-closed gates report the actual blocker.
+    """
+
+    if not path.is_file():
+        return ()
+    try:
+        root = load_bounded_json(path)
+    except Exception:
+        return ()
+    if not isinstance(root, Mapping):
+        return ()
+    schema = str(root.get("schema") or "").strip()
+    dates: set[str] = set()
+    if schema == MULTI_SCOPE_WS_MANIFEST_SCHEMA:
+        summaries = root.get("scopes")
+        if not isinstance(summaries, list):
+            return ()
+        for summary in summaries:
+            if not isinstance(summary, Mapping):
+                continue
+            if str(summary.get("event_day_state") or "").strip() != "open":
+                continue
+            event_date = str(summary.get("event_date") or "").strip()
+            if event_date:
+                dates.add(event_date)
+    else:
+        # Legacy resident handoffs carry one explicit target date.
+        event_date = str(root.get("target_local_date") or "").strip()
+        if event_date and str(root.get("event_day_state") or "open").strip() == "open":
+            dates.add(event_date)
+    # Mixing open station-days would turn the 45-station cap into a
+    # station-day cap.  Require the coordinator to pass an explicit scope in
+    # that case instead of guessing.
+    return tuple(sorted(dates)) if len(dates) == 1 else ()
+
+
 class TargetProductionWorker:
     """Resident target compiler and target-local no-live ledger writer."""
 
@@ -683,6 +1227,7 @@ class TargetProductionWorker:
         commit_error: str | None = None,
         activation_path: Path | None = None,
         market_manifest_path: Path | None = None,
+        native_oos_snapshot_path: Path | None = None,
         canonical_source_db_path: Path | None = None,
         taf_artifact_path: Path | None = None,
         taf_inbox_path: Path | None = None,
@@ -701,6 +1246,63 @@ class TargetProductionWorker:
             market_manifest_path
             or os.environ.get("PM_TARGET_MARKET_MANIFEST", str(DEFAULT_TARGET_MARKET_MANIFEST))
         )
+        self.native_oos_snapshot_path = Path(
+            native_oos_snapshot_path
+            or os.environ.get(
+                "PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST",
+                str(DEFAULT_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST),
+            )
+        ).expanduser()
+        self.native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None
+        self.native_oos_snapshot_error: str | None = None
+        self.republisher_fallback_activation: (
+            RepublisherFallbackActivation | Mapping[str, Any] | None
+        ) = None
+        self.republisher_fallback_activation_error: str | None = None
+        writer_requested = str(
+            os.environ.get("PM_TARGET_PRODUCTION_WRITER", "") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        production_no_live_runtime = (
+            writer_requested
+            or str(os.environ.get("PM_TARGET_EXECUTION_MODE", "") or "").strip()
+            == PRODUCTION_EXECUTION_MODE
+        )
+        if production_no_live_runtime:
+            try:
+                self.native_oos_snapshot = load_native_oos_snapshot_manifest(
+                    self.native_oos_snapshot_path
+                )
+            except Exception as exc:
+                # Preserve a non-None invalid sentinel so every official
+                # compiler attempt fails closed instead of silently falling
+                # back to the newest append-only DB activation.
+                self.native_oos_snapshot_error = (
+                    f"{type(exc).__name__}:{exc}"
+                )
+                self.native_oos_snapshot = {
+                    "schema": "invalid_native_oos_snapshot",
+                    "load_error": self.native_oos_snapshot_error,
+                }
+            try:
+                self.republisher_fallback_activation = (
+                    load_republisher_fallback_activation(
+                        os.environ.get(
+                            "PM_TARGET_REPUBLISHER_FALLBACK_BINDING"
+                        )
+                        or None
+                    )
+                )
+            except Exception as exc:
+                # An invalid/missing fallback pointer must only disable the
+                # Open-Meteo retry.  Official native packets remain eligible
+                # and are attempted exactly as before.
+                self.republisher_fallback_activation_error = (
+                    f"{type(exc).__name__}:{exc}"
+                )
+                self.republisher_fallback_activation = {
+                    "schema": "invalid_republisher_fallback_activation",
+                    "load_error": self.republisher_fallback_activation_error,
+                }
         self.conn: sqlite3.Connection | None = None
         self.open_error: str | None = None
         try:
@@ -779,6 +1381,14 @@ class TargetProductionWorker:
             )
         else:
             raw_event_dates = event_date_allowlist
+        event_date_scope_source = "explicit" if raw_event_dates else "unconfigured"
+        if not raw_event_dates and production_no_live_runtime:
+            inferred_event_dates = _resident_open_event_dates(
+                self.market_manifest_path
+            )
+            if inferred_event_dates:
+                raw_event_dates = inferred_event_dates
+                event_date_scope_source = "resident_ws_manifest_open_scope"
         self.event_date_allowlist = tuple(
             sorted(
                 {
@@ -790,6 +1400,7 @@ class TargetProductionWorker:
         )
         if len(self.event_date_allowlist) > 7:
             raise RuntimeError("target_event_date_allowlist_cap_exceeded")
+        self.event_date_scope_source = event_date_scope_source
         self.nwp_rotation_state_path = (
             self.nwp_runtime_root / "rotation_state.json"
         )
@@ -1101,9 +1712,12 @@ class TargetProductionWorker:
                 "orders_submitted": 0,
             }
         # P0 authority was replaced by calibrated native-member ensembles.
-        # Capture one bounded station-day per forecast turn, publish a
-        # content-addressed inbox, and stop before the retired deterministic
-        # residual pipeline.
+        # Reuse an already retained official-native packet first.  Only when
+        # no usable native packet exists (missing, invalid, stale, or rejected
+        # by its own activation/OOS contract) do we capture the same scope from
+        # Open-Meteo as an explicit ``aggregator_republisher`` no-live
+        # fallback.  This prevents duplicate ECMWF/native downloads while
+        # preserving strict lineage and historical-OOS gates.
         native_scope_index = (
             int(getattr(self, "_native_ensemble_scope_cursor", 0))
             % len(scopes)
@@ -1116,6 +1730,94 @@ class TargetProductionWorker:
             native_scope["station_ids"][0]
         ).strip().upper()
         native_event_date = str(native_scope["event_date"])
+        official_inbox_path = (
+            self.nwp_runtime_root
+            / "official_native_ensemble_forward_inbox.json"
+        )
+        official_packet: Mapping[str, Any] | None = None
+        official_probe_reason = "official_native_packet_missing"
+        if official_inbox_path.is_file():
+            try:
+                official_packets = _load_native_forward_inbox(
+                    official_inbox_path,
+                    error_code="official_native_forward_inbox_invalid",
+                )
+                for candidate in official_packets:
+                    if (
+                        str(candidate.get("schema") or "")
+                        == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+                        and str(candidate.get("station_id") or "")
+                        .strip()
+                        .upper()
+                        == native_station
+                        and str(candidate.get("event_date") or "")
+                        == native_event_date
+                    ):
+                        official_packet = candidate
+                        official_probe_reason = "official_native_packet_found"
+                        break
+            except Exception as exc:
+                official_probe_reason = (
+                    "official_native_packet_unavailable:"
+                    f"{type(exc).__name__}:{exc}"
+                )
+        if official_packet is not None:
+            try:
+                compiled_official = _compile_native_ensemble_p0_runtime(
+                    read_conn,
+                    forward_packet=official_packet,
+                    decision_at_utc=as_of_utc,
+                    native_oos_snapshot=self.native_oos_snapshot,
+                )
+                if (
+                    isinstance(compiled_official, Mapping)
+                    and compiled_official.get("schema")
+                    == "calibrated_native_cross_ensemble_p0_packet_v1"
+                ):
+                    compiled_official = dict(compiled_official)
+                    if self.commit_conn is not None:
+                        compiled_official[
+                            "forward_prediction_persistence"
+                        ] = persist_native_ensemble_forward_prediction(
+                            self.commit_conn,
+                            compiled_official,
+                        )
+                        p0_inbox_merge = _upsert_native_p0_inbox(
+                            self.p0_inbox_path,
+                            compiled_packets=[compiled_official],
+                            generated_at_utc=as_of_utc,
+                        )
+                    else:
+                        p0_inbox_merge = {
+                            "wrote": False,
+                            "accepted_count": 0,
+                            "packet_count": 0,
+                        }
+                    return {
+                        "schema": "bayes_basket_target_resident_nwp_cycle_v1",
+                        "state": "official_native_reused",
+                        "reason": "official_native_precedence",
+                        "station_id": native_station,
+                        "event_date": native_event_date,
+                        "source_role": "official_native",
+                        "official_packet_reused": True,
+                        "republisher_fallback_used": False,
+                        "official_probe_reason": official_probe_reason,
+                        "native_p0_compile": compiled_official,
+                        "p0_inbox_path": str(self.p0_inbox_path),
+                        "p0_inbox_wrote": bool(p0_inbox_merge.get("wrote")),
+                        "writes_target_database": False,
+                        "calls_order_gateway": False,
+                        "places_orders": False,
+                        "live_submit_authorized": False,
+                        "orders_submitted": 0,
+                    }
+                official_probe_reason = "official_native_compile_rejected"
+            except Exception as exc:
+                official_probe_reason = (
+                    "official_native_compile_rejected:"
+                    f"{type(exc).__name__}:{exc}"
+                )
         native_rows = [
             row
             for row in registry.get("rows") or []
@@ -1220,11 +1922,32 @@ class TargetProductionWorker:
                 inbox_wrote = False
             native_p0_compile: dict[str, Any]
             try:
-                native_p0_compile = compile_native_ensemble_p0(
+                republisher_fallback_activation = getattr(
+                    self,
+                    "republisher_fallback_activation",
+                    None,
+                )
+                if republisher_fallback_activation is not None:
+                    fallback_receipt = preflight_republisher_fallback_activation(
+                        read_conn,
+                        activation=republisher_fallback_activation,
+                        packet=native_packet,
+                        decision_at_utc=as_of_utc,
+                        native_unavailable=True,
+                    )
+                else:
+                    fallback_receipt = None
+                native_p0_compile = _compile_native_ensemble_p0_runtime(
                     read_conn,
                     forward_packet=native_packet,
                     decision_at_utc=as_of_utc,
+                    native_oos_snapshot=self.native_oos_snapshot,
                 )
+                if fallback_receipt is not None:
+                    native_p0_compile = dict(native_p0_compile)
+                    native_p0_compile[
+                        "republisher_fallback_activation"
+                    ] = dict(fallback_receipt)
             except Exception as exc:
                 native_p0_compile = {
                     "state": "FAIL_CLOSED_NO_P0",
@@ -1235,80 +1958,17 @@ class TargetProductionWorker:
                     "orders_submitted": 0,
                     "live_submit_authorized": False,
                 }
-            existing_p0_rows: list[dict[str, Any]] = []
-            if self.p0_inbox_path.is_file():
-                existing_p0 = load_bounded_json(
-                    self.p0_inbox_path
-                )
-                if (
-                    existing_p0.get("schema")
-                    == "bayes_basket_target_p0_inbox_v1"
-                    and isinstance(existing_p0.get("packets"), list)
-                ):
-                    existing_p0_rows = [
-                        dict(item)
-                        for item in existing_p0["packets"]
-                        if isinstance(item, Mapping)
-                        and item.get("source_class")
-                        == "calibrated_native_cross_ensemble"
-                    ]
-            existing_p0_rows = [
-                item
-                for item in existing_p0_rows
-                if not (
-                    str(
-                        (item.get("packet") or {}).get(
-                            "station_id"
-                        ) or ""
-                    ).strip().upper()
-                    == native_station
-                    and str(
-                        (item.get("packet") or {}).get(
-                            "event_date"
-                        ) or ""
-                    )
-                    == native_event_date
-                )
-            ]
-            if native_p0_compile.get("schema") == (
-                "calibrated_native_cross_ensemble_p0_packet_v1"
-            ):
-                existing_p0_rows.append({
-                    "source_class": native_p0_compile[
-                        "source_class"
-                    ],
-                    "packet_content_sha256": native_p0_compile[
-                        "packet_content_sha256"
-                    ],
-                    "packet": native_p0_compile["packet"],
-                })
-            existing_p0_rows.sort(key=lambda item: (
-                str(
-                    (item.get("packet") or {}).get("event_date")
-                    or ""
-                ),
-                str(
-                    (item.get("packet") or {}).get("station_id")
-                    or ""
-                ),
-            ))
-            if len(existing_p0_rows) > 256:
-                existing_p0_rows = existing_p0_rows[-256:]
-            p0_inbox_identity = {
-                "schema": "bayes_basket_target_p0_inbox_v1",
-                "generated_at_utc": as_of_utc,
-                "packets": existing_p0_rows,
-            }
-            p0_inbox = {
-                **p0_inbox_identity,
-                "content_sha256": content_sha256(
-                    p0_inbox_identity
-                ),
-            }
-            p0_inbox_wrote = write_bounded_json_if_changed(
+            p0_inbox_merge = _upsert_native_p0_inbox(
                 self.p0_inbox_path,
-                p0_inbox,
+                compiled_packets=(
+                    [native_p0_compile]
+                    if native_p0_compile.get("schema")
+                    == "calibrated_native_cross_ensemble_p0_packet_v1"
+                    else []
+                ),
+                generated_at_utc=as_of_utc,
             )
+            p0_inbox_wrote = bool(p0_inbox_merge["wrote"])
             rotation_state = build_rotation_state(
                 station_ids=station_allowlist,
                 scopes=scopes,
@@ -1352,6 +2012,10 @@ class TargetProductionWorker:
                 "available_product_count": len(
                     native_packet.get("systems") or []
                 ),
+                "source_role": "aggregator_republisher",
+                "official_packet_reused": False,
+                "republisher_fallback_used": True,
+                "official_probe_reason": official_probe_reason,
                 "unavailable_product_count": len(
                     native_packet.get("unavailable_products") or []
                 ),
@@ -1361,7 +2025,9 @@ class TargetProductionWorker:
                 "native_p0_compile": native_p0_compile,
                 "p0_inbox_path": str(self.p0_inbox_path),
                 "p0_inbox_wrote": p0_inbox_wrote,
-                "p0_inbox_packet_count": len(existing_p0_rows),
+                "p0_inbox_packet_count": p0_inbox_merge[
+                    "packet_count"
+                ],
                 "snapshot_content_sha256": native_packet.get(
                     "snapshot_content_sha256"
                 ),
@@ -1905,7 +2571,7 @@ class TargetProductionWorker:
                 # Missing/unpromoted/OOS-failed v2 authority is not
                 # an optimizer HOLD. It is an incomplete decision contract.
                 # Preserve the exact resolver reason and do not let the
-                # downstream P1 fact adapter mask it as a probability error
+                # downstream atomic-fact adapter mask it as a probability error
                 # or materialize a false forward training fact.
                 raise ContractError(delta_v2_blocker)
         retained = self._scope_cycle_guard(
@@ -2011,6 +2677,75 @@ class TargetProductionWorker:
                 "authorizes_order": False,
                 "evidence_only": True,
             }
+
+    def _commit_stage_zero_execution_candidate(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        station_id: str,
+        event_date: str,
+        created_at_utc: str,
+    ) -> dict[str, Any]:
+        """Persist an open-day no-execution evaluation without fact writes."""
+        if self.commit_conn is None:
+            return {
+                "state": "not_attempted",
+                "reason": "target_atomic_writer_not_injected",
+                "writes_target_ledger": False,
+                "intent_count": 0,
+                "reserved_amount_usdc": 0.0,
+                "orders_submitted": 0,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+            }
+        anchor = target_stage_zero_execution_anchor_from_cycle(candidate)
+        return commit_production_stage_zero_execution_atomic(
+            self.commit_conn,
+            compiled_plan=candidate,
+            anchor=anchor,
+            created_at_utc=created_at_utc,
+        )
+
+    def _commit_current_stage_no_execution_candidate(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        station_id: str,
+        event_date: str,
+        created_at_utc: str,
+    ) -> dict[str, Any]:
+        """Route every materialized probability stage to NO_EXECUTION only."""
+
+        probability = candidate.get("probability_envelope")
+        stage = (
+            str(probability.get("stage") or "").strip().upper()
+            if isinstance(probability, Mapping)
+            else ""
+        )
+        if stage not in {"P0", "P0-M", "P1"}:
+            raise ContractError(
+                "resident_current_scope_probability_stage_invalid"
+            )
+        # Stage-zero is intentionally limited to pre-final P0/P0-M.  Once
+        # official METAR/SPECI materializes P1, the final-authority path must
+        # atomically persist the canonical observation/bound together with
+        # the blocked no-live decision.  The ledger rejects a P1 stage-zero
+        # anchor by contract, so routing P1 through that helper would turn a
+        # healthy no-live candidate into a false fail-closed blocker.
+        if stage == "P1":
+            return self._commit_candidate(
+                candidate,
+                station_id=station_id,
+                event_date=event_date,
+                created_at_utc=created_at_utc,
+            )
+        return self._commit_stage_zero_execution_candidate(
+            candidate,
+            station_id=station_id,
+            event_date=event_date,
+            created_at_utc=created_at_utc,
+        )
 
     def _flush_cash_phase_forward_observations_probe(self) -> dict[str, Any]:
         """Materialize atomically bound receipts into the bounded OOS store.
@@ -2225,6 +2960,10 @@ class TargetProductionWorker:
                 raise ContractError(
                     "cash_phase_forward_status_binding_mismatch"
                 )
+            probability_stage = str(
+                binding.get("probability_stage") or ""
+            ).strip().upper()
+            stage_zero_pre_final = probability_stage in {"P0", "P0-M"}
             if (
                 str(row[6]) != "basket"
                 or int(row[8]) != 0
@@ -2236,6 +2975,29 @@ class TargetProductionWorker:
                 raise ContractError(
                     "cash_phase_forward_no_live_decision_boundary_invalid"
                 )
+            if stage_zero_pre_final:
+                # Pre-final P0/P0-M decisions use the deliberately smaller
+                # blocked-scope ledger receipt.  Its decision hash therefore
+                # excludes an execution deadline (no intent can exist before
+                # P1).  Require its full marker set before applying that
+                # exact identity rule; a generic blocked/P1 receipt cannot
+                # borrow the alternate schema.
+                if (
+                    str(row[7]) != "blocked"
+                    or row[9] is not None
+                    or details.get("stage_zero_execution_version") != 1
+                    or details.get("final_authority") != "P1"
+                    or details.get("capital_authorized") is not False
+                    or type(details.get("intents_written")) is not int
+                    or details.get("intents_written") != 0
+                    or type(details.get("reservations_written")) is not int
+                    or details.get("reservations_written") != 0
+                    or type(details.get("training_facts_written")) is not int
+                    or details.get("training_facts_written") != 1
+                ):
+                    raise ContractError(
+                        "cash_phase_forward_stage_zero_receipt_invalid"
+                    )
             decision_identity = {
                 "cycle_id": str(row[0]),
                 "plan_id": str(row[2]),
@@ -2247,8 +3009,9 @@ class TargetProductionWorker:
                 "will_order": int(row[8]),
                 "reason_codes": reasons,
                 "details": dict(details),
-                "target_execution_hard_deadline_at": row[9],
             }
+            if not stage_zero_pre_final:
+                decision_identity["target_execution_hard_deadline_at"] = row[9]
             expected_decision_sha = content_sha256(
                 {
                     "schema": "basket_target_decision_fact_v1",
@@ -3527,13 +4290,26 @@ class TargetProductionWorker:
                 raise ContractError(
                     "resident_target_ws_future_stage_forbidden"
                 )
+            scope_blocker = ""
             if day_state == "not_started" and probability_evidence_fresh is not True:
+                # A stale future scope is observational only.  Keep it in the
+                # catalog for auditability, but do not let one station-day
+                # suppress healthy open scopes or create a future P0 action.
+                scope_blocker = "resident_target_ws_future_probability_stale"
+            if day_state == "open" and stage not in {"P0", "P0-M", "P1"}:
                 raise ContractError(
-                    "resident_target_ws_future_probability_stale"
+                    "resident_target_ws_open_scope_probability_stage_invalid"
                 )
-            if day_state == "open" and stage != "P1":
-                raise ContractError(
-                    "resident_target_ws_open_scope_p1_required"
+            if (
+                day_state == "open"
+                and stage in {"P0", "P0-M"}
+                and probability_evidence_fresh is not True
+            ):
+                # Keep the blocker attached to this station-day.  The worker
+                # below excludes it from the actionable scope set while
+                # allowing other fresh scopes to proceed independently.
+                scope_blocker = (
+                    "resident_target_ws_open_scope_pre_p1_probability_stale"
                 )
             seen.add(scope_key)
             catalog.append({
@@ -3543,6 +4319,7 @@ class TargetProductionWorker:
                 "event_day_state": day_state,
                 "probability_stage": stage,
                 "probability_evidence_fresh": probability_evidence_fresh,
+                "scope_blocker": scope_blocker,
                 "manifest": dict(nested),
             })
         return sorted(catalog, key=lambda item: item["scope_key"])
@@ -3659,6 +4436,11 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         for (station, day), registry_rows in sorted(grouped.items()):
             try:
+                expected_source_lane = target_registry_source_lane(
+                    self.commit_conn,
+                    station_id=station,
+                    event_date=day,
+                )
                 observations = load_resident_formal_observations(
                     self.canonical_source_conn,
                     registry_rows=registry_rows,
@@ -3673,6 +4455,7 @@ class TargetProductionWorker:
                     station_id=station,
                     event_date=day,
                     evaluation_at_utc=as_of_utc,
+                    expected_source_lane=expected_source_lane,
                 )
                 prediction_root, predecessor, consumed, rebasing = (
                     select_p1_replay_base(
@@ -3688,6 +4471,10 @@ class TargetProductionWorker:
                 if len(source_lanes) != 1:
                     raise ContractError(
                         "resident_p1_source_lane_ambiguous"
+                    )
+                if source_lanes != {expected_source_lane}:
+                    raise ContractError(
+                        "resident_p1_source_lane_registry_mismatch"
                     )
                 local_hour = datetime.fromisoformat(
                     as_of_utc.replace("Z", "+00:00")
@@ -3739,6 +4526,17 @@ class TargetProductionWorker:
                         trajectory_row["artifact"]
                     )
                 )
+                if trajectory_artifact is None:
+                    raise ContractError(
+                        "resident_p1_formal_metar_trajectory_artifact_missing"
+                    )
+                if (
+                    trajectory_artifact.method_version
+                    != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+                ):
+                    raise ContractError(
+                        "resident_p1_conditional_hourly_curve_artifact_required"
+                    )
                 packets = compile_station_p1_packets(
                     predecessor=predecessor,
                     prediction_root=prediction_root,
@@ -3746,6 +4544,20 @@ class TargetProductionWorker:
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
                     freshness_seconds=freshness_seconds,
+                    decision_floor_at_utc=(
+                        str(
+                            self.commit_conn.execute(
+                                "SELECT MAX(decision_at_utc) "
+                                "FROM basket_probability_envelope "
+                                "WHERE station_id=? AND event_date=? "
+                                "AND stage='P1' AND state='COMMITTED' "
+                                "AND decision_at_utc<=?",
+                                (station, day, as_of_utc),
+                            ).fetchone()[0]
+                            or ""
+                        )
+                        or None
+                    ),
                     consumed_observation_ids=consumed,
                     trajectory_artifact=trajectory_artifact,
                     maturity_bin=maturity_bin,
@@ -3857,7 +4669,17 @@ class TargetProductionWorker:
             assert_process_memory_budget()
         return {
             "schema": "bayes_basket_target_resident_p1_ingress_v1",
-            "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
+            # A correction/revision blocker halts only that station-day.  If
+            # other scopes committed successfully, preserve their P1 chain
+            # and surface the isolated halt as PARTIAL_FAIL_CLOSED; a wholly
+            # blocked pass remains globally blocked.
+            "state": (
+                "PARTIAL_FAIL_CLOSED"
+                if blockers and receipts
+                else "BLOCKED_FAIL_CLOSED"
+                if blockers
+                else "COMMITTED"
+            ),
             "scope_count": len(grouped),
             "probability_scope_count": len(probability_scopes),
             "updated_scope_count": sum(
@@ -3932,39 +4754,15 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
-        if artifact_raw.get("schema") == (
-            "bayes_basket_target_taf_revision_artifact_registry_v1"
-        ):
-            registry_identity = {
-                key: value
-                for key, value in artifact_raw.items()
-                if key != "content_sha256"
-            }
-            if str(artifact_raw.get("content_sha256") or "") != (
-                content_sha256(registry_identity)
-            ):
-                raise ContractError(
-                    "resident_taf_artifact_registry_content_sha_mismatch"
-                )
-            raw_artifacts = artifact_raw.get("artifacts")
-            if (
-                not isinstance(raw_artifacts, list)
-                or len(raw_artifacts) > 256
-            ):
-                raise ContractError(
-                    "resident_taf_artifact_registry_count_invalid"
-                )
+        if artifact_raw.get("schema") == TAF_ARTIFACT_REGISTRY_SCHEMA:
+            # Registry-v1 is a canonical, nonempty envelope around exact-scope
+            # activated artifacts.  An empty or ambiguous registry must never
+            # turn real TAF receipts into a silent no-op.
+            artifacts = validate_taf_artifact_registry(artifact_raw)
         else:
             # Legacy one-artifact files remain valid for their exact station
             # only; they must never become an implicit fallback for peers.
-            raw_artifacts = [artifact_raw]
-        artifacts = [
-            TafRevisionArtifact.from_mapping(item)
-            for item in raw_artifacts
-            if isinstance(item, Mapping)
-        ]
-        if len(artifacts) != len(raw_artifacts):
-            raise ContractError("resident_taf_artifact_registry_row_invalid")
+            artifacts = [TafRevisionArtifact.from_mapping(artifact_raw)]
         invalid_compatibility = [
             artifact
             for artifact in artifacts
@@ -4089,6 +4887,28 @@ class TargetProductionWorker:
                         "writes": [],
                     })
                     continue
+                # A stale historical P0 scope is a no-op and must not need a
+                # current market registry shard.  Once a fresh P0 can feed a
+                # P0-M write, resolve the authoritative lane and re-read the
+                # complete chain through the P1 gate before using it.
+                expected_source_lane = target_registry_source_lane(
+                    self.commit_conn,
+                    station_id=station,
+                    event_date=day,
+                )
+                envelopes = load_materialized_probability_envelopes(
+                    self.commit_conn,
+                    station_id=station,
+                    event_date=day,
+                    evaluation_at_utc=as_of_utc,
+                    expected_source_lane=expected_source_lane,
+                )
+                roots = [
+                    item for item in envelopes
+                    if item.stage == "P0" and item.is_fresh(as_of_utc)
+                ]
+                if not roots:
+                    raise ContractError("resident_p0_scope_changed_during_lane_gate")
                 root = roots[-1]
                 exact_artifacts = [
                     item
@@ -4408,6 +5228,37 @@ class TargetProductionWorker:
                         "resident_p0_packet_content_sha_mismatch"
                     )
                 envelope = build_probability_envelope(packet)
+                lineage = envelope.lineage
+                provider = str(
+                    lineage.get("native_transport_provider") or ""
+                )
+                if provider in {
+                    "OFFICIAL_NATIVE_SAME_CYCLE_SNAPSHOT",
+                    "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT",
+                }:
+                    pass
+                elif (
+                    provider == "OPEN_METEO"
+                    and str(lineage.get(
+                        "aggregator_fallback_p0_eligible"
+                    ) or "").lower() == "true"
+                    and str(lineage.get(
+                        "republisher_fallback_p0_eligible"
+                    ) or "").lower() == "true"
+                    and str(lineage.get("transport_lineage_class") or "")
+                    == "aggregator_republisher"
+                    and str(lineage.get(
+                        "native_arrival_index_eligible"
+                    ) or "").lower() == "false"
+                    and str(lineage.get(
+                        "native_formal_p0_eligible"
+                    ) or "").lower() == "false"
+                ):
+                    pass
+                else:
+                    raise ContractError(
+                        "resident_p0_native_transport_required"
+                    )
                 settlement_end = (
                     datetime.fromisoformat(envelope.event_date)
                     .replace(
@@ -4680,11 +5531,17 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         for station_id, event_date in scopes:
             try:
+                expected_source_lane = target_registry_source_lane(
+                    self.conn,
+                    station_id=str(station_id),
+                    event_date=str(event_date),
+                )
                 envelopes.extend(load_materialized_probability_envelopes(
                     self.conn,
                     station_id=str(station_id),
                     event_date=str(event_date),
                     evaluation_at_utc=as_of_utc,
+                    expected_source_lane=expected_source_lane,
                 ))
             except Exception as exc:
                 blockers.append({
@@ -4692,42 +5549,58 @@ class TargetProductionWorker:
                     "event_date": str(event_date),
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
-        if len(envelopes) > MAX_REGIME_ARTIFACTS_PER_PASS:
-            raise ContractError("regime_artifact_pass_cap_exceeded")
         receipts: list[dict[str, Any]] = []
-        for envelope in envelopes:
+        # Keep the resident pass resource-bounded without turning a healthy
+        # multi-stage 45-station SSOT into a global blocker once the number
+        # of committed envelopes exceeds the per-batch guard.  Each chunk is
+        # idempotent and transaction-fenced; a later cycle can safely replay
+        # the same rows if a transient fault interrupts a chunk.
+        for chunk_start in range(
+            0,
+            len(envelopes),
+            MAX_REGIME_ARTIFACTS_PER_PASS,
+        ):
+            chunk = envelopes[
+                chunk_start : chunk_start + MAX_REGIME_ARTIFACTS_PER_PASS
+            ]
             assert_process_memory_budget()
-            try:
-                artifact = build_regime_artifact(envelope)
-                with _writer_transaction(
-                    self.commit_conn,
-                    savepoint="basket_target_regime_artifact",
-                ):
-                    receipt = insert_regime_artifact(
+            for envelope in chunk:
+                try:
+                    artifact = build_regime_artifact(envelope)
+                    with _writer_transaction(
                         self.commit_conn,
-                        artifact,
-                        created_at_utc=as_of_utc,
-                    )
-                receipts.append({
-                    **receipt,
-                    "station_id": envelope.station_id,
-                    "event_date": envelope.event_date,
-                    "stage": envelope.stage,
-                    "checkpoint_id": envelope.checkpoint_id,
-                    "probability_sha256": envelope.content_sha256,
-                })
-            except Exception as exc:
-                blockers.append({
-                    "station_id": envelope.station_id,
-                    "event_date": envelope.event_date,
-                    "stage": envelope.stage,
-                    "checkpoint_id": envelope.checkpoint_id,
-                    "reason": f"{type(exc).__name__}:{exc}",
-                })
+                        savepoint="basket_target_regime_artifact",
+                    ):
+                        receipt = insert_regime_artifact(
+                            self.commit_conn,
+                            artifact,
+                            created_at_utc=as_of_utc,
+                        )
+                    receipts.append({
+                        **receipt,
+                        "station_id": envelope.station_id,
+                        "event_date": envelope.event_date,
+                        "stage": envelope.stage,
+                        "checkpoint_id": envelope.checkpoint_id,
+                        "probability_sha256": envelope.content_sha256,
+                    })
+                except Exception as exc:
+                    blockers.append({
+                        "station_id": envelope.station_id,
+                        "event_date": envelope.event_date,
+                        "stage": envelope.stage,
+                        "checkpoint_id": envelope.checkpoint_id,
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    })
         return {
             "schema": "bayes_basket_target_regime_batch_v1",
             "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
             "receipt_count": len(receipts),
+            "envelope_count": len(envelopes),
+            "chunk_count": (
+                (len(envelopes) + MAX_REGIME_ARTIFACTS_PER_PASS - 1)
+                // MAX_REGIME_ARTIFACTS_PER_PASS
+            ),
             "written_count": sum(
                 1 for item in receipts if item.get("wrote") is True
             ),
@@ -4748,11 +5621,17 @@ class TargetProductionWorker:
 
         if self.conn is None:
             return "resident_probability_read_only_connection_missing"
+        expected_source_lane = target_registry_source_lane(
+            self.conn,
+            station_id=station_id,
+            event_date=event_date,
+        )
         envelopes = load_materialized_probability_envelopes(
             self.conn,
             station_id=station_id,
             event_date=event_date,
             evaluation_at_utc=as_of_utc,
+            expected_source_lane=expected_source_lane,
         )
         p0_rows = [row for row in envelopes if row.stage == "P0"]
         if not p0_rows:
@@ -5270,43 +6149,25 @@ class TargetProductionWorker:
                     ) if newest_page is not None else 0
                     source_cursor = max(0, first_source_rowid - 1)
                 additional_scopes: list[tuple[str, str]] = []
-                native_table = self.commit_conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' "
-                    "AND name='calibration_native_ensemble_member_run'"
-                ).fetchone()
-                if native_table is not None:
+                candidate_scopes = _candidate_ensemble_scopes_without_truth(
+                    self.commit_conn,
+                    limit=45 * 4,
+                )
+                if candidate_scopes:
                     # Bootstrap truth directly from bounded forward member
                     # scope identities.  Without this bridge the first strict
                     # OOS P0 is circular: basket facts require P0, while truth
-                    # discovery previously required basket facts.
-                    native_rows = self.commit_conn.execute(
-                        "SELECT DISTINCT m.station_id,m.target_local_date,"
-                        "r.settlement_timezone "
-                        "FROM calibration_native_ensemble_member_run m "
-                        "JOIN basket_target_market_registry r "
-                        "ON r.station_id=m.station_id "
-                        "AND r.event_date=m.target_local_date "
-                        "AND r.source_eligible=1 "
-                        "WHERE m.authority_scope="
-                        "'PRODUCTION_NO_LIVE_CANDIDATE' "
-                        "AND NOT EXISTS ("
-                        "SELECT 1 FROM "
-                        "calibration_station_daily_high_truth t "
-                        "WHERE t.station_id=m.station_id "
-                        "AND t.local_date=m.target_local_date "
-                        "AND t.qc_status='ACCEPTED'"
-                        ") "
-                        "ORDER BY m.target_local_date,m.station_id "
-                        "LIMIT ?",
-                        (45 * 4,),
-                    ).fetchall()
+                    # discovery previously required basket facts.  This is
+                    # intentionally source-neutral at the storage boundary:
+                    # both tables remain candidate-only until the later
+                    # closed-AWC strict-OOS validator accepts their evidence.
                     as_of = datetime.fromisoformat(
                         as_of_utc.replace("Z", "+00:00")
                     ).astimezone(timezone.utc)
                     timezone_by_scope: dict[
                         tuple[str, str], set[str]
                     ] = {}
-                    for row in native_rows:
+                    for row in candidate_scopes:
                         scope = (
                             str(row[0] or "").strip().upper(),
                             str(row[1] or "").strip(),
@@ -5510,9 +6371,23 @@ class TargetProductionWorker:
                 native_inbox_path.is_file()
                 or official_inbox_path.is_file()
             ):
-                valid_native_packets: list[Mapping[str, Any]] = []
+                # The coordinator freezes the current station×event-date
+                # scope in the environment.  Resident inboxes may retain
+                # older/future observational packets, but those packets must
+                # not be ingested or replayed in this cycle: mixing dates
+                # turns the 45-station cap into a station-day cap and can
+                # fail the whole chain closed.  Empty allowlists preserve the
+                # bounded standalone/research worker behavior.
+                allowed_stations = tuple(
+                    getattr(self, "station_allowlist", ())
+                )
+                allowed_event_dates = tuple(
+                    getattr(self, "event_date_allowlist", ())
+                )
+
+                raw_native_packets: list[Mapping[str, Any]] = []
                 if native_inbox_path.is_file():
-                    valid_native_packets.extend(
+                    raw_native_packets.extend(
                         _load_native_forward_inbox(
                             native_inbox_path,
                             error_code=(
@@ -5521,7 +6396,7 @@ class TargetProductionWorker:
                         )
                     )
                 if official_inbox_path.is_file():
-                    valid_native_packets.extend(
+                    raw_native_packets.extend(
                         _load_native_forward_inbox(
                             official_inbox_path,
                             error_code=(
@@ -5529,7 +6404,7 @@ class TargetProductionWorker:
                             ),
                         )
                     )
-                if len(valid_native_packets) > 256:
+                if len(raw_native_packets) > 256:
                     raise ContractError(
                         "combined_native_forward_inbox_limit_exceeded"
                     )
@@ -5539,11 +6414,20 @@ class TargetProductionWorker:
                         OPEN_METEO_FORWARD_PACKET_SCHEMA,
                         OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA,
                     }
-                    for packet in valid_native_packets
+                    for packet in raw_native_packets
                 ):
                     raise ContractError(
                         "native_forward_packet_schema_invalid"
                     )
+                valid_native_packets = [
+                    packet
+                    for packet in raw_native_packets
+                    if _forward_packet_in_cycle_scope(
+                        packet,
+                        station_allowlist=allowed_stations,
+                        event_date_allowlist=allowed_event_dates,
+                    )
+                ]
                 pending_native_packets: list[Mapping[str, Any]] = []
                 for packet in valid_native_packets:
                     if packet.get("schema") != (
@@ -5562,30 +6446,18 @@ class TargetProductionWorker:
                     for system in packet.get("systems") or []:
                         if not isinstance(system, Mapping):
                             continue
-                        exists = self.commit_conn.execute(
-                            "SELECT 1 FROM "
-                            "calibration_native_ensemble_member_bucket "
-                            "WHERE ensemble_system_id=? "
-                            "AND station_id=? AND target_local_date=? "
-                            "AND member_set_sha256=? "
-                            "AND bucket_contract_sha256=? LIMIT 1",
-                            (
-                                str(
-                                    system.get(
-                                        "ensemble_system_id"
-                                    )
-                                    or ""
-                                ),
-                                station_id,
-                                event_date,
-                                str(
-                                    system.get("member_set_sha256")
-                                    or ""
-                                ),
-                                bucket_contract_sha,
+                        if not _open_meteo_packet_bucket_exists(
+                            self.commit_conn,
+                            ensemble_system_id=str(
+                                system.get("ensemble_system_id") or ""
                             ),
-                        ).fetchone()
-                        if exists is None:
+                            station_id=station_id,
+                            event_date=event_date,
+                            member_set_sha256=str(
+                                system.get("member_set_sha256") or ""
+                            ),
+                            bucket_contract_sha256=bucket_contract_sha,
+                        ):
                             pending_native_packets.append(packet)
                             break
                 selected_native_packets = pending_native_packets[
@@ -5603,6 +6475,15 @@ class TargetProductionWorker:
                     "state": "COMMITTED",
                     "packet_count": len(native_receipts),
                     "inbox_packet_count": len(valid_native_packets),
+                    "raw_inbox_packet_count": len(raw_native_packets),
+                    "filtered_out_of_scope_packet_count": (
+                        len(raw_native_packets) - len(valid_native_packets)
+                    ),
+                    "station_allowlist": sorted(allowed_stations),
+                    "event_date_allowlist": sorted(allowed_event_dates),
+                    "event_date_scope_source": str(
+                        getattr(self, "event_date_scope_source", "unconfigured")
+                    ),
                     "pending_packet_count_before": len(
                         pending_native_packets
                     ),
@@ -5634,13 +6515,21 @@ class TargetProductionWorker:
                         (now, now, MAX_FORWARD_P0_STATIONS),
                     )
                 }
+                # Official native remains first choice for each station-day.
+                # If it is absent at this evidence instant, retain the
+                # explicitly labelled Open-Meteo packet for the compiler's
+                # independently enforced, closed-day strict-OOS no-live
+                # fallback gate.  This selection never upgrades transport
+                # lineage or lets a republisher replace a native packet.
+                (
+                    preferred_p0_packets,
+                    official_by_scope,
+                    republisher_by_scope,
+                ) = _preferred_forward_packets_for_p0(valid_native_packets)
                 active_replay_packets = []
-                for packet in sorted(
-                    valid_native_packets,
-                    key=lambda item: (
-                        str(item.get("event_date") or ""),
-                        str(item.get("station_id") or ""),
-                    ),
+                for _scope, packet in sorted(
+                    preferred_p0_packets.items(),
+                    key=lambda item: (item[0][1], item[0][0]),
                     reverse=True,
                 ):
                     station = str(
@@ -5668,36 +6557,61 @@ class TargetProductionWorker:
                     ).astimezone(timezone.utc):
                         continue
                     active_replay_packets.append(packet)
-                    if len(active_replay_packets) >= (
-                        MAX_RESIDENT_NWP_SCOPES_PER_CYCLE
-                    ):
-                        break
+                if len(active_replay_packets) > MAX_FORWARD_P0_STATIONS:
+                    raise ContractError("official_native_forward_scope_bound_exceeded")
                 active_replay_compiled = []
                 active_replay_failures = []
+                active_replay_fallback_attempts = []
+                active_republisher_fallback_used = 0
                 for replay_packet in active_replay_packets:
-                    try:
-                        compiled = compile_native_ensemble_p0(
+                    replay_scope = (
+                        str(replay_packet.get("station_id") or "")
+                        .strip()
+                        .upper(),
+                        str(replay_packet.get("event_date") or ""),
+                    )
+                    compiled, failures, source_class = (
+                        _compile_native_p0_with_republisher_fallback(
                             self.commit_conn,
-                            forward_packet=replay_packet,
+                            scope=replay_scope,
+                            preferred_packet=replay_packet,
+                            official_packet=official_by_scope.get(replay_scope),
+                            republisher_packet=republisher_by_scope.get(
+                                replay_scope
+                            ),
                             decision_at_utc=now,
+                            native_oos_snapshot=self.native_oos_snapshot,
+                            republisher_fallback_activation=(
+                                getattr(
+                                    self,
+                                    "republisher_fallback_activation",
+                                    None,
+                                )
+                            ),
                         )
+                    )
+                    if compiled is None:
+                        active_replay_failures.extend(failures)
+                        continue
+                    try:
                         compiled["forward_prediction_persistence"] = (
                             persist_native_ensemble_forward_prediction(
                                 self.commit_conn,
                                 compiled,
                             )
                         )
-                        active_replay_compiled.append(compiled)
                     except Exception as exc:
                         active_replay_failures.append({
-                            "station_id": str(
-                                replay_packet.get("station_id") or ""
-                            ),
-                            "event_date": str(
-                                replay_packet.get("event_date") or ""
-                            ),
+                            "station_id": replay_scope[0],
+                            "event_date": replay_scope[1],
+                            "source_class": source_class,
                             "reason": f"{type(exc).__name__}:{exc}",
                         })
+                        continue
+                    if source_class == "aggregator_republisher":
+                        active_replay_fallback_attempts.extend(failures)
+                        active_republisher_fallback_used += 1
+                    active_replay_compiled.append(compiled)
                 active_activation_p0_replay = (
                     _upsert_native_p0_inbox(
                         self.p0_inbox_path,
@@ -5718,6 +6632,18 @@ class TargetProductionWorker:
                 active_activation_p0_replay["active_station_count"] = (
                     len(active_native_stations)
                 )
+                active_activation_p0_replay["official_packet_count"] = (
+                    len(official_by_scope)
+                )
+                active_activation_p0_replay[
+                    "republisher_fallback_packet_count"
+                ] = len(republisher_by_scope)
+                active_activation_p0_replay[
+                    "republisher_fallback_used_count"
+                ] = active_republisher_fallback_used
+                active_activation_p0_replay[
+                    "republisher_fallback_attempts"
+                ] = active_replay_fallback_attempts
                 active_activation_p0_replay["failures"] = (
                     active_replay_failures
                 )
@@ -5735,17 +6661,10 @@ class TargetProductionWorker:
                     for receipt in native_receipts
                     if sum(receipt["counts"].values()) > 0
                 })
-                all_oos_stations = [
-                    str(row[0])
-                    for row in self.commit_conn.execute(
-                        "SELECT DISTINCT station_id FROM "
-                        "calibration_native_ensemble_member_run "
-                        "WHERE authority_scope="
-                        "'PRODUCTION_NO_LIVE_CANDIDATE' "
-                        "ORDER BY station_id LIMIT ?",
-                        (MAX_FORWARD_P0_STATIONS,),
-                    )
-                ]
+                all_oos_stations = _candidate_ensemble_station_ids(
+                    self.commit_conn,
+                    limit=MAX_FORWARD_P0_STATIONS,
+                )
                 truth_signatures = (
                     _native_ensemble_truth_signatures(
                         self.commit_conn,
@@ -5800,10 +6719,10 @@ class TargetProductionWorker:
                             station_id=oos_station,
                             as_of_utc=now,
                             min_train_days=(
-                                NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS
+                                DEFAULT_MIN_TRAIN_DAYS
                             ),
                             min_holdout_days=(
-                                NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS
+                                DEFAULT_MIN_HOLDOUT_DAYS
                             ),
                         )
                         oos_persist = persist_native_ensemble_oos(
@@ -5846,13 +6765,45 @@ class TargetProductionWorker:
                             )[:MAX_RESIDENT_NWP_SCOPES_PER_CYCLE]
                             for replay_packet in replay_packets:
                                 try:
+                                    fallback_receipt = None
+                                    if (
+                                        replay_packet.get("schema")
+                                        == OPEN_METEO_FORWARD_PACKET_SCHEMA
+                                        and getattr(
+                                            self,
+                                            "republisher_fallback_activation",
+                                            None,
+                                        )
+                                        is not None
+                                    ):
+                                        fallback_receipt = (
+                                            preflight_republisher_fallback_activation(
+                                                self.commit_conn,
+                                                activation=(
+                                                    getattr(
+                                                        self,
+                                                        "republisher_fallback_activation",
+                                                        None,
+                                                    )
+                                                ),
+                                                packet=replay_packet,
+                                                decision_at_utc=now,
+                                                native_unavailable=True,
+                                            )
+                                        )
                                     compiled = (
-                                        compile_native_ensemble_p0(
+                                        _compile_native_ensemble_p0_runtime(
                                             self.commit_conn,
                                             forward_packet=replay_packet,
                                             decision_at_utc=now,
+                                            native_oos_snapshot=self.native_oos_snapshot,
                                         )
                                     )
+                                    if fallback_receipt is not None:
+                                        compiled = dict(compiled)
+                                        compiled[
+                                            "republisher_fallback_activation"
+                                        ] = dict(fallback_receipt)
                                 except Exception as exc:
                                     activation_replay_failures.append({
                                         "station_id": oos_station,
@@ -5983,13 +6934,24 @@ class TargetProductionWorker:
             resident_p0_ingress = resident_probability_chain["p0"]
             resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
+            # A correction/revision halt belongs to one station-day.  It must
+            # remain fail-closed for that scope, but must not suppress healthy
+            # stations from reaching their own WS/decision path.  Only a
+            # malformed unscoped P1 blocker is a global chain blocker.
             if (
                 str(resident_p1_ingress.get("state") or "").upper()
                 == "BLOCKED_FAIL_CLOSED"
             ):
-                raise ContractError(
-                    "resident_p1_blocked_before_current_scope_market"
-                )
+                p1_blockers = resident_p1_ingress.get("blockers")
+                if not isinstance(p1_blockers, list) or any(
+                    not isinstance(item, Mapping)
+                    or not str(item.get("station_id") or "").strip()
+                    or not str(item.get("event_date") or "").strip()
+                    for item in p1_blockers
+                ):
+                    raise ContractError(
+                        "resident_p1_blocked_before_current_scope_market"
+                    )
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
             ws_scope_catalog = (
                 self._resident_ws_scope_catalog()
@@ -6000,7 +6962,11 @@ class TargetProductionWorker:
                 self.nwp_runtime_root / "market_registry_forward.json"
             )
             for ws_scope in ws_scope_catalog:
-                if ws_scope["event_day_state"] != "not_started":
+                if (
+                    ws_scope["event_day_state"] != "not_started"
+                    or not ws_scope["probability_evidence_fresh"]
+                    or ws_scope.get("scope_blocker")
+                ):
                     continue
                 try:
                     preselection_evaluation_at = utc_now()
@@ -6036,7 +7002,11 @@ class TargetProductionWorker:
             open_ws_scopes = [
                 item
                 for item in ws_scope_catalog
-                if item["event_day_state"] == "open"
+                if (
+                    item["event_day_state"] == "open"
+                    and item["probability_evidence_fresh"] is True
+                    and not item.get("scope_blocker")
+                )
             ]
             if ws_scope_catalog and not open_ws_scopes:
                 if not forward_p0_preselections:
@@ -6240,14 +7210,13 @@ class TargetProductionWorker:
                         policy_authority_scope=str(activation["policy_authority_scope"]),
                         base_policy=scope.get("base_policy") if isinstance(scope.get("base_policy"), Mapping) else None,
                     )
-                    # A complete P1+WS compile is a valid forward OOS decision
-                    # point even when the optimizer chooses HOLD.  Send both
-                    # READY and HOLD through the exact same atomic adapter so
-                    # HOLD becomes a zero-intent exact-version training fact,
-                    # rather than a generic blocker with its inputs erased.
+                    # A complete current-stage + WS compile is a valid
+                    # no-live decision point. Every stage commits only the
+                    # content-addressed NO_EXECUTION authority; dry-run must
+                    # not materialize P1 observation/bound/training facts.
                     candidate = {
                         **candidate,
-                        "atomic_commit": self._commit_candidate(
+                        "atomic_commit": self._commit_current_stage_no_execution_candidate(
                             candidate,
                             station_id=station,
                             event_date=day,
@@ -6282,7 +7251,7 @@ class TargetProductionWorker:
             # consumed the strict quote lease and could turn a fresh official
             # WS generation stale before DeltaBasketScore compiled.  Keep the
             # settlement lane independent and non-blocking after every current
-            # scope has completed its P1 -> JIT WS -> decision path.
+            # scope has completed its current-stage -> JIT WS -> decision path.
             (
                 delta_v2_truth_ingress,
                 delta_v2_label_ingress,

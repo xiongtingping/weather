@@ -22,17 +22,17 @@ LANE_MAP = {
     "schema": "bayes_basket_target_station_lane_map_v1",
     "operational_timezone": CANONICAL_OPERATIONAL_TIMEZONE,
     "settlement_timezone_authority": "market_registry.settlement_timezone",
-    "stations": {"ZBAA": "amsc", "KATL": "awc"},
+    "stations": {"ZBAA": "awc", "KATL": "awc"},
     "boundary": {
         "target_only": True,
         "allows_cross_lane_fallback": False,
         "reference_policy": {
-            "amsc_hourly_metar_for_amsc_station": "formal_truth_primary",
-            "amsc_half_hour_metar": "reference_only",
-            "awc_hourly_for_amsc_station": "reference_only",
-            "awc_hourly_precedence_over_amsc_hourly": False,
+            "awc_global_metar_speci": "formal_truth_primary_for_all_45_stations",
+            "amsc_production_lane": "retired_history_only",
+            "amsc_reference_evidence": "offline_audit_only",
             "reference_enters_formal_truth": False,
             "reference_enters_calibration": False,
+            "temporary_awc_calibration": "retired_history_only",
         },
         "writes_production_db": False,
         "calls_order_gateway": False,
@@ -46,7 +46,7 @@ def _routes(*rows: dict[str, object]) -> list[dict[str, object]]:
 
 def _good_routes() -> list[dict[str, object]]:
     return _routes(
-        {"station_id": "ZBAA", "truth_lane": "amsc"},
+        {"station_id": "ZBAA", "truth_lane": "awc"},
         {"station_id": "KATL", "truth_lane": "awc"},
     )
 
@@ -62,7 +62,7 @@ def test_positive_route_audit_has_exact_one_lane_and_no_partial_output() -> None
     assert result["reason_codes"] == []
     assert result["canonical_routes"] == [
         {"station_id": "KATL", "truth_lane": "awc"},
-        {"station_id": "ZBAA", "truth_lane": "amsc"},
+        {"station_id": "ZBAA", "truth_lane": "awc"},
     ]
     assert result["checks"]["official_universe_exact"] is True
 
@@ -71,8 +71,8 @@ def test_duplicate_route_is_fail_closed_even_when_input_is_a_list() -> None:
     result = audit_source_routes(
         LANE_MAP,
         _routes(
-            {"station_id": "ZBAA", "truth_lane": "amsc"},
-            {"station_id": "ZBAA", "truth_lane": "amsc"},
+            {"station_id": "ZBAA", "truth_lane": "awc"},
+            {"station_id": "ZBAA", "truth_lane": "awc"},
             {"station_id": "KATL", "truth_lane": "awc"},
         ),
         official_station_keys={"ZBAA", "KATL"},
@@ -82,7 +82,7 @@ def test_duplicate_route_is_fail_closed_even_when_input_is_a_list() -> None:
     assert result["canonical_routes"] == []
 
 
-def test_missing_unknown_and_wrong_china_lane_are_rejected() -> None:
+def test_missing_unknown_and_wrong_lane_are_rejected() -> None:
     missing = audit_source_routes(
         LANE_MAP,
         [{"station_id": "ZBAA", "truth_lane": "amsc"}],
@@ -90,20 +90,20 @@ def test_missing_unknown_and_wrong_china_lane_are_rejected() -> None:
     )
     assert "missing_route" in missing["reason_codes"]
 
-    wrong_china = audit_source_routes(
+    wrong_lane = audit_source_routes(
         LANE_MAP,
         [
-            {"station_id": "ZBAA", "truth_lane": "awc"},
+            {"station_id": "ZBAA", "truth_lane": "amsc"},
             {"station_id": "KATL", "truth_lane": "awc"},
         ],
         official_station_keys={"ZBAA", "KATL"},
     )
-    assert "route_lane_mismatch" in wrong_china["reason_codes"]
+    assert "route_lane_mismatch" in wrong_lane["reason_codes"]
 
     unknown = audit_source_routes(
         LANE_MAP,
         _routes(
-            {"station_id": "ZBAA", "truth_lane": "amsc"},
+        {"station_id": "ZBAA", "truth_lane": "awc"},
             {"station_id": "KATL", "truth_lane": "awc"},
             {"station_id": "XXXX", "truth_lane": "awc"},
         ),
@@ -132,24 +132,6 @@ def test_illegal_lane_and_cross_lane_fallback_are_fail_closed() -> None:
 @pytest.mark.parametrize(
     ("entry", "reason"),
     [
-        (
-            {
-                "station_id": "ZBAA",
-                "truth_lane": "amsc",
-                "report_type": "METAR",
-                "valid_at": "2026-07-27T12:30:00Z",
-            },
-            "reference_intrudes_canonical",
-        ),
-        (
-            {
-                "station_id": "ZBAA",
-                "truth_lane": "awc",
-                "report_type": "METAR",
-                "valid_at": "2026-07-27T12:00:00Z",
-            },
-            "reference_intrudes_canonical",
-        ),
         (
             {
                 "station_id": "ZBAA",
@@ -220,7 +202,7 @@ def test_low_wrong_low_rewrap_does_not_latch_failure() -> None:
     low = audit_source_routes(LANE_MAP, _good_routes(), official_station_keys={"ZBAA", "KATL"})
     wrong = audit_source_routes(
         LANE_MAP,
-        [{"station_id": "ZBAA", "truth_lane": "awc"}, {"station_id": "KATL", "truth_lane": "awc"}],
+        [{"station_id": "ZBAA", "truth_lane": "amsc"}, {"station_id": "KATL", "truth_lane": "awc"}],
         official_station_keys={"ZBAA", "KATL"},
     )
     low_again = audit_source_routes(LANE_MAP, _good_routes(), official_station_keys={"ZBAA", "KATL"})

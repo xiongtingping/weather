@@ -654,7 +654,7 @@ def test_target_proxy_prefers_available_configured_candidate(monkeypatch: pytest
         return nullcontext()
 
     monkeypatch.setattr(capture_module.socket, "create_connection", fake_connection)
-    assert capture_module._configured_proxy() == "http://127.0.0.1:7897"
+    assert capture_module._configured_proxy() == "http://127.0.0.1:1082"
 
 
 def test_exact_45_station_registry_scope_materializes_nonempty_allowlist(

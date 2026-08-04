@@ -65,7 +65,7 @@ DEFAULT_ACTIVATION = (
     "bayes_basket_target_production_no_live_activation_v1.json"
 )
 SERVICE_LABELS = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
@@ -251,14 +251,14 @@ def run_cutover(
             raw_probability_evidence_packet
         )
     if target_writer_stopped:
-        if _service_loaded("com.weather.reported_trajectory_no"):
+        if _service_loaded("com.weather.weather_basket_yes"):
             raise RuntimeError(
                 "transaction_fenced_target_writer_expected_stopped"
             )
         pids_before = {
             label: _service_pid(label)
             for label in SERVICE_LABELS
-            if label != "com.weather.reported_trajectory_no"
+            if label != "com.weather.weather_basket_yes"
         }
     else:
         pids_before = _service_pids()
@@ -443,14 +443,14 @@ def run_cutover(
             pause.unlink(missing_ok=True)
 
     if target_writer_stopped:
-        if _service_loaded("com.weather.reported_trajectory_no"):
+        if _service_loaded("com.weather.weather_basket_yes"):
             raise RuntimeError(
                 "transaction_fenced_target_writer_reappeared"
             )
         pids_after = {
             label: _service_pid(label)
             for label in SERVICE_LABELS
-            if label != "com.weather.reported_trajectory_no"
+            if label != "com.weather.weather_basket_yes"
         }
     else:
         pids_after = _service_pids()

@@ -7,7 +7,7 @@ set -euo pipefail
 
 ROOT="/Users/xiong/weather"
 cd "$ROOT"
-TARGET_LABEL="com.weather.reported_trajectory_no"
+TARGET_LABEL="com.weather.weather_basket_yes"
 MARKET_WS_LABEL="com.weather.market_ws"
 CLOB_LABEL="com.weather.clob_order_service"
 UID_VALUE="$(id -u)"
@@ -255,7 +255,7 @@ replay_probe="$({
     "$CANONICAL_STATION_ALLOWLIST" "$ACTIVATION" \
     "$SCHEMA_BOOTSTRAP_PACKET" "$current_market_ws_pid" "$current_clob_pid" \
     "$current_target_pid" "$LIVE_PAUSE" \
-    "$ROOT/data/reported_trajectory_no_status.json" <<'PY'
+    "$ROOT/data/weather_basket_yes_status.json" <<'PY'
 import hashlib
 import json
 import sqlite3
@@ -474,7 +474,7 @@ fi
 
 "$PY" \
   "$ROOT/scripts/accept_bayes_basket_target_canonical_nwp_scheduler.py" \
-  --status "$ROOT/data/reported_trajectory_no_status.json" \
+  --status "$ROOT/data/weather_basket_yes_status.json" \
   --wait-seconds 120 \
   --output "$RESIDENT_NWP_ACCEPTANCE"
 
@@ -605,7 +605,7 @@ if (
     or resources.get("ok") is not True
     or max_wal_bytes <= 0
     or int(resources.get("wal_bytes") or 0) > max_wal_bytes
-    # Exact current-day 45-station readiness and forward OOS are downstream
+    # Exact current-day 45-station readiness and historical OOS are downstream
     # materialization/promotion states.  They must never roll back a valid
     # production_no_live schema cutover.  Require the durable chain inputs and
     # at least one resident-produced probability row at every stage instead.
@@ -655,7 +655,7 @@ import subprocess
 
 uid = os.getuid()
 labels = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
@@ -877,9 +877,11 @@ identity = {
     ),
     "station_outputs": station_outputs,
     "materialization_pending_blockers": materialization_pending,
-    "forward_oos_boundary": {
-        "blocks_production_no_live": False,
-        "blocks_formal_promotion_or_live": True,
+    "historical_oos_boundary": {
+        "future_data_counts_as_oos": False,
+        "future_data_blocks_production_no_live": False,
+        "future_data_blocks_formal_promotion_or_live": False,
+        "historical_strict_oos_required_for_formal_promotion_or_live": True,
     },
     "production_no_live": True,
     "calls_order_gateway": False,

@@ -172,6 +172,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--eccc-station-id",
+        action="append",
+        default=[],
+        help=(
+            "Restrict the optional ECCC GEPS system to these stations. "
+            "Stations outside this set remain the exact ECMWF+GEFS pair."
+        ),
+    )
+    parser.add_argument(
         "--station-id",
         action="append",
         default=[],
@@ -184,8 +193,24 @@ def main() -> int:
             "Required when source archives froze different bucket contracts."
         ),
     )
+    parser.add_argument(
+        "--target-contract-archive",
+        type=Path,
+        help=(
+            "Offline train-only bridge: project all systems onto the exact "
+            "station contract frozen by one supplied source archive. Cannot "
+            "be combined with --market-registry."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if (
+        args.market_registry is not None
+        and args.target_contract_archive is not None
+    ):
+        raise RuntimeError(
+            "official_native_forward_target_contract_authority_ambiguous"
+        )
     archive_paths = [*args.archive, *args.eccc_geps_archive]
     archives = _load_archives(
         archive_paths,
@@ -207,6 +232,21 @@ def main() -> int:
         == ECCC_GEPS_MULTISTATION_SCHEMA
     ]
     eccc_archive = eccc_archives[0] if eccc_archives else None
+    requested_eccc_stations = {
+        str(value or "").strip().upper()
+        for value in args.eccc_station_id
+        if str(value or "").strip()
+    }
+    if requested_eccc_stations and eccc_archive is None:
+        raise RuntimeError(
+            "official_native_forward_eccc_station_scope_without_archive"
+        )
+    if requested_eccc_stations and not requested_eccc_stations.issubset(
+        _archive_station_ids(eccc_archive)
+    ):
+        raise RuntimeError(
+            "official_native_forward_eccc_station_scope_invalid"
+        )
     available = _common_station_ids(base_archives)
     requested = {
         str(value or "").strip().upper()
@@ -285,13 +325,104 @@ def main() -> int:
                 "bucket_intervals": frozen,
                 "bucket_contract_sha256": content_sha256(frozen),
                 "authority_content_sha256": content_sha256(bridge),
+                "authority_source_class": (
+                    "AUTHORITATIVE_MARKET_REGISTRY_STATION_DAY"
+                ),
+            }
+    elif args.target_contract_archive is not None:
+        target_raw = load_bounded_json(
+            args.target_contract_archive.expanduser().resolve(strict=True)
+        )
+        if not isinstance(target_raw, Mapping):
+            raise RuntimeError(
+                "official_native_forward_target_archive_invalid"
+            )
+        target_sha = str(target_raw.get("content_sha256") or "")
+        target_archive = next(
+            (
+                archive
+                for archive in archives
+                if str(archive.get("content_sha256") or "") == target_sha
+            ),
+            None,
+        )
+        if target_archive is None:
+            raise RuntimeError(
+                "official_native_forward_target_archive_not_supplied"
+            )
+        captures = target_archive.get("captures")
+        if not isinstance(captures, list):
+            raise RuntimeError(
+                "official_native_forward_target_archive_invalid"
+            )
+        capture_by_station = {
+            str(capture.get("station_id") or "").strip().upper(): capture
+            for capture in captures
+            if isinstance(capture, Mapping)
+        }
+        for station in stations:
+            capture = capture_by_station.get(station)
+            if not isinstance(capture, Mapping):
+                raise RuntimeError(
+                    "official_native_forward_target_archive_scope_missing:"
+                    + station
+                )
+            intervals = capture.get("bucket_intervals")
+            settlement_timezone = str(
+                capture.get("settlement_timezone") or ""
+            )
+            if (
+                not isinstance(intervals, Mapping)
+                or not intervals
+                or not settlement_timezone
+            ):
+                raise RuntimeError(
+                    "official_native_forward_target_archive_contract_invalid:"
+                    + station
+                )
+            frozen = {
+                str(bucket): [
+                    None if bounds[0] is None else float(bounds[0]),
+                    None if bounds[1] is None else float(bounds[1]),
+                ]
+                for bucket, bounds in intervals.items()
+            }
+            bridge = {
+                "schema": "official_native_forward_offline_contract_bridge_v1",
+                "source_archive_content_sha256": target_sha,
+                "source_station_capture_content_sha256": str(
+                    capture.get("content_sha256") or ""
+                ),
+                "station_id": station,
+                "event_date": base_event_date,
+                "settlement_timezone": settlement_timezone,
+                "bucket_intervals": frozen,
+                "historical_market_arrival_claimed": False,
+            }
+            target_contracts[station] = {
+                "schema": (
+                    "official_native_forward_target_bucket_contract_v1"
+                ),
+                "station_id": station,
+                "event_date": base_event_date,
+                "settlement_timezone": settlement_timezone,
+                "bucket_intervals": frozen,
+                "bucket_contract_sha256": content_sha256(frozen),
+                "authority_content_sha256": content_sha256(bridge),
+                "authority_source_class": (
+                    "SOURCE_ARCHIVE_OFFLINE_CONTRACT_BRIDGE"
+                ),
             }
     packets = [
         build_official_native_forward_packet(
             archives=(
                 [*base_archives, eccc_archive]
                 if eccc_archive is not None
-                and station in _archive_station_ids(eccc_archive)
+                and station in (
+                    requested_eccc_stations
+                    if requested_eccc_stations
+                    else _archive_station_ids(eccc_archive)
+                )
                 else base_archives
             ),
             station_id=station,

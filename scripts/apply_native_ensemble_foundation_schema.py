@@ -17,14 +17,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError
+from bayes_basket_target.resource_bounds import MAX_TARGET_WAL_BYTES
 from bayes_basket_target.ssot import (
     apply_native_ensemble_foundation_schema,
 )
 
 
 DEFAULT_DB = (ROOT / "data" / "bayes_basket_target_ssot.db").resolve()
-SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
-MAX_WAL_BYTES = 64 * 1024 * 1024
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
+MAX_WAL_BYTES = MAX_TARGET_WAL_BYTES
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 
 
@@ -45,6 +46,7 @@ def migrate(
     *,
     db_path: Path,
     confirmed_writer_stopped: bool,
+    copy_republisher_legacy: bool = False,
 ) -> dict[str, object]:
     requested = db_path.expanduser()
     if requested.is_symlink():
@@ -86,6 +88,7 @@ def migrate(
         result = apply_native_ensemble_foundation_schema(
             conn,
             commit=False,
+            copy_republisher_legacy=copy_republisher_legacy,
         )
         quick_check = str(
             conn.execute("PRAGMA quick_check").fetchone()[0]
@@ -105,10 +108,10 @@ def migrate(
         "state": "migrated",
         "database": str(database),
         "production_target": production,
+        "copy_republisher_legacy": copy_republisher_legacy,
         "quick_check": quick_check,
         "wal_bytes_before": wal_bytes,
         "free_bytes_before": free_bytes,
-        "performs_legacy_backfill": False,
         "calls_order_gateway": False,
         "live_submit_authorized": False,
         "orders_submitted": 0,
@@ -119,6 +122,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--copy-republisher-legacy",
+        action="store_true",
+        help=(
+            "copy preserved Open-Meteo rows into the separated republisher "
+            "lane; never updates or deletes legacy audit rows"
+        ),
+    )
     parser.add_argument(
         "--confirm-reported-trajectory-no-stopped",
         action="store_true",
@@ -131,6 +142,7 @@ def main() -> int:
             "database": str(args.db.expanduser().resolve()),
             "requires_service_stopped_for_production": SERVICE_LABEL,
             "performs_legacy_backfill": False,
+            "copy_republisher_legacy": bool(args.copy_republisher_legacy),
             "calls_order_gateway": False,
             "live_submit_authorized": False,
         }, sort_keys=True))
@@ -141,6 +153,7 @@ def main() -> int:
             confirmed_writer_stopped=(
                 args.confirm_reported_trajectory_no_stopped
             ),
+            copy_republisher_legacy=args.copy_republisher_legacy,
         ),
         ensure_ascii=False,
         sort_keys=True,

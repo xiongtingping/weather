@@ -1,10 +1,10 @@
-"""Production basket executor embedded in the reported-trajectory service.
+"""Production pure-YES basket executor embedded in the truth-ingress service.
 
 The executor is intentionally narrow: it consumes already materialized P0/P1
 and regime evidence, reads only official CLOB WebSocket quote shards, and
-submits one FOK order per YES leg.  The existing reported-trajectory engine
-continues to own METAR/SPECI hard-NO orders; this module never creates a NO
-order and never imports a forecast fetcher or an order queue.
+submits one FOK order per YES leg.  AWC METAR/SPECI is read only as a
+mathematical floor which filters impossible YES buckets; it never creates a
+NO order and the executor never imports a forecast fetcher or an order queue.
 """
 
 from __future__ import annotations
@@ -18,18 +18,17 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from dynamic_three_leg_clob_gateway_adapter import LocalDynamicThreeLegClobGateway
-from reported_trajectory_no_runtime import identity, parse_bucket_interval
+from weather_basket_yes_runtime import identity, parse_bucket_interval
 
 from .activation import load_activation
 from .policy import compute_macro_topup, load_policy
-from .runtime import build_basket_plus_hard_no_plan
+from .runtime import build_basket_yes_plan
 from .schema import apply_basket_strategy_schema
 
 
 ROOT = Path(__file__).resolve().parents[1]
 QUOTE_SNAPSHOT = ROOT / "data" / "market_ws_latest_quotes.json"
 QUOTE_SHARDS = ROOT / "data" / "market_ws_quote_shards"
-HELD_YES = ROOT / "data" / "reported_trajectory_held_yes_tokens.json"
 SCHEMA_VERSION = "basket_strategy_production_v1"
 ACTIVE_CYCLE_STATES = {"prepared", "submitting", "submitted", "partially_filled", "reconcile_required"}
 
@@ -317,10 +316,6 @@ class BasketProductionEngine:
             (key, cycle_id, slug, event_date, city_slug, entry_type, max(0.0, float(amount_usdc)), reason, key, now),
         )
 
-    def _held_tokens(self) -> set[str]:
-        value = _read_json(HELD_YES)
-        return {str(item) for item in value.get("active_token_ids") or value.get("token_ids") or [] if str(item)}
-
     def _groups(self) -> list[tuple[str, str, str, list[dict[str, Any]]]]:
         rows = self.conn.execute(
             """SELECT slug,event_date,station_id,registry_json,yes_token,no_token,settlement_unit
@@ -340,17 +335,30 @@ class BasketProductionEngine:
             grouped[key][2].append(row)
         return [(slug, event_date, values[0], values[2]) for (slug, event_date), values in grouped.items()]
 
-    def _report(self, station_id: str, event_date: str) -> dict[str, Any] | None:
+    def _official_report(self, station_id: str, event_date: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            """SELECT b.max_observation_id,o.raw_text,o.source_lane,o.station_id
+            """SELECT b.max_observation_id,o.raw_text,o.source_lane,o.station_id,
+                      EXISTS(
+                        SELECT 1 FROM reported_trajectory_station_halts h
+                         WHERE h.source_lane='awc' AND h.station_id=b.station_id
+                           AND h.event_date=b.event_date AND h.state='active'
+                      ) AS correction_suspected
                FROM reported_trajectory_station_day_bounds b
                JOIN reported_trajectory_observations o ON o.observation_id=b.max_observation_id
-              WHERE b.station_id=? AND b.event_date=? ORDER BY b.updated_at DESC LIMIT 1""",
+              WHERE b.source_lane='awc' AND o.source_lane='awc'
+                AND b.station_id=? AND b.event_date=?
+              ORDER BY b.updated_at DESC LIMIT 1""",
             (station_id, event_date),
         ).fetchone()
         if row is None:
             return None
-        return {"observation_id": row[0], "raw_text": row[1], "source_lane": row[2], "expected_station": row[3]}
+        return {
+            "observation_id": row[0],
+            "raw_text": row[1],
+            "source_lane": row[2],
+            "expected_station": row[3],
+            "correction_suspected": bool(row[4]),
+        }
 
     def _cycle_rows(self, slug: str, event_date: str) -> list[tuple[str, str, str, float]]:
         return [
@@ -477,7 +485,7 @@ class BasketProductionEngine:
         topup_request = dict(request)
         topup_request["config"] = topup_config
         topup_request["completed_tranche_widths"] = []
-        plan = build_basket_plus_hard_no_plan(topup_request)
+        plan = build_basket_yes_plan(topup_request)
         if plan.get("status") != "ready":
             return None, [f"same_stage_plan_blocked:{code}" for code in (plan.get("basket", {}).get("reason_codes") or plan.get("direction_bias", {}).get("reason_codes") or ["same_stage_plan_blocked"])]
         basket = plan.get("basket") if isinstance(plan.get("basket"), Mapping) else {}
@@ -670,7 +678,7 @@ class BasketProductionEngine:
             """INSERT OR IGNORE INTO basket_strategy_cycles(
                  cycle_id,strategy_id,slug,event_date,city_slug,plan_sha256,plan_json,state,total_cost_usdc,quantity_per_bucket,created_at,updated_at)
                VALUES(?,?,?,?,?,? ,?,'prepared',?,?,?,?)""",
-            (cycle_id, "weather_basket_plus_hard_no_v2", slug, event_date, city_slug, plan_sha, _json(plan), float(basket.get("total_cost_usdc") or 0), float(basket.get("quantity_per_bucket") or 0), now, now),
+            (cycle_id, "weather_basket_yes_v2", slug, event_date, city_slug, plan_sha, _json(plan), float(basket.get("total_cost_usdc") or 0), float(basket.get("quantity_per_bucket") or 0), now, now),
         )
         self._capital_ledger(
             cycle_id=cycle_id,
@@ -791,7 +799,7 @@ class BasketProductionEngine:
             key = identity("basket_idem_", (cycle_id, intent_id))
             payload = {
                 "schema": SCHEMA_VERSION,
-                "strategy_id": "weather_basket_plus_hard_no_v2",
+                "strategy_id": "weather_basket_yes_v2",
                 "order_intent_id": intent_id,
                 "idempotency_key": key,
                 "token_id": str(order.get("token") or ""),
@@ -920,7 +928,6 @@ class BasketProductionEngine:
             }
         if self._unresolved_cycles():
             return {"schema": SCHEMA_VERSION, "ok": False, "state": "blocked", "reason": "basket_unresolved_cycle_requires_reconcile"}
-        held = self._held_tokens()
         plans = 0
         submitted = 0
         blocked: list[str] = []
@@ -963,7 +970,7 @@ class BasketProductionEngine:
             if len(quotes) < required_quotes or weighted_total <= 0:
                 continue
             event = {"event_id": slug + "|" + event_date, "slug": slug, "event_date": event_date, "target_event_date": event_date, "market_unit": "C", "market_anchor_c": weighted_sum / weighted_total, "station_id": station_id}
-            report = self._report(station_id, event_date)
+            report = self._official_report(station_id, event_date)
             request_config = dict(basket_config)
             request_config["bankroll_usdc"] = remaining_capital
             request_config["tranche_budget_usdc"] = min(
@@ -978,12 +985,12 @@ class BasketProductionEngine:
                 "probability_projection": projection,
                 # When the basket gate is disabled, do not even consume the
                 # materialized regime surface.  This keeps the temporary
-                # override scoped to the basket and leaves hard-NO untouched.
+                # override scoped to the basket and avoids consuming regime
+                # materialization when the agreement gate is disabled.
                 "regime": _regime(self.conn, event_date)
                 if request_config.get("regime_gate_enabled", True)
                 else {},
                 "report": report,
-                "held_yes_shares_by_token": {token: 1.0 for token in held},
                 "completed_tranche_widths": sorted(completed_widths),
                 "config": request_config,
             }
@@ -1029,7 +1036,7 @@ class BasketProductionEngine:
                 if result.get("state") == "reconcile_required":
                     break
                 continue
-            plan = build_basket_plus_hard_no_plan(request)
+            plan = build_basket_yes_plan(request)
             plans += 1
             if plan.get("status") != "ready" or plan.get("live_submit_authorized") is not True:
                 if no_live and plan.get("status") == "ready":

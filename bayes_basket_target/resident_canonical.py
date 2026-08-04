@@ -37,7 +37,7 @@ def load_resident_formal_observations(
     event_date: str,
     as_of_utc: str,
 ) -> list[dict[str, Any]]:
-    """Load one station/day's official hourly rows with strict route/time gates."""
+    """Load one station/day's official AWC rows with strict route/time gates."""
 
     station = str(station_id or "").strip().upper()
     decision_at = _utc(
@@ -59,9 +59,12 @@ def load_resident_formal_observations(
         str(row.get("source_lane") or "").strip().lower()
         for row in scoped_registry
     }
-    if len(lanes) != 1 or next(iter(lanes)) not in {"amsc", "awc"}:
-        raise ContractError("resident_p1_source_lane_not_unique")
-    source_lane = next(iter(lanes))
+    # The current production constitution has exactly one formal lane.  Keep
+    # this check local to the P1 reader as a second fail-closed boundary, so a
+    # stale registry snapshot cannot revive retired AMSC observations.
+    if lanes != {"awc"}:
+        raise ContractError("resident_p1_source_lane_not_awc")
+    source_lane = "awc"
     window = settlement_day_window(event_date, timezone_name)
     start = _utc(
         window["target_day_start_utc"],
@@ -87,7 +90,7 @@ def load_resident_formal_observations(
         ) from exc
     rows = conn.execute(
         "SELECT observation_id,source_lane,station_id,report_type,valid_at,"
-        "reported_temperature_c,raw_sha256,canonical_committed_at,"
+        "reported_temperature_c,raw_sha256,raw_text,canonical_committed_at,"
         "correction_suspected "
         "FROM reported_trajectory_observations "
         "WHERE station_id=? AND source_lane=? "
@@ -114,7 +117,7 @@ def load_resident_formal_observations(
             reason="resident_p1_valid_at_invalid",
         )
         committed_at = _utc(
-            row[7],
+            row[8],
             reason="resident_p1_committed_at_invalid",
         )
         if not (start <= valid_at < end):
@@ -129,14 +132,15 @@ def load_resident_formal_observations(
         # the minute first would silently discard a COR SPECI and let later
         # probability/decision writes continue through a mandatory manual-
         # review boundary.
-        if int(row[8] or 0) != 0:
+        if int(row[9] or 0) != 0:
             # The scope-level gate above proved an append-only clear receipt
             # for this exact non-hourly correction.  It remains reference-only
             # and can never become a formal P1 observation.
             continue
-        # Current truth constitution admits only the official :00 report.
-        if valid_at.minute != 0 or valid_at.second != 0:
-            continue
+        # The upstream registry and canonical-ingress contracts own source
+        # selection.  This adapter preserves the selected official AWC
+        # METAR/SPECI publication minute; it must not recreate a retired
+        # source-specific timing rule in the P1 hot path.
         raw_sha = str(row[6] or "").strip().lower()
         if (
             len(raw_sha) != 64
@@ -155,6 +159,7 @@ def load_resident_formal_observations(
                 timespec="milliseconds"
             ).replace("+00:00", "Z"),
             "raw_sha256": raw_sha,
+            "raw_text": str(row[7] or ""),
             "source_lane": source_lane,
             "report_type": report_type,
             "evidence_role": "FORMAL",

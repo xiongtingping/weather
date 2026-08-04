@@ -6,10 +6,10 @@
     "execution_mode": "production_no_live",
     "lane": "bayes_basket_target",
     "limits": {
-      "max_database_bytes": 268435456,
+      "max_database_bytes": 4294967296,
       "max_process_rss_bytes": 536870912,
       "max_raw_bytes": 1073741824,
-      "max_wal_bytes": 67108864,
+      "max_wal_bytes": 536870912,
       "max_writer_lock_wait_ms": 250.0,
       "max_ws_snapshot_age_sec": 120.0,
       "min_free_bytes": 536870912,
@@ -59,39 +59,39 @@
   },
   "execution_mode": "production_no_live",
   "lane": "bayes_basket_target",
-  "measured_at_utc": "2026-07-29T14:52:38.252671Z",
+  "measured_at_utc": "2026-07-31T16:28:49.587216Z",
   "performance": {
     "read_transaction_acquire": {
       "error_count": 0,
       "errors": [],
       "read_transaction_acquire_latency": {
-        "max_ms": 1.456,
-        "mean_ms": 1.454,
-        "min_ms": 1.453,
-        "p95_ms": 1.456,
-        "p99_ms": 1.456,
+        "max_ms": 3.179,
+        "mean_ms": 2.227,
+        "min_ms": 1.642,
+        "p95_ms": 3.179,
+        "p99_ms": 3.179,
         "sample_count": 3
       },
       "state": "OBSERVED",
-      "writer_lock_wait_last_acquired_at": "2026-07-29T14:52:41.210Z",
-      "writer_lock_wait_last_ms": 1.822417,
+      "writer_lock_wait_last_acquired_at": "2026-07-31T16:28:37.536Z",
+      "writer_lock_wait_last_ms": 0.820958,
       "writer_lock_wait_last_operation": "commit_blocked_scope_decision",
-      "writer_lock_wait_max_ms": 2585.127625,
+      "writer_lock_wait_max_ms": 4041.7275,
       "writer_lock_wait_reason": "target_owned_bounded_writer_telemetry",
-      "writer_lock_wait_sample_count": 61339,
+      "writer_lock_wait_sample_count": 243718,
       "writer_lock_wait_telemetry": "OBSERVED",
-      "writer_lock_wait_total_ms": 101088.797768,
-      "writer_lock_wait_updated_at": "2026-07-29T14:52:41.212Z"
+      "writer_lock_wait_total_ms": 889163.983655,
+      "writer_lock_wait_updated_at": "2026-07-31T16:28:37.537Z"
     },
     "resource_audit": {
       "error_count": 0,
       "errors": [],
       "latency": {
-        "max_ms": 118.567,
-        "mean_ms": 89.154,
-        "min_ms": 78.453,
-        "p95_ms": 97.901,
-        "p99_ms": 118.567,
+        "max_ms": 206.399,
+        "mean_ms": 86.975,
+        "min_ms": 72.074,
+        "p95_ms": 121.142,
+        "p99_ms": 206.399,
         "sample_count": 31
       }
     },
@@ -99,36 +99,37 @@
       "error_count": 0,
       "errors": [],
       "latency": {
-        "max_ms": 123.323,
-        "mean_ms": 77.203,
-        "min_ms": 59.438,
-        "p95_ms": 120.361,
-        "p99_ms": 123.323,
+        "max_ms": 79.996,
+        "mean_ms": 71.71,
+        "min_ms": 65.317,
+        "p95_ms": 77.844,
+        "p99_ms": 79.996,
         "sample_count": 31
       }
     }
   },
   "resource_budget": {
-    "database_bytes": 167256064,
+    "database_bytes": 685846528,
     "database_path": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
-    "free_bytes": 10221654016,
+    "free_bytes": 42231861248,
     "limits": {
-      "max_database_bytes": 268435456,
-      "max_process_rss_bytes": 536870912,
+      "max_database_bytes": 4294967296,
+      "max_process_rss_bytes": 4294967296,
       "max_research_raw_bytes": 1073741824,
-      "max_wal_bytes": 67108864,
+      "max_research_raw_files": 100000,
+      "max_wal_bytes": 536870912,
       "min_free_bytes": 536870912
     },
     "memory_probe_available": true,
     "ok": true,
-    "process_rss_bytes": 77135872,
-    "raw_bytes": 940485381,
-    "raw_file_count": 7267,
+    "process_rss_bytes": 100876288,
+    "raw_bytes": 962317939,
+    "raw_file_count": 7639,
     "raw_root": "/Users/xiong/weather/data/research/bayes_basket_target/model_arrivals",
-    "shm_bytes": 32768,
+    "shm_bytes": 229376,
     "state": "within_budget",
     "violations": [],
-    "wal_bytes": 2855192
+    "wal_bytes": 116983312
   },
   "sample_count_requested": 31,
   "sample_limit": 64,
@@ -137,14 +138,14 @@
   "ws_snapshot_age": {
     "error_count": 0,
     "errors": [],
-    "evidence_cache_count": 30,
+    "evidence_cache_count": 36,
     "evidence_cache_is_non_authorizing": true,
     "evidence_cache_is_not_materialized_snapshot": true,
-    "latest_evidence_cache_age_sec": 1594.067,
-    "latest_materialized_snapshot_age_sec": 3592.916,
-    "materialized_snapshot_count": 2147,
-    "oldest_evidence_cache_age_sec": 217860.196,
-    "oldest_materialized_snapshot_age_sec": 132193.422,
+    "latest_evidence_cache_age_sec": 49907.41,
+    "latest_materialized_snapshot_age_sec": 49907.41,
+    "materialized_snapshot_count": 3206,
+    "oldest_evidence_cache_age_sec": 396431.53,
+    "oldest_materialized_snapshot_age_sec": 310764.756,
     "state": "READY"
   }
 }

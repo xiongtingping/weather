@@ -33,8 +33,9 @@ from bayes_basket_target.settled_attribution import build_settled_attribution
 from bayes_basket_target.settlement_version_scorecard import (
     build_settlement_version_evidence_packet,
 )
-
-
+from bayes_basket_target.station_policy_forward_outcome_binding import (
+    UNAVAILABLE_REASONS,
+)
 NOW = "2026-07-23T05:00:00Z"
 EVENT_DATE = "2026-07-23"
 STATION = "ZUUU"
@@ -363,7 +364,6 @@ def test_decision_scope_ignores_transport_versions_but_tracks_economic_changes()
         compiled_plan=base_plan,
         market_snapshot=base_market,
     )
-
     clock_only_plan = json.loads(json.dumps(base_plan))
     clock_only_plan["plan"]["decision_at_utc"] = (
         "2026-07-23T05:00:04Z"
@@ -411,6 +411,44 @@ def test_decision_scope_ignores_transport_versions_but_tracks_economic_changes()
         )
         != first
     )
+
+
+def test_future_station_policy_outcome_contract_gap_is_atomic_fact_evidence() -> None:
+    conn, envelope = _seed()
+    receipt = _commit(conn, envelope)
+    fact_id = receipt["delta_v2_training_fact"]["fact_id"]
+    feature = json.loads(conn.execute(
+        "SELECT feature_json FROM basket_policy_training_fact WHERE fact_id=?",
+        (fact_id,),
+    ).fetchone()[0])
+    outcome_gap = feature["station_policy_outcome_materialization"]
+    assert outcome_gap["state"] == "UNAVAILABLE"
+    assert outcome_gap["bindings"] == {}
+    assert outcome_gap["unavailable_families"] == UNAVAILABLE_REASONS
+    assert outcome_gap["writes_production_db"] is False
+    assert outcome_gap["promotion_permitted"] is False
+    forbidden_legacy_fields = {
+        f"candidate_{'score'}", f"baseline_{'score'}",
+        f"bucket_{'probabilities'}",
+        f"station_policy_family_{'outcomes'}",
+        f"station_policy_family_{'scores'}",
+    }
+    assert not forbidden_legacy_fields.intersection(feature)
+
+
+def test_unavailable_station_policy_outcome_contract_does_not_block_existing_fact_lane() -> None:
+    conn, envelope = _seed()
+    receipt = _commit(conn, envelope)
+    fact_id = receipt["delta_v2_training_fact"]["fact_id"]
+    feature = json.loads(conn.execute(
+        "SELECT feature_json FROM basket_policy_training_fact WHERE fact_id=?",
+        (fact_id,),
+    ).fetchone()[0])
+
+    gap = feature["station_policy_outcome_materialization"]
+    assert gap["state"] == "UNAVAILABLE"
+    assert gap["bindings"] == {}
+    assert gap["unavailable_families"] == UNAVAILABLE_REASONS
 
 
 def test_decision_and_exact_version_training_fact_commit_atomically() -> None:

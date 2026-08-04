@@ -417,6 +417,39 @@ def snapshot_from_probability_envelope(
     return TargetBasketSnapshot.from_mapping(raw)
 
 
+def _assert_current_p1_source_lane(
+    envelope: ProbabilityEnvelope,
+    *,
+    expected_source_lane: str | None,
+) -> None:
+    """Defend the pure runtime boundary against a wrong-lane final P1.
+
+    The authoritative lane is resolved by the target-SSOT caller and is
+    carried explicitly into this database-free optimizer.  This function is
+    intentionally not a source of authority itself: callers that do not own
+    a target registry may use the optimizer for offline analysis, while every
+    production compiler supplies the registry-derived lane.
+    """
+
+    if envelope.stage != "P1":
+        return
+    if expected_source_lane is None:
+        return
+    lane = str(expected_source_lane or "").strip().lower()
+    if lane not in {"amsc", "awc"}:
+        raise ContractError("probability_expected_source_lane_invalid")
+    supplied = str(envelope.lineage.get("source_lane") or "").strip().lower()
+    if supplied != lane:
+        raise ContractError("probability_p1_source_lane_mismatch")
+    if (
+        str(envelope.lineage.get("prediction_root_stage") or "")
+        .strip()
+        .upper()
+        not in {"P0", "P0-M"}
+    ):
+        raise ContractError("probability_p1_root_stage_mismatch")
+
+
 def _compile_target_plan(
     *,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
@@ -441,6 +474,7 @@ def _compile_target_plan(
     policy_authority_scope: str = "FORMAL_PROMOTED",
     regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
     require_regime_ssot: bool = True,
+    expected_source_lane: str | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -498,6 +532,10 @@ def _compile_target_plan(
         }
 
     envelope = select_current_stage(probability_envelopes, at_utc=evaluation_at_utc)
+    _assert_current_p1_source_lane(
+        envelope,
+        expected_source_lane=expected_source_lane,
+    )
     snapshot = snapshot_from_probability_envelope(envelope, market_snapshot)
     raw_budget_for_block = market_snapshot.get("remaining_budget_usdc", 0.0)
     try:
@@ -991,6 +1029,7 @@ class DeltaBasketScoreV2Optimizer:
         policy_authority_scope: str = "FORMAL_PROMOTED",
         regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
         require_regime_ssot: bool = True,
+        expected_source_lane: str | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             probability_envelopes=probability_envelopes,
@@ -1015,6 +1054,7 @@ class DeltaBasketScoreV2Optimizer:
             policy_authority_scope=policy_authority_scope,
             regime_artifact=regime_artifact,
             require_regime_ssot=require_regime_ssot,
+            expected_source_lane=expected_source_lane,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -1062,6 +1102,7 @@ def compile_target_plan(
     policy_authority_scope: str = "FORMAL_PROMOTED",
     regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
     require_regime_ssot: bool = True,
+    expected_source_lane: str | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
@@ -1088,6 +1129,7 @@ def compile_target_plan(
         policy_authority_scope=policy_authority_scope,
         regime_artifact=regime_artifact,
         require_regime_ssot=require_regime_ssot,
+        expected_source_lane=expected_source_lane,
     )
 
 

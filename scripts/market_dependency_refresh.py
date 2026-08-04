@@ -285,7 +285,7 @@ def build_dependency_plan(
     # collector long enough to make an already-published run look stale.
     actions = ["model_release_probe"] if should_refresh else []
     if should_refresh and nwp_target_days and any(ready_provider_day_offsets.values()):
-        actions.extend(["official_nwp_daily_curve", "official_nwp_p1_materialization"])
+        actions.append("official_nwp_daily_curve")
     return {
         "schema": SCHEMA,
         "state": "planned" if should_refresh else "noop",
@@ -473,12 +473,6 @@ def execute_dependency_plan(*, plan: Mapping[str, Any], root: Path = ROOT, env: 
                     ),
                 })
 
-    if "official_nwp_p1_materialization" in (plan.get("actions") or []):
-        p1_output = root / "data" / "runtime" / "market_dependency_refresh" / "p1_materialization.result.json"
-        p1_command = [str(root / ".venv" / "bin" / "python"), str(root / "scripts" / "materialize_official_nwp_daily_peak_p1_ingress.py"), "--apply", "--confirm", "MATERIALIZE_OFFICIAL_NWP_DAILY_PEAK_P1", "--summary", "--curve-source-root", str(curve_root)]
-        if not Path(p1_command[0]).is_file():
-            p1_command[0] = sys.executable
-        results.append({"action": "official_nwp_p1_materialization", **_command_result(command=p1_command, env=runtime_env, timeout_sec=120.0, output_path=p1_output)})
     if "official_nwp_daily_curve" in (plan.get("actions") or []) and _text(runtime_env.get("PM_OFFICIAL_NWP_RAW_RETENTION_ENABLED")) == "1":
         retention_output = root / "output" / "audits" / "official_nwp_raw_retention_latest.json"
         retention_command = [

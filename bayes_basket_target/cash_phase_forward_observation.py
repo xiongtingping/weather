@@ -40,6 +40,12 @@ MAX_INPUT_ROWS = 4096
 MAX_OUTPUT_BYTES = min(MAX_JSON_OUTPUT_BYTES, 16 * 1024 * 1024)
 SHA256_HEX = frozenset("0123456789abcdef")
 VALID_PHASES = frozenset({"HEAVY", "STANDARD", "TAIL"})
+# Forward observations are exact-stage evidence.  P0/P0-M facts are
+# evidence-only pre-final decisions, while P1 is the final truth-informed
+# decision.  All three are valid independent OOS observations; collapsing a
+# pre-final fact into P1 (or rejecting it) would destroy its probability
+# lineage and make the append-only forward stream lie about its stage.
+VALID_PROBABILITY_STAGES = frozenset({"P0", "P0-M", "P1"})
 NO_LIVE_FIELDS = {
     "execution_mode": "production_no_live",
     "fill_status": "NO_EXECUTION",
@@ -259,8 +265,26 @@ def _require_settlement_timezone(
         raise ForwardObservationError(f"{name}_settlement_timezone_mismatch")
 
 
-def _canonical_key(station: str, event: str, phase: str, decision: str) -> str:
-    return f"{station}|{event}|{phase}|{decision}"
+def _canonical_key(
+    station: str,
+    event: str,
+    phase: str,
+    decision: str,
+    probability_stage: str,
+) -> str:
+    """Address one stage-specific forward observation without relabeling P1.
+
+    The original v1 stream contained only P1, so its four-part keys may
+    already be referenced by immutable settlement labels and retention
+    receipts.  P0/P0-M were added as distinct exact-stage facts afterwards;
+    a stage suffix keeps their same-clock records distinct from one another
+    and from final P1 without rewriting the existing P1 evidence.
+    """
+
+    base = f"{station}|{event}|{phase}|{decision}"
+    if probability_stage == "P1":
+        return base
+    return f"{base}|{probability_stage}"
 
 
 def _row_from_unified_receipt(
@@ -330,8 +354,8 @@ def _row_from_unified_receipt(
     stage = _text(
         "binding_probability_stage", binding.get("probability_stage")
     ).upper()
-    if stage != "P1":
-        raise ForwardObservationError("binding_probability_stage_requires_p1")
+    if stage not in VALID_PROBABILITY_STAGES:
+        raise ForwardObservationError("binding_probability_stage_invalid")
     if str(binding.get("quote_source") or "").strip().upper() != "OFFICIAL_CLOB_WS":
         raise ForwardObservationError("binding_quote_source_not_official_clob_ws")
 
@@ -377,7 +401,13 @@ def _row_from_unified_receipt(
         "event_date": event,
         "phase": phase,
         "decision_at_utc": decision,
-        "observation_key": _canonical_key(station, event, phase, decision),
+        "observation_key": _canonical_key(
+            station,
+            event,
+            phase,
+            decision,
+            stage,
+        ),
         "settlement_timezone": settlement_timezone,
         "cycle_receipt_sha256": supplied_receipt_sha,
         "cycle_id": _text("cycle_id", receipt.get("cycle_id")),
@@ -452,7 +482,18 @@ def _validate_row(row: Mapping[str, Any]) -> dict[str, Any]:
             "observation_unknown_fields:" + ",".join(unknown)
         )
     identity = _station_event_phase(row, name="observation")
-    if row.get("observation_key") != _canonical_key(*identity):
+    probability_stage = _text(
+        "observation_probability_stage",
+        row.get("probability_stage"),
+    ).upper()
+    if probability_stage not in VALID_PROBABILITY_STAGES:
+        raise ForwardObservationError("observation_probability_stage_invalid")
+    if row.get("probability_stage") != probability_stage:
+        raise ForwardObservationError("observation_probability_stage_not_canonical")
+    if row.get("observation_key") != _canonical_key(
+        *identity,
+        probability_stage,
+    ):
         raise ForwardObservationError("observation_key_invalid")
     for name, expected in NO_LIVE_FIELDS.items():
         if row.get(name) != expected:

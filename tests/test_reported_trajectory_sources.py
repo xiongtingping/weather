@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import urllib.error
+import gzip
 
 import pytest
 
@@ -13,6 +14,27 @@ class _Response:
     def __init__(self, payload: dict, *, status: int = 200) -> None:
         self._body = json.dumps(payload).encode()
         self.headers = {"Content-Length": str(len(self._body))}
+        self.status = status
+        self._offset = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._body) - self._offset
+        result = self._body[self._offset:self._offset + size]
+        self._offset += len(result)
+        return result
+
+
+class _BytesResponse:
+    def __init__(self, body: bytes, *, status: int = 200) -> None:
+        self._body = body
+        self.headers = {"Content-Length": str(len(body))}
         self.status = status
         self._offset = 0
 
@@ -61,6 +83,80 @@ def test_awc_uses_system_verified_curl_when_python_ca_rejects(
     )
     assert result["reports"][0]["station_id"] == "RKPK"
     assert "hours=6" in urls[0]
+
+
+def test_awc_cache_streaming_decompression_keeps_valid_reports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compressed = gzip.compress(
+        b"station_id,raw_text,observation_time\n"
+        b"RKPK,METAR RKPK 261800Z 00000KT CAVOK 27/22 Q1008=,2026-07-26T18:00:00Z\n"
+    )
+
+    class CacheOnlyOpener:
+        def open(self, request, **_kwargs):
+            if request.full_url.startswith(sources.AWC_ENDPOINT):
+                raise urllib.error.URLError("raw endpoint unavailable")
+            return _BytesResponse(compressed)
+
+    monkeypatch.setattr(
+        sources.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: CacheOnlyOpener(),
+    )
+    monkeypatch.setattr(
+        sources,
+        "_curl_official_get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("raw curl unavailable")),
+    )
+
+    result = sources.fetch_awc_temperature_reports(["RKPK"], hours=2, timeout=1)
+
+    assert result["transport"] == "official_awc_global_metar_cache"
+    assert result["reports"] == [{
+        "station_id": "RKPK",
+        "raw_text": "METAR RKPK 261800Z 00000KT CAVOK 27/22 Q1008=",
+        "source_report_time": "2026-07-26T18:00:00Z",
+    }]
+
+
+def test_awc_cache_decompression_limit_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compressed = gzip.compress(b"station_id,raw_text\n" + b"x" * 256)
+
+    class CacheOnlyOpener:
+        def open(self, request, **_kwargs):
+            if request.full_url.startswith(sources.AWC_ENDPOINT):
+                raise urllib.error.URLError("raw endpoint unavailable")
+            return _BytesResponse(compressed)
+
+    monkeypatch.setattr(
+        sources.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: CacheOnlyOpener(),
+    )
+    monkeypatch.setattr(
+        sources,
+        "_curl_official_get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("raw curl unavailable")),
+    )
+    monkeypatch.setattr(sources, "AWC_MAX_DECOMPRESSED_CACHE_BYTES", 128)
+
+    with pytest.raises(RuntimeError, match="awc_cache_decompressed_too_large"):
+        sources.fetch_awc_temperature_reports(["RKPK"], hours=2, timeout=1)
+
+
+def test_awc_cache_decompression_accepts_exact_byte_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"station_id,raw_text\nRKPK,METAR RKPK 261800Z CAVOK 27/22 Q1008=\n"
+    monkeypatch.setattr(sources, "AWC_MAX_DECOMPRESSED_CACHE_BYTES", len(payload))
+
+    assert list(sources._iter_bounded_awc_cache_lines(gzip.compress(payload))) == [
+        "station_id,raw_text\n",
+        "RKPK,METAR RKPK 261800Z CAVOK 27/22 Q1008=\n",
+    ]
 
 
 def test_official_curl_transport_keeps_tls_verification_and_size_bound(

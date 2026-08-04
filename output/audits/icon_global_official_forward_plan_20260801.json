@@ -1,0 +1,354 @@
+{
+  "as_of_utc": "2026-08-01T05:40:00Z",
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_service": false,
+    "execution_mode": "production_no_live",
+    "formal_probability_input_role_eligible": true,
+    "live_order_authorized": false,
+    "live_submit_authorized": false,
+    "p0_consumption_before_event": true,
+    "p0_probability_input_eligible_now": true,
+    "p1_consumption_before_event": false,
+    "p1_probability_input_eligible_now": true,
+    "places_orders": false,
+    "promotion_allowed": false,
+    "prospective_only": true,
+    "raw_capture_may_precede_event": true,
+    "target_only": true,
+    "unrelated_production_line_touched": false,
+    "writes_market_state": false,
+    "writes_probability_state": false,
+    "writes_production_db": false,
+    "writes_target_database": false
+  },
+  "capture_config": {
+    "boundary": {
+      "calls_order_gateway": false,
+      "live_order_authorized": false,
+      "places_orders": false,
+      "protected_production_line_touched": false,
+      "requires_et_close_for_historical_promotion": true,
+      "resident_capture_config_or_environment_mutated": false,
+      "writes_production_database": false,
+      "writes_target_database": false
+    },
+    "enabled": true,
+    "exact_join_key": [
+      "station_id",
+      "target_local_date",
+      "run_initialization_utc",
+      "valid_time_utc",
+      "provider_id"
+    ],
+    "historical_policy": {
+      "missing_archive_action": "fail_closed_and_retain_blocker",
+      "official_date_addressable_archive_required": true,
+      "retrospective_download_as_arrival": false
+    },
+    "providers": [
+      "cma_grapes_global_open_meteo",
+      "ecmwf_aifs025_official",
+      "ecmwf_ifs025_official",
+      "gem_gdps_official",
+      "gfs_0p25_official",
+      "icon_global_official"
+    ],
+    "resource_budget": {
+      "max_capture_bytes": 268435456,
+      "max_process_rss_bytes": 536870912,
+      "max_raw_bytes": 1073741824,
+      "max_response_bytes": 134217728,
+      "min_free_bytes": 536870912
+    },
+    "run_binding": "bayes_basket_target_model_run_contract_v1",
+    "schema": "bayes_basket_target_model_arrival_capture_v1",
+    "scope": "canonical_45_station",
+    "state": "enabled_for_target_no_live_forward_capture",
+    "station_count": 45,
+    "station_source": "bayes_basket_target.station_registry",
+    "target_only": true
+  },
+  "capture_config_enabled": true,
+  "capture_config_path": "/Users/xiong/weather/config/bayes_basket_target/model_arrival_capture_v1.json",
+  "capture_config_sha256": "b87143e6ba9dff331dd4ff8e7418e35153ddb21ef098d93c72872422799ec1a9",
+  "due_only": false,
+  "event_day_window": {
+    "as_of_utc": "2026-08-01T05:40:00Z",
+    "capture_phase": "prospective_open_event",
+    "event_date": "2026-08-01",
+    "maturity": "d2",
+    "reason": "target_settlement_day_not_closed",
+    "state": "open",
+    "target_day_end_utc": "2026-08-02T04:00:00Z",
+    "target_day_start_utc": "2026-08-01T04:00:00Z",
+    "target_timezone": "America/New_York"
+  },
+  "market_registry_snapshot_sha256": "",
+  "model_run_contract": {
+    "boundary": {
+      "calls_order_gateway": false,
+      "execution_mode": "production_no_live",
+      "formal_probability_input_eligible": true,
+      "live_order_authorized": false,
+      "live_submit_authorized": false,
+      "target_only": true,
+      "unrelated_production_line_touched": false,
+      "writes_production_db": false
+    },
+    "contract_sha256": "33dda8d8ab3c85cc68ad009c5a5f4b1afe386f8eece38dfef8616431d95f1b44",
+    "market_registry_snapshot_sha256": "",
+    "providers": [
+      "ecmwf_ifs025_official",
+      "ecmwf_aifs025_official",
+      "gfs_0p25_official",
+      "icon_global_official"
+    ],
+    "run_initialization_utc": "2026-07-31T18:00:00Z",
+    "schema": "bayes_basket_target_model_run_contract_v1",
+    "scope": "bayes_basket_target_only",
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "target_local_date": "2026-08-01",
+    "target_timezone": "America/New_York"
+  },
+  "model_run_contract_sha256": "33dda8d8ab3c85cc68ad009c5a5f4b1afe386f8eece38dfef8616431d95f1b44",
+  "plan_sha256": "74e59e69bde5a7a1b1ab4814a3515ba447445b397ef6475c44024572f0f21353",
+  "provider_id": "icon_global_official",
+  "purpose": "prospective_icon_only_forward_capture",
+  "receipt_sha256": "06d1842a303a29552333d95407770599d8ab0f1c5c00d274f82b9a898ee18563",
+  "registry_bound": false,
+  "resource_budget": {
+    "max_capture_bytes": 268435456,
+    "max_process_rss_bytes": 536870912,
+    "max_raw_bytes": 1073741824,
+    "max_response_bytes": 134217728,
+    "max_valid_times": 32,
+    "min_free_bytes": 536870912
+  },
+  "run_initialization_utc": "2026-07-31T18:00:00Z",
+  "schema": "bayes_basket_target_icon_forward_capture_scheduler_v1",
+  "source": {
+    "host": "opendata.dwd.de",
+    "path_family": "DWD_ICON_t_2m",
+    "transport": "https"
+  },
+  "source_station_id": "ZUUU",
+  "state": "PLAN_ONLY",
+  "station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "target_local_date": "2026-08-01",
+  "target_timezone": "America/New_York",
+  "valid_hours": [
+    {
+      "forecast_hour": 10,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_010_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T04:00:00Z"
+    },
+    {
+      "forecast_hour": 11,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_011_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T05:00:00Z"
+    },
+    {
+      "forecast_hour": 12,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_012_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T06:00:00Z"
+    },
+    {
+      "forecast_hour": 13,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_013_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T07:00:00Z"
+    },
+    {
+      "forecast_hour": 14,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_014_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T08:00:00Z"
+    },
+    {
+      "forecast_hour": 15,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_015_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T09:00:00Z"
+    },
+    {
+      "forecast_hour": 16,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_016_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T10:00:00Z"
+    },
+    {
+      "forecast_hour": 17,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_017_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T11:00:00Z"
+    },
+    {
+      "forecast_hour": 18,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_018_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T12:00:00Z"
+    },
+    {
+      "forecast_hour": 19,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_019_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T13:00:00Z"
+    },
+    {
+      "forecast_hour": 20,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_020_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T14:00:00Z"
+    },
+    {
+      "forecast_hour": 21,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_021_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T15:00:00Z"
+    },
+    {
+      "forecast_hour": 22,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_022_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T16:00:00Z"
+    },
+    {
+      "forecast_hour": 23,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_023_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T17:00:00Z"
+    },
+    {
+      "forecast_hour": 24,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_024_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T18:00:00Z"
+    },
+    {
+      "forecast_hour": 25,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_025_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T19:00:00Z"
+    },
+    {
+      "forecast_hour": 26,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_026_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T20:00:00Z"
+    },
+    {
+      "forecast_hour": 27,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_027_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T21:00:00Z"
+    },
+    {
+      "forecast_hour": 28,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_028_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T22:00:00Z"
+    },
+    {
+      "forecast_hour": 29,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_029_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-01T23:00:00Z"
+    },
+    {
+      "forecast_hour": 30,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_030_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-02T00:00:00Z"
+    },
+    {
+      "forecast_hour": 31,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_031_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-02T01:00:00Z"
+    },
+    {
+      "forecast_hour": 32,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_032_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-02T02:00:00Z"
+    },
+    {
+      "forecast_hour": 33,
+      "url": "https://opendata.dwd.de/weather/nwp/icon/grib/18/t_2m/icon_global_icosahedral_single-level_2026073118_033_T_2M.grib2.bz2",
+      "valid_time_utc": "2026-08-02T03:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,530 @@
+import sqlite3
+from pathlib import Path
+
+from bayes_basket_target.nwp_rotation_state import build_rotation_state
+from bayes_basket_target.station_registry import coordinate_registry_manifest
+from scripts import weather_basket_yes_daemon as daemon
+
+
+def _create_active_registry_fixture(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE reported_trajectory_market_registry("
+        "slug TEXT,event_date TEXT,station_id TEXT,"
+        "settlement_timezone TEXT,settlement_unit TEXT,outcome TEXT,"
+        "yes_token TEXT,registry_json TEXT,source_lane TEXT,"
+        "source_eligible INTEGER,market_active INTEGER,"
+        "market_accepting_orders INTEGER)"
+    )
+
+
+def _insert_registry_scope(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO reported_trajectory_market_registry VALUES("
+        "?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"{station_id.lower()}-{event_date}",
+            event_date,
+            station_id,
+            settlement_timezone,
+            "celsius",
+            "30",
+            f"yes-{station_id}-{event_date}",
+            "{}",
+            "awc",
+            1,
+            1,
+            1,
+        ),
+    )
+
+
+def test_resident_forecast_prefetch_has_no_second_target_writer() -> None:
+    source = Path(daemon.__file__).read_text(encoding="utf-8")
+
+    assert "forecast_commit_conn" not in source
+    assert source.count("open_target_writer_if_enabled(") == 2
+    forecast_worker = source.split(
+        "forecast_worker = TargetProductionWorker(", 1
+    )[1].split("\n        )", 1)[0]
+    assert "commit_conn=None" in forecast_worker
+    assert "station_allowlist=" not in forecast_worker
+    assert "RKPK" not in forecast_worker
+
+
+def test_forecast_cycle_keeps_optional_taf_capture_inside_existing_service(
+    tmp_path,
+) -> None:
+    import sqlite3
+    from pathlib import Path
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
+        "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
+    )
+    _create_active_registry_fixture(conn)
+
+    class Worker:
+        commit_conn = conn
+        taf_artifact_path = (
+            Path(__file__).resolve().parents[1]
+            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
+        )
+        taf_inbox_path = tmp_path / "taf-inbox.json"
+
+        def run(self):
+            return {
+                "ok": True,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+    worker = Worker()
+    first = daemon.run_target_forecast_refresh_cycle(worker)
+    second = daemon.run_target_forecast_refresh_cycle(worker)
+    assert (
+        first["forward_taf_capture"]["state"]
+        == "no_active_registry_scope"
+    )
+    assert first["forward_taf_capture"]["scope_source"] == (
+        "target_local_active_market_registry"
+    )
+    assert second["forward_taf_capture"]["state"] == "not_due"
+    assert first["forward_taf_capture"]["last_attempt"]["state"] == (
+        "no_active_registry_scope"
+    )
+    assert first["forward_taf_capture"]["last_attempt"]["capture_count"] == 0
+    assert first["calls_order_gateway"] is False
+
+    # Repeated heartbeat reads must retain a flat, bounded receipt rather than
+    # recursively embedding the prior aggregate state in ``last_attempt``.
+    third = daemon.run_target_forecast_refresh_cycle(worker)
+    attempt = third["forward_taf_capture"]["last_attempt"]
+    assert "last_attempt" not in attempt
+
+
+def test_forecast_cycle_uses_read_only_target_connection_for_taf_scope(
+    tmp_path,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
+        "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
+    )
+    _create_active_registry_fixture(conn)
+
+    class Worker:
+        commit_conn = None
+        taf_artifact_path = (
+            Path(__file__).resolve().parents[1]
+            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
+        )
+        taf_inbox_path = tmp_path / "taf-inbox.json"
+
+        def __init__(self) -> None:
+            self.conn = conn
+
+        def refresh_resident_nwp(self, *, as_of_utc: str):
+            return {
+                "state": "unchanged_zero_write",
+                "as_of_utc": as_of_utc,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+    result = daemon.run_target_forecast_refresh_cycle(Worker())
+
+    assert (
+        result["forward_taf_capture"]["state"]
+        == "no_active_registry_scope"
+    )
+    assert result["calls_order_gateway"] is False
+    assert result["places_orders"] is False
+
+
+def test_forecast_taf_scope_failure_does_not_block_later_date(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "station_id TEXT,event_date TEXT,settlement_timezone TEXT,"
+        "state TEXT,stage TEXT,decision_at_utc TEXT,fresh_until_utc TEXT)"
+    )
+    _create_active_registry_fixture(conn)
+    _insert_registry_scope(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-31",
+        settlement_timezone="Asia/Seoul",
+    )
+    _insert_registry_scope(
+        conn,
+        station_id="RKSI",
+        event_date="2026-08-01",
+        settlement_timezone="Asia/Seoul",
+    )
+    attempted: list[str] = []
+
+    def capture(**kwargs):
+        event_date = str(kwargs["event_date"])
+        attempted.append(event_date)
+        if event_date == "2026-08-01":
+            raise RuntimeError("tx_missing")
+        return {
+            "station_id": str(kwargs["station_id"]),
+            "event_date": event_date,
+            "forecast_revision": {
+                "source_object_sha256": "a" * 64,
+            },
+        }
+
+    monkeypatch.setattr(daemon, "capture_forward_awc_taf", capture)
+    monkeypatch.setattr(
+        daemon,
+        "refresh_forward_taf_inbox",
+        lambda **_kwargs: {"content_sha256": "b" * 64},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "utc_now",
+        lambda: "2026-07-31T00:30:00Z",
+    )
+
+    class Worker:
+        commit_conn = None
+        skip_nwp_refresh = True
+        taf_artifact_path = (
+            Path(__file__).resolve().parents[1]
+            / "config/artifacts/bayes_basket_target_taf_revision_active.json"
+        )
+        taf_inbox_path = tmp_path / "taf-inbox.json"
+
+        def __init__(self, read_conn) -> None:
+            self.conn = read_conn
+
+    result = daemon.run_target_forecast_refresh_cycle(Worker(conn))
+    taf = result["forward_taf_capture"]
+
+    assert attempted == ["2026-08-01", "2026-07-31"]
+    assert taf["state"] == "captured_with_scope_failures"
+    assert taf["catalog_scope_count"] == 2
+    assert taf["selected_scope_count"] == 2
+    assert taf["capture_count"] == 1
+    assert taf["failure_count"] == 1
+    assert taf["failures"][0]["event_date"] == "2026-08-01"
+    assert taf["last_attempt"]["state"] == "captured_with_scope_failures"
+    assert taf["last_attempt"]["capture_count"] == 1
+
+
+def test_only_explicit_sqlite_disk_io_is_recoverable() -> None:
+    assert daemon.is_recoverable_sqlite_io_error(sqlite3.OperationalError("disk I/O error"))
+    assert not daemon.is_recoverable_sqlite_io_error(sqlite3.OperationalError("database is locked"))
+    assert not daemon.is_recoverable_sqlite_io_error(RuntimeError("disk I/O error"))
+
+
+def test_target_sqlite_lock_classification_ignores_historical_receipts() -> None:
+    assert daemon.is_target_sqlite_lock_error(
+        sqlite3.OperationalError("database is locked")
+    )
+    assert daemon.is_target_sqlite_lock_error(
+        sqlite3.OperationalError("database table is locked: x")
+    )
+    assert not daemon.is_target_sqlite_lock_error(
+        sqlite3.OperationalError("disk I/O error")
+    )
+    assert daemon.target_result_has_sqlite_lock_contention({
+        "market_ingress": {"reason": "OperationalError:database is locked"},
+    })
+    assert not daemon.target_result_has_sqlite_lock_contention({
+        "durable_blocked_decisions": [{
+            "reason": "OperationalError:database is locked",
+        }],
+    })
+
+
+def test_target_worker_lock_budget_is_connection_local_and_has_no_schema_write() -> None:
+    conn = sqlite3.connect(":memory:")
+    worker = type("Worker", (), {"conn": conn, "commit_conn": conn})()
+
+    receipt = daemon.configure_target_worker_sqlite_lock_budget(worker)
+
+    assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == (
+        daemon.TARGET_SQLITE_LOCK_TIMEOUT_MS
+    )
+    assert receipt == {
+        "busy_timeout_ms": daemon.TARGET_SQLITE_LOCK_TIMEOUT_MS,
+        "configured_connections": ["conn"],
+        "schema_mutation": False,
+    }
+    conn.close()
+
+
+def test_serialized_target_io_recovery_ignores_historical_decisions() -> None:
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": "OperationalError:disk I/O error",
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "market_ingress": {"reason": "OperationalError:disk I/O error"},
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": (
+            "target_writer_open_failed:ResourceBoundError:"
+            "target_database_wal_checkpoint_failed"
+        ),
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": (
+            "target_writer_reopen_failed:ResourceBoundError:"
+            "target_database_wal_checkpoint_busy"
+        ),
+    })
+    assert daemon.target_result_has_recoverable_sqlite_io_error({
+        "resident_nwp_capture": {
+            "reason": "OperationalError:disk I/O error",
+        },
+    }, forecast=True)
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": "cadence_gate_blocked",
+        "durable_blocked_decisions": [{
+            "reason": "OperationalError:disk I/O error",
+        }],
+    })
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "resident_nwp_capture": {
+            "reason": "ensemble_artifact_weight_method_invalid",
+        },
+        "forward_taf_capture": {"state": "not_due"},
+    }, forecast=True)
+
+
+def test_archive_storage_guard_fails_closed_on_wal_or_free_space(
+    tmp_path: Path, monkeypatch
+) -> None:
+    db = tmp_path / "archive.db"
+    db.write_bytes(b"")
+    Path(str(db) + "-wal").write_bytes(b"x" * 17)
+    monkeypatch.setattr(daemon, "MAX_ARCHIVE_WAL_BYTES", 16)
+    monkeypatch.setattr(
+        daemon.shutil,
+        "disk_usage",
+        lambda _path: type("Usage", (), {"free": 1024})(),
+    )
+    monkeypatch.setattr(daemon, "MIN_ARCHIVE_FREE_BYTES", 2048)
+    result = daemon.archive_storage_guard(db)
+    assert result["ok"] is False
+    assert result["violations"] == [
+        "archive_wal_bytes_exceeded",
+        "archive_free_bytes_below_minimum",
+    ]
+
+
+def test_forecast_cycle_refreshes_nwp_once_without_running_consumer() -> None:
+    class Worker:
+        def __init__(self) -> None:
+            self.refresh_calls = 0
+            self.run_calls = 0
+            self.call_order = []
+            self.commit_conn = None
+            self.taf_artifact_path = Path("/nonexistent")
+            self.taf_inbox_path = Path("/nonexistent")
+
+        def refresh_resident_nwp(self, *, as_of_utc: str):
+            self.refresh_calls += 1
+            self.call_order.append("refresh")
+            return {
+                "state": "unchanged_zero_write",
+                "as_of_utc": as_of_utc,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+        def run(self):
+            self.run_calls += 1
+            self.call_order.append("run")
+            return {
+                "ok": True,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+    worker = Worker()
+    first = daemon.run_target_forecast_refresh_cycle(worker)
+    second = daemon.run_target_forecast_refresh_cycle(worker)
+
+    assert worker.refresh_calls == 1
+    assert worker.run_calls == 0
+    assert worker.call_order == ["refresh"]
+    assert first["resident_nwp_capture"]["state"] == "unchanged_zero_write"
+    assert second["resident_nwp_capture"]["state"] == "not_due"
+    assert "resident_p0_ingress" not in first
+
+
+def test_forecast_cycle_can_reuse_just_materialized_exact_scope_probability() -> None:
+    class Worker:
+        skip_nwp_refresh = True
+        commit_conn = None
+        taf_artifact_path = Path("/nonexistent")
+        taf_inbox_path = Path("/nonexistent")
+
+        def refresh_resident_nwp(self, *, as_of_utc: str):
+            raise AssertionError("network NWP refresh must be skipped")
+
+        def run(self):
+            return {
+                "ok": True,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+    result = daemon.run_target_forecast_refresh_cycle(Worker())
+    assert result["resident_nwp_capture"] == {
+        "state": "skipped_exact_scope_reuse",
+        "reason": "reuse_materialized_probability_requested",
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "live_submit_authorized": False,
+        "orders_submitted": 0,
+    }
+
+
+def test_resident_nwp_in_flight_receipt_reuses_validated_canonical_rotation() -> None:
+    stations = tuple(
+        coordinate_registry_manifest()["station_ids"]
+    )
+    scopes = [
+        {
+            "station_ids": [station],
+            "event_date": "2026-07-30",
+            "settlement_timezone": "UTC",
+        }
+        for station in stations
+    ]
+    rotation = build_rotation_state(
+        station_ids=stations,
+        scopes=scopes,
+        selected_scopes=scopes[:4],
+        cursor_by_priority={0: 4},
+        outcomes=[
+            {
+                "scope_key": (
+                    f"{row['station_ids'][0]}|2026-07-30|UTC"
+                ),
+                "state": (
+                    "CAPTURED_CANDIDATE"
+                    if index == 0
+                    else "BLOCKED_FAIL_CLOSED"
+                ),
+                "candidate_only": index == 0,
+            }
+            for index, row in enumerate(scopes[:4])
+        ],
+        previous=None,
+        updated_at_utc="2026-07-30T07:00:00Z",
+    )
+    worker = type("Worker", (), {
+        "station_allowlist": stations,
+        "_nwp_rotation_state": rotation,
+    })()
+
+    receipt = daemon.resident_nwp_in_flight_receipt(
+        worker,
+        scheduled_at_utc="2026-07-30T07:01:00Z",
+    )
+
+    assert receipt["state"] == "in_flight_previous_rotation"
+    assert receipt["completion_claimed"] is False
+    assert receipt["configured_station_ids"] == list(stations)
+    assert receipt["discovered_station_ids"] == list(stations)
+    assert receipt["scope_count"] == 45
+    assert receipt["selected_scope_count"] == 4
+    assert receipt["candidate_prefetch_attempt_count"] == 1
+    assert receipt["calls_order_gateway"] is False
+
+
+def test_target_production_cycle_only_consumes_durable_evidence() -> None:
+    class Worker:
+        def __init__(self) -> None:
+            self.run_calls = 0
+
+        def refresh_resident_nwp(self, *, as_of_utc: str):
+            raise AssertionError("production consumer must never perform network refresh")
+
+        def run(self):
+            self.run_calls += 1
+            return {
+                "ok": True,
+                "state": "durable_evidence_consumed",
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+
+    worker = Worker()
+    result = daemon.run_target_production_cycle(worker)
+
+    assert worker.run_calls == 1
+    assert result == {
+        "ok": True,
+        "state": "durable_evidence_consumed",
+        "calls_order_gateway": False,
+        "places_orders": False,
+    }
+
+
+def test_target_production_cycle_classifies_direct_sqlite_lock_fail_closed() -> None:
+    class Worker:
+        commit_conn = sqlite3.connect(":memory:")
+
+        def run(self):
+            raise sqlite3.OperationalError("database is locked")
+
+    worker = Worker()
+    result = daemon.run_target_production_cycle(worker)
+
+    assert result["state"] == "blocked_fail_closed"
+    assert result["reason"] == (
+        "sqlite_lock_contention:OperationalError:database is locked"
+    )
+    assert result["target_cycle_runtime"]["sqlite_lock_contention"] is True
+    assert result["places_orders"] is False
+    worker.commit_conn.close()
+
+
+def test_lane_worker_reopen_replaces_connection_and_canonical_ingress(monkeypatch, tmp_path: Path) -> None:
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    old_connection = FakeConnection()
+    new_connection = FakeConnection()
+    new_ingress = object()
+    monkeypatch.setattr(daemon, "_open_runtime", lambda _path: new_connection)
+    monkeypatch.setattr(daemon, "ReportedTrajectoryAwcIngress", lambda _conn, *, config: new_ingress)
+
+    worker = object.__new__(daemon.LaneWorker)
+    worker.db_path = tmp_path / "archive.db"
+    worker.conn = old_connection
+    worker.config = {}
+    worker.ingress = object()
+    worker.stations = ["ZUUU"]
+    worker.next_station_refresh = 123.0
+
+    worker.reopen()
+
+    assert old_connection.closed is True
+    assert worker.conn is new_connection
+    assert worker.ingress is new_ingress
+    assert worker.stations == []
+    assert worker.next_station_refresh == 0.0

@@ -1,0 +1,85 @@
+{
+  "boundary": {
+    "calls_order_gateway": false,
+    "operational_timezone_is_not_settlement_authority": true,
+    "places_orders": false,
+    "read_only": true,
+    "settlement_timezone_authority": "market_registry.settlement_timezone",
+    "writes_database": false,
+    "writes_production_db": false
+  },
+  "checks": {
+    "amsc_00_formal": true,
+    "amsc_30_reference_only": true,
+    "amsc_other_minute_fail_closed": true,
+    "awc_hour_for_amsc_reference_only": true,
+    "awc_owned_53_formal": true,
+    "cross_lane_fallback_blocked": true,
+    "integration_case_matches_expected": true,
+    "multi_station_same_day_isolated": true,
+    "rewrap_adversarial_fails": true,
+    "rewrap_baseline_pass": true,
+    "rewrap_clean_pass": true,
+    "settlement_timezone_authority": true,
+    "speci_any_minute_formal": true
+  },
+  "counts": {
+    "blocked_count": 3,
+    "formal_count": 7,
+    "observation_count": 12,
+    "reference_only_count": 2,
+    "station_count": 4,
+    "truth_row_count": 4
+  },
+  "ok": true,
+  "reason_codes": [],
+  "receipt_sha256": "225c9e3d87bdaf2e4bb20cf6b04714746648395f67176d9784da9d552a5acbbf",
+  "replay": {
+    "adversarial_reason_codes": [
+      "clean_replay_blocked"
+    ],
+    "blocked_ids": [
+      "katl-amsc-cross",
+      "zba-awc-53",
+      "zba-minute-15"
+    ],
+    "formal_ids": [
+      "egll-awc-53",
+      "katl-awc-53",
+      "katl-awc-speci",
+      "rtp-minute-00",
+      "rtp-speci-30",
+      "zba-minute-00",
+      "zba-speci-00"
+    ],
+    "reference_only_ids": [
+      "zba-awc-hour",
+      "zba-minute-30"
+    ],
+    "truth_max_by_station_day": {
+      "EGLL|2026-07-28": 24.0,
+      "KATL|2026-07-28": 36.0,
+      "RCTP|2026-07-28": 29.0,
+      "ZBAA|2026-07-28": 33.0
+    }
+  },
+  "resource_bounds": {
+    "max_observations": 4000,
+    "max_receipt_bytes": 1048576,
+    "max_stations": 500
+  },
+  "schema": "bayes_basket_target_official_ingress_routes_audit_v1",
+  "station_lane_map": {
+    "EGLL": "awc",
+    "KATL": "awc",
+    "RCTP": "amsc",
+    "ZBAA": "amsc"
+  },
+  "station_timezones": {
+    "EGLL": "Europe/London",
+    "KATL": "America/New_York",
+    "RCTP": "Asia/Taipei",
+    "ZBAA": "Asia/Shanghai"
+  },
+  "status": "PASS"
+}

@@ -25,6 +25,8 @@ from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
 from .metar_trajectory import (
+    METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -156,6 +158,11 @@ def _native_forward_lineage(
         if predecessor_has_core:
             raise ContractError(f"{stage}_native_forward_root_lineage_missing")
         return {}
+    # Open-Meteo/other republisher envelopes deliberately use an explicit
+    # non-native scope. They remain on the legacy compatibility path and must
+    # never be upgraded into official native evidence by this boundary.
+    if root_lineage.get("run_cycle_scope") == "AGGREGATOR_NATIVE_CYCLE_UNKNOWN":
+        return {}
     if not predecessor_has_core:
         raise ContractError(f"{stage}_native_forward_predecessor_lineage_missing")
 
@@ -214,7 +221,7 @@ def _native_forward_lineage(
         "native_forward_availability_evidence_json",
         root_lineage["native_forward_availability_evidence_json"],
     )
-    availability_identity = _lineage_json_identity(
+    _lineage_json_identity(
         "native_forward_availability_evidence", availability
     )
     availability_by_system = availability.get("by_system")
@@ -397,6 +404,11 @@ def _lineage(
         "p0_historical_climatology_artifact_id",
         "p0_historical_applied_theta",
         "p0_historical_theta_zero_fallback",
+        "conditional_future_temperature_curve_json",
+        "conditional_future_temperature_curve_sha256",
+        "conditional_future_temperature_curve_root_stage",
+        "conditional_future_temperature_curve_root_checkpoint_id",
+        "conditional_future_temperature_curve_root_probability_sha256",
     ):
         inherited = predecessor.lineage.get(key)
         if inherited is not None:
@@ -561,6 +573,7 @@ def materialize_p0m(
     )
     values["p0_root_checkpoint_id"] = root.checkpoint_id
     values["p0_root_content_sha256"] = root.content_sha256
+    values["p0_root_posterior_sha256"] = root.posterior_sha256
     values["revision_mode"] = (
         "root_replacement" if revision else "first_taf_confirmation"
     )
@@ -582,6 +595,31 @@ def materialize_p0m(
     )
 
 
+def _p1_prediction_root_lineage(root: ProbabilityEnvelope) -> tuple[str, str]:
+    """Return the immutable P0 reference for a legal P1 prediction root.
+
+    P1 may be rooted at raw NWP P0 when no TAF checkpoint exists, or at P0-M
+    after the TAF/physical confirmation is materialized.  The root stage,
+    checkpoint and content hash are all written into P1 lineage, so neither
+    form can be rebound across branches later.
+    """
+
+    if root.stage == "P0":
+        return root.checkpoint_id, root.content_sha256
+    if root.stage != "P0-M":
+        raise ContractError("p1_prediction_root_stage_invalid")
+    return (
+        _text(
+            "p1_prediction_root_p0_root_checkpoint_id",
+            root.lineage.get("p0_root_checkpoint_id"),
+        ),
+        _sha(
+            "p1_prediction_root_p0_root_content_sha256",
+            root.lineage.get("p0_root_content_sha256"),
+        ),
+    )
+
+
 def materialize_p1(
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
     *,
@@ -600,7 +638,7 @@ def materialize_p1(
     checkpoint_id: str | None = None,
     posterior_version: str = "p1_metar_trajectory_target_v2",
 ) -> ProbabilityEnvelope:
-    """Recompute P1 from one immutable P0-M/P0 root and full METAR prefix."""
+    """Recompute P1 from one immutable P0/P0-M root and full METAR prefix."""
 
     previous = predecessor if isinstance(predecessor, ProbabilityEnvelope) else ProbabilityEnvelope.from_mapping(predecessor)
     root = (
@@ -608,22 +646,57 @@ def materialize_p1(
         if isinstance(prediction_root, ProbabilityEnvelope)
         else ProbabilityEnvelope.from_mapping(prediction_root)
     )
-    if root.stage not in {"P0", "P0-M"}:
-        raise ContractError("p1_prediction_root_stage_invalid")
+    p0_root_checkpoint_id, p0_root_content_sha256 = _p1_prediction_root_lineage(
+        root
+    )
     if not isinstance(reported_high_advanced, bool):
         raise ContractError("p1_reported_high_advanced_invalid")
     if previous.stage == "P1":
         if not timestamp_lt(previous.decision_at_utc, decision_at_utc):
             raise ContractError("probability_decision_time_rewind")
-        previous_root = str(
-            previous.lineage.get("prediction_root_checkpoint_id")
-            or previous.lineage.get("p0_root_checkpoint_id")
-            or ""
+        if previous.lineage.get("prediction_root_stage") != root.stage:
+            raise ContractError("p1_predecessor_root_stage_mismatch")
+        previous_root = _text(
+            "p1_predecessor_prediction_root_checkpoint_id",
+            previous.lineage.get("prediction_root_checkpoint_id"),
         )
-        if previous_root and previous_root != root.checkpoint_id:
+        if previous_root != root.checkpoint_id:
             raise ContractError("p1_prediction_root_branch_mismatch")
-    elif previous.checkpoint_id != root.checkpoint_id:
-        raise ContractError("p1_initial_predecessor_must_equal_prediction_root")
+        previous_root_content = _sha(
+            "p1_predecessor_prediction_root_content_sha256",
+            previous.lineage.get("prediction_root_content_sha256"),
+        )
+        if previous_root_content != root.content_sha256:
+            raise ContractError("p1_prediction_root_content_mismatch")
+        if (
+            _text(
+                "p1_predecessor_p0_root_checkpoint_id",
+                previous.lineage.get("p0_root_checkpoint_id"),
+            )
+            != p0_root_checkpoint_id
+            or _sha(
+                "p1_predecessor_p0_root_content_sha256",
+                (
+                    previous.lineage.get("p0_root_content_sha256")
+                    or (
+                        previous.lineage.get("prediction_root_content_sha256")
+                        if str(
+                            previous.lineage.get("prediction_root_stage") or ""
+                        ).strip().upper() == "P0"
+                        else None
+                    )
+                ),
+            )
+            != p0_root_content_sha256
+        ):
+            raise ContractError("p1_p0_root_branch_mismatch")
+    else:
+        if previous.stage != root.stage:
+            raise ContractError("p1_initial_predecessor_root_stage_mismatch")
+        if previous.checkpoint_id != root.checkpoint_id:
+            raise ContractError("p1_initial_predecessor_must_equal_prediction_root")
+        if previous.content_sha256 != root.content_sha256:
+            raise ContractError("p1_initial_predecessor_content_mismatch")
     native_values = _native_forward_lineage(
         "P1",
         root=root,
@@ -637,6 +710,31 @@ def materialize_p1(
         bucket_centers_c=bucket_centers_c,
         bucket_upper_bounds_c=bucket_upper_bounds_c,
     )
+    governed_trajectory_artifact = (
+        trajectory_artifact
+        if isinstance(trajectory_artifact, MetarTrajectoryLikelihoodArtifact)
+        else MetarTrajectoryLikelihoodArtifact.from_mapping(trajectory_artifact)
+    )
+    conditional_path = (
+        governed_trajectory_artifact.method_version in {
+            METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+            METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+        }
+    )
+    conditional_hourly_curve = (
+        governed_trajectory_artifact.method_version
+        == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
+    if conditional_path and proof.conditional_path_state_sha256 is None:
+        raise ContractError("p1_conditional_path_state_proof_missing")
+    future_curve_sha = str(
+        root.lineage.get("conditional_future_temperature_curve_sha256") or ""
+    ).strip().lower()
+    if conditional_hourly_curve and (
+        len(future_curve_sha) != 64
+        or any(char not in "0123456789abcdef" for char in future_curve_sha)
+    ):
+        raise ContractError("p1_conditional_future_curve_lineage_missing")
     if proof.as_of_utc != decision_at_utc:
         raise ContractError("p1_trajectory_proof_decision_time_mismatch")
     last_event_id = proof.canonical_observation_ids[-1]
@@ -694,6 +792,12 @@ def materialize_p1(
             "metar_trajectory_activation_id": proof.activation_id,
             "metar_trajectory_proof_id": proof.proof_id,
             "metar_trajectory_proof_sha256": proof.content_sha256,
+            "metar_conditional_path_state_sha256": (
+                proof.conditional_path_state_sha256 or "NONE"
+            ),
+            "metar_future_temperature_curve_sha256": (
+                future_curve_sha or "NONE"
+            ),
             "metar_trajectory_applied_strength": (
                 f"{proof.applied_strength:.17g}"
             ),
@@ -723,7 +827,11 @@ def materialize_p1(
                 "DIAGNOSTIC_POSITIVE_PROBABILITY_SUPPORT_NOT_BASKET_CORE"
             ),
             "observation_likelihood_mode": (
-                "FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2"
+                "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+                if conditional_hourly_curve
+                else "CONDITIONAL_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V3"
+                if conditional_path
+                else "FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2"
             ),
         },
         predecessor=previous,
@@ -740,13 +848,8 @@ def materialize_p1(
     values["prediction_root_stage"] = root.stage
     values["prediction_root_checkpoint_id"] = root.checkpoint_id
     values["prediction_root_content_sha256"] = root.content_sha256
-    values["p0_root_checkpoint_id"] = (
-        root.checkpoint_id
-        if root.stage == "P0"
-        else str(root.lineage.get("p0_root_checkpoint_id") or "")
-    )
-    if not values["p0_root_checkpoint_id"]:
-        raise ContractError("p1_p0_root_checkpoint_id_missing")
+    values["p0_root_checkpoint_id"] = p0_root_checkpoint_id
+    values["p0_root_content_sha256"] = p0_root_content_sha256
     _sha("canonical_observation_sha256", values["canonical_observation_sha256"])
     values["hard_excluded_buckets"] = (
         ",".join(proof.hard_excluded_buckets)

@@ -34,7 +34,7 @@ class ProxyLocalFallbackTests(unittest.TestCase):
             "http_proxy": "",
             "https_proxy": "",
             "all_proxy": "",
-            "PM_PROXY_LOCAL_FALLBACK_PORTS": "7897",
+            "PM_PROXY_LOCAL_FALLBACK_PORTS": "1082",
         }
         with mock.patch.dict(os.environ, env, clear=False):
             swm._SYSTEM_PROXY_LAST_CHECK = 0.0
@@ -43,13 +43,13 @@ class ProxyLocalFallbackTests(unittest.TestCase):
                     with mock.patch.object(
                         swm,
                         "_proxy_reachable",
-                        side_effect=lambda host, port, timeout=0.5: host == "127.0.0.1" and int(port or 0) == 7897,
+                        side_effect=lambda host, port, timeout=0.5: host == "127.0.0.1" and int(port or 0) == 1082,
                     ):
                         swm.ensure_system_proxy_settings(force=True)
-                        self.assertEqual(os.environ.get("HTTP_PROXY"), "http://127.0.0.1:7897")
-                        self.assertEqual(os.environ.get("HTTPS_PROXY"), "http://127.0.0.1:7897")
-                        self.assertEqual(os.environ.get("http_proxy"), "http://127.0.0.1:7897")
-                        self.assertEqual(os.environ.get("https_proxy"), "http://127.0.0.1:7897")
+                        self.assertEqual(os.environ.get("HTTP_PROXY"), "http://127.0.0.1:1082")
+                        self.assertEqual(os.environ.get("HTTPS_PROXY"), "http://127.0.0.1:1082")
+                        self.assertEqual(os.environ.get("http_proxy"), "http://127.0.0.1:1082")
+                        self.assertEqual(os.environ.get("https_proxy"), "http://127.0.0.1:1082")
 
     def test_build_node_env_uses_local_proxy_fallback(self) -> None:
         env = {
@@ -59,20 +59,20 @@ class ProxyLocalFallbackTests(unittest.TestCase):
             "http_proxy": "",
             "https_proxy": "",
             "all_proxy": "",
-            "PM_PROXY_LOCAL_FALLBACK_PORTS": "7897",
+            "PM_PROXY_LOCAL_FALLBACK_PORTS": "1082",
         }
         with mock.patch.dict(os.environ, env, clear=False):
             with mock.patch.object(
                 swm,
                 "_proxy_reachable",
-                side_effect=lambda host, port, timeout=0.5: host == "127.0.0.1" and int(port or 0) == 7897,
+                side_effect=lambda host, port, timeout=0.5: host == "127.0.0.1" and int(port or 0) == 1082,
             ):
                 node_env = swm._build_node_env()
-        self.assertEqual(node_env.get("HTTP_PROXY"), "http://127.0.0.1:7897")
-        self.assertEqual(node_env.get("HTTPS_PROXY"), "http://127.0.0.1:7897")
-        self.assertEqual(node_env.get("http_proxy"), "http://127.0.0.1:7897")
-        self.assertEqual(node_env.get("https_proxy"), "http://127.0.0.1:7897")
-        self.assertEqual(node_env.get("GLOBAL_AGENT_HTTP_PROXY"), "http://127.0.0.1:7897")
+        self.assertEqual(node_env.get("HTTP_PROXY"), "http://127.0.0.1:1082")
+        self.assertEqual(node_env.get("HTTPS_PROXY"), "http://127.0.0.1:1082")
+        self.assertEqual(node_env.get("http_proxy"), "http://127.0.0.1:1082")
+        self.assertEqual(node_env.get("https_proxy"), "http://127.0.0.1:1082")
+        self.assertEqual(node_env.get("GLOBAL_AGENT_HTTP_PROXY"), "http://127.0.0.1:1082")
 
 
 if __name__ == "__main__":

@@ -6,21 +6,37 @@ import json
 import math
 import sqlite3
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .future_temperature_curve import (
+    build_native_family_temperature_curve,
+    build_root_future_temperature_curve,
+)
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
     validate_cross_native_ensemble_weights,
+    validate_native_ensemble_transport_gate,
 )
-from .open_meteo_ensemble import SCHEMA as FORWARD_PACKET_SCHEMA
+from .native_ensemble_authority import (
+    NativeOosSnapshot,
+    pointer_activation_mismatch_reasons,
+    pointer_for_station,
+    validate_native_oos_snapshot_manifest,
+)
+from .open_meteo_ensemble import (
+    FORWARD_OOS_TEMPORAL_SCOPE,
+    OBSERVATIONAL_EVIDENCE_ROLE,
+    SCHEMA as FORWARD_PACKET_SCHEMA,
+)
 from .official_native_forward_packet import (
     MIXED_NATIVE_CYCLES,
     SCHEMA as OFFICIAL_FORWARD_PACKET_SCHEMA,
 )
+from .ssot import native_ensemble_foundation_schema_status
 
 
 SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
@@ -195,6 +211,50 @@ def _bucket_for_value(
 
 
 _VALID_NATIVE_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
+
+
+def _require_aggregator_fallback_authority(
+    forward_packet: Mapping[str, Any],
+) -> None:
+    """Reject a republisher packet unless it carries its non-native limits.
+
+    This is deliberately checked again at P0 compilation rather than relying
+    on the candidate-store ingress: a forward inbox is a handoff boundary and
+    must not be able to turn an Open-Meteo payload into native arrival proof.
+    """
+
+    authority = forward_packet.get("source_authority")
+    if not isinstance(authority, Mapping):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:aggregator_fallback_authority_missing"
+        )
+    if (
+        authority.get("source_role") != "aggregator_republisher"
+        or authority.get("native_run_init_known") is not False
+        or authority.get("native_publication_at_known") is not False
+        or authority.get("native_arrival_index_eligible") is not False
+        or authority.get("formal_p0_eligible") is not False
+        or authority.get("production_no_live_calibration_candidate")
+        is not True
+        or forward_packet.get("evidence_role")
+        != OBSERVATIONAL_EVIDENCE_ROLE
+        or forward_packet.get("oos_event_temporal_scope")
+        != FORWARD_OOS_TEMPORAL_SCOPE
+        or forward_packet.get("strict_oos_sample_eligible") is not False
+        or forward_packet.get("can_substitute_for_formal_promotion")
+        is not False
+        or authority.get("evidence_role")
+        != OBSERVATIONAL_EVIDENCE_ROLE
+        or authority.get("oos_event_temporal_scope")
+        != FORWARD_OOS_TEMPORAL_SCOPE
+        or authority.get("counts_as_strict_oos") is not False
+        or authority.get("historical_oos_contract_bound") is not False
+        or authority.get("can_substitute_for_formal_promotion")
+        is not False
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:aggregator_fallback_authority_invalid"
+        )
 
 
 def _official_forward_lineage(
@@ -416,9 +476,14 @@ def compile_native_ensemble_p0(
     forward_packet: Mapping[str, Any],
     decision_at_utc: str,
     fresh_seconds: int = DEFAULT_FRESH_SECONDS,
+    native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one station-day, or fail closed with ``NO_P0``."""
 
+    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_ensemble_foundation_schema_missing"
+        )
     packet_schema = str(forward_packet.get("schema") or "")
     if packet_schema not in {
         FORWARD_PACKET_SCHEMA,
@@ -427,10 +492,19 @@ def compile_native_ensemble_p0(
         raise ContractError("native_ensemble_p0_forward_schema_invalid")
     if fresh_seconds < 60 or fresh_seconds > 24 * 60 * 60:
         raise ContractError("native_ensemble_p0_freshness_invalid")
-    decision = datetime.fromisoformat(
-        decision_at_utc.replace("Z", "+00:00")
-    )
+    try:
+        decision = datetime.fromisoformat(
+            decision_at_utc.replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ContractError(
+            "native_ensemble_p0_decision_timestamp_invalid"
+        ) from exc
+    if decision.tzinfo is None:
+        raise ContractError("native_ensemble_p0_decision_timestamp_invalid")
+    decision = decision.astimezone(timezone.utc)
     official_snapshot = packet_schema == OFFICIAL_FORWARD_PACKET_SCHEMA
+    native_pointer_binding: Mapping[str, Any] | None = None
     if official_snapshot:
         official_identity = {
             key: value
@@ -444,6 +518,8 @@ def compile_native_ensemble_p0(
             raise ContractError(
                 "native_ensemble_p0_official_snapshot_invalid"
             )
+    else:
+        _require_aggregator_fallback_authority(forward_packet)
     captured_at = str(
         forward_packet.get(
             (
@@ -454,11 +530,31 @@ def compile_native_ensemble_p0(
         )
         or ""
     )
-    captured = datetime.fromisoformat(
-        captured_at.replace("Z", "+00:00")
-    )
+    try:
+        captured = datetime.fromisoformat(
+            captured_at.replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ContractError(
+            "native_ensemble_p0_capture_timestamp_invalid"
+        ) from exc
+    if captured.tzinfo is None:
+        raise ContractError("native_ensemble_p0_capture_timestamp_invalid")
+    captured = captured.astimezone(timezone.utc)
     if captured > decision:
         raise ContractError("native_ensemble_p0_future_capture_forbidden")
+    # A compile-time refresh must not revive an old native packet.  Besides
+    # preserving the P0 TTL, this is the decisive ``native late`` boundary:
+    # the production worker can then try an independently governed
+    # Open-Meteo republisher packet for the same station/day.  The fallback
+    # still has to pass its own historical-OOS activation checks below; this
+    # branch only prevents a stale native receipt from suppressing it.
+    # ``ProbabilityEnvelope`` requires a strictly positive freshness window,
+    # so an age exactly equal to the TTL is already stale as well.
+    if (decision - captured).total_seconds() >= fresh_seconds:
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale"
+        )
     station_id = str(
         forward_packet.get("station_id") or ""
     ).strip().upper()
@@ -538,6 +634,22 @@ def compile_native_ensemble_p0(
             captured_at_utc=captured_at,
         )
         run_cycle = "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
+    if official_snapshot and native_oos_snapshot is not None:
+        try:
+            snapshot = (
+                native_oos_snapshot
+                if isinstance(native_oos_snapshot, NativeOosSnapshot)
+                else validate_native_oos_snapshot_manifest(native_oos_snapshot)
+            )
+            native_pointer_binding = pointer_for_station(snapshot, station_id)
+        except ContractError as exc:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:native_oos_snapshot_manifest_invalid"
+            ) from exc
+        if native_pointer_binding is None:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:native_current_pointer_binding_missing"
+            )
     systems_raw = forward_packet.get("systems")
     intervals_raw = forward_packet.get("bucket_intervals")
     if (
@@ -582,14 +694,18 @@ def compile_native_ensemble_p0(
         "a.generation,a.valid_from_utc,"
         "a.available_system_set_hash_or_star,"
         "r.ensemble_system_ids_json,r.ensemble_system_count,"
-        "r.run_cycle "
+        "r.run_cycle,a.run_cycle_by_system_json,"
+        "a.run_cycle_by_system_sha256,"
+        "r.run_cycle_by_system_json,"
+        "r.run_cycle_by_system_sha256,"
+        "r.selection_evidence_sha256,"
+        "r.content_sha256 "
         "FROM calibration_native_ensemble_activation a "
         "JOIN calibration_cross_native_ensemble_artifact r "
         "ON r.cross_ensemble_artifact_id=a.artifact_id "
         "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
         "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
-        + ("AND a.run_cycle=? " if not official_lineage["mixed"] else "")
-        + "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+        "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
         "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
         "ORDER BY a.generation DESC,a.activation_id LIMIT 256"
     )
@@ -598,8 +714,6 @@ def compile_native_ensemble_p0(
         season_bin,
         lead_bucket,
     )
-    if not official_lineage["mixed"]:
-        activation_parameters += (run_cycle,)
     activation_parameters += (decision_at_utc, decision_at_utc)
     activation_rows = conn.execute(
         activation_sql,
@@ -609,16 +723,94 @@ def compile_native_ensemble_p0(
     compatible_activations: list[
         tuple[Any, list[str]]
     ] = []
+    rejected_or_unproven_activation_seen = False
     for row in activation_rows:
+        if native_pointer_binding is not None:
+            pointer_mismatches = pointer_activation_mismatch_reasons(
+                native_pointer_binding,
+                activation_id=str(row[0]),
+                artifact_id=str(row[1]),
+                activation_sha256=str(row[2]),
+                artifact_sha256=str(row[14] or ""),
+                selection_evidence_sha256=str(row[13]),
+                generation=int(row[3]),
+                season_bin=season_bin,
+                lead_bucket=lead_bucket,
+                run_cycle=str(row[8] or ""),
+                run_cycle_by_system_json=str(row[9] or ""),
+                authority_scope="PRODUCTION_NO_LIVE_ONLY",
+            )
+            if pointer_mismatches:
+                continue
         selected_ids = sorted(
             str(value) for value in json.loads(str(row[6]))
+        )
+        selected_cycle_mapping = {
+            system_id: str(
+                official_lineage["run_cycle_by_system"].get(system_id)
+                or ""
+            )
+            for system_id in selected_ids
+        }
+        selected_cycle_mapping_json = _json(selected_cycle_mapping)
+        selected_cycle_mapping_sha = content_sha256(
+            selected_cycle_mapping
+        )
+        selected_run_cycles = set(selected_cycle_mapping.values())
+        selected_run_cycle = (
+            next(iter(selected_run_cycles))
+            if len(selected_run_cycles) == 1
+            else MIXED_NATIVE_CYCLES
         )
         if (
             len(selected_ids) != int(row[7])
             or len(set(selected_ids)) != len(selected_ids)
             or str(row[5]) != content_sha256(selected_ids)
             or not set(selected_ids).issubset(observed_set)
+            or not all(selected_cycle_mapping.values())
+            or str(row[8] or "") != selected_run_cycle
+            or str(row[9] or "") != selected_cycle_mapping_json
+            or str(row[10] or "") != selected_cycle_mapping_sha
+            or str(row[11] or "") != selected_cycle_mapping_json
+            or str(row[12] or "") != selected_cycle_mapping_sha
         ):
+            continue
+        evaluation_rows = conn.execute(
+            "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
+            "FROM calibration_cross_native_ensemble_oos_evaluation "
+            "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+            "AND run_cycle=? AND run_cycle_by_system_json=? "
+            "AND run_cycle_by_system_sha256=? "
+            "AND settlement_definition=? "
+            "AND ensemble_system_ids_json=? "
+            "AND available_system_set_hash=? AND evaluated_at_utc<=? "
+            "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
+            (
+                station_id,
+                season_bin,
+                lead_bucket,
+                selected_run_cycle,
+                selected_cycle_mapping_json,
+                selected_cycle_mapping_sha,
+                settlement_definition,
+                _json(selected_ids),
+                str(row[5]),
+                decision_at_utc,
+            ),
+        ).fetchall()
+        if (
+            not evaluation_rows
+            or (
+                len(evaluation_rows) > 1
+                and str(evaluation_rows[0][2])
+                == str(evaluation_rows[1][2])
+            )
+            or str(evaluation_rows[0][0])
+            != "PRODUCTION_NO_LIVE_OOS_PASS"
+            or str(evaluation_rows[0][1])
+            != str(row[13])
+        ):
+            rejected_or_unproven_activation_seen = True
             continue
         compatible_activations.append((row, selected_ids))
     compatible_activations.sort(
@@ -631,14 +823,26 @@ def compile_native_ensemble_p0(
         reverse=True,
     )
     activations = compatible_activations[:2]
-    if (
-        not activations
-        or (
-            len(activations) > 1
-            and len(activations[0][1]) == len(activations[1][1])
-            and int(activations[0][0][3])
-            == int(activations[1][0][3])
+    if not activations:
+        if native_pointer_binding is not None:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:native_current_pointer_not_bound"
+            )
+        if rejected_or_unproven_activation_seen:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:"
+                "native_cross_oos_evaluation_not_passing"
+            )
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:"
+            "native_cross_ensemble_activation_not_exact"
         )
+    if (
+        len(activations) > 1
+        and len(activations[0][1]) == len(activations[1][1])
+        and set(activations[0][1]) == set(activations[1][1])
+        and int(activations[0][0][3])
+        == int(activations[1][0][3])
     ):
         raise ContractError(
             "FAIL_CLOSED_NO_P0:"
@@ -649,6 +853,67 @@ def compile_native_ensemble_p0(
         system_id: observed_systems[system_id]
         for system_id in system_ids
     }
+    if official_snapshot:
+        source_archives = forward_packet.get("source_archives")
+        if not isinstance(source_archives, list):
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:native_official_transport_lineage_missing"
+            )
+        transport_provider_by_system: dict[str, str] = {}
+        for source_archive in source_archives:
+            if not isinstance(source_archive, Mapping):
+                raise ContractError(
+                    "FAIL_CLOSED_NO_P0:native_official_transport_lineage_missing"
+                )
+            source_system_id = str(
+                source_archive.get("ensemble_system_id") or ""
+            ).strip()
+            if source_system_id not in systems:
+                continue
+            transport_provider_id = str(
+                source_archive.get("transport_provider_id") or ""
+            ).strip()
+            if (
+                source_system_id in transport_provider_by_system
+                and transport_provider_by_system[source_system_id]
+                != transport_provider_id
+            ):
+                raise ContractError(
+                    "FAIL_CLOSED_NO_P0:native_official_transport_lineage_ambiguous"
+                )
+            transport_provider_by_system[source_system_id] = (
+                transport_provider_id
+            )
+        systems_by_id: dict[str, dict[str, Any]] = {}
+        for system_id in system_ids:
+            system_registry = conn.execute(
+                "SELECT independence_family_id,provider_id,"
+                "expected_member_count FROM calibration_native_ensemble_system "
+                "WHERE ensemble_system_id=?",
+                (system_id,),
+            ).fetchone()
+            if system_registry is None:
+                raise ContractError(
+                    "native_ensemble_p0_system_unregistered"
+                )
+            systems_by_id[system_id] = {
+                "ensemble_system_id": system_id,
+                "independence_family_id": str(system_registry[0]),
+                "provider_id": str(system_registry[1]),
+                "expected_member_count": int(system_registry[2]),
+                "source_class": "NATIVE_ENSEMBLE_PROVIDER",
+                "aggregator_or_republisher": 0,
+            }
+        try:
+            validate_native_ensemble_transport_gate(
+                selected_system_ids=system_ids,
+                systems_by_id=systems_by_id,
+                transport_provider_by_system=transport_provider_by_system,
+            )
+        except ContractError as exc:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:" + str(exc)
+            ) from exc
     excluded_observed_system_ids = sorted(
         observed_set - set(system_ids)
     )
@@ -661,15 +926,13 @@ def compile_native_ensemble_p0(
         raise ContractError(
             "FAIL_CLOSED_NO_P0:native_cross_ensemble_cycle_missing"
         )
-    activation_available = datetime.fromisoformat(
-        str(selected_activation[4]).replace("Z", "+00:00")
-    )
-    decision = max(captured, activation_available)
-    decision_at_utc = decision.isoformat().replace("+00:00", "Z")
+    selected_run_cycle = cross_artifact_run_cycle
+    run_cycle = selected_run_cycle
     artifact = conn.execute(
         "SELECT ensemble_system_ids_json,ensemble_system_count,"
         "independent_family_count,selection_evidence_sha256,"
-        "family_weight_caps_json,content_sha256 "
+        "family_weight_caps_json,content_sha256,"
+        "run_cycle_by_system_json,run_cycle_by_system_sha256 "
         "FROM calibration_cross_native_ensemble_artifact "
         "WHERE cross_ensemble_artifact_id=? "
         "AND probability_pathway=? AND valid_from_utc<=? "
@@ -686,21 +949,76 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:native_cross_ensemble_artifact_missing"
         )
     selected_system_ids = json.loads(str(artifact[0]))
+    expected_cycle_mapping = {
+        system_id: str(
+            official_lineage["run_cycle_by_system"][system_id]
+        )
+        for system_id in system_ids
+    }
+    expected_cycle_mapping_json = _json(expected_cycle_mapping)
+    expected_cycle_mapping_sha = content_sha256(
+        expected_cycle_mapping
+    )
     if (
         selected_system_ids != system_ids
         or int(artifact[1]) != len(system_ids)
         or int(artifact[2]) < 2
+        or str(artifact[6] or "") != expected_cycle_mapping_json
+        or str(artifact[7] or "") != expected_cycle_mapping_sha
     ):
         raise ContractError(
             "FAIL_CLOSED_NO_P0:native_cross_ensemble_mask_mismatch"
         )
     selection_sha = str(artifact[3])
     cross_artifact_sha = str(artifact[5])
+    latest_oos_evaluations = conn.execute(
+        "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
+        "FROM calibration_cross_native_ensemble_oos_evaluation "
+        "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+        "AND run_cycle=? AND run_cycle_by_system_json=? "
+        "AND run_cycle_by_system_sha256=? "
+        "AND settlement_definition=? AND ensemble_system_ids_json=? "
+        "AND available_system_set_hash=? AND evaluated_at_utc<=? "
+        "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
+        (
+            station_id,
+            season_bin,
+            lead_bucket,
+            selected_run_cycle,
+            expected_cycle_mapping_json,
+            expected_cycle_mapping_sha,
+            settlement_definition,
+            _json(system_ids),
+            available_set_hash,
+            decision_at_utc,
+        ),
+    ).fetchall()
+    if (
+        not latest_oos_evaluations
+        or (
+            len(latest_oos_evaluations) > 1
+            and str(latest_oos_evaluations[0][2])
+            == str(latest_oos_evaluations[1][2])
+        )
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_exact"
+        )
+    latest_oos_evaluation = latest_oos_evaluations[0]
+    if (
+        str(latest_oos_evaluation[0])
+        != "PRODUCTION_NO_LIVE_OOS_PASS"
+        or str(latest_oos_evaluation[1]) != selection_sha
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing"
+        )
     selection = conn.execute(
         "SELECT selected_weights_json,family_weights_json,"
         "family_weight_caps_json,"
         "cross_system_residual_correlation_json,content_sha256,"
-        "train_end_date "
+        "train_end_date,run_cycle_by_system_json,"
+        "run_cycle_by_system_sha256 "
         "FROM calibration_cross_native_ensemble_selection_evidence "
         "WHERE content_sha256=?",
         (selection_sha,),
@@ -708,6 +1026,13 @@ def compile_native_ensemble_p0(
     if selection is None:
         raise ContractError(
             "FAIL_CLOSED_NO_P0:native_selection_evidence_missing"
+        )
+    if (
+        str(selection[6] or "") != expected_cycle_mapping_json
+        or str(selection[7] or "") != expected_cycle_mapping_sha
+    ):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_selection_cycle_mapping_mismatch"
         )
     system_weights = {
         str(key): float(value)
@@ -724,18 +1049,35 @@ def compile_native_ensemble_p0(
     system_probabilities: dict[str, dict[str, float]] = {}
     system_artifact_shas: dict[str, str] = {}
     system_activation_shas: dict[str, str] = {}
+    aggregator_strict_oos_proof_by_system: dict[str, dict[str, Any]] = {}
     calibrated_system_centers_c: dict[str, float] = {}
+    system_bias_c: dict[str, float] = {}
     family_by_system: dict[str, str] = {}
     for system_id in system_ids:
         system_config = conn.execute(
-            "SELECT independence_family_id,expected_member_count "
-            "FROM calibration_native_ensemble_system "
-            "WHERE ensemble_system_id=?",
+            (
+                "SELECT independence_family_id,expected_member_count "
+                "FROM calibration_native_ensemble_system "
+                "WHERE ensemble_system_id=?"
+                if official_snapshot
+                else
+                "SELECT independence_family_id,expected_member_count "
+                "FROM calibration_republisher_ensemble_product "
+                "WHERE ensemble_system_id=? "
+                "AND transport_provider_id='OPEN_METEO' "
+                "AND source_role='aggregator_republisher' "
+                "AND native_arrival_index_eligible=0 "
+                "AND formal_p0_eligible=0"
+            ),
             (system_id,),
         ).fetchone()
         if system_config is None:
             raise ContractError(
-                "native_ensemble_p0_system_unregistered"
+                (
+                    "native_ensemble_p0_system_unregistered"
+                    if official_snapshot
+                    else "republisher_p0_product_unregistered"
+                )
             )
         family_by_system[system_id] = str(system_config[0])
         members = systems[system_id].get("members")
@@ -755,13 +1097,16 @@ def compile_native_ensemble_p0(
                 "FAIL_CLOSED_NO_P0:native_system_cycle_lineage_missing"
             )
         system_activation = conn.execute(
-            "SELECT activation_id,artifact_id,content_sha256,generation "
+            "SELECT activation_id,artifact_id,content_sha256,generation,"
+            "run_cycle_by_system_json,run_cycle_by_system_sha256 "
             "FROM calibration_native_ensemble_activation "
             "WHERE artifact_kind="
             "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
             "AND station_id=? AND ensemble_system_id_or_star=? "
             "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
             "AND available_system_set_hash_or_star='*' "
+            "AND run_cycle_by_system_json=? "
+            "AND run_cycle_by_system_sha256=? "
             "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
             "AND valid_from_utc<=? AND valid_until_utc>? "
             "ORDER BY generation DESC LIMIT 2",
@@ -771,6 +1116,8 @@ def compile_native_ensemble_p0(
                 season_bin,
                 lead_bucket,
                 system_run_cycle,
+                _json({system_id: system_run_cycle}),
+                content_sha256({system_id: system_run_cycle}),
                 decision_at_utc,
                 decision_at_utc,
             ),
@@ -807,6 +1154,63 @@ def compile_native_ensemble_p0(
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_system_artifact_cycle_mismatch"
             )
+        reliability_parameters = json.loads(str(system_artifact[2]))
+        if not official_snapshot:
+            source_scopes = reliability_parameters.get(
+                "source_authority_scopes"
+            )
+            if not isinstance(source_scopes, list):
+                raise ContractError(
+                    "FAIL_CLOSED_NO_P0:"
+                    "aggregator_fallback_strict_oos_proof_missing"
+                )
+            aggregator_proof = {
+                "transport_provider_id": reliability_parameters.get(
+                    "transport_provider_id"
+                ),
+                "holdout_source_class": reliability_parameters.get(
+                    "holdout_source_class"
+                ),
+                "oos_event_temporal_scope": reliability_parameters.get(
+                    "oos_event_temporal_scope"
+                ),
+                "future_event_count": reliability_parameters.get(
+                    "future_event_count", 0
+                ),
+                "oos_min_train_days": reliability_parameters.get(
+                    "oos_min_train_days"
+                ),
+                "oos_min_holdout_days": reliability_parameters.get(
+                    "oos_min_holdout_days"
+                ),
+                "source_authority_scopes": sorted(
+                    str(value) for value in source_scopes
+                ),
+            }
+            if (
+                aggregator_proof["transport_provider_id"] != "OPEN_METEO"
+                or aggregator_proof["holdout_source_class"]
+                != "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
+                or aggregator_proof["oos_event_temporal_scope"]
+                != "CLOSED_HISTORICAL_AWC_TRUTH"
+                or aggregator_proof["future_event_count"] != 0
+                or not isinstance(
+                    aggregator_proof["oos_min_train_days"], int
+                )
+                or not isinstance(
+                    aggregator_proof["oos_min_holdout_days"], int
+                )
+                or aggregator_proof["oos_min_train_days"] < 1
+                or aggregator_proof["oos_min_holdout_days"] < 1
+            ):
+                raise ContractError(
+                    "FAIL_CLOSED_NO_P0:"
+                    "aggregator_fallback_strict_oos_proof_missing"
+                )
+            aggregator_strict_oos_proof_by_system[system_id] = (
+                aggregator_proof
+            )
+        bias_parameters = json.loads(str(system_artifact[0]))
         system_probabilities[system_id] = (
             _calibrated_system_probability(
                 values=[
@@ -814,18 +1218,17 @@ def compile_native_ensemble_p0(
                     for member in members
                 ],
                 intervals=intervals_raw,
-                bias_parameters=json.loads(str(system_artifact[0])),
+                bias_parameters=bias_parameters,
                 spread_parameters=json.loads(str(system_artifact[1])),
-                reliability_parameters=json.loads(
-                    str(system_artifact[2])
-                ),
+                reliability_parameters=reliability_parameters,
             )
         )
         calibrated_system_centers_c[system_id] = (
             sum(float(member["raw_tmax_c"]) for member in members)
             / len(members)
-            + float(json.loads(str(system_artifact[0]))["bias_c"])
+            + float(bias_parameters["bias_c"])
         )
+        system_bias_c[system_id] = float(bias_parameters["bias_c"])
         system_artifact_shas[system_id] = str(system_artifact[3])
         system_activation_shas[system_id] = str(
             system_activation[0][2]
@@ -864,18 +1267,36 @@ def compile_native_ensemble_p0(
         upper_center_c,
         intervals_raw,
     )
+    active_run_cycle_scope = (
+        "PER_SYSTEM_NATIVE_CYCLE"
+        if official_snapshot and run_cycle == MIXED_NATIVE_CYCLES
+        else (
+            "SAME_NATIVE_CYCLE"
+            if official_snapshot
+            else official_lineage["run_cycle_scope"]
+        )
+    )
     native_forward_lineage = {
-        "run_cycle_scope": official_lineage["run_cycle_scope"],
+        "run_cycle_scope": active_run_cycle_scope,
         "run_cycle": run_cycle,
-        "run_cycle_by_system": official_lineage[
-            "run_cycle_by_system"
-        ],
-        "run_init_utc_by_system": official_lineage[
-            "run_init_utc_by_system"
-        ],
-        "archive_query_at_utc_by_system": official_lineage[
-            "archive_query_at_utc_by_system"
-        ],
+        "run_cycle_by_system": {
+            system_id: official_lineage["run_cycle_by_system"][system_id]
+            for system_id in system_ids
+        },
+        "run_init_utc_by_system": {
+            system_id: official_lineage["run_init_utc_by_system"][system_id]
+            for system_id in system_ids
+            if system_id in official_lineage["run_init_utc_by_system"]
+        },
+        "archive_query_at_utc_by_system": {
+            system_id: official_lineage[
+                "archive_query_at_utc_by_system"
+            ][system_id]
+            for system_id in system_ids
+            if system_id in official_lineage[
+                "archive_query_at_utc_by_system"
+            ]
+        },
         "availability_evidence": official_lineage[
             "availability_evidence"
         ],
@@ -884,7 +1305,38 @@ def compile_native_ensemble_p0(
             "source_archive_set_sha256"
         ),
         "source_archives": forward_packet.get("source_archives", []),
+        "transport_lineage_class": (
+            "official_native"
+            if official_snapshot
+            else "aggregator_republisher"
+        ),
+        "native_arrival_index_eligible": official_snapshot,
     }
+    # Open-Meteo is never allowed to claim native publication/arrival.  When
+    # its packet is backed by an activated strict-OOS cross-ensemble artifact
+    # with at least two independent families, however, it may serve as the
+    # explicit no-live fallback if no official packet is available.  Keep this
+    # decision separate from the native transport label so downstream inbox
+    # selection can prefer official evidence without silently discarding a
+    # governed fallback candidate.
+    aggregator_fallback_p0_eligible = bool(
+        not official_snapshot
+        and len(system_ids) >= 2
+        and len(set(family_by_system.values())) >= 2
+        and int(artifact[2]) >= 2
+        and bool(selection_sha)
+        and bool(activation_sha)
+    )
+    native_forward_lineage[
+        "aggregator_fallback_p0_eligible"
+    ] = aggregator_fallback_p0_eligible
+    native_forward_lineage[
+        "republisher_fallback_p0_eligible"
+    ] = aggregator_fallback_p0_eligible
+    if not official_snapshot:
+        native_forward_lineage[
+            "aggregator_strict_oos_proof_by_system"
+        ] = aggregator_strict_oos_proof_by_system
     native_forward_lineage_sha = content_sha256(
         native_forward_lineage
     )
@@ -924,14 +1376,14 @@ def compile_native_ensemble_p0(
         "season_bin": season_bin,
         "lead_bucket": lead_bucket,
         "run_cycle": run_cycle,
-        "run_cycle_scope": official_lineage["run_cycle_scope"],
-        "run_cycle_by_system": official_lineage[
+        "run_cycle_scope": active_run_cycle_scope,
+        "run_cycle_by_system": native_forward_lineage[
             "run_cycle_by_system"
         ],
-        "run_init_utc_by_system": official_lineage[
+        "run_init_utc_by_system": native_forward_lineage[
             "run_init_utc_by_system"
         ],
-        "archive_query_at_utc_by_system": official_lineage[
+        "archive_query_at_utc_by_system": native_forward_lineage[
             "archive_query_at_utc_by_system"
         ],
         "availability_evidence": official_lineage[
@@ -962,10 +1414,10 @@ def compile_native_ensemble_p0(
                 "activation_content_sha256": system_activation_shas[
                     system_id
                 ],
-                "run_cycle": official_lineage[
+                "run_cycle": native_forward_lineage[
                     "run_cycle_by_system"
                 ][system_id],
-                "run_init_utc": official_lineage[
+                "run_init_utc": native_forward_lineage[
                     "run_init_utc_by_system"
                 ].get(system_id),
             }
@@ -987,6 +1439,92 @@ def compile_native_ensemble_p0(
         "probabilities": probability,
         "native_probability_evidence_sha256": evidence_sha,
     })
+    checkpoint_identity = {
+        "station_id": station_id,
+        "event_date": event_date,
+        "decision_at_utc": decision_at_utc,
+        "posterior_sha256": posterior_sha,
+    }
+    checkpoint_id = (
+        "p0-native-" + content_sha256(checkpoint_identity)[:32]
+    )
+    root_future_curve = None
+    if official_snapshot and all(
+        isinstance(systems[system_id].get("family_temperature_curve"), Mapping)
+        for system_id in system_ids
+    ):
+        family_curves: dict[str, dict[str, Any]] = {}
+        for system_id in system_ids:
+            raw_curve = dict(systems[system_id]["family_temperature_curve"])
+            sealed_curve = build_native_family_temperature_curve(raw_curve)
+            if (
+                raw_curve.get("content_sha256")
+                != sealed_curve["content_sha256"]
+                or sealed_curve["ensemble_system_id"] != system_id
+                or sealed_curve["independence_family_id"]
+                != family_by_system[system_id]
+                or sealed_curve["station_id"] != station_id
+                or sealed_curve["event_date"] != event_date
+                or sealed_curve["settlement_timezone"] != timezone_name
+                or datetime.fromisoformat(
+                    sealed_curve["available_at_utc"].replace("Z", "+00:00")
+                ) > decision
+            ):
+                raise ContractError(
+                    "native_ensemble_p0_family_temperature_curve_invalid"
+                )
+            family_curves[system_id] = sealed_curve
+        common_times = set.intersection(*(
+            {point["valid_time_utc"] for point in curve["points"]}
+            for curve in family_curves.values()
+        ))
+        if len(common_times) >= 4:
+            values_by_system = {
+                system_id: {
+                    point["valid_time_utc"]: float(point["temperature_c"])
+                    for point in curve["points"]
+                }
+                for system_id, curve in family_curves.items()
+            }
+            curve_source_identity = {
+                "family_curve_sha256_by_system": {
+                    system_id: family_curves[system_id]["content_sha256"]
+                    for system_id in system_ids
+                },
+                "system_weights": system_weights,
+                "system_bias_c": system_bias_c,
+            }
+            root_future_curve = build_root_future_temperature_curve({
+                "station_id": station_id,
+                "event_date": event_date,
+                "settlement_timezone": timezone_name,
+                "root_checkpoint_id": checkpoint_id,
+                "root_probability_sha256": posterior_sha,
+                "available_at_utc": max(
+                    curve["available_at_utc"]
+                    for curve in family_curves.values()
+                ),
+                "source_snapshot_sha256": content_sha256(
+                    curve_source_identity
+                ),
+                "independence_family_ids": sorted(set(
+                    family_by_system.values()
+                )),
+                "points": [
+                    {
+                        "valid_time_utc": valid_time,
+                        "temperature_c": sum(
+                            system_weights[system_id]
+                            * (
+                                values_by_system[system_id][valid_time]
+                                + system_bias_c[system_id]
+                            )
+                            for system_id in system_ids
+                        ),
+                    }
+                    for valid_time in sorted(common_times)
+                ],
+            })
     lineage = {
         "probability_pathway": P0_PROBABILITY_PATHWAY,
         "p0_probability_pathway": P0_PROBABILITY_PATHWAY,
@@ -996,15 +1534,18 @@ def compile_native_ensemble_p0(
         "season_bin": season_bin,
         "lead_bucket": lead_bucket,
         "run_cycle": run_cycle,
-        "run_cycle_scope": official_lineage["run_cycle_scope"],
+        "run_cycle_scope": active_run_cycle_scope,
         "run_cycle_by_system_json": _json(
-            official_lineage["run_cycle_by_system"]
+            native_forward_lineage["run_cycle_by_system"]
+        ),
+        "run_cycle_by_system_sha256": content_sha256(
+            native_forward_lineage["run_cycle_by_system"]
         ),
         "run_init_utc_by_system_json": _json(
-            official_lineage["run_init_utc_by_system"]
+            native_forward_lineage["run_init_utc_by_system"]
         ),
         "archive_query_at_utc_by_system_json": _json(
-            official_lineage["archive_query_at_utc_by_system"]
+            native_forward_lineage["archive_query_at_utc_by_system"]
         ),
         "native_forward_availability_evidence_json": _json(
             official_lineage["availability_evidence"]
@@ -1056,6 +1597,20 @@ def compile_native_ensemble_p0(
             if official_snapshot
             else "OPEN_METEO"
         ),
+        "aggregator_fallback_p0_eligible": (
+            "true" if aggregator_fallback_p0_eligible else "false"
+        ),
+        "republisher_fallback_p0_eligible": (
+            "true" if aggregator_fallback_p0_eligible else "false"
+        ),
+        "transport_lineage_class": (
+            "official_native"
+            if official_snapshot
+            else "aggregator_republisher"
+        ),
+        "native_arrival_index_eligible": (
+            "true" if official_snapshot else "false"
+        ),
         "native_formal_p0_eligible": "false",
         "model_envelope_lower_bucket": model_envelope_lower_bucket,
         "model_envelope_upper_bucket": model_envelope_upper_bucket,
@@ -1072,20 +1627,31 @@ def compile_native_ensemble_p0(
             taf_compatibility
         ),
     }
+    # TTL belongs to the evidence receipt, not to the moment a caller happens
+    # to compile it.  Otherwise a nearly expired packet could be recompiled
+    # repeatedly and made arbitrarily fresh without a new model arrival.
     fresh_until = (
-        decision + timedelta(seconds=fresh_seconds)
+        captured + timedelta(seconds=fresh_seconds)
     ).isoformat().replace("+00:00", "Z")
-    checkpoint_identity = {
-        "station_id": station_id,
-        "event_date": event_date,
-        "decision_at_utc": decision_at_utc,
-        "posterior_sha256": posterior_sha,
-    }
+    if root_future_curve is not None:
+        lineage.update({
+            "conditional_future_temperature_curve_json": _json(
+                root_future_curve.to_dict()
+            ),
+            "conditional_future_temperature_curve_sha256": (
+                root_future_curve.content_sha256
+            ),
+            "conditional_future_temperature_curve_root_stage": "P0",
+            "conditional_future_temperature_curve_root_checkpoint_id": (
+                checkpoint_id
+            ),
+            "conditional_future_temperature_curve_root_probability_sha256": (
+                posterior_sha
+            ),
+        })
     envelope = ProbabilityEnvelope.from_mapping({
         "stage": "P0",
-        "checkpoint_id": (
-            "p0-native-" + content_sha256(checkpoint_identity)[:32]
-        ),
+        "checkpoint_id": checkpoint_id,
         "station_id": station_id,
         "event_date": event_date,
         "settlement_timezone": timezone_name,
@@ -1135,15 +1701,18 @@ def compile_native_ensemble_p0(
         "season_bin": season_bin,
         "lead_bucket": lead_bucket,
         "run_cycle": run_cycle,
-        "run_cycle_scope": official_lineage["run_cycle_scope"],
+        "run_cycle_scope": active_run_cycle_scope,
         "run_cycle_by_system_json": _json(
-            official_lineage["run_cycle_by_system"]
+            native_forward_lineage["run_cycle_by_system"]
+        ),
+        "run_cycle_by_system_sha256": content_sha256(
+            native_forward_lineage["run_cycle_by_system"]
         ),
         "run_init_utc_by_system_json": _json(
-            official_lineage["run_init_utc_by_system"]
+            native_forward_lineage["run_init_utc_by_system"]
         ),
         "archive_query_at_utc_by_system_json": _json(
-            official_lineage["archive_query_at_utc_by_system"]
+            native_forward_lineage["archive_query_at_utc_by_system"]
         ),
         "native_forward_lineage_sha256": native_forward_lineage_sha,
         "settlement_definition": settlement_definition,
@@ -1207,6 +1776,10 @@ def persist_native_ensemble_forward_prediction(
 ) -> dict[str, Any]:
     """Append the first strict-forward P0 fact for one artifact/day."""
 
+    if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
+        raise ContractError(
+            "native_ensemble_forward_prediction_schema_missing"
+        )
     raw = compiled.get("forward_prediction")
     if not isinstance(raw, Mapping):
         raise ContractError(

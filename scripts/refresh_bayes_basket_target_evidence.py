@@ -143,13 +143,18 @@ def run(
     lane_map_values = _lane_map(lane_map)
     excluded_source_lanes = _excluded_source_lanes(station_scope, lane_map_values)
     timezone_values = _timezone_map(timezone_registry)
+    selected_stations = station_scope or set(lane_map_values)
+    missing_timezones = sorted(set(selected_stations) - set(timezone_values))
+    if missing_timezones:
+        raise ValueError("evidence_refresh_station_timezone_missing:" + ",".join(missing_timezones))
     scoped_timezone_values = {
-        timezone_values.get(station_id, "")
-        for station_id in (station_scope or set(lane_map_values))
+        timezone_values[station_id]
+        for station_id in selected_stations
     }
-    if "" in scoped_timezone_values or len(scoped_timezone_values) != 1:
-        raise ValueError("evidence_refresh_mixed_settlement_timezones_forbidden")
-    target_timezone = next(iter(scoped_timezone_values))
+    # Downstream builders already carry a station→registry-timezone map.  Keep
+    # a valid compatibility fallback for legacy scalar fields while allowing
+    # the 45-station artifact to span its real settlement zones.
+    target_timezone = next(iter(scoped_timezone_values)) if len(scoped_timezone_values) == 1 else "UTC"
     awc_only_scope = bool(station_scope) and all(
         lane_map_values.get(station_id, "") == "awc"
         for station_id in station_scope
@@ -208,6 +213,10 @@ def run(
             reference_paths=[path.expanduser().resolve() for path in (historical_reference_paths or [])],
             as_of_utc=decision_clock,
             target_timezone=target_timezone,
+            station_timezone_map={
+                station: timezone_values[station]
+                for station in sorted(selected_stations)
+            },
         )
         canonical_input_path = historical_canonical_output
     et_history = build_et_history(
@@ -267,6 +276,11 @@ def run(
             "mode": "allowlist" if station_scope is not None else "full_lane_map",
             "included_station_ids": sorted(station_scope or set()),
             "excluded_source_lanes": excluded_source_lanes,
+            "settlement_timezone_mode": "registry_bound_per_station" if len(scoped_timezone_values) > 1 else "single_registry_timezone",
+            "settlement_timezones": {
+                station: timezone_values[station]
+                for station in sorted(selected_stations)
+            },
         },
         "stages": {
             "canonical": {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -20,11 +21,13 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .future_temperature_curve import build_native_family_temperature_curve
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import decode_nearest_temperatures_c
 from .p0_producer import bucket_intervals_from_registry_rows
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
+from official_nwp_https_transport import official_nwp_proxy_url
 
 
 SCHEMA = "ecmwf_ifs_open_pf50_historical_station_members_v1"
@@ -37,10 +40,14 @@ ARCHIVE_LEAD_BUCKET = "d2"
 EXTRACTION_VERSION = (
     "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d2_v1"
 )
-# Same official ``ecmwf-forecasts`` S3 bucket through the global endpoint.
-# The regional virtual-host endpoint can return a persistent ``503 Slow
-# Down`` while this endpoint still serves the identical object successfully.
-BASE_URL = "https://ecmwf-forecasts.s3.amazonaws.com"
+# Same official ``ecmwf-forecasts`` S3 bucket through two AWS endpoints.
+# Direct regional transport is measurably faster; the global endpoint remains
+# a same-object fallback if AWS throttles or rejects the regional request.
+PRIMARY_BASE_URL = (
+    "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
+)
+FALLBACK_BASE_URL = "https://ecmwf-forecasts.s3.amazonaws.com"
+BASE_URL = PRIMARY_BASE_URL
 MAX_INDEX_BYTES = 3 * 1024 * 1024
 MAX_MESSAGE_BYTES = 1024 * 1024
 MAX_TOTAL_RESPONSE_BYTES = 768 * 1024 * 1024
@@ -52,7 +59,46 @@ MAX_STATION_COUNT = 64
 # eight-way retry storms observed during the 45-station PF50 backfill.
 MAX_DOWNLOAD_WORKERS = 4
 EXPECTED_MEMBER_COUNT = 50
+# A failed GET may be retried only for an explicitly transient network
+# failure.  The cap applies independently to each official S3 endpoint; with
+# the regional endpoint plus its global same-object fallback this bounds every
+# request to at most six attempts.  A 503 adds at most twelve seconds of
+# sleep across the two same-object endpoints; other transient failures keep
+# the short 0.25s/0.5s schedule.
+MAX_TRANSPORT_ATTEMPTS = 3
+MAX_RETRY_BACKOFF_SECONDS = 1.0
+RETRY_BACKOFF_BASE_SECONDS = 0.25
+# S3 ``Slow Down`` needs materially longer than a socket retry.  The scope is
+# deliberately narrow: only HTTP 503 takes the two bounded 2s/4s waits.
+S3_SLOW_DOWN_BACKOFF_BASE_SECONDS = 2.0
+MAX_S3_SLOW_DOWN_BACKOFF_SECONDS = 8.0
+S3_FALLBACK_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+TRANSIENT_TRANSPORT_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.WriteError,
+    httpx.WriteTimeout,
+)
 _HTTP_CLIENT_LOCAL = threading.local()
+
+
+def _configured_archive_proxy() -> str | None:
+    """Return only the explicit operator proxy for official NWP capture.
+
+    The ECMWF client keeps ``trust_env=False`` so unrelated ambient proxy
+    settings cannot silently route a bounded S3 capture.  Production
+    operators must opt in with ``PM_OFFICIAL_NWP_PROXY`` (the weather local
+    default is ``http://127.0.0.1:1082``).
+    """
+
+    try:
+        return official_nwp_proxy_url() or None
+    except ValueError as exc:
+        raise ContractError("ecmwf_archive_proxy_invalid") from exc
 
 
 def _thread_http_client() -> httpx.Client:
@@ -70,10 +116,11 @@ def _thread_http_client() -> httpx.Client:
     if client is None:
         client = httpx.Client(
             follow_redirects=False,
-            # Public AWS S3 is directly reachable. Routing hundreds of small
-            # range requests through the desktop proxy caused minute-long
-            # stalls and unnecessary TLS handshakes.
+            # Keep one bounded connection per worker.  The explicit proxy is
+            # opt-in so operators can enforce the local NWP egress policy;
+            # otherwise the client remains direct and ignores ambient env.
             trust_env=False,
+            proxy=_configured_archive_proxy(),
             limits=httpx.Limits(
                 max_connections=1,
                 max_keepalive_connections=1,
@@ -84,6 +131,21 @@ def _thread_http_client() -> httpx.Client:
     return client
 
 
+def _discard_thread_http_client() -> None:
+    """Drop a poisoned proxy connection pool before the bounded retry."""
+
+    client = getattr(_HTTP_CLIENT_LOCAL, "client", None)
+    if client is None:
+        return
+    try:
+        client.close()
+    finally:
+        try:
+            delattr(_HTTP_CLIENT_LOCAL, "client")
+        except AttributeError:
+            pass
+
+
 def _get_bytes(
     url: str,
     *,
@@ -91,63 +153,99 @@ def _get_bytes(
     max_bytes: int,
     headers: Mapping[str, str] | None = None,
 ) -> tuple[bytes, Mapping[str, str]]:
-    last_error: Exception | None = None
-    for attempt in range(10):
-        try:
-            request_headers = {
-                "User-Agent": "weather-ecmwf-history/1",
-                **dict(headers or {}),
-            }
-            client = _thread_http_client()
-            with client.stream(
-                "GET",
-                url,
-                headers=request_headers,
-                timeout=timeout_seconds,
-            ) as response:
-                response.raise_for_status()
-                length = response.headers.get("Content-Length")
-                if length and int(length) > max_bytes:
-                    raise ContractError(
-                        "ecmwf_archive_response_too_large"
-                    )
-                chunks = []
-                size = 0
-                for chunk in response.iter_bytes():
-                    size += len(chunk)
-                    if size > max_bytes:
+    endpoint_urls = [url]
+    if url.startswith(PRIMARY_BASE_URL):
+        endpoint_urls.append(
+            url.replace(PRIMARY_BASE_URL, FALLBACK_BASE_URL, 1)
+        )
+
+    last_transport_error: Exception | None = None
+    last_http_error: httpx.HTTPStatusError | None = None
+    for request_url in endpoint_urls:
+        for attempt in range(MAX_TRANSPORT_ATTEMPTS):
+            try:
+                request_headers = {
+                    "User-Agent": "weather-ecmwf-history/1",
+                    **dict(headers or {}),
+                }
+                client = _thread_http_client()
+                with client.stream(
+                    "GET",
+                    request_url,
+                    headers=request_headers,
+                    timeout=timeout_seconds,
+                ) as response:
+                    response.raise_for_status()
+                    length = response.headers.get("Content-Length")
+                    if length and int(length) > max_bytes:
                         raise ContractError(
                             "ecmwf_archive_response_too_large"
                         )
-                    chunks.append(chunk)
-                return b"".join(chunks), dict(response.headers)
-        except (
-            httpx.TransportError,
-            httpx.TimeoutException,
-            httpx.HTTPStatusError,
-        ) as exc:
-            if (
-                isinstance(exc, httpx.HTTPStatusError)
-                and exc.response.status_code
-                not in {429, 500, 502, 503, 504}
-            ):
-                raise
-            last_error = exc
-            if attempt < 9:
-                slow_down = (
-                    isinstance(exc, httpx.HTTPStatusError)
-                    and exc.response.status_code == 503
+                    chunks = []
+                    size = 0
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes:
+                            raise ContractError(
+                                "ecmwf_archive_response_too_large"
+                            )
+                        chunks.append(chunk)
+                    return b"".join(chunks), dict(response.headers)
+            except TRANSIENT_TRANSPORT_ERRORS as exc:
+                last_transport_error = exc
+                # A proxy pool timeout can leave a half-open connection in
+                # httpcore.  Recreate only this worker's client; no global
+                # session or other worker is touched.
+                _discard_thread_http_client()
+                if attempt + 1 >= MAX_TRANSPORT_ATTEMPTS:
+                    break
+                time_module.sleep(
+                    min(
+                        RETRY_BACKOFF_BASE_SECONDS * (2**attempt),
+                        MAX_RETRY_BACKOFF_SECONDS,
+                    )
+                )
+            except httpx.HTTPStatusError as exc:
+                if (
+                    exc.response.status_code
+                    not in S3_FALLBACK_HTTP_STATUS_CODES
+                ):
+                    raise
+                # S3's ``503 Slow Down`` is a per-endpoint throttling signal,
+                # not proof that the immutable object is absent.  Retry the
+                # same official object with the existing bounded exponential
+                # schedule before trying the regional/global same-object
+                # fallback.  Both dimensions are capped at three attempts;
+                # a day capture therefore remains resumable by rerunning its
+                # unchanged content-addressed output after a final failure.
+                last_http_error = exc
+                if attempt + 1 >= MAX_TRANSPORT_ATTEMPTS:
+                    break
+                base_seconds = (
+                    S3_SLOW_DOWN_BACKOFF_BASE_SECONDS
+                    if exc.response.status_code == 503
+                    else RETRY_BACKOFF_BASE_SECONDS
+                )
+                cap_seconds = (
+                    MAX_S3_SLOW_DOWN_BACKOFF_SECONDS
+                    if exc.response.status_code == 503
+                    else MAX_RETRY_BACKOFF_SECONDS
                 )
                 time_module.sleep(
                     min(
-                        (2.0 if slow_down else 0.5) * (2**attempt),
-                        30.0,
+                        base_seconds * (2**attempt),
+                        cap_seconds,
                     )
                 )
-    raise ContractError(
-        "ecmwf_archive_transport_failed:"
-        + type(last_error).__name__
-    ) from last_error
+
+    if last_http_error is not None:
+        raise last_http_error
+    if last_transport_error is not None:
+        raise ContractError(
+            "ecmwf_archive_transport_failed:"
+            + type(last_transport_error).__name__
+        ) from last_transport_error
+    raise ContractError("ecmwf_archive_transport_failed:unknown")
 
 
 def _period_end_steps(
@@ -271,7 +369,7 @@ def _build_station_capture(
     scope: Mapping[str, Any],
     run_init: datetime,
     query_at: datetime,
-    member_values: Mapping[str, Sequence[float]],
+    member_values: Mapping[str, Sequence[float] | Mapping[int, float]],
     receipts: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     steps = list(scope["forecast_steps"])
@@ -282,19 +380,30 @@ def _build_station_capture(
     ]
     if len(station_receipts) != EXPECTED_MEMBER_COUNT * len(steps):
         raise ContractError("ecmwf_archive_station_receipt_incomplete")
+    values_by_member = {
+        member_id: (
+            {int(step): float(value) for step, value in values.items()}
+            if isinstance(values, Mapping)
+            else {
+                int(step): float(value)
+                for step, value in zip(steps, values)
+            }
+        )
+        for member_id, values in member_values.items()
+    }
     members = [
         {
             "ensemble_system_id": SYSTEM_ID,
             "member_id": member_id,
             "member_role": "PERTURBED",
-            "raw_tmax_c": max(float(value) for value in values),
+            "raw_tmax_c": max(values.values()),
         }
-        for member_id, values in sorted(member_values.items())
+        for member_id, values in sorted(values_by_member.items())
     ]
     if (
         len(members) != EXPECTED_MEMBER_COUNT
         or any(
-            len(member_values[row["member_id"]]) != len(steps)
+            set(values_by_member[row["member_id"]]) != set(steps)
             for row in members
         )
     ):
@@ -317,6 +426,26 @@ def _build_station_capture(
         }
         for row in members
     ]
+    receipt_set_sha = content_sha256(station_receipts)
+    family_curve = build_native_family_temperature_curve({
+        "station_id": station,
+        "event_date": event_date,
+        "settlement_timezone": scope["settlement_timezone"],
+        "ensemble_system_id": SYSTEM_ID,
+        "independence_family_id": "ECMWF",
+        "available_at_utc": query_at.isoformat().replace("+00:00", "Z"),
+        "source_field_receipt_set_sha256": receipt_set_sha,
+        "points": [
+            {
+                "valid_time_utc": (run_init + timedelta(hours=step)).isoformat().replace("+00:00", "Z"),
+                "temperature_c": sum(
+                    values_by_member[member_id][step]
+                    for member_id in values_by_member
+                ) / len(values_by_member),
+            }
+            for step in steps
+        ],
+    })
     identity = {
         "schema": SCHEMA,
         "station_id": station,
@@ -336,6 +465,7 @@ def _build_station_capture(
         ),
         "members": members,
         "member_set_sha256": content_sha256(member_identity),
+        "family_temperature_curve": family_curve,
         "bucket_intervals": frozen_intervals,
         "bucket_contract_sha256": content_sha256(frozen_intervals),
         "raw_bucket_probabilities": {
@@ -353,9 +483,7 @@ def _build_station_capture(
             for bucket, bounds in frozen_intervals.items()
         },
         "field_receipt_count": len(station_receipts),
-        "field_receipt_set_sha256": content_sha256(
-            station_receipts
-        ),
+        "field_receipt_set_sha256": receipt_set_sha,
         "field_receipts": station_receipts,
         "archive_query_at_utc": query_at.isoformat().replace(
             "+00:00", "Z"
@@ -400,6 +528,13 @@ def capture_ecmwf_station_days(
         < MIN_FREE_BYTES
     ):
         raise ContractError("ecmwf_archive_scope_invalid")
+    try:
+        requested_workers = int(
+            os.environ.get("ECMWF_ARCHIVE_MAX_WORKERS", str(MAX_DOWNLOAD_WORKERS))
+        )
+    except ValueError as exc:
+        raise ContractError("ecmwf_archive_worker_count_invalid") from exc
+    workers = max(1, min(MAX_DOWNLOAD_WORKERS, requested_workers))
     scopes: dict[str, dict[str, Any]] = {}
     for raw in station_scopes:
         station = str(raw.get("station_id") or "").strip().upper()
@@ -439,9 +574,9 @@ def capture_ecmwf_station_days(
     })
     if not union_steps or len(union_steps) > 17:
         raise ContractError("ecmwf_archive_union_grid_invalid")
-    member_values = {
+    member_values: dict[str, dict[str, dict[int, float]]] = {
         station: {
-            f"perturbed_{number:02d}": []
+            f"perturbed_{number:02d}": {}
             for number in range(1, EXPECTED_MEMBER_COUNT + 1)
         }
         for station in scopes
@@ -469,7 +604,7 @@ def capture_ecmwf_station_days(
     # for message ranges instead of serializing 15-17 independent objects.
     # Results are sorted before parsing so output identity remains stable.
     with ThreadPoolExecutor(
-        max_workers=MAX_DOWNLOAD_WORKERS,
+        max_workers=workers,
         thread_name_prefix="ecmwf-index",
     ) as index_executor:
         index_futures = [
@@ -497,7 +632,7 @@ def capture_ecmwf_station_days(
                 row,
             ))
     with ThreadPoolExecutor(
-        max_workers=MAX_DOWNLOAD_WORKERS,
+        max_workers=workers,
         thread_name_prefix="ecmwf-download",
     ) as executor:
         pending: dict[Any, int] = {}
@@ -521,7 +656,7 @@ def capture_ecmwf_station_days(
             pending[future] = int(row["step"])
             return True
 
-        for _index in range(MAX_DOWNLOAD_WORKERS):
+        for _index in range(workers):
             submit_next()
         while pending:
             done, _not_done = wait(
@@ -551,11 +686,11 @@ def capture_ecmwf_station_days(
                 )
                 member_id = str(receipt["member_id"])
                 for station, value in decoded.items():
-                    member_values[station][member_id].append(value)
+                    member_values[station][member_id][step] = value
                 receipts.append(receipt)
                 assert_process_memory_budget(
                     projected_bytes=(
-                        MAX_DOWNLOAD_WORKERS * MAX_MESSAGE_BYTES
+                        workers * MAX_MESSAGE_BYTES
                     )
                 )
                 submit_next()

@@ -30,6 +30,7 @@ from .resource_bounds import (
     assert_process_memory_budget,
     bounded_json_bytes,
 )
+from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 
 
 STORE_SCHEMA = "bayes_basket_target_forward_observation_store_v2"
@@ -1085,8 +1086,12 @@ def _validate_source_label(
     truth = source.execute(
         "SELECT truth_id,station_id,local_date,revision_no,content_sha256,"
         "authority_scope,qc_status,timestamps_complete "
-        "FROM calibration_station_daily_high_truth WHERE truth_id=? LIMIT 2",
-        (label["truth_id"],),
+        "FROM calibration_station_daily_high_truth "
+        "WHERE truth_id=? AND source_lane='AWC' AND source_role=? LIMIT 2",
+        (
+            label["truth_id"],
+            CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+        ),
     ).fetchall()
     if len(truth) != 1:
         raise ForwardObservationStoreError(

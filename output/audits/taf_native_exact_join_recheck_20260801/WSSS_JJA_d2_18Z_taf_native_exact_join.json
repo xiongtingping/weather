@@ -1,0 +1,14 @@
+{
+  "content_sha256": "3d41d34837d9e786dcc8933cd604547c8431f342b619908451fa8b12e5f62bbb",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "c26ff0fcaeee0a9fac816fc251eac85b3e67f66aa03bf1f0916b43631ead4605",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Asia/Singapore",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "WSSS"
+}

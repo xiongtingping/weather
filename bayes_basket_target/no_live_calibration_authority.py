@@ -32,7 +32,7 @@ from .model_sources import (
 SCHEMA = "bayes_basket_target_no_live_calibration_authority_v1"
 AUTHORITY = "PRODUCTION_NO_LIVE_ONLY"
 FORMAL_TRUTH = "FORMAL_STATION_LANE_TRUTH"
-TEMPORARY_AWC_TRUTH = "TEMPORARY_AWC_CALIBRATION_LABEL"
+HISTORICAL_AWC_REPLAY = "AWC_HISTORICAL_REPLAY_INGRESS"
 
 
 def _ensemble_identity(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -177,29 +177,16 @@ def _validate_truth_authority_bindings(
     if not isinstance(checks, Mapping) or not isinstance(boundary, Mapping):
         raise ContractError("no_live_calibration_truth_authority_missing")
     canonical_only = checks.get("truth_source_canonical_ingress") is True
-    temporary_explicit = (
-        checks.get("temporary_awc_calibration_label_explicit") is True
-    )
-    if not canonical_only and (
-        checks.get("truth_source_no_live_calibration_authority_valid")
-        is not True
-        or not temporary_explicit
-    ):
+    temporary_explicit = checks.get(
+        "temporary_awc_calibration_label_explicit"
+    ) is True
+    # Temporary AMSC/AWC labels are retired audit facts.  They cannot be used
+    # to construct a new calibration artifact or activation, even in no-live.
+    if temporary_explicit:
+        raise ContractError("no_live_calibration_temporary_awc_retired")
+    if not canonical_only:
         raise ContractError("no_live_calibration_truth_authority_invalid")
-    if temporary_explicit and any(
-        boundary.get(key) is not False
-        for key in (
-            "enters_realtime_truth",
-            "enters_p1",
-            "enters_hard_no",
-        )
-    ):
-        raise ContractError(
-            "no_live_calibration_temporary_awc_boundary_invalid"
-        )
     raw_bindings = evidence.get("truth_authority_bindings")
-    if raw_bindings in (None, []) and canonical_only:
-        return [], []
     if not isinstance(raw_bindings, list) or any(
         not isinstance(row, Mapping) for row in raw_bindings
     ):
@@ -226,35 +213,20 @@ def _validate_truth_authority_bindings(
         if (
             not station
             or station in by_station
-            or authority not in {FORMAL_TRUTH, TEMPORARY_AWC_TRUTH}
+            or authority != FORMAL_TRUTH
+            or str(row.get("source_lane") or "").upper() != "AWC"
+            or str(row.get("source_role") or "") != HISTORICAL_AWC_REPLAY
+            or str(row.get("authority_scope") or "") != AUTHORITY
+            or not str(row.get("settlement_timezone") or "").strip()
+            or row.get("reference_only") is not False
+            or len(str(row.get("dataset_content_sha256") or "")) != 64
         ):
             raise ContractError(
                 "no_live_calibration_truth_authority_binding_scope_invalid"
             )
-        if authority == TEMPORARY_AWC_TRUTH:
-            if (
-                not temporary_explicit
-                or str(row.get("source_lane") or "").upper() != "AWC"
-                or row.get(
-                    "replacement_required_when_canonical_history_available"
-                )
-                is not True
-                or any(
-                    row.get(key) is not False
-                    for key in (
-                        "enters_realtime_truth",
-                        "enters_p1",
-                        "enters_hard_no",
-                    )
-                )
-            ):
-                raise ContractError(
-                    "no_live_calibration_temporary_awc_binding_invalid"
-                )
-            temporary_stations.append(station)
         by_station[station] = row
         bindings.append(row)
-    if artifact_stations - set(by_station):
+    if artifact_stations != set(by_station):
         raise ContractError(
             "no_live_calibration_truth_authority_binding_incomplete"
         )

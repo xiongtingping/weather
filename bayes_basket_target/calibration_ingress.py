@@ -12,6 +12,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .activation import assert_target_database_owner
 from .contracts import (
@@ -28,6 +29,7 @@ from .model_sources import (
     provider_source_class,
 )
 from .resource_bounds import assert_connection_target_capacity, assert_process_memory_budget
+from .settlement_truth import CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 from .ssot import production_ssot_schema_status
 
 
@@ -35,7 +37,7 @@ SCHEMA = "bayes_basket_target_calibration_evidence_v1"
 INGRESS_SCHEMA = "bayes_basket_target_calibration_base_ingress_v1"
 FORMAL_NATIVE = "FORMAL_NATIVE_ELIGIBLE"
 NO_LIVE_REPLAY = "NO_LIVE_REPLAY_CANDIDATE"
-TEMPORARY_AWC_LABEL = "TEMPORARY_AWC_CALIBRATION_LABEL"
+HISTORICAL_AWC_REPLAY = "AWC_HISTORICAL_REPLAY_INGRESS"
 MAX_STATIONS = 512
 MAX_TRUTH_ROWS = 20_000
 MAX_MODEL_ROWS = 60_000
@@ -121,14 +123,56 @@ def _model_authority(row: Mapping[str, Any]) -> str:
     return NO_LIVE_REPLAY
 
 
+def _truth_authority(row: Mapping[str, Any]) -> str:
+    """Derive truth authority from the exclusive AWC role/lane contract."""
+
+    source_lane = _text(row, "source_lane").upper()
+    if source_lane != "AWC":
+        raise ContractError("calibration_truth_source_lane_invalid")
+    source_role = _text(row, "source_role")
+    if source_role == CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1:
+        supplied_scope = _text(row, "authority_scope", allow_empty=True)
+        if supplied_scope and supplied_scope != FORMAL_NATIVE:
+            raise ContractError("formal_awc_truth_scope_invalid")
+        if not (
+            bool(row.get("timestamps_complete"))
+            and _text(row, "received_at_utc", allow_empty=True)
+        ):
+            raise ContractError("formal_awc_truth_evidence_incomplete")
+        return FORMAL_NATIVE
+    if source_role == HISTORICAL_AWC_REPLAY:
+        if _text(row, "authority_scope") != NO_LIVE_REPLAY:
+            raise ContractError("historical_awc_replay_truth_scope_invalid")
+        return NO_LIVE_REPLAY
+    raise ContractError("calibration_truth_source_role_invalid")
+
+
 def ingest_calibration_base_facts(
     conn: sqlite3.Connection,
     packet: Mapping[str, Any],
     *,
     commit: bool = False,
+    finalize_transaction: bool = True,
+) -> dict[str, Any]:
+    """Retired public writer; legacy calibration packets are audit-only."""
+
+    del conn, packet, commit, finalize_transaction
+    raise ContractError("calibration_legacy_ingress_retired")
+
+
+def _retired_ingest_calibration_base_facts_implementation(
+    conn: sqlite3.Connection,
+    packet: Mapping[str, Any],
+    *,
+    commit: bool = False,
+    finalize_transaction: bool = True,
 ) -> dict[str, Any]:
     """Validate and atomically append canonical truth/model/residual facts."""
 
+    if commit and not finalize_transaction and not conn.in_transaction:
+        # Releasing a top-level SQLite savepoint commits it.  A staged result
+        # is only truthful when a caller owns an actual outer transaction.
+        raise ContractError("calibration_ingress_outer_transaction_required")
     if not isinstance(packet, Mapping) or packet.get("schema") != SCHEMA:
         raise ContractError("calibration_evidence_schema_invalid")
     temporal = packet.get("temporal_boundary")
@@ -142,25 +186,12 @@ def ingest_calibration_base_facts(
     if not isinstance(checks, Mapping):
         raise ContractError("calibration_truth_checks_missing")
     canonical_truth = checks.get("truth_source_canonical_ingress") is True
-    temporary_awc_truth = (
-        checks.get("temporary_awc_calibration_label_explicit") is True
-    )
-    if not canonical_truth and not temporary_awc_truth:
+    if not canonical_truth:
         raise ContractError("calibration_truth_authority_required")
     if not isinstance(boundary, Mapping) or boundary.get("calls_order_gateway") is not False:
         raise ContractError("calibration_gateway_boundary_invalid")
     if boundary.get("places_orders") is not False or boundary.get("live_order_authorized") is not False:
         raise ContractError("calibration_live_boundary_invalid")
-    if temporary_awc_truth and any(
-        boundary.get(key) is not False
-        for key in (
-            "enters_realtime_truth",
-            "enters_p1",
-            "enters_hard_no",
-        )
-    ):
-        raise ContractError("temporary_awc_calibration_boundary_invalid")
-
     stations = _rows(packet, "station_registry", limit=MAX_STATIONS)
     truths = _rows(packet, "truth_evidence", limit=MAX_TRUTH_ROWS)
     truth_references = _optional_rows(
@@ -194,10 +225,35 @@ def ingest_calibration_base_facts(
             raise ContractError("calibration_station_duplicate")
         station_ids.add(station_id)
         station_timezones[station_id] = _text(row, "timezone_name")
-        if _text(row, "source_lane").upper() not in {"AMSC", "AWC"}:
+        if _text(row, "source_lane").upper() != "AWC":
             raise ContractError("calibration_station_source_lane_invalid")
-        if _text(row, "source_role") != "CANONICAL_AMSC_AWC_INGRESS":
+        if (
+            _text(row, "source_role")
+            != CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+        ):
             raise ContractError("calibration_station_source_role_invalid")
+
+    # The registry row is immutable metadata; the market binding is the
+    # canonical settlement-timezone authority when present.  Never silently
+    # guess across a mismatch: a non-unique/invalid binding fails closed.
+    if station_ids:
+        placeholders = ",".join("?" for _ in station_ids)
+        binding_rows = conn.execute(
+            "SELECT station_id,settlement_timezone,market_registry_timezone_count "
+            "FROM calibration_station_market_timezone_binding "
+            "WHERE station_id IN (" + placeholders + ")",
+            tuple(sorted(station_ids)),
+        ).fetchall()
+        for binding in binding_rows:
+            station_id = str(binding[0]).strip()
+            timezone_name = str(binding[1]).strip()
+            if int(binding[2] or 0) != 1 or not timezone_name:
+                raise ContractError("calibration_station_timezone_binding_invalid")
+            try:
+                ZoneInfo(timezone_name)
+            except ZoneInfoNotFoundError as exc:
+                raise ContractError("calibration_station_timezone_binding_invalid") from exc
+            station_timezones[station_id] = timezone_name
 
     truth_by_id: dict[str, dict[str, Any]] = {}
     for row in truths:
@@ -205,7 +261,6 @@ def ingest_calibration_base_facts(
         truth_id = _text(row, "truth_id")
         if truth_id in truth_by_id:
             raise ContractError("calibration_truth_duplicate")
-        truth_by_id[truth_id] = row
         station_id = _text(row, "station_id")
         if station_id not in station_ids:
             raise ContractError("calibration_truth_station_missing")
@@ -217,20 +272,10 @@ def ingest_calibration_base_facts(
             as_of_utc=as_of_utc,
             target_timezone=target_timezone,
         )
-        source_role = _text(row, "source_role")
-        if source_role not in {
-            "CANONICAL_AMSC_AWC_INGRESS",
-            TEMPORARY_AWC_LABEL,
-        }:
-            raise ContractError("calibration_truth_source_role_invalid")
-        source_lane = _text(row, "source_lane").upper()
-        if source_lane not in {"AMSC", "AWC"}:
-            raise ContractError("calibration_truth_source_lane_invalid")
-        if source_role == TEMPORARY_AWC_LABEL:
-            if not temporary_awc_truth or source_lane != "AWC":
-                raise ContractError(
-                    "temporary_awc_calibration_truth_scope_invalid"
-                )
+        truth_by_id[truth_id] = {
+            **row,
+            "authority_scope": _truth_authority(row),
+        }
 
     for reference in truth_references:
         reference_identity = {
@@ -247,7 +292,7 @@ def ingest_calibration_base_facts(
         if truth_id in truth_by_id:
             raise ContractError("calibration_truth_reference_duplicate")
         existing = conn.execute(
-            "SELECT truth_id,station_id,local_date,official_tmax_c,"
+            "SELECT truth_id,station_id,local_date,settlement_timezone,official_tmax_c,"
             "source_lane,settlement_definition,revision_no,qc_status,"
             "source_role,authority_scope,content_sha256 "
             "FROM calibration_station_daily_high_truth "
@@ -261,6 +306,7 @@ def ingest_calibration_base_facts(
             truth_id,
             _text(reference, "station_id"),
             _text(reference, "local_date"),
+            _text(reference, "target_timezone"),
             float(reference["official_tmax_c"]),
             _text(reference, "source_lane").upper(),
             _text(reference, "settlement_definition"),
@@ -275,43 +321,59 @@ def ingest_calibration_base_facts(
         station_id = expected[1]
         if station_id not in station_ids:
             raise ContractError("calibration_truth_reference_station_missing")
+        if expected[3] != station_timezones[station_id]:
+            raise ContractError("calibration_truth_reference_settlement_timezone_mismatch")
         assert_event_day_closed(
             expected[2],
             as_of_utc=as_of_utc,
             target_timezone=station_timezones[station_id],
         )
-        if expected[7] != "ACCEPTED":
+        if expected[8] != "ACCEPTED":
             raise ContractError("calibration_truth_reference_qc_invalid")
-        if expected[8] not in {
-            "CANONICAL_AMSC_AWC_INGRESS",
-            TEMPORARY_AWC_LABEL,
-        }:
-            raise ContractError("calibration_truth_reference_role_invalid")
-        if (
-            expected[8] == TEMPORARY_AWC_LABEL
-            and (
-                not temporary_awc_truth
-                or expected[4] != "AWC"
-                or expected[9] != NO_LIVE_REPLAY
-            )
-        ):
-            raise ContractError(
-                "temporary_awc_calibration_truth_reference_invalid"
-            )
+        try:
+            derived_authority = _truth_authority({
+                "source_lane": expected[5],
+                "source_role": expected[9],
+                "authority_scope": expected[10],
+                # A referenced formal row has already been content-verified
+                # against the SSOT.  Its stored formal scope is its complete
+                # evidence contract for this incremental binding.
+                "timestamps_complete": expected[10] == FORMAL_NATIVE,
+                "received_at_utc": "stored" if expected[10] == FORMAL_NATIVE else "",
+            })
+        except ContractError as exc:
+            if str(exc) == "calibration_truth_source_role_invalid":
+                raise ContractError("calibration_truth_reference_role_invalid") from exc
+            raise ContractError("calibration_truth_reference_authority_invalid") from exc
+        if derived_authority != expected[10]:
+            raise ContractError("calibration_truth_reference_authority_invalid")
         truth_by_id[truth_id] = {
             "truth_id": truth_id,
             "station_id": station_id,
             "local_date": expected[2],
-            "official_tmax_c": expected[3],
-            "source_lane": expected[4],
-            "settlement_definition": expected[5],
-            "revision_no": expected[6],
-            "qc_status": expected[7],
-            "source_role": expected[8],
-            "authority_scope": expected[9],
-            "content_sha256": expected[10],
-            "target_timezone": station_timezones[station_id],
+            "official_tmax_c": expected[4],
+            "source_lane": expected[5],
+            "settlement_definition": expected[6],
+            "revision_no": expected[7],
+            "qc_status": expected[8],
+            "source_role": expected[9],
+            "authority_scope": expected[10],
+            "content_sha256": expected[11],
+            "target_timezone": expected[3],
         }
+
+    if any(
+        _text(row, "source_role") == HISTORICAL_AWC_REPLAY
+        for row in truth_by_id.values()
+    ) and any(
+        boundary.get(key) is not False
+        for key in (
+            "enters_realtime_truth",
+            "enters_p1",
+            "enters_hard_no",
+        )
+    ):
+        raise ContractError("historical_awc_replay_boundary_invalid")
 
     model_by_id: dict[str, dict[str, Any]] = {}
     scope_models: dict[tuple[str, str, str, str], set[str]] = defaultdict(set)
@@ -417,6 +479,11 @@ def ingest_calibration_base_facts(
                 raise ContractError(
                     "calibration_model_reference_content_mismatch"
                 )
+        persisted_timezone = str(db_row.get("settlement_timezone") or "").strip()
+        if not persisted_timezone:
+            raise ContractError("calibration_model_reference_settlement_timezone_missing")
+        if _text(reference, "target_timezone") != persisted_timezone:
+            raise ContractError("calibration_model_reference_settlement_timezone_mismatch")
         station_id = str(db_row["station_id"])
         if station_id not in station_ids:
             raise ContractError("calibration_model_reference_station_missing")
@@ -431,7 +498,9 @@ def ingest_calibration_base_facts(
             not in {FORMAL_NATIVE, NO_LIVE_REPLAY}
         ):
             raise ContractError("calibration_model_reference_authority_invalid")
-        db_row["target_timezone"] = station_timezones[station_id]
+        if persisted_timezone != station_timezones[station_id]:
+            raise ContractError("calibration_model_reference_settlement_timezone_mismatch")
+        db_row["target_timezone"] = persisted_timezone
         model_by_id[model_run_id] = db_row
         scope_models[(
             station_id,
@@ -500,18 +569,10 @@ def ingest_calibration_base_facts(
                 primary_key="station_id", primary_value=values[0],
             )
         for row in truths:
-            authority = (
-                NO_LIVE_REPLAY
-                if _text(row, "source_role") == TEMPORARY_AWC_LABEL
-                else (
-                    FORMAL_NATIVE
-                    if bool(row.get("timestamps_complete"))
-                    and _text(row, "received_at_utc", allow_empty=True)
-                    else NO_LIVE_REPLAY
-                )
-            )
+            authority = _truth_authority(row)
             columns = (
-                "truth_id", "station_id", "local_date", "official_tmax_c",
+                "truth_id", "station_id", "local_date", "settlement_timezone",
+                "official_tmax_c",
                 "source_lane", "settlement_definition", "revision_no",
                 "published_at_utc", "received_at_utc", "canonical_committed_at_utc",
                 "timestamps_complete", "qc_status", "source_role",
@@ -520,6 +581,7 @@ def ingest_calibration_base_facts(
             )
             values = (
                 _text(row, "truth_id"), _text(row, "station_id"), _text(row, "local_date"),
+                _text(row, "target_timezone"),
                 float(row["official_tmax_c"]), _text(row, "source_lane").upper(),
                 _text(row, "settlement_definition"), int(row.get("revision_no", 0)),
                 row.get("published_at_utc"), row.get("received_at_utc"),
@@ -537,6 +599,7 @@ def ingest_calibration_base_facts(
             authority = _model_authority(row)
             columns = (
                 "model_run_id", "model_id", "station_id", "target_local_date",
+                "settlement_timezone",
                 "run_init_utc", "published_at_utc", "received_at_utc",
                 "timestamps_complete", "lead_bucket", "maturity_key", "run_cycle",
                 "raw_tmax_c", "settlement_definition", "provider_id", "provider_role",
@@ -548,6 +611,7 @@ def ingest_calibration_base_facts(
             values = (
                 _text(row, "model_run_id"), _text(row, "model_id").upper(),
                 _text(row, "station_id"), _text(row, "target_local_date"),
+                _text(row, "target_timezone"),
                 _text(row, "run_init_utc"), row.get("published_at_utc"),
                 row.get("received_at_utc"), int(bool(row.get("timestamps_complete"))),
                 _text(row, "lead_bucket"), _text(row, "maturity_key"),
@@ -574,7 +638,7 @@ def ingest_calibration_base_facts(
             truth = truth_by_id[_text(row, "truth_id")]
             authority = (
                 NO_LIVE_REPLAY
-                if _text(truth, "source_role") == TEMPORARY_AWC_LABEL
+                if _text(truth, "authority_scope") == NO_LIVE_REPLAY
                 else _model_authority(model)
             )
             columns = (
@@ -600,7 +664,12 @@ def ingest_calibration_base_facts(
                 columns=columns, values=values, primary_key="residual_id",
                 primary_value=values[0],
             )
-        if commit:
+        if not finalize_transaction:
+            # The canonical ingress owns the outer transaction.  Release only
+            # this nested savepoint so the projection remains atomic with the
+            # canonical_ssot_fact append.
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+        elif commit:
             conn.execute(f"RELEASE SAVEPOINT {savepoint}")
         else:
             conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
@@ -611,8 +680,12 @@ def ingest_calibration_base_facts(
         raise
     return {
         "schema": INGRESS_SCHEMA,
-        "state": "COMMITTED" if commit else "VALIDATED_NO_WRITE",
-        "counts": counts if commit else {key: 0 for key in counts},
+        "state": (
+            "PENDING_OUTER_COMMIT"
+            if not finalize_transaction
+            else "COMMITTED" if commit else "VALIDATED_NO_WRITE"
+        ),
+        "counts": counts if (commit or not finalize_transaction) else {key: 0 for key in counts},
         "validated_counts": {
             "stations": len(stations), "truths": len(truths),
             "truth_references": len(truth_references),
@@ -622,8 +695,8 @@ def ingest_calibration_base_facts(
         },
         "formal_native_model_rows": sum(_model_authority(row) == FORMAL_NATIVE for row in models),
         "no_live_replay_model_rows": sum(_model_authority(row) == NO_LIVE_REPLAY for row in models),
-        "temporary_awc_truth_rows": sum(
-            _text(row, "source_role") == TEMPORARY_AWC_LABEL
+        "historical_awc_replay_truth_rows": sum(
+            _text(row, "source_role") == HISTORICAL_AWC_REPLAY
             for row in truths
         ),
         "evaluable_multi_model_scope_count": evaluable_multi_model_scope_count,
@@ -638,6 +711,7 @@ __all__ = [
     "FORMAL_NATIVE",
     "INGRESS_SCHEMA",
     "NO_LIVE_REPLAY",
-    "TEMPORARY_AWC_LABEL",
+    "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
+    "HISTORICAL_AWC_REPLAY",
     "ingest_calibration_base_facts",
 ]

@@ -151,7 +151,8 @@ mixture 的非零支持。它不修改物理 state、不越过 reported-X 硬下
   `0.5268` 升至 `1.0`；单进程 compose p95 为 `968.63ms`。NLL/CRPS、strict-as-of
   样本量、参数校正绑定和独立日回放量均只进入 `non_blocking_diagnostics`，不再进入
   `blocking_gates`。
-- 组合器已经作为无下单 worker 嵌入现有 `com.weather.reported_trajectory_no` 服务；当前旧
+- 组合器已经作为无下单 worker 嵌入当前 `com.weather.weather_basket_yes` 服务；退役的
+  `com.weather.reported_trajectory_no` 不再是运行依赖；当前旧
   activation 下，它在打开数据库或写本地原始归档前直接休眠。不存在第四个服务；硬 NO
   lane 仍不读任何 Bayes/TAF/NWP，篮子只读已物化且带 lineage 的 `P0/P1`、regime 与 CLOB WS；
 - 旧 monitor、独立 SPECI watcher 和 fast-lane 路由不再属于生产 route contract；运行时
@@ -204,7 +205,8 @@ mixture 的非零支持。它不修改物理 state、不越过 reported-X 硬下
   AMSC TAF/AMD 首次 Tier-A manifest 为 `c54eb2d462995f20e9b81f48f7202be56b4783b7d46e204354c01972fce1c3a4`，
   ECMWF 2026-07-20 完整曲线/P1 已复用并保持 `places_orders=false`。release bundle 已在
   运行时硬门全部通过后生成；下一步是在 writer quiescent 下原子切换 activation，并重启同一
-  `com.weather.reported_trajectory_no` 服务使物理 composer 生效。
+  `com.weather.weather_basket_yes` 服务使物理 composer 生效。旧
+  `com.weather.reported_trajectory_no` label 禁止加载。
 
 可复验命令：
 

@@ -2,17 +2,28 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "c803d186104321d71af5a7431ddffd45228cb1a699e28d399286db7fe99639f8",
+  "content_sha256": "b6b1da78864fd647d8cc1629efd10ccc4b6461ab7119d9d5ecdbfcca873ff898",
   "end_date": "2026-07-29",
-  "excluded_sample_count": 0,
-  "excluded_samples": [],
+  "excluded_sample_count": 1,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-27",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    }
+  ],
   "provider": "NOAA Aviation Weather Center",
   "resource_bounds": {
     "actual_response_bytes": 154494,
@@ -21,7 +32,7 @@
     "max_response_bytes": 2097152,
     "max_total_response_bytes": 67108864
   },
-  "sample_count": 8,
+  "sample_count": 7,
   "samples": [
     {
       "decision_anchor_utc": "2026-07-22T07:00:00Z",
@@ -32,12 +43,14 @@
         "taf_response_sha256": "666597ce91b69519b55d6d21484852ca07601aaa4b2309d1085ddcb957b2ad8e",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-22T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-79777340c5ae543f30518ef6e76fe98d",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-23T06:00:00Z",
         "start_utc": "2026-07-22T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-22T06:48:06Z",
@@ -286,8 +299,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 27.0
-      }
+        "tmax_c": 27.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T07:00:00Z",
@@ -298,12 +323,14 @@
         "taf_response_sha256": "2870ae7b680c4cbd16af95476acd02ac5ce1c3a5f2127da302f922309eeec5c2",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-23T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-81b089f494e2bcb4619762046b0a2596",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-24T06:00:00Z",
         "start_utc": "2026-07-23T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-23T06:51:03Z",
@@ -538,8 +565,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 26.0
-      }
+        "tmax_c": 26.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T07:00:00Z",
@@ -550,12 +589,14 @@
         "taf_response_sha256": "e5a7b7d88bb5d5188ebcfa81413f04b4a16f3b2363ea35dd1541255723c00040",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-24T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-f8e28238ae51f656ce0bee6ba146f815",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-25T06:00:00Z",
         "start_utc": "2026-07-24T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-24T06:48:03Z",
@@ -818,8 +859,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 27.0
-      }
+        "tmax_c": 27.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-25T07:00:00Z",
@@ -830,12 +883,14 @@
         "taf_response_sha256": "656b3dc333423aba53fb84ec49611ab15e9795564fba70a1fa1d83695650e9b4",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-25T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-bd986b46b0d0cad0554605dd462e1a5e",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-26T06:00:00Z",
         "start_utc": "2026-07-25T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-25T06:54:03Z",
@@ -1077,8 +1132,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 27.0
-      }
+        "tmax_c": 27.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T07:00:00Z",
@@ -1089,12 +1156,14 @@
         "taf_response_sha256": "11525f977cec120338166239ebb3aaf13463cfd4c53e43dec35b912118a73bbc",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-26T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-484f9f922d4f330c08e43d519aba0293",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-27T06:00:00Z",
         "start_utc": "2026-07-26T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-26T06:48:04Z",
@@ -1336,274 +1405,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 24.0
-      }
-    },
-    {
-      "decision_anchor_utc": "2026-07-27T07:00:00Z",
-      "event_date": "2026-07-27",
-      "receipts": {
-        "metar_response_sha256": "869e85d056ab69922ae2520704cd880dc2ddb61d80640f5f04096fd8b0ead6d9",
-        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=MMMX&format=json&taf=false&hours=24&date=20260728_0600",
-        "taf_response_sha256": "87402989927a8c501cae9d43bb2807e78fe12d92cf2ab620b522f5f2935a1fd7",
-        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-27T07%3A00%3A00Z"
+        "tmax_c": 24.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
       },
-      "sample_id": "taf-sample-a1873270781a350bd56acbe437fe844d",
-      "settlement_timezone": "America/Mexico_City",
-      "settlement_window": {
-        "end_utc": "2026-07-28T06:00:00Z",
-        "start_utc": "2026-07-27T06:00:00Z"
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
       },
-      "station_id": "MMMX",
-      "taf": {
-        "available_time_utc": "2026-07-27T07:00:03Z",
-        "cloud_cover_fraction": 0.4431818181818182,
-        "issue_time_utc": "2026-07-27T06:57:00Z",
-        "precipitation_probability": 0.0,
-        "raw_taf": "TAF COR MMMX 270657Z 2706/2806 26005KT P6SM SCT030 BKN100 TX27/2721Z TN14/2712Z BECMG 2708/2710 SCT020 TEMPO 2710/2714 BKN020 FM271800 12010KT P6SM SCT025 FM272100 12010KT P6SM BKN020CB TEMPO 2723/2803 3SM TSRA FM280400 03005KT 6SM HZ BKN020 OVC080",
-        "raw_taf_sha256": "f2dce41898df1f530f7e819f008957d79dbf5a78b6d83c211db9bc5315c6e169",
-        "tx_c": 27.0,
-        "tx_valid_at_utc": "2026-07-27T21:00:00Z",
-        "wind_speed_mps": 2.806058181818182
-      },
-      "truth": {
-        "observation_count": 33,
-        "observations": [
-          {
-            "observed_at_utc": "2026-07-27T06:42:00Z",
-            "raw_report": "METAR MMMX 270642Z 26005KT 10SM SCT030 BKN100 17/10 A3039 NOSIG RMK 8/530 ISOL CI",
-            "received_at_utc": "2026-07-27T07:00:19.631Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T07:41:00Z",
-            "raw_report": "METAR MMMX 270741Z 28006KT 10SM SCT100 16/10 A3037 NOSIG RMK 8/030 ISOL CI",
-            "received_at_utc": "2026-07-27T08:00:12.090Z",
-            "report_type": "METAR",
-            "temperature_c": 16.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T08:43:00Z",
-            "raw_report": "METAR MMMX 270843Z 30007KT 10SM FEW100 16/10 A3036 NOSIG RMK SLP098 57012 955 8/030 ISOL CI",
-            "received_at_utc": "2026-07-27T09:00:19.943Z",
-            "report_type": "METAR",
-            "temperature_c": 16.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T09:42:00Z",
-            "raw_report": "METAR MMMX 270942Z 27006KT 10SM FEW100 SCT250 16/10 A3035 NOSIG RMK 8/032",
-            "received_at_utc": "2026-07-27T10:00:20.617Z",
-            "report_type": "METAR",
-            "temperature_c": 16.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T10:42:00Z",
-            "raw_report": "METAR MMMX 271042Z 07005KT 9SM FEW100 SCT250 15/10 A3034 NOSIG RMK 8/038 HZY",
-            "received_at_utc": "2026-07-27T11:00:05.787Z",
-            "report_type": "METAR",
-            "temperature_c": 15.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T11:45:00Z",
-            "raw_report": "METAR MMMX 271145Z 06003KT 9SM BKN250 14/10 A3034 NOSIG RMK SLP137 57003 954 8/008 ISOL AC HZY",
-            "received_at_utc": "2026-07-27T11:59:33.829Z",
-            "report_type": "METAR",
-            "temperature_c": 14.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T12:45:00Z",
-            "raw_report": "METAR MMMX 271245Z 06006KT 8SM OVC250 13/11 A3035 NOSIG RMK 8/007 BINOVC HZY",
-            "received_at_utc": "2026-07-27T13:00:16.903Z",
-            "report_type": "METAR",
-            "temperature_c": 13.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T13:44:00Z",
-            "raw_report": "METAR MMMX 271344Z 07005KT 8SM OVC250 15/11 A3036 NOSIG RMK 8/007 ISOL AC HZY",
-            "received_at_utc": "2026-07-27T14:02:14.512Z",
-            "report_type": "METAR",
-            "temperature_c": 15.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T14:43:00Z",
-            "raw_report": "METAR MMMX 271443Z 04004KT 7SM OVC250 17/11 A3036 NOSIG RMK SLP129 52004 968 8/007 ISOL CU HZY",
-            "received_at_utc": "2026-07-27T15:02:04.728Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T15:45:00Z",
-            "raw_report": "METAR MMMX 271545Z 09005KT 7SM OVC250 19/11 A3037 NOSIG RMK 8/007 ISOL CU HZY",
-            "received_at_utc": "2026-07-27T16:00:16.774Z",
-            "report_type": "METAR",
-            "temperature_c": 19.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T16:46:00Z",
-            "raw_report": "METAR MMMX 271646Z 00000KT 7SM FEW015 OVC250 20/11 A3037 NOSIG RMK 8/107 HZY",
-            "received_at_utc": "2026-07-27T17:00:21.869Z",
-            "report_type": "METAR",
-            "temperature_c": 20.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T17:44:00Z",
-            "raw_report": "METAR MMMX 271744Z VRB03KT 6SM FEW025 SCT100 OVC250 21/11 A3036 NOSIG RMK SLP115 52002 956 8/237 HZY",
-            "received_at_utc": "2026-07-27T18:02:15.791Z",
-            "report_type": "METAR",
-            "temperature_c": 21.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T18:31:00Z",
-            "raw_report": "SPECI MMMX 271831Z 06008KT 7SM SCT025TCU BKN250 23/11 A3034 NOSIG RMK 8/208 ISOL AC HZY",
-            "received_at_utc": "2026-07-27T18:32:08.224Z",
-            "report_type": "SPECI",
-            "temperature_c": 23.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T18:42:00Z",
-            "raw_report": "METAR MMMX 271842Z 07012KT 7SM SCT025TCU BKN250 23/10 A3034 NOSIG RMK 8/208 DSNT CB NE S SW HZY",
-            "received_at_utc": "2026-07-27T19:00:21.464Z",
-            "report_type": "METAR",
-            "temperature_c": 23.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T19:42:00Z",
-            "raw_report": "METAR MMMX 271942Z 08008KT 7SM SCT025TCU BKN100 BKN250 22/10 A3032 NOSIG RMK 8/272 DSNT CB AND PCPN S SW HZY",
-            "received_at_utc": "2026-07-27T20:00:19.293Z",
-            "report_type": "METAR",
-            "temperature_c": 22.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T20:45:00Z",
-            "raw_report": "METAR MMMX 272045Z 05008KT 7SM VCRA SCT020CB BKN080 BKN220 22/09 A3030 NOSIG RMK SLP093 57020 953 8/363 HZY PCPN W SW",
-            "received_at_utc": "2026-07-27T21:00:23.308Z",
-            "report_type": "METAR",
-            "temperature_c": 22.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T21:22:00Z",
-            "raw_report": "SPECI MMMX 272122Z 02005KT 7SM SCT020CB BKN080 BKN220 23/08 A3030 NOSIG RMK 8/363 HZY PCPN W SW BLDU",
-            "received_at_utc": "2026-07-27T21:24:06.174Z",
-            "report_type": "SPECI",
-            "temperature_c": 23.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T21:26:00Z",
-            "raw_report": "SPECI MMMX 272126Z 06020KT 7SM SCT020CB BKN080 BKN220 21/09 A3029 NOSIG RMK 8/363 HZY PCPN W SW BLDU",
-            "received_at_utc": "2026-07-27T21:27:03.753Z",
-            "report_type": "SPECI",
-            "temperature_c": 21.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T21:40:00Z",
-            "raw_report": "METAR MMMX 272140Z 05015G25KT 7SM VCRA BKN015CB BKN080 OVC220 20/09 A3028 NOSIG RMK 8/963 HZY PCPN S SE BLDU",
-            "received_at_utc": "2026-07-27T22:00:23.905Z",
-            "report_type": "METAR",
-            "temperature_c": 20.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T22:20:00Z",
-            "raw_report": "SPECI MMMX 272220Z 10010KT 7SM -RA BKN015CB OVC080 18/11 A3028 NOSIG RMK 8/96/ HZY RAB20",
-            "received_at_utc": "2026-07-27T22:22:08.593Z",
-            "report_type": "SPECI",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T22:25:00Z",
-            "raw_report": "SPECI MMMX 272225Z 10010KT 7SM -TSRA BKN015CB OVC080 18/11 A3028 NOSIG RMK 8/96/ HZY OCNL LTGICCG S TSB25",
-            "received_at_utc": "2026-07-27T22:26:10.172Z",
-            "report_type": "SPECI",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T22:42:00Z",
-            "raw_report": "SPECI MMMX 272242Z 08011KT 7SM TSRA BKN015CB OVC080 18/10 A3028 NOSIG RMK 8/96/ HZY OCNL LTGICCG S RAB42",
-            "received_at_utc": "2026-07-27T22:43:02.768Z",
-            "report_type": "SPECI",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T22:43:00Z",
-            "raw_report": "METAR MMMX 272243Z 08011KT 7SM TSRA BKN015CB OVC080 18/10 A3028 NOSIG RMK 60005 8/96/ HZY OCNL LTGICCG S",
-            "received_at_utc": "2026-07-27T23:00:19.725Z",
-            "report_type": "METAR",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T22:59:00Z",
-            "raw_report": "SPECI MMMX 272259Z 09004KT 7SM TS BKN015CB OVC080 17/11 A3028 NOSIG RMK 8/96/ HZY OCNL LTGICCG S OCNL DROPS RAE58",
-            "received_at_utc": "2026-07-27T23:00:15.754Z",
-            "report_type": "SPECI",
-            "temperature_c": 17.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T23:22:00Z",
-            "raw_report": "SPECI MMMX 272322Z 08006KT 7SM -RA BKN015CB BKN080 OVC220 18/11 A3028 NOSIG RMK 8/963 HZY BINOVC RAB21 TSE07",
-            "received_at_utc": "2026-07-27T23:24:04.672Z",
-            "report_type": "SPECI",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T23:40:00Z",
-            "raw_report": "SPECI MMMX 272340Z 08005KT 8SM SCT020 BKN080 OVC220 18/11 A3029 NOSIG RMK 8/463 HZY RAE40",
-            "received_at_utc": "2026-07-27T23:41:05.898Z",
-            "report_type": "SPECI",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-27T23:45:00Z",
-            "raw_report": "METAR MMMX 272345Z 08005KT 8SM SCT020 BKN080 OVC220 18/11 A3029 NOSIG RMK SLP113 57005 960 60005 8/463 HZY BINOVC",
-            "received_at_utc": "2026-07-28T00:00:21.549Z",
-            "report_type": "METAR",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T00:48:00Z",
-            "raw_report": "METAR MMMX 280048Z 02004KT 8SM FEW020 SCT080 BKN220 19/10 A3029 NOSIG RMK 8/463 HZY DSNT CB SE VSBY LWR W SW",
-            "received_at_utc": "2026-07-28T01:00:18.713Z",
-            "report_type": "METAR",
-            "temperature_c": 19.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T01:45:00Z",
-            "raw_report": "METAR MMMX 280145Z COR 04006KT 8SM SCT020 BKN080 19/11 A3032 NOSIG RMK 8/530 HZY CI DSNT CB S SE",
-            "received_at_utc": "2026-07-28T01:59:37.136Z",
-            "report_type": "METAR",
-            "temperature_c": 19.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T02:43:00Z",
-            "raw_report": "METAR MMMX 280243Z 06004KT 8SM FEW020 SCT080 SCT220 18/11 A3032 NOSIG RMK SLP111 52009 965 8/532 HZY DSNT CB OCNL LTGICCG S SE",
-            "received_at_utc": "2026-07-28T03:00:22.910Z",
-            "report_type": "METAR",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T03:45:00Z",
-            "raw_report": "METAR MMMX 280345Z 18005KT 8SM SCT020 BKN080 OVC200 18/11 A3035 NOSIG RMK 8/532 HZY OCNL DROPS DSNT CB S SE",
-            "received_at_utc": "2026-07-28T04:00:31.506Z",
-            "report_type": "METAR",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T04:44:00Z",
-            "raw_report": "METAR MMMX 280444Z 22004KT 8SM FEW020 BKN080 OVC200 17/12 A3035 NOSIG RMK 8/539 HZY DSNT CB S SE",
-            "received_at_utc": "2026-07-28T05:00:16.843Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T05:51:00Z",
-            "raw_report": "METAR MMMX 280551Z 17003KT 8SM FEW020 BKN080 BKN200 17/11 A3034 NOSIG RMK SLP112 52011 964 8/539 HZY",
-            "received_at_utc": "2026-07-28T06:00:23.010Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          }
-        ],
-        "source_lane": "AWC",
-        "tmax_c": 23.0
-      }
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-28T07:00:00Z",
@@ -1614,12 +1429,14 @@
         "taf_response_sha256": "859f8e958ac6f3a0fcd8f62df99169f167f0f84a50c2532a57a55439ddb8d46c",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-28T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-86bab32700f2e25e28b04f327055ddcb",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-29T06:00:00Z",
         "start_utc": "2026-07-28T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-28T06:48:03Z",
@@ -1917,8 +1734,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 26.0
-      }
+        "tmax_c": 26.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-29T07:00:00Z",
@@ -1929,12 +1758,14 @@
         "taf_response_sha256": "5d049a87cbf3f74cba24ee71b92ae037eb1eb3f31f3c5f19e4d272411c09c4bb",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=MMMX&format=json&time=issue&date=2026-07-29T07%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-8b7cd811b51f5460d2a18d1461b52f5b",
       "settlement_timezone": "America/Mexico_City",
       "settlement_window": {
         "end_utc": "2026-07-30T06:00:00Z",
         "start_utc": "2026-07-29T06:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "MMMX",
       "taf": {
         "available_time_utc": "2026-07-29T06:51:04Z",
@@ -2197,13 +2028,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 26.0
-      }
+        "tmax_c": 26.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "America/Mexico_City",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "MMMX"
+  "station_id": "MMMX",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

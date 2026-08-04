@@ -1,0 +1,183 @@
+{
+  "as_of_utc": "2026-08-01T07:40:00Z",
+  "blocked_captures": [],
+  "boundary": {
+    "calls_order_gateway": false,
+    "live_order_authorized": false,
+    "places_orders": false,
+    "read_only_decode": true,
+    "target_only": true,
+    "writes_production_db": false
+  },
+  "checks": {
+    "calls_order_gateway": false,
+    "complete_curve_count_positive": false,
+    "decoded_points_have_coordinate_lineage": true,
+    "decoded_points_have_raw_lineage": true,
+    "icon_prepared_cache_bytes": 0,
+    "icon_prepared_payload_cache_bounded": true,
+    "native_provider_only": true,
+    "no_default_station_coordinate_fallback": true,
+    "official_ecmwf_gfs_icon_only": true,
+    "orders_submitted": 0,
+    "production_authority": false,
+    "promotion_allowed": false,
+    "writes_production_db": false
+  },
+  "curves": {
+    "all_complete": false,
+    "complete_curve_count": 0,
+    "curve_count": 1,
+    "curves": [
+      {
+        "blockers": [
+          "native_daily_curve_end_coverage_incomplete",
+          "native_daily_curve_point_count_insufficient"
+        ],
+        "coverage": {
+          "endpoint_tolerance_hours": 6.0,
+          "ends_within_hours": 18.0,
+          "first_valid_time_utc": "2026-07-31T18:00:00Z",
+          "last_valid_time_utc": "2026-07-31T18:00:00Z",
+          "max_gap_hours": null,
+          "point_count": 1,
+          "starts_within_hours": 6.0
+        },
+        "curve_sha256": "4ea9cc0b23bfa03fa0b1d32a2b4dc6bdfaa753b8dd1a07dc07a1cd6007276b4b",
+        "event_date": "2026-08-01",
+        "forecast_daily_max_c": 8.096,
+        "model_id": "ECMWF",
+        "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+        "points": [
+          {
+            "event_date": "2026-08-01",
+            "model_id": "ECMWF",
+            "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+            "provider_id": "ecmwf_aifs025_official",
+            "published_at_utc": "2026-07-31T23:28:04Z",
+            "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+            "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+            "received_at_utc": "2026-08-01T07:31:41Z",
+            "station_id": "NZWN",
+            "temperature_2m_c": 8.096,
+            "valid_time_utc": "2026-07-31T18:00:00Z"
+          }
+        ],
+        "provider_id": "ecmwf_aifs025_official",
+        "schema": "bayes_basket_target_native_model_daily_curve_v1",
+        "state": "BLOCKED_INCOMPLETE_CURVE",
+        "station_id": "NZWN",
+        "target_timezone": "Pacific/Auckland"
+      }
+    ],
+    "eligible_model_rows": [],
+    "production_authority": false,
+    "promotion_allowed": false,
+    "schema": "bayes_basket_target_native_model_daily_curve_v1",
+    "station_timezones": {
+      "NZWN": "Pacific/Auckland"
+    },
+    "target_timezone": "REGISTRY_BOUND_PER_STATION"
+  },
+  "decoded_point_count": 1,
+  "decoded_points": [
+    {
+      "coordinate_lineage": {
+        "latitude": -41.331,
+        "longitude": 174.806,
+        "registry_schema": "bayes_basket_target_station_coordinate_registry_v1",
+        "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+        "source_id": "awc_stationinfo",
+        "source_schema": "awc_stationinfo_v1",
+        "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+        "source_url": "https://aviationweather.gov/api/data/stationinfo",
+        "station_id": "NZWN"
+      },
+      "decoder_id": "eccodes_grib_get_nearest_point_temperature_2m_v1",
+      "event_date": "2026-08-01",
+      "latitude": -41.331,
+      "longitude": 174.806,
+      "model_id": "ECMWF",
+      "model_run_initialization_utc": "2026-07-31T18:00:00Z",
+      "provider_id": "ecmwf_aifs025_official",
+      "published_at_utc": "2026-07-31T23:28:04Z",
+      "raw_message_sha256": "1316ea1484135e224cc36e184e4a39b5f3ac6e6ded81bf9dfe22b2790f74d3ea",
+      "receipt_sha256": "2f2cfe5adce2f076a5f2b01fb5d3dfe6f1803f697e2c220ea83d74da47d77f06",
+      "received_at_utc": "2026-08-01T07:31:41Z",
+      "selector": "shortName=2t,typeOfLevel=heightAboveGround,level=2",
+      "station_id": "NZWN",
+      "temperature_2m_c": 8.096,
+      "valid_time_utc": "2026-07-31T18:00:00Z"
+    }
+  ],
+  "evidence_sha256": "10ce35aedf50bac7bb792d0ba0716e87b311e5b9668bb789325debc9b3d03f22",
+  "input_artifacts": [
+    {
+      "path": "/Users/xiong/weather/output/audits/bayes_basket_target_aifs_forward_runs/2026-08-01_20260731T180000Z_24a6ab55f198081b/station_arrivals/NZWN_20260731T180000Z.json",
+      "sha256": "8a47b6d5b4d96aba0144479e6572f39b2c57c6419e812d98e2f03369438194d0"
+    }
+  ],
+  "market_registry_snapshot_sha256": "6e3296367876ad05a1dac12b5e1b300e08a2f33856f8771828672da28531c3be",
+  "receipt_sha256": "21ad9485084e80e67a1e996346981b6b6c78ccd0eff4ca190568061f6aafeec0",
+  "schema": "bayes_basket_target_native_model_arrival_decode_evidence_v1",
+  "station_coordinate_registry": {
+    "registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+    "schema": "bayes_basket_target_station_coordinate_registry_v1",
+    "source_id": "awc_stationinfo",
+    "source_schema": "awc_stationinfo_v1",
+    "source_snapshot_sha256": "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6",
+    "source_url": "https://aviationweather.gov/api/data/stationinfo",
+    "station_count": 45,
+    "station_ids": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LTAC",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ]
+  },
+  "station_timezones": {
+    "NZWN": "Pacific/Auckland"
+  },
+  "target_timezone": "REGISTRY_BOUND_PER_STATION"
+}

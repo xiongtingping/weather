@@ -105,19 +105,14 @@ def _scope_match(
     liquidity_bin: str,
     strategy_version: str,
 ) -> bool:
-    def policy_stage(value: str) -> str:
-        # NWP P0 and TAF-confirmed P0-M are successive checkpoints in one
-        # pre-event strategy family; TAF must not clone policy artifacts.
-        return "P0" if value in {"P0", "P0-M"} else value
-
     return (
-        policy_stage(artifact_stage),
+        artifact_stage,
         artifact_season,
         artifact_maturity,
         artifact_liquidity,
         artifact_strategy,
     ) == (
-        policy_stage(stage),
+        stage,
         season_bin,
         maturity_bin,
         liquidity_bin,

@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT="/Users/xiong/weather"
-TARGET_LABEL="com.weather.reported_trajectory_no"
+TARGET_LABEL="com.weather.weather_basket_yes"
 MARKET_LABEL="com.weather.market_ws"
 ORDER_LABEL="com.weather.clob_order_service"
 UID_VALUE="$(id -u)"
 DOMAIN="gui/${UID_VALUE}"
-INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.reported_trajectory_no.plist"
+INSTALLED_PLIST="${HOME}/Library/LaunchAgents/com.weather.weather_basket_yes.plist"
 PAUSE="$ROOT/data/live_paused.flag"
 CONFIRM="${1:-}"
 
@@ -311,7 +311,7 @@ PY
 
 trap - ERR
 echo "prepared_supersession_no_live_ok"
-echo "reported_trajectory_no_pid=$target_pid_before->$target_pid_after"
+echo "weather_basket_yes_pid=$target_pid_before->$target_pid_after"
 echo "market_ws_pid=$market_pid_before"
 echo "clob_order_service_pid=$order_pid_before"
 echo "live_pause_retained=true"

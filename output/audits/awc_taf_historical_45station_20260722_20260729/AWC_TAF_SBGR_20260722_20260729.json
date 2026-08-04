@@ -2,17 +2,28 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "48a7d96f36214b9a51fc5ea8b7d8dcf0d9b411819d944c41bc6257220c61a22f",
+  "content_sha256": "dcad4d9ef3228264dab07d99973089fd705e11ba8a627245c8d7cd29453b8548",
   "end_date": "2026-07-29",
-  "excluded_sample_count": 0,
-  "excluded_samples": [],
+  "excluded_sample_count": 1,
+  "excluded_samples": [
+    {
+      "classification": "official_taf_not_available_at_decision_anchor",
+      "event_date": "2026-07-28",
+      "reason": "ContractError:awc_taf_historical_available_after_decision_anchor"
+    }
+  ],
   "provider": "NOAA Aviation Weather Center",
   "resource_bounds": {
     "actual_response_bytes": 107016,
@@ -21,7 +32,7 @@
     "max_response_bytes": 2097152,
     "max_total_response_bytes": 67108864
   },
-  "sample_count": 8,
+  "sample_count": 7,
   "samples": [
     {
       "decision_anchor_utc": "2026-07-22T04:00:00Z",
@@ -32,12 +43,14 @@
         "taf_response_sha256": "1332714aba0db3985d956df202458368a9013869702f896a508eb7797eda1224",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-22T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-6c838ebeefb6a2de8fa0a062a85732c3",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-23T03:00:00Z",
         "start_utc": "2026-07-22T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-22T01:43:22Z",
@@ -223,8 +236,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 23.0
-      }
+        "tmax_c": 23.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-23T04:00:00Z",
@@ -235,12 +260,14 @@
         "taf_response_sha256": "d8686552eb9a92a97e85583a5e0d9f1b66b2f2aa1efc511900705e1929567e89",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-23T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-6c815f77b047f06b6f1aeddc3c31d8f7",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-24T03:00:00Z",
         "start_utc": "2026-07-23T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-22T22:12:52Z",
@@ -433,8 +460,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 24.0
-      }
+        "tmax_c": 24.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-24T04:00:00Z",
@@ -445,12 +484,14 @@
         "taf_response_sha256": "5f01c08ed695882f0f1f80befcb418c51d23011f3fa201276f562b1d4b904de0",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-24T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-69361613d7c9386ef75b3816bf7db741",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-25T03:00:00Z",
         "start_utc": "2026-07-24T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-23T22:10:49Z",
@@ -643,8 +684,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 17.0
-      }
+        "tmax_c": 17.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-25T04:00:00Z",
@@ -655,12 +708,14 @@
         "taf_response_sha256": "41cc50469f8dc8e7fd1d20c49885fd7b69dbc8cb40ffe9a8e035475195b5e042",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-25T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-ba4a4c78e5f6cfc90f9c1022ae8c164a",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-26T03:00:00Z",
         "start_utc": "2026-07-25T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-25T02:40:27Z",
@@ -860,8 +915,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 21.0
-      }
+        "tmax_c": 21.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-26T04:00:00Z",
@@ -872,12 +939,14 @@
         "taf_response_sha256": "6633b8a80745ced53d0535befb9405d2e80ce4cc1328e184ddb147429e071789",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-26T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-3d8331c4b90d04e4b444b3ee8c387dd3",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-27T03:00:00Z",
         "start_utc": "2026-07-26T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-25T22:09:54Z",
@@ -1070,8 +1139,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 25.0
-      }
+        "tmax_c": 25.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-27T04:00:00Z",
@@ -1082,12 +1163,14 @@
         "taf_response_sha256": "14fd26fd2cfb15c4e9b499407b2c3c1794183205766c23edde8e7184db7a3689",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-27T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-35404888283431453b65fd8ec66493cf",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-28T03:00:00Z",
         "start_utc": "2026-07-27T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-26T21:55:41Z",
@@ -1294,211 +1377,20 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 28.0
-      }
-    },
-    {
-      "decision_anchor_utc": "2026-07-28T04:00:00Z",
-      "event_date": "2026-07-28",
-      "receipts": {
-        "metar_response_sha256": "83401804ecbce0de8881105374ffdd712c7967bd34ec89a79678e250dd929b36",
-        "metar_source_url": "https://aviationweather.gov/api/data/metar?ids=SBGR&format=json&taf=false&hours=24&date=20260729_0300",
-        "taf_response_sha256": "dc68e746434761df8c31c49412a716dd8b3b90c9ffd58ed4f6876206ac53d098",
-        "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-28T04%3A00%3A00Z"
+        "tmax_c": 28.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
       },
-      "sample_id": "taf-sample-f6abfe50f09fc06a4774f3acf115dca3",
-      "settlement_timezone": "America/Sao_Paulo",
-      "settlement_window": {
-        "end_utc": "2026-07-29T03:00:00Z",
-        "start_utc": "2026-07-28T03:00:00Z"
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
       },
-      "station_id": "SBGR",
-      "taf": {
-        "available_time_utc": "2026-07-28T04:05:27Z",
-        "cloud_cover_fraction": 0.13636363636363635,
-        "issue_time_utc": "2026-07-28T03:45:00Z",
-        "precipitation_probability": 0.05454545454545454,
-        "raw_taf": "TAF SBGR 280345Z 2806/2912 08005KT 7000 NSC TN11/2810Z TX29/2818Z PROB30 2809/2811 0900 FG BKN002 BECMG 2812/2814 03005KT CAVOK BECMG 2814/2816 28005KT BECMG 2818/2820 34005KT BECMG 2820/2822 08005KT BECMG 2906/2908 7000 NSC RMK PGM",
-        "raw_taf_sha256": "c21516e1bf5f7804e9f4a8eacd744e4b1f7380934f7abd3d5a0fb3dfffd12cc5",
-        "tx_c": 29.0,
-        "tx_valid_at_utc": "2026-07-28T18:00:00Z",
-        "wind_speed_mps": 2.104543636363637
-      },
-      "truth": {
-        "observation_count": 24,
-        "observations": [
-          {
-            "observed_at_utc": "2026-07-28T03:00:00Z",
-            "raw_report": "METAR SBGR 280300Z 09003KT CAVOK 16/14 Q1020",
-            "received_at_utc": "2026-07-28T02:55:47.461Z",
-            "report_type": "METAR",
-            "temperature_c": 16.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T04:00:00Z",
-            "raw_report": "METAR SBGR 280400Z 00000KT CAVOK 14/13 Q1020",
-            "received_at_utc": "2026-07-28T03:56:48.204Z",
-            "report_type": "METAR",
-            "temperature_c": 14.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T05:00:00Z",
-            "raw_report": "METAR SBGR 280500Z 08003KT CAVOK 14/12 Q1020",
-            "received_at_utc": "2026-07-28T04:55:32.026Z",
-            "report_type": "METAR",
-            "temperature_c": 14.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T06:00:00Z",
-            "raw_report": "METAR SBGR 280600Z 09001KT CAVOK 13/12 Q1019",
-            "received_at_utc": "2026-07-28T05:56:43.714Z",
-            "report_type": "METAR",
-            "temperature_c": 13.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T07:00:00Z",
-            "raw_report": "METAR SBGR 280700Z 07006KT CAVOK 13/12 Q1018",
-            "received_at_utc": "2026-07-28T06:55:58.230Z",
-            "report_type": "METAR",
-            "temperature_c": 13.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T08:00:00Z",
-            "raw_report": "METAR SBGR 280800Z 08007KT CAVOK 14/12 Q1018",
-            "received_at_utc": "2026-07-28T07:55:56.324Z",
-            "report_type": "METAR",
-            "temperature_c": 14.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T09:00:00Z",
-            "raw_report": "METAR SBGR 280900Z 08006KT CAVOK 14/12 Q1018",
-            "received_at_utc": "2026-07-28T08:55:30.730Z",
-            "report_type": "METAR",
-            "temperature_c": 14.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T10:00:00Z",
-            "raw_report": "METAR SBGR 281000Z 09003KT 8000 NSC 12/12 Q1019",
-            "received_at_utc": "2026-07-28T09:56:54.130Z",
-            "report_type": "METAR",
-            "temperature_c": 12.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T11:00:00Z",
-            "raw_report": "METAR SBGR 281100Z 06007KT CAVOK 15/14 Q1020",
-            "received_at_utc": "2026-07-28T10:57:24.870Z",
-            "report_type": "METAR",
-            "temperature_c": 15.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T12:00:00Z",
-            "raw_report": "METAR SBGR 281200Z 06004KT CAVOK 18/14 Q1020",
-            "received_at_utc": "2026-07-28T11:55:51.739Z",
-            "report_type": "METAR",
-            "temperature_c": 18.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T13:00:00Z",
-            "raw_report": "METAR SBGR 281300Z 09003KT CAVOK 21/14 Q1021",
-            "received_at_utc": "2026-07-28T12:55:58.933Z",
-            "report_type": "METAR",
-            "temperature_c": 21.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T14:00:00Z",
-            "raw_report": "METAR SBGR 281400Z 32002KT CAVOK 25/15 Q1020",
-            "received_at_utc": "2026-07-28T14:01:13.696Z",
-            "report_type": "METAR",
-            "temperature_c": 25.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T15:00:00Z",
-            "raw_report": "METAR SBGR 281500Z 32010KT CAVOK 27/13 Q1020",
-            "received_at_utc": "2026-07-28T14:57:57.583Z",
-            "report_type": "METAR",
-            "temperature_c": 27.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T16:00:00Z",
-            "raw_report": "METAR SBGR 281600Z 31011KT CAVOK 28/13 Q1018",
-            "received_at_utc": "2026-07-28T16:00:33.022Z",
-            "report_type": "METAR",
-            "temperature_c": 28.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T17:00:00Z",
-            "raw_report": "METAR SBGR 281700Z 30011KT CAVOK 28/13 Q1018",
-            "received_at_utc": "2026-07-28T16:55:55.942Z",
-            "report_type": "METAR",
-            "temperature_c": 28.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T18:00:00Z",
-            "raw_report": "METAR SBGR 281800Z 32009KT CAVOK 29/12 Q1017",
-            "received_at_utc": "2026-07-28T17:57:05.402Z",
-            "report_type": "METAR",
-            "temperature_c": 29.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T19:00:00Z",
-            "raw_report": "METAR SBGR 281900Z 30006KT CAVOK 28/11 Q1016",
-            "received_at_utc": "2026-07-28T18:57:32.423Z",
-            "report_type": "METAR",
-            "temperature_c": 28.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T20:00:00Z",
-            "raw_report": "METAR SBGR 282000Z 30006KT CAVOK 28/11 Q1016",
-            "received_at_utc": "2026-07-28T19:57:18.847Z",
-            "report_type": "METAR",
-            "temperature_c": 28.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T21:00:00Z",
-            "raw_report": "METAR SBGR 282100Z 01004KT CAVOK 26/12 Q1017",
-            "received_at_utc": "2026-07-28T21:01:53.044Z",
-            "report_type": "METAR",
-            "temperature_c": 26.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T22:00:00Z",
-            "raw_report": "METAR SBGR 282200Z 00000KT CAVOK 21/13 Q1017",
-            "received_at_utc": "2026-07-28T21:59:17.311Z",
-            "report_type": "METAR",
-            "temperature_c": 21.0
-          },
-          {
-            "observed_at_utc": "2026-07-28T23:00:00Z",
-            "raw_report": "METAR SBGR 282300Z 36001KT CAVOK 20/13 Q1018",
-            "received_at_utc": "2026-07-28T22:57:54.916Z",
-            "report_type": "METAR",
-            "temperature_c": 20.0
-          },
-          {
-            "observed_at_utc": "2026-07-29T00:00:00Z",
-            "raw_report": "METAR SBGR 290000Z 06004KT CAVOK 19/13 Q1018",
-            "received_at_utc": "2026-07-28T23:56:53.944Z",
-            "report_type": "METAR",
-            "temperature_c": 19.0
-          },
-          {
-            "observed_at_utc": "2026-07-29T01:00:00Z",
-            "raw_report": "METAR SBGR 290100Z 11004KT CAVOK 17/13 Q1018",
-            "received_at_utc": "2026-07-29T01:04:48.574Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          },
-          {
-            "observed_at_utc": "2026-07-29T02:00:00Z",
-            "raw_report": "METAR SBGR 290200Z 12004KT CAVOK 17/13 Q1018",
-            "received_at_utc": "2026-07-29T01:55:47.848Z",
-            "report_type": "METAR",
-            "temperature_c": 17.0
-          }
-        ],
-        "source_lane": "AWC",
-        "tmax_c": 29.0
-      }
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     },
     {
       "decision_anchor_utc": "2026-07-29T04:00:00Z",
@@ -1509,12 +1401,14 @@
         "taf_response_sha256": "0a105653a1e62e27b66e0b4f2d7471606e535390ca38c2e4a4a633bbe515a52c",
         "taf_source_url": "https://aviationweather.gov/api/data/taf?ids=SBGR&format=json&time=issue&date=2026-07-29T04%3A00%3A00Z"
       },
+      "reference_only": false,
       "sample_id": "taf-sample-dd41ed229ad24619bb1ee4749bebf7a5",
       "settlement_timezone": "America/Sao_Paulo",
       "settlement_window": {
         "end_utc": "2026-07-30T03:00:00Z",
         "start_utc": "2026-07-29T03:00:00Z"
       },
+      "source_lane": "AWC",
       "station_id": "SBGR",
       "taf": {
         "available_time_utc": "2026-07-28T22:02:55Z",
@@ -1714,13 +1608,37 @@
           }
         ],
         "source_lane": "AWC",
-        "tmax_c": 30.0
-      }
+        "tmax_c": 30.0,
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_authority": {
+        "enters_hard_no": false,
+        "enters_p1": false,
+        "enters_realtime_truth": false,
+        "evidence_source_lane": "AWC",
+        "reference_only": false,
+        "replacement_required_when_canonical_history_available": false,
+        "station_source_lane": "AWC",
+        "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+      },
+      "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
     }
   ],
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "America/Sao_Paulo",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "SBGR"
+  "station_id": "SBGR",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

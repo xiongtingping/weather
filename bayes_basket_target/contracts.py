@@ -19,6 +19,7 @@ REGIONAL_CALIBRATION_MODEL_IDS = (
     "HRRR",
     "NBM",
     "NAM",
+    "ICON-EU",
     "ICON-D2",
     "AROME-FR",
     "UKMO-2KM",

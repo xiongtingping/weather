@@ -15,15 +15,36 @@ import math
 import sqlite3
 from typing import Any, Mapping, Sequence
 
-from .contracts import ContractError, canonical_json, content_sha256
+from .contracts import (
+    ContractError,
+    assert_timestamp_not_future,
+    canonical_json,
+    content_sha256,
+)
+from .canonical_contract import (
+    CONTRACT_VERSION,
+    CanonicalTruthFact,
+    SCHEMA as CANONICAL_CONTRACT_SCHEMA,
+)
+from .canonical_ingress import (
+    AWC_DAILY_TRUTH_PROJECTION_SCHEMA,
+    ingest_canonical_contract,
+)
 from .correction_review import assert_station_day_corrections_resolved
 from .resource_bounds import assert_process_memory_budget
 from .settlement_time import settlement_day_window
+from .source_policy import (
+    AWC_METAR_TIMING_INVALID,
+    source_policy_reason,
+)
 
 
 SCHEMA = "bayes_basket_target_resident_settlement_truth_v1"
 AUTHORITY_SCOPE = "FORMAL_NATIVE_ELIGIBLE"
-SOURCE_ROLE = "CANONICAL_AMSC_AWC_INGRESS"
+CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1 = (
+    "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1"
+)
+SOURCE_ROLE = CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 MAX_TRUTH_SCOPES = 45
 MAX_OBSERVATIONS_PER_SCOPE = 64
 
@@ -46,6 +67,66 @@ def _stamp(value: datetime) -> str:
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+def _canonical_stamp(value: datetime) -> str:
+    """Use the canonical contract's normalized UTC representation."""
+
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _current_canonical_awc_truths(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> list[dict[str, Any]]:
+    """Read formal revisions only from canonical SSOT, never its projection."""
+
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='canonical_ssot_fact'"
+    ).fetchone()
+    if table is None:
+        raise ContractError("settlement_truth_canonical_ssot_fact_missing")
+    rows = conn.execute(
+        "SELECT fact_json FROM canonical_ssot_fact "
+        "WHERE fact_type='truth' AND scope_key LIKE ? LIMIT ?",
+        (f"{station_id}|{event_date}|%", MAX_TRUTH_SCOPES + 1),
+    ).fetchall()
+    if len(rows) > MAX_TRUTH_SCOPES:
+        raise ContractError("settlement_truth_canonical_revision_cap_exceeded")
+    facts: list[dict[str, Any]] = []
+    revisions: set[int] = set()
+    for row in rows:
+        try:
+            raw = json.loads(str(row[0]))
+        except (TypeError, ValueError) as exc:
+            raise ContractError("settlement_truth_canonical_fact_json_invalid") from exc
+        if not isinstance(raw, Mapping):
+            raise ContractError("settlement_truth_canonical_fact_mapping_invalid")
+        try:
+            fact = CanonicalTruthFact.from_mapping(raw)
+        except ContractError as exc:
+            raise ContractError("settlement_truth_canonical_fact_invalid") from exc
+        if fact.station_id != station_id or fact.event_date != event_date:
+            raise ContractError("settlement_truth_canonical_scope_mismatch")
+        if (
+            fact.source_lane != "AWC"
+            or fact.source_role != CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+            or fact.authority_scope != AUTHORITY_SCOPE
+            or not fact.closed_day
+        ):
+            continue
+        if fact.truth_revision_no in revisions:
+            raise ContractError("settlement_truth_canonical_revision_ambiguous")
+        revisions.add(fact.truth_revision_no)
+        facts.append(fact.to_mapping())
+    return facts
 
 
 def _registry_scope(
@@ -90,8 +171,11 @@ def _registry_scope(
     timezone_name, source_lane = next(iter(scopes))
     if not timezone_name:
         raise ContractError("settlement_truth_registry_timezone_missing")
-    if source_lane not in {"AMSC", "AWC"}:
-        raise ContractError("settlement_truth_source_lane_invalid")
+    # AMSC is retained solely for offline historical comparison.  The formal
+    # writer must never turn it into a truth row, even when an old registry
+    # snapshot remains present.
+    if source_lane != "AWC":
+        raise ContractError("settlement_truth_formal_source_lane_must_be_awc")
     settlement_day_window(event_date, timezone_name)
     return timezone_name, source_lane, registry_snapshot_sha
 
@@ -110,7 +194,13 @@ def materialize_settled_station_truth(
     day = str(event_date or "").strip()
     if not station or not day:
         raise ContractError("settlement_truth_scope_missing")
-    as_of = _utc("settlement_truth_as_of_utc", as_of_utc)
+    as_of = _utc(
+        "settlement_truth_as_of_utc",
+        assert_timestamp_not_future(
+            as_of_utc,
+            name="settlement_truth_as_of_utc",
+        ),
+    )
     timezone_name, source_lane, registry_snapshot_sha = _registry_scope(
         target_conn,
         station_id=station,
@@ -186,8 +276,25 @@ def materialize_settled_station_truth(
             raise ContractError("settlement_truth_observation_time_invalid")
         if int(row[6] or 0) != 0:
             continue
-        if valid_at.minute != 0 or valid_at.second != 0:
+        # The formal AWC lane is the same source-policy contract used by the
+        # realtime ingress: routine METAR is eligible only at :00; an
+        # effective SPECI keeps its official minute.  AWC also publishes
+        # routine half-hour reports for some stations, but those are not
+        # formal daily-truth input and must not move tmax (for example WSSS
+        # 2026-07-30 05:30Z=31C versus its eligible :00 maximum of 30C).
+        policy_reason = source_policy_reason(
+            source_lane=source_lane.lower(),
+            report_type=report_type,
+            valid_at=valid_at,
+            expected_lane="awc",
+        )
+        if policy_reason == AWC_METAR_TIMING_INVALID:
             continue
+        if policy_reason:
+            raise ContractError(
+                "settlement_truth_observation_source_policy_invalid:"
+                + policy_reason
+            )
         try:
             temperature_c = float(row[3])
         except (TypeError, ValueError) as exc:
@@ -245,89 +352,176 @@ def materialize_settled_station_truth(
     official_tmax_c = max(
         float(item["reported_temperature_c"]) for item in hourly
     )
-    latest = target_conn.execute(
-        "SELECT truth_id,revision_no,official_tmax_c,source_payload_sha256,"
-        "content_sha256 FROM calibration_station_daily_high_truth "
-        "WHERE station_id=? AND local_date=? "
-        "AND settlement_definition='official_daily_tmax_c' "
-        "ORDER BY revision_no DESC,truth_id DESC LIMIT 1",
-        (station, day),
-    ).fetchone()
+    canonical_rows = _current_canonical_awc_truths(
+        target_conn,
+        station_id=station,
+        event_date=day,
+    )
+    if any(
+        _utc(
+            "settlement_truth_canonical_committed_at",
+            row["canonical_committed_at_utc"],
+        ) > as_of
+        for row in canonical_rows
+    ):
+        # A historical as-of replay must never append a revision beneath a
+        # canonical revision that is already known to this SSOT but not to the
+        # supplied decision time.  The caller must use an isolated historical
+        # replay database instead.
+        raise ContractError("settlement_truth_canonical_revision_after_asof")
+    latest = max(
+        canonical_rows,
+        key=lambda row: int(row["truth_revision_no"]),
+        default=None,
+    )
     if (
         latest is not None
-        and float(latest[2]) == official_tmax_c
-        and str(latest[3]) == source_payload_sha
+        and float(latest["truth_value"]) == official_tmax_c
+        and latest["truth_content_sha256"] == source_payload_sha
     ):
-        return {
-            "schema": SCHEMA,
-            "state": "idempotent",
+        canonical_truth = dict(latest)
+        idempotent_source = True
+    else:
+        revision_no = (
+            0 if latest is None else int(latest["truth_revision_no"]) + 1
+        )
+        truth_seed = {
             "station_id": station,
             "event_date": day,
-            "truth_id": str(latest[0]),
-            "revision_no": int(latest[1]),
-            "content_sha256": str(latest[4]),
-            "wrote": False,
-            "calls_order_gateway": False,
-            "orders_submitted": 0,
+            "truth_revision_no": revision_no,
+            "truth_content_sha256": source_payload_sha,
         }
+        truth_id = "truth_" + content_sha256(truth_seed)[:40]
+        canonical_identity = {
+            "truth_id": truth_id,
+            "station_id": station,
+            "event_date": day,
+            "truth_revision_no": revision_no,
+            "truth_value": official_tmax_c,
+            "truth_content_sha256": source_payload_sha,
+            "canonical_committed_at_utc": _canonical_stamp(as_of),
+            "station_day_end_utc": _canonical_stamp(end),
+            "closed_day": True,
+            "source_lane": "AWC",
+            "source_role": CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+            "authority_scope": AUTHORITY_SCOPE,
+            "settlement_timezone": timezone_name,
+        }
+        canonical_truth = {
+            **canonical_identity,
+            "content_sha256": content_sha256(canonical_identity),
+        }
+        idempotent_source = False
 
-    revision_no = 0 if latest is None else int(latest[1]) + 1
-    truth_seed = {
-        "station_id": station,
-        "local_date": day,
-        "revision_no": revision_no,
-        "source_payload_sha256": source_payload_sha,
-    }
-    truth_id = "truth_" + content_sha256(truth_seed)[:40]
-    identity = {
-        "truth_id": truth_id,
-        "station_id": station,
-        "local_date": day,
-        "official_tmax_c": official_tmax_c,
-        "source_lane": source_lane,
+    published_at = _canonical_stamp(
+        max(
+            _utc(
+                "settlement_truth_published_at",
+                item["valid_at_utc"],
+            )
+            for item in hourly
+        )
+    )
+    received_at = _canonical_stamp(
+        max(
+            _utc(
+                "settlement_truth_received_at",
+                item["canonical_committed_at_utc"],
+            )
+            for item in hourly
+        )
+    )
+    if published_at > received_at:
+        raise ContractError("settlement_truth_source_timestamp_order_invalid")
+    legacy_identity = {
+        "truth_id": canonical_truth["truth_id"],
+        "station_id": canonical_truth["station_id"],
+        "local_date": canonical_truth["event_date"],
+        "settlement_timezone": canonical_truth["settlement_timezone"],
+        "official_tmax_c": canonical_truth["truth_value"],
+        "source_lane": canonical_truth["source_lane"],
         "settlement_definition": "official_daily_tmax_c",
-        "revision_no": revision_no,
-        "published_at_utc": max(
-            item["valid_at_utc"] for item in hourly
-        ),
-        "received_at_utc": max(
-            item["canonical_committed_at_utc"] for item in hourly
-        ),
-        "canonical_committed_at_utc": _stamp(as_of),
+        "revision_no": canonical_truth["truth_revision_no"],
+        "published_at_utc": published_at,
+        "received_at_utc": received_at,
+        "canonical_committed_at_utc": canonical_truth[
+            "canonical_committed_at_utc"
+        ],
         "timestamps_complete": 1,
         "qc_status": "ACCEPTED",
-        "source_role": SOURCE_ROLE,
-        "source_payload_sha256": source_payload_sha,
-        # The legacy column name is retained to avoid inventing a new schema
-        # after migration.  Its value is now a self-describing bounded
-        # lineage object, so the registry timezone/snapshot and raw evidence
-        # behind source_payload_sha256 remain independently auditable.
+        "source_role": canonical_truth["source_role"],
+        "source_payload_sha256": canonical_truth["truth_content_sha256"],
+        # The legacy projection keeps bounded source evidence only.  The
+        # canonical fact independently pins its source payload hash, role and
+        # settlement timezone; neither side may be reconstructed from the
+        # other by a reader.
         "observation_ids_json": canonical_json(evidence),
-        "authority_scope": AUTHORITY_SCOPE,
+        "authority_scope": canonical_truth["authority_scope"],
     }
-    truth_sha = content_sha256(identity)
-    target_conn.execute(
-        "INSERT INTO calibration_station_daily_high_truth("
-        "truth_id,station_id,local_date,official_tmax_c,source_lane,"
-        "settlement_definition,revision_no,published_at_utc,"
-        "received_at_utc,canonical_committed_at_utc,timestamps_complete,"
-        "qc_status,source_role,source_payload_sha256,"
-        "observation_ids_json,authority_scope,content_sha256"
-        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        tuple(identity.values()) + (truth_sha,),
+    projection_row = {
+        **canonical_truth,
+        "settlement_definition": legacy_identity["settlement_definition"],
+        "published_at_utc": published_at,
+        "received_at_utc": received_at,
+        "timestamps_complete": 1,
+        "qc_status": "ACCEPTED",
+        "observation_ids_json": legacy_identity["observation_ids_json"],
+        "content_sha256": content_sha256(legacy_identity),
+    }
+    contract_identity = {
+        "schema": CANONICAL_CONTRACT_SCHEMA,
+        "contract_version": CONTRACT_VERSION,
+        "as_of_utc": _canonical_stamp(as_of),
+        "builder_id": "awc.closed_day.truth.v1",
+        "model_facts": [],
+        "ensemble_member_facts": [],
+        "native_arrival_facts": [],
+        "ensemble_member_receipt_manifest_facts": [],
+        "ensemble_member_arrival_binding_facts": [],
+        "truth_facts": [canonical_truth],
+        "residual_facts": [],
+        "activation_facts": [],
+    }
+    canonical_packet = {
+        **contract_identity,
+        "content_sha256": content_sha256(contract_identity),
+    }
+    caller_owns_transaction = target_conn.in_transaction
+    ingress = ingest_canonical_contract(
+        target_conn,
+        canonical_packet,
+        commit=True,
+        finalize_transaction=not caller_owns_transaction,
+        awc_daily_truth_projection={
+            "schema": AWC_DAILY_TRUTH_PROJECTION_SCHEMA,
+            "truth_rows": [projection_row],
+        },
+    )
+    projection = ingress["awc_daily_truth_projection"]
+    wrote = bool(
+        ingress["inserted_count"] or projection["inserted_count"]
     )
     assert_process_memory_budget()
     return {
         "schema": SCHEMA,
-        "state": "committed",
+        "state": (
+            "idempotent"
+            if idempotent_source and not wrote
+            else "staged_in_caller_transaction"
+            if caller_owns_transaction
+            else "committed"
+        ),
+        "transaction_state": ingress["state"],
         "station_id": station,
         "event_date": day,
         "settlement_timezone": timezone_name,
-        "truth_id": truth_id,
-        "revision_no": revision_no,
-        "official_tmax_c": official_tmax_c,
-        "content_sha256": truth_sha,
-        "wrote": True,
+        "truth_id": canonical_truth["truth_id"],
+        "revision_no": canonical_truth["truth_revision_no"],
+        "official_tmax_c": canonical_truth["truth_value"],
+        "content_sha256": projection_row["content_sha256"],
+        "canonical_truth_content_sha256": canonical_truth["content_sha256"],
+        "canonical_fact_id": "truth:" + canonical_truth["content_sha256"],
+        "wrote": wrote,
         "calls_order_gateway": False,
         "orders_submitted": 0,
     }
@@ -499,6 +693,7 @@ def materialize_settled_training_truths(
 
 __all__ = [
     "AUTHORITY_SCOPE",
+    "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
     "MAX_OBSERVATIONS_PER_SCOPE",
     "MAX_TRUTH_SCOPES",
     "SCHEMA",

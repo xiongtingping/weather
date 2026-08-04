@@ -1,0 +1,18 @@
+{
+  "blocker_count": 13,
+  "calls_order_gateway": false,
+  "completed_station_count": 5,
+  "excluded_sample_count": 21,
+  "failed_station_count": 0,
+  "failures": [],
+  "orders_submitted": 0,
+  "outputs": [
+    "/Users/xiong/weather/output/audits/awc_taf_historical_15station_20260701_20260731_proxy_20260803/AWC_TAF_KBKF_20260701_20260731.json",
+    "/Users/xiong/weather/output/audits/awc_taf_historical_15station_20260701_20260731_proxy_20260803/AWC_TAF_MMMX_20260701_20260731.json",
+    "/Users/xiong/weather/output/audits/awc_taf_historical_15station_20260701_20260731_proxy_20260803/AWC_TAF_RKPK_20260701_20260731.json",
+    "/Users/xiong/weather/output/audits/awc_taf_historical_15station_20260701_20260731_proxy_20260803/AWC_TAF_SAEZ_20260701_20260731.json",
+    "/Users/xiong/weather/output/audits/awc_taf_historical_15station_20260701_20260731_proxy_20260803/AWC_TAF_SBGR_20260701_20260731.json"
+  ],
+  "sample_count": 128,
+  "station_count": 5
+}

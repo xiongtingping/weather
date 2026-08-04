@@ -1,0 +1,21 @@
+{
+  "as_of_utc": null,
+  "blockers": [
+    "ContractError:aifs_training_runner_arrival_artifact_sha_mismatch"
+  ],
+  "boundary": {
+    "calls_order_gateway": false,
+    "creates_formal_provider_binding": false,
+    "downloads_raw": false,
+    "formal_p0_eligible": false,
+    "orders_submitted": 0,
+    "places_orders": false,
+    "reads_ssot_read_only": true,
+    "writes_production_database": false
+  },
+  "content_sha256": "4f959bf2afde56f039f080effbd1f9db7880050afb9814dd3c97692136821a42",
+  "fact_count": 0,
+  "schema": "aifs_deterministic_training_facts_runner_receipt_v1",
+  "state": "BLOCKED_FAIL_CLOSED",
+  "station_id": null
+}

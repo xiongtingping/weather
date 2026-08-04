@@ -2,14 +2,19 @@
   "blockers": [],
   "boundary": {
     "calls_order_gateway": false,
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
     "historical_replay_only": true,
     "native_local_receipt": false,
     "official_awc_database_availability_preserved": true,
     "places_orders": false,
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
     "truth_days_closed": true,
     "writes_production_db": false
   },
-  "content_sha256": "5c74a00313993fefd0231dcabbf421a3c99085642f01548294c290f93562f03d",
+  "content_sha256": "608565d105e483f704d70a3d6c5fdeb57713e045af2a81b2c447b82996482eaa",
   "end_date": "2026-07-29",
   "excluded_sample_count": 8,
   "excluded_samples": [
@@ -67,6 +72,18 @@
   "schema": "bayes_basket_awc_taf_calibration_dataset_v1",
   "settlement_timezone": "America/Los_Angeles",
   "source_class": "official_date_addressed_historical_replay",
+  "source_lane": "AWC",
   "start_date": "2026-07-22",
-  "station_id": "KLAX"
+  "station_id": "KLAX",
+  "truth_authority": {
+    "enters_hard_no": false,
+    "enters_p1": false,
+    "enters_realtime_truth": false,
+    "evidence_source_lane": "AWC",
+    "reference_only": false,
+    "replacement_required_when_canonical_history_available": false,
+    "station_source_lane": "AWC",
+    "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
+  },
+  "truth_label_authority": "FORMAL_STATION_LANE_TRUTH"
 }

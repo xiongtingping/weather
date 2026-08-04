@@ -1,0 +1,14 @@
+{
+  "content_sha256": "ae40cd48e8363a1191131de32500bf7d5b84c5a5b392033189f008d677d46c22",
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "7340919fbeab5cf5d71889e13e621152497cdaaa135fcec56878935db2bb688c",
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "Pacific/Auckland",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "NZWN"
+}

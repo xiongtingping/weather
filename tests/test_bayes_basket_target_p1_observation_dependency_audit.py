@@ -7,7 +7,7 @@ from bayes_basket_target.p1_observation_dependency_audit import (
 )
 
 
-def test_formal_p1_chain_has_no_zuuu_or_single_lane_filter() -> None:
+def test_formal_p1_chain_is_registry_scoped_and_enforces_global_awc() -> None:
     receipt = audit_p1_observation_dependencies(
         project_root=Path(__file__).resolve().parents[1],
     )
@@ -16,6 +16,8 @@ def test_formal_p1_chain_has_no_zuuu_or_single_lane_filter() -> None:
     assert receipt["missing_files"] == []
     assert receipt["hardcoded_station_hits"] == []
     assert receipt["single_lane_filter_hits"] == []
+    assert receipt["awc_global_gate_enforced"] is True
+    assert len(receipt["awc_global_gate_hits"]) == 1
     assert receipt["syntax_hits"] == []
     assert receipt["writes_production_db"] is False
     assert receipt["calls_order_gateway"] is False

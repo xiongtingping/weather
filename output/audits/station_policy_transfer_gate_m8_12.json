@@ -1,12 +1,7 @@
 {
   "blockers": [
-    "family_specific_target_reserve_cadence_scorecards_missing",
-    "candidate_scope_45_stations_but_behavior_transfer_scope_8_stations",
-    "crossseason_policy_family_join_missing",
-    "3_7_15_30_policy_family_join_missing",
-    "per_station_random_market_baselines_and_intervals_missing",
-    "target_final_audit_fallback_triggered",
-    "forward_shadow_and_pnl_attribution_not_complete",
+    "future_scorecard_missing_or_invalid_formal_live_promotion_only",
+    "utility_execution_evidence_unbound_formal_live_promotion_only",
     "strict_asof_input_missing_or_blocked",
     "strict_asof_crossseason_lineage_incomplete",
     "strict_asof_four_seasons_missing",
@@ -30,6 +25,7 @@
     "family_specific_cadence_gate": false,
     "family_specific_reserve_gate": false,
     "family_specific_target_gate": false,
+    "future_scorecard_required_for_formal_live_promotion": false,
     "orders_submitted_zero": true,
     "pooled_transfer_not_pnl_or_settlement": true,
     "pooled_transfer_receipt_pass": true,
@@ -41,6 +37,7 @@
     "strict_asof_four_seasons": false,
     "strict_asof_four_windows": false,
     "strict_asof_input_pass": false,
+    "utility_execution_evidence_required_for_formal_live_promotion": false,
     "writes_production_db_false": true
   },
   "evidence_gate_passed": false,
@@ -145,6 +142,37 @@
       }
     }
   },
+  "formal_live_promotion_checks": [
+    "strict_asof_input_pass",
+    "strict_asof_crossseason_lineage_complete",
+    "strict_asof_four_seasons",
+    "strict_asof_four_windows",
+    "pooled_transfer_receipt_pass",
+    "pooled_transfer_station_count_is_eight",
+    "pooled_transfer_not_pnl_or_settlement",
+    "family_specific_target_gate",
+    "family_specific_reserve_gate",
+    "family_specific_cadence_gate",
+    "station_policy_scorecard_valid",
+    "utility_execution_evidence_required_for_formal_live_promotion"
+  ],
+  "formal_live_promotion_gate_passed": false,
+  "historical_oos_hard_gate_blockers": [
+    "strict_asof_input_pass",
+    "strict_asof_crossseason_lineage_complete",
+    "strict_asof_four_seasons",
+    "strict_asof_four_windows"
+  ],
+  "historical_oos_hard_gate_checks": [
+    "strict_asof_input_pass",
+    "strict_asof_crossseason_lineage_complete",
+    "strict_asof_four_seasons",
+    "strict_asof_four_windows",
+    "pooled_transfer_receipt_pass",
+    "pooled_transfer_station_count_is_eight",
+    "pooled_transfer_not_pnl_or_settlement"
+  ],
+  "historical_oos_hard_gate_passed": false,
   "live_order_authorized": false,
   "orders_submitted": 0,
   "pooled_transfer": {
@@ -155,15 +183,16 @@
     "stations": 8,
     "validation_sha256": "3f8ae3561204f40b155dd5bdd671402dfddbf50c8e44971a0d3e0169a5e37bc8"
   },
+  "production_no_live_historical_oos_permitted": false,
   "promotion_permitted": false,
-  "receipt_sha256": "0741be0c1f932786eaf8a255689dd1ead3a0558e2ba05138ffa65a13e7c1a02d",
+  "receipt_sha256": "be2d5e81c08da7794e3cdf7b118f9ad6bb9e614e8148d39dbcab056df60fbdc8",
   "schema": "station_policy_transfer_gate_m8_12_v1",
   "station_policy_scorecard": {
     "path": null,
     "state": "MISSING",
     "valid": false
   },
-  "status": "BLOCKED_EVIDENCE",
+  "status": "BLOCKED_HISTORICAL_OOS_EVIDENCE",
   "strict_asof": {
     "maturity_key": null,
     "receipt_sha256": "76c12ddb91a12b552c293058511a04df986297f52c0e9e2fc0e58a1a019b291c",
@@ -171,6 +200,15 @@
     "station_days": null,
     "stations": null,
     "window_count": 0
+  },
+  "utility_execution_evidence": {
+    "all_stage_family_score_rows_present": false,
+    "metric_binding_complete": false,
+    "path": "/Users/xiong/weather/output/audits/station_policy_exact_stage_scorecard_45station_utility_contract_v2_20260802.json",
+    "score_rows_emitted": false,
+    "sha256": "14334e05542174397145ffb887913cc1c32a8454200307101aa8b34ae1dc81e0",
+    "state": "INCOMPLETE",
+    "valid": false
   },
   "writes_production_db": false
 }

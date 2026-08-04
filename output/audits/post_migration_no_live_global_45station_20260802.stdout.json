@@ -1,0 +1,1 @@
+{"receipt_sha256": "751d0c7adfd28ae18784e65b7c456399fd776c4e75bde625af0f3a1f687b17b7", "schema": "bayes_basket_target_post_migration_no_live_run_v1", "stage": "worker_complete", "state": "BLOCKED_FAIL_CLOSED", "worker_invoked": true, "worker_returncode": 1}

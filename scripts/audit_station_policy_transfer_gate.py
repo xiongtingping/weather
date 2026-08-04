@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Freeze the M8-12 station-policy transfer gate.
 
-The receipt distinguishes upstream strict-as-of weather evidence and pooled
-behavior transfer from the family-specific target/reserve/cadence evidence
-required for promotion.  It is intentionally a blocking audit: no candidate
-is promoted and no production state is touched.
+The receipt separates closed historical OOS readiness from the stricter
+formal/live promotion evidence.  Forward scorecards are observational only:
+they never enter an OOS or promotion gate.  Formal/live review requires the
+closed-day strict-as-of direct utility/execution scorecard instead.  This is
+an audit: it never promotes a candidate or touches production state.
 """
 
 from __future__ import annotations
@@ -32,6 +33,75 @@ DEFAULT_STRICT_ASOF = ROOT / "output/audits/bayes_basket_target_strict_asof_repl
 DEFAULT_FORMULA_VALIDATION = ROOT / "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/derived/global_station_executable_formula_v1/validation.json"
 DEFAULT_OUTPUT = ROOT / "output/audits/station_policy_transfer_gate_m8_12.json"
 DEFAULT_FORWARD_SCORECARD = ROOT / "output/audits/bayes_basket_target_station_policy_forward_scorecard.json"
+DEFAULT_EXACT_STAGE_SCORECARD = ROOT / "output/audits/station_policy_exact_stage_scorecard_45station_utility_contract_v2_20260802.json"
+
+
+def _utility_execution_evidence(
+    path: Path | None,
+) -> dict[str, Any]:
+    """Validate the non-substitutable direct utility/execution gate.
+
+    The exact-stage report may describe a versioned utility contract while
+    every fact remains ``UNBOUND``.  A contract declaration, weather outcome,
+    probability or quote is not a fill/utility outcome and therefore cannot
+    satisfy the formal/live gate.
+    """
+
+    result: dict[str, Any] = {
+        "state": "MISSING",
+        "path": str(path) if path is not None else None,
+        "valid": False,
+    }
+    if path is None:
+        return result
+    try:
+        scorecard = _load(path)
+        checks = scorecard.get("checks")
+        scores = (scorecard.get("input_counts") or {}).get("score_rows")
+        if not isinstance(checks, dict) or not isinstance(scores, dict):
+            raise ValueError("station_policy_utility_scorecard_shape_invalid")
+        score_rows_complete = all(
+            isinstance(scores.get(stage), dict)
+            and all(
+                int(scores[stage].get(family, 0)) > 0
+                for family in ("target", "reserve", "cadence")
+            )
+            for stage in ("P0", "P0-M", "P1")
+        )
+        historical_only = (
+            checks.get("historical_utility_oos_closed_awc_only") is True
+            and checks.get("observational_candidate_not_oos_blocks_production_no_live")
+            is False
+        )
+        valid = (
+            scorecard.get("schema") == "station_policy_exact_stage_scorecard_v1"
+            and historical_only
+            and checks.get("policy_utility_metric_binding_complete") is True
+            and checks.get("policy_utility_score_rows_emitted") is True
+            and score_rows_complete
+        )
+        result = {
+            "state": "VALID" if valid else "INCOMPLETE",
+            "path": str(path),
+            "sha256": _sha(path),
+            "valid": valid,
+            "metric_binding_complete": (
+                checks.get("policy_utility_metric_binding_complete") is True
+            ),
+            "historical_closed_awc_only": historical_only,
+            "score_rows_emitted": (
+                checks.get("policy_utility_score_rows_emitted") is True
+            ),
+            "all_stage_family_score_rows_present": score_rows_complete,
+        }
+    except Exception as exc:
+        result = {
+            "state": "INVALID",
+            "path": str(path),
+            "valid": False,
+            "reason": f"{type(exc).__name__}:{exc}",
+        }
+    return result
 
 
 def _sha(path: Path) -> str:
@@ -57,6 +127,7 @@ def build_gate(
     strict_asof_path: Path = DEFAULT_STRICT_ASOF,
     formula_validation_path: Path = DEFAULT_FORMULA_VALIDATION,
     forward_scorecard_path: Path | None = None,
+    exact_stage_scorecard_path: Path | None = DEFAULT_EXACT_STAGE_SCORECARD,
 ) -> dict[str, Any]:
     bundle = _load(bundle_path)
     assert_candidate_bundle_boundary(bundle)
@@ -100,6 +171,12 @@ def build_gate(
                 "reason": f"{type(exc).__name__}:{exc}",
             }
     station_scorecard_valid = station_scorecard.get("valid") is True
+    utility_execution_evidence = _utility_execution_evidence(
+        exact_stage_scorecard_path
+    )
+    utility_execution_evidence_valid = (
+        utility_execution_evidence.get("valid") is True
+    )
 
     strict_windows = strict_asof.get("windows", {}).get("reports", [])
     crossseason = strict_asof.get("crossseason", {})
@@ -126,14 +203,12 @@ def build_gate(
     }
     families = {}
     for family, metrics in family_metrics.items():
-        if station_scorecard_valid:
-            family_scorecard = station_scorecard.get("families", {}).get(family, {})
+        if utility_execution_evidence_valid:
             families[family] = {
                 slice_name: {
                     "status": "PASS",
                     "family_specific": True,
-                    "evidence": "target-owned family-specific forward scorecard",
-                    **dict(family_scorecard.get(slice_name) or {}),
+                    "evidence": "closed-day historical strict-as-of direct utility scorecard",
                 }
                 for slice_name in (
                     "same_station_time_oos",
@@ -151,7 +226,7 @@ def build_gate(
             "same_station_time_oos": {
                 "status": "PARTIAL",
                 "family_specific": False,
-                "evidence": "pooled formula holdout exists but is not the required promoted station artifact gate",
+                "evidence": "pooled formula holdout exists but is not the required closed-day direct utility gate",
             },
             "leave_one_station_out": {
                 "status": "PARTIAL",
@@ -189,26 +264,51 @@ def build_gate(
         "pooled_transfer_not_pnl_or_settlement": set(transfer.get("method", {}).get("not_measured", [])) >= {
             "strategy PnL", "settlement win rate"
         },
-        "family_specific_target_gate": station_scorecard_valid,
-        "family_specific_reserve_gate": station_scorecard_valid,
-        "family_specific_cadence_gate": station_scorecard_valid,
+        "family_specific_target_gate": utility_execution_evidence_valid,
+        "family_specific_reserve_gate": utility_execution_evidence_valid,
+        "family_specific_cadence_gate": utility_execution_evidence_valid,
         "station_policy_scorecard_valid": station_scorecard_valid,
-        "station_policy_scorecard_scope_matches": station_scorecard_valid,
+        # Forward observations are operational telemetry only: they are not
+        # OOS and never participate in formal/live promotion authority.
+        "forward_scorecard_observational_only": True,
+        "forward_scorecard_not_used_for_oos_or_promotion": True,
+        "utility_execution_evidence_required_for_formal_live_promotion": (
+            utility_execution_evidence_valid
+        ),
         "promotion_permitted": False,
         "orders_submitted_zero": True,
         "writes_production_db_false": True,
     }
     blockers: list[str] = []
-    if not station_scorecard_valid:
-        blockers.extend([
-            "family_specific_target_reserve_cadence_scorecards_missing",
-            "candidate_scope_45_stations_but_behavior_transfer_scope_8_stations",
-            "crossseason_policy_family_join_missing",
-            "3_7_15_30_policy_family_join_missing",
-            "per_station_random_market_baselines_and_intervals_missing",
-            "target_final_audit_fallback_triggered",
-            "forward_shadow_and_pnl_attribution_not_complete",
-        ])
+    historical_oos_checks = (
+        "strict_asof_input_pass",
+        "strict_asof_crossseason_lineage_complete",
+        "strict_asof_four_seasons",
+        "strict_asof_four_windows",
+        "pooled_transfer_receipt_pass",
+        "pooled_transfer_station_count_is_eight",
+        "pooled_transfer_not_pnl_or_settlement",
+    )
+    historical_oos_gate_passed = all(checks[name] for name in historical_oos_checks)
+    historical_oos_blockers = [
+        name for name in historical_oos_checks if checks[name] is not True
+    ]
+
+    formal_live_promotion_checks = (
+        *historical_oos_checks,
+        "family_specific_target_gate",
+        "family_specific_reserve_gate",
+        "family_specific_cadence_gate",
+        "utility_execution_evidence_required_for_formal_live_promotion",
+    )
+    formal_live_promotion_gate_passed = all(
+        checks[name] for name in formal_live_promotion_checks
+    )
+
+    if not utility_execution_evidence_valid:
+        blockers.append(
+            "utility_execution_evidence_unbound_formal_live_promotion_only"
+        )
     if strict_asof.get("status") != "PASS":
         blockers.append("strict_asof_input_missing_or_blocked")
     if crossseason.get("lineage_complete") is not True:
@@ -221,21 +321,19 @@ def build_gate(
         blockers.append("pooled_transfer_validation_missing")
     if len(transfer.get("stations", [])) != 8:
         blockers.append("pooled_transfer_scope_invalid")
-    required_evidence_checks = (
-        "strict_asof_input_pass",
-        "strict_asof_crossseason_lineage_complete",
-        "strict_asof_four_seasons",
-        "strict_asof_four_windows",
-        "pooled_transfer_receipt_pass",
-        "pooled_transfer_station_count_is_eight",
-        "pooled_transfer_not_pnl_or_settlement",
-        "family_specific_target_gate",
-        "family_specific_reserve_gate",
-        "family_specific_cadence_gate",
-        "station_policy_scorecard_valid",
+    # Compatibility alias: this audit has always reported whether the
+    # stricter promotion gate has passed.  Both gates consume historical
+    # evidence only; forward telemetry is deliberately absent from them.
+    evidence_gate_passed = formal_live_promotion_gate_passed
+    status = (
+        "EVIDENCE_COMPLETE_NO_LIVE_REVIEW"
+        if formal_live_promotion_gate_passed
+        else (
+            "HISTORICAL_OOS_READY_FORMAL_LIVE_PROMOTION_PENDING"
+            if historical_oos_gate_passed
+            else "BLOCKED_HISTORICAL_OOS_EVIDENCE"
+        )
     )
-    evidence_gate_passed = all(checks[name] for name in required_evidence_checks)
-    status = "EVIDENCE_COMPLETE_NO_LIVE_REVIEW" if evidence_gate_passed else "BLOCKED_EVIDENCE"
     identity = {
         "schema": "station_policy_transfer_gate_m8_12_v1",
         "status": status,
@@ -262,8 +360,15 @@ def build_gate(
         },
         "families": families,
         "station_policy_scorecard": station_scorecard,
+        "utility_execution_evidence": utility_execution_evidence,
         "checks": checks,
         "blockers": blockers,
+        "historical_oos_hard_gate_checks": list(historical_oos_checks),
+        "historical_oos_hard_gate_blockers": historical_oos_blockers,
+        "historical_oos_hard_gate_passed": historical_oos_gate_passed,
+        "production_no_live_historical_oos_permitted": historical_oos_gate_passed,
+        "formal_live_promotion_checks": list(formal_live_promotion_checks),
+        "formal_live_promotion_gate_passed": formal_live_promotion_gate_passed,
         "evidence_gate_passed": evidence_gate_passed,
         "promotion_permitted": False,
         "live_order_authorized": False,
@@ -281,10 +386,25 @@ def main() -> int:
         "--forward-scorecard",
         type=Path,
         default=None,
-        help="Optional target-owned station-policy forward scorecard; absent means fail closed.",
+        help=(
+            "Optional target-owned station-policy forward scorecard; absent "
+            "or invalid is observational only and never gates promotion."
+        ),
+    )
+    parser.add_argument(
+        "--exact-stage-scorecard",
+        type=Path,
+        default=DEFAULT_EXACT_STAGE_SCORECARD,
+        help=(
+            "Read-only direct utility/execution scorecard required for "
+            "formal/live promotion."
+        ),
     )
     args = parser.parse_args()
-    receipt = build_gate(forward_scorecard_path=args.forward_scorecard)
+    receipt = build_gate(
+        forward_scorecard_path=args.forward_scorecard,
+        exact_stage_scorecard_path=args.exact_stage_scorecard,
+    )
     output = args.output if args.output.is_absolute() else ROOT / args.output
     write_bounded_json(output, receipt)
     print(json.dumps({

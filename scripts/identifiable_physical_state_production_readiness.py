@@ -250,7 +250,7 @@ def build_readiness(
         timeout=180.0,
     )
     current_production = _run_json_until_ok(
-        [sys.executable, "scripts/reported_trajectory_no_production_acceptance.py"],
+        [sys.executable, "scripts/weather_basket_yes_production_acceptance.py"],
         timeout=120.0,
         attempts=5,
         interval_sec=1.0,

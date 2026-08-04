@@ -242,7 +242,7 @@ def build_repair(*, release_dir: Path | None, output_dir: Path) -> dict[str, Any
             name: {"sha256": _sha_bytes(value), "size_bytes": len(value)}
             for name, value in sorted(file_bytes.items())
         },
-        "resident_service": "com.weather.reported_trajectory_no",
+        "resident_service": "com.weather.weather_basket_yes",
         "adds_fourth_service": False,
         "places_orders": False,
         "activates_production": False,

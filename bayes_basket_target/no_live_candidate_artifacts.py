@@ -68,7 +68,9 @@ def build_no_live_candidate_artifact_packet(
 
     Cash amounts are conservative design-candidate clip ceilings. They are
     not source-wallet parameters, cannot modify P0/P1 or candidate support,
-    and remain unpromoted until own forward/OOS evidence exists.
+    and remain unpromoted until the candidate has its own closed-day,
+    strict-as-of historical OOS evidence. Forward observations are never
+    treated as OOS evidence.
     """
 
     assert_candidate_bundle_boundary(candidate_bundle)

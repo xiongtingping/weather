@@ -12,10 +12,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sqlite3
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -24,8 +25,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.calibration_ingress import (  # noqa: E402
+    CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+    HISTORICAL_AWC_REPLAY,
     NO_LIVE_REPLAY,
-    TEMPORARY_AWC_LABEL,
 )
 from bayes_basket_target.contracts import (  # noqa: E402
     MODEL_IDS,
@@ -34,6 +36,11 @@ from bayes_basket_target.contracts import (  # noqa: E402
     content_sha256,
 )
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
+from bayes_basket_target.model_sources import (  # noqa: E402
+    model_id_for_provider,
+    provider_role,
+    provider_source_class,
+)
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MIB,
     ResourceBoundError,
@@ -41,22 +48,12 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
     load_bounded_json,
     write_bounded_json,
 )
-from scripts.build_bayes_basket_target_temporary_awc_calibration_base import (  # noqa: E402
-    REGISTRY_ROLE,
-    SCHEMA,
-    SETTLEMENT_DEFINITION,
-    _hex64,
-    _load_oos_rows,
-    _mapping,
-    _rows,
-    _sha256_path,
-    _text,
-    _with_content_sha256,
-)
+from zoneinfo import ZoneInfo  # noqa: E402
 
 
 FORMAL_TRUTH = "FORMAL_STATION_LANE_TRUTH"
 PACKET_SCHEMA = "bayes_basket_target_calibration_evidence_v1"
+SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 DEFAULT_TRUTH_ROOT = (
     ROOT
     / "output/audits"
@@ -73,8 +70,8 @@ DEFAULT_OUTPUT = (
     / "bayes_basket_target_45station_calibration_base_29d_v1"
 )
 MAX_INPUT_FILES = 160
-MAX_INPUT_BYTES = 128 * MIB
-MAX_OUTPUT_BYTES = 64 * MIB
+MAX_INPUT_BYTES = 256 * MIB
+MAX_OUTPUT_BYTES = 256 * MIB
 EXPECTED_STATION_COUNT = 45
 EXPECTED_DAY_COUNT = 29
 
@@ -108,6 +105,351 @@ def _utc(value: Any, *, label: str) -> str:
     ).replace("+00:00", "Z")
 
 
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mapping(value: Any, *, label: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ContractError(f"{label}_mapping_required")
+    return dict(value)
+
+
+def _rows(value: Any, *, label: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ContractError(f"{label}_list_required")
+    if any(not isinstance(item, Mapping) for item in value):
+        raise ContractError(f"{label}_row_invalid")
+    return [dict(item) for item in value]
+
+
+def _text(value: Any, *, label: str) -> str:
+    result = str(value or "").strip()
+    if not result:
+        raise ContractError(f"{label}_missing")
+    return result
+
+
+def _hex64(value: Any, *, label: str) -> str:
+    result = _text(value, label=label).lower()
+    if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
+        raise ContractError(f"{label}_invalid")
+    return result
+
+
+def _with_content_sha256(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(row)
+    payload["content_sha256"] = content_sha256(payload)
+    return payload
+
+
+def _derive_run_init_utc(event_date: str, lead_days: int) -> str:
+    base = date.fromisoformat(event_date) - timedelta(days=lead_days)
+    return datetime(
+        base.year, base.month, base.day, tzinfo=timezone.utc
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _model_row(
+    *,
+    station_id: str,
+    timezone_name: str,
+    event_date: str,
+    lead_days: int,
+    oos_path: Path,
+    oos_file_sha256: str,
+    oos_fetched_at_utc: str,
+    capture: Mapping[str, Any],
+    daily_row: Mapping[str, Any],
+    identity_prefix: str,
+    maturity_prefix: str,
+    capture_mode: str,
+) -> dict[str, Any]:
+    model_id = _text(
+        capture.get("model_id"), label="calibration_oos_capture_model_id"
+    ).upper()
+    provider_id = _text(
+        capture.get("provider_id"), label="calibration_oos_capture_provider_id"
+    ).lower()
+    source_class = _text(
+        capture.get("source_class"),
+        label="calibration_oos_capture_source_class",
+    ).lower()
+    if model_id_for_provider(provider_id) != model_id:
+        raise ContractError("calibration_oos_capture_model_provider_mismatch")
+    if source_class != provider_source_class(provider_id):
+        raise ContractError("calibration_oos_capture_source_class_mismatch")
+    if bool(capture.get("formal_lineage_eligible")):
+        raise ContractError("calibration_oos_capture_formal_lineage_forbidden")
+    response_sha256 = _hex64(
+        capture.get("response_sha256"),
+        label="calibration_oos_capture_response_sha256",
+    )
+    capture_index = int(capture.get("_capture_index", 0))
+    return _with_content_sha256({
+        "model_run_id": (
+            f"{identity_prefix}-run-{station_id}-{event_date}-"
+            f"{model_id}-d{lead_days}"
+        ),
+        "model_id": model_id,
+        "station_id": station_id,
+        "target_local_date": event_date,
+        "target_timezone": timezone_name,
+        "run_init_utc": _derive_run_init_utc(event_date, lead_days),
+        "published_at_utc": None,
+        "received_at_utc": oos_fetched_at_utc,
+        "timestamps_complete": False,
+        "lead_bucket": f"d{lead_days}",
+        "maturity_key": f"{maturity_prefix}_D{lead_days}",
+        "run_cycle": f"PREVIOUS_DAY{lead_days}",
+        "raw_tmax_c": float(daily_row["forecast_tmax_c"]),
+        "settlement_definition": SETTLEMENT_DEFINITION,
+        "provider_id": provider_id,
+        "provider_role": provider_role(provider_id),
+        "source_class": source_class,
+        "aggregator_or_republisher": source_class == "aggregator_republisher",
+        "open_meteo": "open_meteo" in provider_id,
+        "source_url": _text(
+            capture.get("source_url"), label="calibration_oos_capture_source_url"
+        ),
+        "raw_object_ref": (
+            f"{oos_path}#captures/{capture_index}/daily_rows/"
+            f"{daily_row.get('_daily_index', 0)}"
+        ),
+        "source_object_sha256": response_sha256,
+        "asof_status": "HISTORICAL_REPLAY_ONLY",
+        "capture_modes": ["historical_replay", capture_mode],
+        "historical_replay_eligible": True,
+        "prospective_strict_asof_eligible": False,
+        "input_oos_file_sha256": oos_file_sha256,
+        "capture_response_sha256": response_sha256,
+        "capture_api_model": _text(
+            capture.get("api_model"), label="calibration_oos_capture_api_model"
+        ),
+        "capture_formal_lineage_eligible": bool(
+            capture.get("formal_lineage_eligible")
+        ),
+        "capture_previous_run_semantics": _text(
+            capture.get("previous_run_semantics"),
+            label="calibration_oos_capture_previous_run_semantics",
+        ),
+        "truth_rows_sha256": _hex64(
+            daily_row.get("truth_rows_sha256"),
+            label="calibration_oos_daily_truth_rows_sha256",
+        ),
+        "truth_sample_id": _text(
+            daily_row.get("truth_sample_id"),
+            label="calibration_oos_daily_truth_sample_id",
+        ),
+    })
+
+
+def _residual_row(
+    *,
+    station_id: str,
+    event_date: str,
+    lead_days: int,
+    season_bin: str,
+    model_row: Mapping[str, Any],
+    truth_id: str,
+    daily_row: Mapping[str, Any],
+    identity_prefix: str,
+) -> dict[str, Any]:
+    model_id = _text(model_row.get("model_id"), label="calibration_oos_model_id")
+    model_run_id = _text(
+        model_row.get("model_run_id"), label="calibration_oos_model_run_id"
+    )
+    truth_rows_sha256 = _hex64(
+        daily_row.get("truth_rows_sha256"),
+        label="calibration_oos_daily_truth_rows_sha256",
+    )
+    pair_sha256 = content_sha256({
+        "truth_id": truth_id,
+        "model_run_id": model_run_id,
+        "station_id": station_id,
+        "model_id": model_id,
+        "event_date": event_date,
+        "lead_days": lead_days,
+        "forecast_tmax_c": float(daily_row["forecast_tmax_c"]),
+        "official_tmax_c": float(daily_row["official_tmax_c"]),
+        "residual_c": float(daily_row["residual_c"]),
+        "truth_rows_sha256": truth_rows_sha256,
+    })
+    return _with_content_sha256({
+        "residual_id": (
+            f"{identity_prefix}-residual-{station_id}-{event_date}-"
+            f"{model_id}-d{lead_days}"
+        ),
+        "truth_id": truth_id,
+        "model_run_id": model_run_id,
+        "station_id": station_id,
+        "model_id": model_id,
+        "season_bin": season_bin,
+        "lead_bucket": f"d{lead_days}",
+        "maturity_key": _text(
+            model_row.get("maturity_key"), label="calibration_oos_maturity_key"
+        ),
+        "run_cycle": f"PREVIOUS_DAY{lead_days}",
+        "e_y_minus_f_raw_c": float(daily_row["residual_c"]),
+        "paired_asof_utc": _text(
+            model_row.get("run_init_utc"), label="calibration_oos_run_init_utc"
+        ),
+        "qc_status": "ACCEPTED",
+        "historical_replay_eligible": True,
+        "prospective_strict_asof_eligible": False,
+        "pair_sha256": pair_sha256,
+        "truth_rows_sha256": truth_rows_sha256,
+        "truth_sample_id": _text(
+            daily_row.get("truth_sample_id"),
+            label="calibration_oos_daily_truth_sample_id",
+        ),
+    })
+
+
+def _load_oos_rows(
+    *,
+    station_id: str,
+    timezone_name: str,
+    oos_path: Path,
+    truth_index: Mapping[str, dict[str, Any]],
+    identity_prefix: str,
+    maturity_prefix: str,
+    capture_mode: str,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any],
+    Counter[tuple[str, str, str, str]],
+]:
+    payload = _mapping(
+        load_bounded_json(oos_path.expanduser().resolve()),
+        label="calibration_oos",
+    )
+    if _text(payload.get("schema"), label="calibration_oos_schema") != (
+        "rkpk_open_meteo_five_model_historical_oos_v1"
+    ):
+        raise ContractError("calibration_oos_schema_invalid")
+    boundary = _mapping(
+        payload.get("boundary"), label="calibration_oos_boundary"
+    )
+    if any(
+        boundary.get(key) is not False
+        for key in (
+            "calls_order_gateway",
+            "places_orders",
+            "writes_production_database",
+            "writes_target_database",
+            "live_submit_authorized",
+        )
+    ):
+        raise ContractError("calibration_oos_boundary_invalid")
+    authority = _mapping(
+        payload.get("authority"), label="calibration_oos_authority"
+    )
+    if authority.get("research_oos_complete") is not True:
+        raise ContractError("calibration_oos_incomplete")
+    if _text(payload.get("station_id"), label="calibration_oos_station").upper() != station_id:
+        raise ContractError("calibration_oos_station_scope_invalid")
+    lead_days = int(payload.get("lead_days") or 0)
+    if lead_days not in {1, 2}:
+        raise ContractError("calibration_oos_lead_days_invalid")
+    oos_fetched_at_utc = assert_timestamp_not_future(
+        _text(payload.get("fetched_at_utc"), label="calibration_oos_fetched_at_utc"),
+        name="calibration_oos_fetched_at_utc",
+    )
+    season_bin = _text(payload.get("season_bin"), label="calibration_oos_season_bin")
+    captures = _rows(payload.get("captures"), label="calibration_oos_captures")
+    oos_file_sha256 = _sha256_path(oos_path)
+    model_rows: list[dict[str, Any]] = []
+    residual_rows: list[dict[str, Any]] = []
+    scope_models: dict[tuple[str, str, str, str], set[str]] = defaultdict(set)
+    model_run_ids: set[str] = set()
+    residual_ids: set[str] = set()
+    for capture_index, capture in enumerate(captures):
+        capture = {**capture, "_capture_index": capture_index}
+        daily_rows = _rows(
+            capture.get("daily_rows"), label="calibration_oos_capture_daily_rows"
+        )
+        for daily_index, daily_row in enumerate(daily_rows):
+            daily_row = {**daily_row, "_daily_index": daily_index}
+            event_date = _text(
+                daily_row.get("event_date"), label="calibration_oos_daily_event_date"
+            )
+            lineage = truth_index.get(event_date)
+            if lineage is None:
+                raise ContractError("calibration_oos_truth_lineage_missing")
+            if _text(
+                daily_row.get("truth_sample_id"),
+                label="calibration_oos_daily_truth_sample_id",
+            ) != lineage["truth_sample_id"]:
+                raise ContractError("calibration_oos_truth_sample_id_mismatch")
+            if _hex64(
+                daily_row.get("truth_rows_sha256"),
+                label="calibration_oos_daily_truth_rows_sha256",
+            ) != lineage["truth_rows_sha256"]:
+                raise ContractError("calibration_oos_truth_rows_sha256_mismatch")
+            model_row = _model_row(
+                station_id=station_id,
+                timezone_name=timezone_name,
+                event_date=event_date,
+                lead_days=lead_days,
+                oos_path=oos_path,
+                oos_file_sha256=oos_file_sha256,
+                oos_fetched_at_utc=oos_fetched_at_utc,
+                capture=capture,
+                daily_row=daily_row,
+                identity_prefix=identity_prefix,
+                maturity_prefix=maturity_prefix,
+                capture_mode=capture_mode,
+            )
+            residual_row = _residual_row(
+                station_id=station_id,
+                event_date=event_date,
+                lead_days=lead_days,
+                season_bin=season_bin,
+                model_row=model_row,
+                truth_id=lineage["truth_id"],
+                daily_row=daily_row,
+                identity_prefix=identity_prefix,
+            )
+            if model_row["model_run_id"] in model_run_ids:
+                raise ContractError("calibration_oos_model_run_duplicate")
+            if residual_row["residual_id"] in residual_ids:
+                raise ContractError("calibration_oos_residual_duplicate")
+            model_run_ids.add(model_row["model_run_id"])
+            residual_ids.add(residual_row["residual_id"])
+            model_rows.append(model_row)
+            residual_rows.append(residual_row)
+            scope_models[(
+                station_id,
+                event_date,
+                model_row["lead_bucket"],
+                model_row["maturity_key"],
+            )].add(model_row["model_id"])
+    for scope, models_in_scope in scope_models.items():
+        if len(models_in_scope) < 2:
+            raise ContractError(
+                "calibration_oos_multi_model_scope_required:" + "|".join(scope)
+            )
+    return model_rows, residual_rows, {
+        "path": str(oos_path),
+        "sha256": oos_file_sha256,
+        "content_sha256": _hex64(
+            payload.get("content_sha256"), label="calibration_oos_content_sha256"
+        ),
+        "lead_days": lead_days,
+        "station_id": station_id,
+        "capture_count": len(captures),
+    }, Counter({
+        scope: len(models_in_scope)
+        for scope, models_in_scope in scope_models.items()
+    })
+
+
 def _reference(row: Mapping[str, Any], keys: Iterable[str]) -> dict[str, Any]:
     result = {key: row[key] for key in keys}
     result["reference_sha256"] = content_sha256(result)
@@ -134,6 +476,13 @@ def _station_rows(
             if key != "content_sha256"
         }):
             raise ContractError("calibration_station_registry_hash_invalid")
+        if (
+            str(row["source_lane"]).upper() != "AWC"
+            or str(row["source_role"])
+            != CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
+            or str(row["settlement_definition"]) != SETTLEMENT_DEFINITION
+        ):
+            raise ContractError("calibration_station_registry_awc_authority_invalid")
     return rows, {
         str(row["station_id"]): str(row["timezone_name"])
         for row in rows
@@ -212,15 +561,54 @@ def _truth_sample(
     event_date = _text(sample.get("event_date"), label="truth_event_date")
     truth = _mapping(sample.get("truth"), label="truth_sample")
     sample_id = _text(sample.get("sample_id"), label="truth_sample_id")
+    if sample_id != "truth-" + content_sha256({
+        key: value for key, value in sample.items() if key != "sample_id"
+    })[:32]:
+        raise ContractError("calibration_truth_sample_id_invalid")
     source_lane = _text(truth.get("source_lane"), label="truth_source_lane").upper()
+    if label_authority != FORMAL_TRUTH:
+        raise ContractError("calibration_truth_label_authority_invalid")
+    if source_lane != "AWC":
+        raise ContractError("calibration_truth_source_lane_invalid")
+    if (
+        sample.get("settlement_timezone") != timezone_name
+        or truth.get("source_role") != HISTORICAL_AWC_REPLAY
+        or truth.get("authority_scope") != NO_LIVE_REPLAY
+    ):
+        raise ContractError("calibration_truth_lineage_invalid")
     if _text(sample.get("station_id"), label="truth_station").upper() != station_id:
         raise ContractError("calibration_truth_station_mismatch")
+    try:
+        event_day = date.fromisoformat(event_date)
+        zone = ZoneInfo(timezone_name)
+    except (ValueError, KeyError) as exc:
+        raise ContractError("calibration_truth_settlement_window_invalid") from exc
+    expected_start = datetime.combine(
+        event_day, datetime.min.time(), tzinfo=zone
+    ).astimezone(timezone.utc)
+    expected_end = datetime.combine(
+        event_day + timedelta(days=1), datetime.min.time(), tzinfo=zone
+    ).astimezone(timezone.utc)
+    received_at = datetime.fromisoformat(received_at_utc.replace("Z", "+00:00"))
+    if expected_end > received_at:
+        raise ContractError("calibration_truth_not_closed_as_of")
+    window = _mapping(
+        sample.get("settlement_window"), label="truth_settlement_window"
+    )
+    if (
+        _utc(window.get("start_utc"), label="truth_window_start")
+        != expected_start.isoformat(timespec="seconds").replace("+00:00", "Z")
+        or _utc(window.get("end_utc"), label="truth_window_end")
+        != expected_end.isoformat(timespec="seconds").replace("+00:00", "Z")
+    ):
+        raise ContractError("calibration_truth_settlement_window_invalid")
     observations = _rows(truth.get("observations"), label="truth_observations")
     if not observations:
         raise ContractError("calibration_truth_observations_empty")
     normalized = []
     observation_ids = []
     raw_sha256s = []
+    seen_observations: set[tuple[str, str, str]] = set()
     for index, item in enumerate(observations):
         raw_sha = _hex64(item.get("raw_sha256"), label="truth_raw_sha256")
         valid_at = _utc(item.get("valid_at_utc"), label="truth_valid_at_utc")
@@ -228,17 +616,50 @@ def _truth_sample(
             _text(item.get("station_id"), label="truth_observation_station").upper()
             != station_id
             or _text(item.get("source_lane"), label="truth_observation_lane").upper()
-            != source_lane
+            != "AWC"
+            or item.get("source_role") != HISTORICAL_AWC_REPLAY
+            or item.get("authority_scope") != NO_LIVE_REPLAY
+            or item.get("settlement_timezone") != timezone_name
+            or item.get("evidence_role") != "FORMAL"
+            or item.get("reference_only") is not False
         ):
             raise ContractError("calibration_truth_observation_scope_mismatch")
+        if item.get("qc_status") != "ACCEPTED":
+            raise ContractError("calibration_truth_observation_qc_invalid")
+        report_type = _text(
+            item.get("report_type"), label="truth_report_type"
+        ).upper()
+        if report_type not in {"METAR", "SPECI"}:
+            raise ContractError("calibration_truth_observation_report_type_invalid")
+        observed_at = datetime.fromisoformat(valid_at.replace("Z", "+00:00"))
+        if report_type == "METAR" and (
+            observed_at.minute != 0 or observed_at.second != 0
+        ):
+            raise ContractError("calibration_truth_observation_metar_not_hourly")
+        if not expected_start <= observed_at < expected_end:
+            raise ContractError("calibration_truth_observation_window_mismatch")
+        identity_key = (report_type, valid_at, raw_sha)
+        if identity_key in seen_observations:
+            raise ContractError("calibration_truth_observation_duplicate")
+        seen_observations.add(identity_key)
+        try:
+            temperature = float(item["reported_temperature_c"])
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "calibration_truth_observation_temperature_invalid"
+            ) from exc
+        if not math.isfinite(temperature):
+            raise ContractError("calibration_truth_observation_temperature_invalid")
         normalized.append({
             "raw_sha256": raw_sha,
-            "report_type": _text(
-                item.get("report_type"),
-                label="truth_report_type",
-            ).upper(),
-            "reported_temperature_c": float(item["reported_temperature_c"]),
+            "report_type": report_type,
+            "reported_temperature_c": temperature,
             "source_lane": source_lane,
+            "source_role": HISTORICAL_AWC_REPLAY,
+            "authority_scope": NO_LIVE_REPLAY,
+            "settlement_timezone": timezone_name,
+            "evidence_role": "FORMAL",
+            "reference_only": False,
             "station_id": station_id,
             "valid_at_utc": valid_at,
         })
@@ -248,13 +669,13 @@ def _truth_sample(
         )
     truth_rows_sha256 = content_sha256(normalized)
     official_tmax_c = float(truth["tmax_c"])
-    source_role = (
-        TEMPORARY_AWC_LABEL
-        if label_authority == TEMPORARY_AWC_LABEL
-        else REGISTRY_ROLE
-    )
-    if label_authority not in {TEMPORARY_AWC_LABEL, FORMAL_TRUTH}:
-        raise ContractError("calibration_truth_label_authority_invalid")
+    if not math.isfinite(official_tmax_c):
+        raise ContractError("calibration_truth_temperature_invalid")
+    if official_tmax_c != max(
+        float(row["reported_temperature_c"]) for row in normalized
+    ):
+        raise ContractError("calibration_truth_tmax_observation_mismatch")
+    source_role = HISTORICAL_AWC_REPLAY
 
     if (
         existing is not None
@@ -306,7 +727,8 @@ def _truth_sample(
             "published_at_utc": None,
             "received_at_utc": received_at_utc,
             "canonical_committed_at_utc": received_at_utc,
-            "timestamps_complete": True,
+            "timestamps_complete": False,
+            "authority_scope": NO_LIVE_REPLAY,
             "qc_status": "ACCEPTED",
             "source_payload_sha256": truth_rows_sha256,
             "observation_ids": observation_ids,
@@ -338,11 +760,48 @@ def _load_station_truth(
     dict[str, Any],
 ]:
     payload = _mapping(load_bounded_json(path), label="truth_dataset")
+    boundary = payload.get("boundary")
     if (
         payload.get("schema") != "bayes_basket_station_calibration_dataset_v1"
         or str(payload.get("station_id") or "").upper() != station_id
+        or payload.get("settlement_timezone") != timezone_name
+        or str(payload.get("source_lane") or "").upper() != "AWC"
+        or payload.get("source_role") != HISTORICAL_AWC_REPLAY
+        or payload.get("authority_scope") != NO_LIVE_REPLAY
+        or payload.get("label_authority") != FORMAL_TRUTH
         or (payload.get("checks") or {}).get("closed_days_only") is not True
+        or (payload.get("checks") or {}).get(
+            "formal_awc_truth_only"
+        ) is not True
+        or (payload.get("checks") or {}).get(
+            "awc_hourly_metar_and_speci_only"
+        ) is not True
+        or (payload.get("checks") or {}).get(
+            "historical_awc_replay_only"
+        ) is not True
+        or (payload.get("checks") or {}).get(
+            "input_evidence_content_hashes_verified"
+        ) is not True
+        or (payload.get("checks") or {}).get(
+            "settlement_timezone_exact_match"
+        ) is not True
+        or (payload.get("checks") or {}).get(
+            "reference_only_excluded"
+        ) is not True
         or (payload.get("checks") or {}).get("complete_date_coverage") is not True
+        or not isinstance(boundary, Mapping)
+        or any(
+            boundary.get(key) is not False
+            for key in (
+                "writes_production_database",
+                "calls_order_gateway",
+                "places_orders",
+                "live_submit_authorized",
+                "enters_realtime_truth",
+                "enters_p1",
+                "enters_hard_no",
+            )
+        )
     ):
         raise ContractError("calibration_truth_dataset_invalid")
     samples = _rows(payload.get("samples"), label="truth_samples")
@@ -358,6 +817,22 @@ def _load_station_truth(
         payload.get("content_sha256"),
         label="truth_dataset_content_sha256",
     )
+    if dataset_content_sha != content_sha256({
+        key: value for key, value in payload.items() if key != "content_sha256"
+    }):
+        raise ContractError("calibration_truth_dataset_content_sha256_mismatch")
+    evidence_shas = payload.get("input_evidence_sha256s")
+    if (
+        not isinstance(evidence_shas, list)
+        or not evidence_shas
+        or len(set(evidence_shas)) != len(evidence_shas)
+    ):
+        raise ContractError("calibration_truth_input_evidence_sha_invalid")
+    for evidence_sha in evidence_shas:
+        _hex64(
+            evidence_sha,
+            label="calibration_truth_input_evidence_sha",
+        )
     rows = []
     references = []
     index = {}
@@ -386,7 +861,9 @@ def _load_station_truth(
         "sha256": dataset_sha,
         "content_sha256": dataset_content_sha,
         "station_id": station_id,
-        "label_authority": label,
+            "label_authority": label,
+            "source_role": HISTORICAL_AWC_REPLAY,
+            "authority_scope": NO_LIVE_REPLAY,
         "sample_count": len(samples),
         "as_of_utc": received,
     }
@@ -625,7 +1102,7 @@ def build_packet(
         },
         "checks": {
             "truth_source_canonical_ingress": True,
-            "temporary_awc_calibration_label_explicit": True,
+            "formal_awc_truth_only": True,
             "existing_truth_bound_by_hash": True,
             "changed_truth_emits_new_revision": True,
             "existing_model_bound_by_hash": True,

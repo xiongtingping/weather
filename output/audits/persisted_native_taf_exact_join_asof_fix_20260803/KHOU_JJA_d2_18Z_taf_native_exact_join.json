@@ -1,0 +1,24 @@
+{
+  "content_sha256": "86fad672c839b2548d5fa01e560dd013c3b2ccd0bcc962386d2bc2d1f0baa6ec",
+  "excluded_correction_sample_count": 0,
+  "excluded_correction_samples": [],
+  "lead_bucket": "d2",
+  "nwp_crossfit_prediction_artifact_sha256": "46206ab80df702b0a76c8b4f6d431bc29aa224df33a92d15db3e779e9ef19177",
+  "observational_forward_event_count": 5,
+  "observational_forward_event_dates": [
+    "2026-07-30",
+    "2026-07-31",
+    "2026-08-01",
+    "2026-08-02",
+    "2026-08-03"
+  ],
+  "run_cycle": "18Z",
+  "sample_count": 0,
+  "samples": [],
+  "schema": "taf_native_ensemble_strict_oos_exact_join_v1",
+  "season_bin": "JJA",
+  "settlement_definition": "official_daily_tmax_c",
+  "settlement_timezone": "America/Chicago",
+  "source_class": "strict_oos_native_p0_taf_truth_exact_join",
+  "station_id": "KHOU"
+}

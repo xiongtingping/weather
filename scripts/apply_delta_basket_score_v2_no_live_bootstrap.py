@@ -3,8 +3,9 @@
 
 ``station_id='*'`` is a production-no-live-only bootstrap fallback.  Exact
 station authority always wins in the resolver.  The fallback exists only so
-new stations can materialize pre-event decisions and forward facts before
-station-specific OOS parameters are promoted.
+new stations can materialize pre-event decisions and observational facts
+before station-specific historical strict-as-of OOS parameters are promoted.
+Forward observations are never OOS and never a hard gate.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from bayes_basket_target.delta_v2_fill_artifact import (
     FILL_DISTRIBUTION_PROMOTION_SCHEMA,
     commit_delta_v2_fill_distribution_artifact,
 )
+from bayes_basket_target.resource_bounds import MAX_TARGET_WAL_BYTES
 from bayes_basket_target.ssot import apply_delta_v2_authority_schema
 
 
@@ -50,9 +52,9 @@ DEFAULT_MANIFEST = (
     / "config/trading/"
     "delta_basket_score_v2_rkpk_no_live_bootstrap_v1.json"
 ).resolve()
-SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.reported_trajectory_no"
+SERVICE_LABEL = f"gui/{os.getuid()}/com.weather.weather_basket_yes"
 MAX_MANIFEST_BYTES = 64 * 1024
-MAX_WAL_BYTES = 64 * 1024 * 1024
+MAX_WAL_BYTES = MAX_TARGET_WAL_BYTES
 MIN_FREE_BYTES = 1024 * 1024 * 1024
 MAX_FILL_PRICE_POINTS = 1_000
 
@@ -210,7 +212,8 @@ def _authority_packet(
             "schema": "delta_v2_no_live_bootstrap_evidence_v1",
             "bootstrap_id": manifest["bootstrap_id"],
             "oos_gate_passed": False,
-            "forward_oos_required_for_live_or_parameter_promotion": True,
+            "historical_strict_oos_required_for_live_or_parameter_promotion": True,
+            "future_data_counts_as_oos": False,
         }
     )
     common = {
@@ -604,8 +607,10 @@ def apply_bootstrap(
         "rows_written": rows_written,
         "quick_check": quick_check,
         "oos_gate_passed": False,
-        "forward_oos_blocks_production_no_live": False,
-        "forward_oos_blocks_live_or_parameter_promotion": True,
+        "future_data_counts_as_oos": False,
+        "future_data_blocks_production_no_live": False,
+        "future_data_blocks_live_or_parameter_promotion": False,
+        "historical_strict_oos_required_for_live_or_parameter_promotion": True,
         "execution_mode": "production_no_live",
         "live_submit_authorized": False,
         "calls_order_gateway": False,

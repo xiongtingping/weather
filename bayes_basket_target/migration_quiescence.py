@@ -21,12 +21,12 @@ DEFAULT_TARGET_DATABASE = (
     / "bayes_basket_target_ssot.db"
 ).resolve()
 CORE_SERVICES = (
-    "com.weather.reported_trajectory_no",
+    "com.weather.weather_basket_yes",
     "com.weather.market_ws",
     "com.weather.clob_order_service",
 )
 WRITER_PROCESS_PATTERNS = (
-    "reported_trajectory_no_daemon.py",
+    "weather_basket_yes_daemon.py",
     "market_ws_listener.py",
     "clob_order_service.mjs",
 )
@@ -268,7 +268,7 @@ def isolated_target_writer_quiescence_receipt(db_path: Path) -> dict[str, Any]:
     """Prove that no process currently holds the isolated target database.
 
     Unrelated market-WS and gateway services may remain running, but the
-    resident ``reported_trajectory_no`` owner and every open handle to the
+    resident ``weather_basket_yes`` owner and every open handle to the
     target SQLite file must be absent.  This is a real read-only probe, not an
     assumption derived from the target path being separate from ``archive``.
     """
@@ -332,7 +332,7 @@ def isolated_target_writer_quiescence_receipt(db_path: Path) -> dict[str, Any]:
 
     system_residue = any(service_states["system"].values())
     target_user_loaded = service_states["user"][
-        "com.weather.reported_trajectory_no"
+        "com.weather.weather_basket_yes"
     ]
     target_service_blocks = bool(
         target_user_loaded and db == DEFAULT_TARGET_DATABASE
