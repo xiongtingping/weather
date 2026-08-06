@@ -1,0 +1,58 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "93f76a909ae5eeb0a3b2d3a3b487578d4efeccf07bba502a48070000a96ac6cd",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 4991082496,
+  "database_shm_bytes": 32768,
+  "database_wal_bytes": 0,
+  "fact_type_counts_after": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596,
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "fact_type_counts_before": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596,
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "free_bytes": 17359622144,
+  "required_free_bytes": 14973345792,
+  "row_count_after": 105112,
+  "row_count_before": 105112,
+  "rows_content_sha256_after": "dc64ce15dca1d89d6ec61423a9c984c7c9d9145bc70a74dda30e203078b45dd3",
+  "rows_content_sha256_before": "dc64ce15dca1d89d6ec61423a9c984c7c9d9145bc70a74dda30e203078b45dd3",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v13_migration_receipt_v1",
+  "schema_after": "V13",
+  "schema_before": "V12",
+  "source_footprint_bytes": 4991115264,
+  "state": "APPLIED_V13",
+  "trigger_names_after": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "trigger_names_before": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writer_quiescence_receipt_sha256": "5479beca250182133409193e89d856774150267d0e5847ac0db7c58e521be54e",
+  "writes_database": true,
+  "writes_orders": false
+}

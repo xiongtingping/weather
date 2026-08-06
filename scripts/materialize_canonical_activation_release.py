@@ -31,12 +31,15 @@ from bayes_basket_target.canonical_activation_release import (
     load_db_activation_release_snapshot,
     load_db_audit_snapshot,
     load_inner_snapshot,
+    load_expected_scope_manifest,
+    load_typed_scope_blocked_receipts,
     load_typed_scope_envelopes,
     load_truth_gap_evidence,
     publish_release,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.resource_bounds import write_bounded_json
+from bayes_basket_target.station_registry import coordinate_registry_manifest
 
 
 CONFIRM = "materialize-canonical-activation-production-no-live"
@@ -64,6 +67,11 @@ def _assert_preview_identity(preview: dict, expected_preview_sha256: str) -> Non
         raise ContractError("activation_release_preview_apply_drift")
 
 
+def _assert_expected_scope_coverage(preview: dict) -> None:
+    if preview.get("typed_scope_coverage_complete") is not True:
+        raise ContractError("activation_release_expected_scope_coverage_incomplete")
+
+
 def _build_apply_receipt(
     *, preview: dict, pointer: dict, current_pointer: Path
 ) -> dict:
@@ -82,11 +90,29 @@ def _build_apply_receipt(
 
 def build(args: argparse.Namespace) -> dict:
     inner = load_inner_snapshot(args.inner_oos_snapshot)
+    expected_scope_manifest = None
+    expected_scope_evidence = None
+    expected_scope_path = getattr(args, "expected_scope_manifest", None)
+    if expected_scope_path is not None:
+        registry = coordinate_registry_manifest()
+        expected_scope_manifest, expected_scope_evidence = load_expected_scope_manifest(
+            expected_scope_path,
+            release_as_of_utc=args.as_of_utc,
+            canonical_station_ids=inner["canonical_station_ids"],
+            canonical_registry_sha256=registry["registry_sha256"],
+        )
     release_mode = getattr(args, "release_mode", "truth-gap")
     typed_scope_envelopes, typed_scope_evidence = load_typed_scope_envelopes(
         getattr(args, "typed_scope_envelope", ()) or (),
         release_as_of_utc=args.as_of_utc,
     )
+    typed_scope_blocked_receipts, blocked_receipt_evidence = (
+        load_typed_scope_blocked_receipts(
+            getattr(args, "typed_scope_blocked_receipt", ()) or (),
+            release_as_of_utc=args.as_of_utc,
+        )
+    )
+    typed_scope_evidence = [*typed_scope_evidence, *blocked_receipt_evidence]
     source_mode = "CANONICAL_CONTRACT"
     supersession_projection: dict = {}
     supersession_facts: list[dict] = []
@@ -142,6 +168,9 @@ def build(args: argparse.Namespace) -> dict:
                 taf_revision_complete=args.taf_revision_complete,
                 typed_scope_envelopes=typed_scope_envelopes,
                 typed_scope_evidence=typed_scope_evidence,
+                typed_scope_blocked_receipts=typed_scope_blocked_receipts,
+                expected_scope_manifest=expected_scope_manifest,
+                expected_scope_evidence=expected_scope_evidence,
             )
             source_mode = "CANONICAL_CONTRACT_ACTIVATION"
         else:
@@ -166,6 +195,9 @@ def build(args: argparse.Namespace) -> dict:
                 taf_revision_complete=args.taf_revision_complete,
                 typed_scope_envelopes=typed_scope_envelopes,
                 typed_scope_evidence=typed_scope_evidence,
+                typed_scope_blocked_receipts=typed_scope_blocked_receipts,
+                expected_scope_manifest=expected_scope_manifest,
+                expected_scope_evidence=expected_scope_evidence,
             )
             source_mode = "CANONICAL_CONTRACT_TRUTH_GAP"
     record_blocker_counts: dict[str, int] = {}
@@ -205,6 +237,10 @@ def build(args: argparse.Namespace) -> dict:
         "record_blocker_counts": dict(sorted(record_blocker_counts.items())),
         "builder_blocker_counts": dict(sorted(builder_blocker_counts.items())),
         "typed_scope_coverage_complete": ledger.get("typed_scope_coverage_complete") is True,
+        "expected_scope_manifest_content_sha256": ledger.get(
+            "expected_scope_manifest_content_sha256", ""
+        ),
+        "expected_scope_coverage": ledger.get("expected_scope_coverage", []),
         "typed_scope_envelope_count": len(typed_scope_envelopes),
         "activation_scope_count": index["entry_count"],
         "activation_index_state": index["state"],
@@ -232,6 +268,7 @@ def build(args: argparse.Namespace) -> dict:
         current_pointer=args.current_pointer,
     )
     _assert_preview_identity(preview, args.expect_preview_sha)
+    _assert_expected_scope_coverage(preview)
     expected = None if args.expect_current_sha == "ABSENT" else args.expect_current_sha
     pointer = publish_release(
         ledger=ledger,
@@ -260,6 +297,10 @@ def main() -> int:
     )
     parser.add_argument("--truth-gap-evidence", type=Path)
     parser.add_argument("--typed-scope-envelope", type=Path, action="append", default=[])
+    parser.add_argument(
+        "--typed-scope-blocked-receipt", type=Path, action="append", default=[]
+    )
+    parser.add_argument("--expected-scope-manifest", type=Path)
     parser.add_argument("--as-of-utc", required=True)
     parser.add_argument("--train-count", type=int, required=True)
     parser.add_argument("--holdout-count", type=int, required=True)

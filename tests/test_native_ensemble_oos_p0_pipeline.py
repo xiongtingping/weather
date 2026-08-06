@@ -352,36 +352,31 @@ def test_ecmwf_get_bytes_caps_transport_attempts_per_s3_endpoint(
         )
 
     assert len(client.calls) == ecmwf_ifs_archive.MAX_TRANSPORT_ATTEMPTS * 2
-    assert [call[1] for call in client.calls[:3]] == [
+    attempts = ecmwf_ifs_archive.MAX_TRANSPORT_ATTEMPTS
+    assert [call[1] for call in client.calls[:attempts]] == [
         f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-    ] * 3
-    assert [call[1] for call in client.calls[3:]] == [
+    ] * attempts
+    assert [call[1] for call in client.calls[attempts:]] == [
         f"{ecmwf_ifs_archive.FALLBACK_BASE_URL}/object",
-    ] * 3
-    assert sleeps == [
-        ecmwf_ifs_archive.RETRY_BACKOFF_BASE_SECONDS,
-        ecmwf_ifs_archive.RETRY_BACKOFF_BASE_SECONDS * 2,
-        ecmwf_ifs_archive.RETRY_BACKOFF_BASE_SECONDS,
-        ecmwf_ifs_archive.RETRY_BACKOFF_BASE_SECONDS * 2,
+    ] * attempts
+    expected_endpoint_sleeps = [
+        min(
+            ecmwf_ifs_archive.RETRY_BACKOFF_BASE_SECONDS * (2**attempt),
+            ecmwf_ifs_archive.MAX_RETRY_BACKOFF_SECONDS,
+        )
+        for attempt in range(attempts - 1)
     ]
+    assert sleeps == expected_endpoint_sleeps * 2
 
 
 def test_ecmwf_get_bytes_keeps_regional_global_s3_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeEcmwfClient([
-        _FakeEcmwfResponse(
+        *[_FakeEcmwfResponse(
             status_code=503,
             url=f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-        ),
-        _FakeEcmwfResponse(
-            status_code=503,
-            url=f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-        ),
-        _FakeEcmwfResponse(
-            status_code=503,
-            url=f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-        ),
+        ) for _ in range(ecmwf_ifs_archive.MAX_TRANSPORT_ATTEMPTS)],
         _FakeEcmwfResponse(body=b"ok"),
     ])
     sleeps: list[float] = []
@@ -397,13 +392,15 @@ def test_ecmwf_get_bytes_keeps_regional_global_s3_fallback(
     assert body == b"ok"
     assert [call[1] for call in client.calls] == [
         f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-        f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
-        f"{ecmwf_ifs_archive.PRIMARY_BASE_URL}/object",
+    ] * ecmwf_ifs_archive.MAX_TRANSPORT_ATTEMPTS + [
         f"{ecmwf_ifs_archive.FALLBACK_BASE_URL}/object",
     ]
     assert sleeps == [
-        ecmwf_ifs_archive.S3_SLOW_DOWN_BACKOFF_BASE_SECONDS,
-        ecmwf_ifs_archive.S3_SLOW_DOWN_BACKOFF_BASE_SECONDS * 2,
+        min(
+            ecmwf_ifs_archive.S3_SLOW_DOWN_BACKOFF_BASE_SECONDS * (2**attempt),
+            ecmwf_ifs_archive.MAX_S3_SLOW_DOWN_BACKOFF_SECONDS,
+        )
+        for attempt in range(ecmwf_ifs_archive.MAX_TRANSPORT_ATTEMPTS - 1)
     ]
 
 

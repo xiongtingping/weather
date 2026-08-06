@@ -1,0 +1,93 @@
+{
+  "as_of_utc": "2026-08-04T12:00:00Z",
+  "calls_order_gateway": false,
+  "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+  "content_sha256": "1c736444963a7e55d4382375bbd30ea1fa9d6bf57c9c999d66a4410e748ec38f",
+  "expected_key_evidence": [],
+  "expected_keys": [
+    {
+      "natural_key": {
+        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        "available_system_set_sha256": "c90fc98fb053dbb0fcead19bdc62f7c7f8204623d10e67091c17c35c670da847",
+        "independence_family_set_sha256": "23f20d453f2e5994c2486883f5a6a5a50d274d64d34ccc128c7de00169b39ef8",
+        "lead_bucket": "d0",
+        "model_family": "cross_global_deterministic",
+        "run_cycle": null,
+        "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+        "run_cycle_vector_sha256": "845f08968a8ccfd310791e8c0b911818bdf796c107d0d752160aa4dc8ea2b8f0",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ACTIVATION"
+    },
+    {
+      "natural_key": {
+        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        "available_system_set_sha256": "c90fc98fb053dbb0fcead19bdc62f7c7f8204623d10e67091c17c35c670da847",
+        "independence_family_set_sha256": "23f20d453f2e5994c2486883f5a6a5a50d274d64d34ccc128c7de00169b39ef8",
+        "lead_bucket": "d0",
+        "model_family": "cross_global_deterministic",
+        "run_cycle": null,
+        "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+        "run_cycle_vector_sha256": "845f08968a8ccfd310791e8c0b911818bdf796c107d0d752160aa4dc8ea2b8f0",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ACTIVATION"
+    }
+  ],
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "schema": "bayes_basket_target_canonical_expected_scope_basis_v1",
+  "scope_type": "P0_ACTIVATION",
+  "source_content_sha256s": [
+    "3cbcf8b6108f13990742e7f6973ba0398f7053773e4798a9790bf40c894a0642"
+  ],
+  "station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "unresolved_input_receipts": [],
+  "writes_database": false
+}

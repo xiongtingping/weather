@@ -26,6 +26,12 @@ const HELD_YES_WS_SHARD_DIR = process.env.PM_HELD_YES_WS_SHARD_DIR
 const HELD_YES_WS_MANIFEST_SCHEMA = "clob_ws_held_yes_quote_manifest_v1";
 const HELD_YES_WS_TOKEN_SCHEMA = "clob_ws_held_yes_token_quote_snapshot_v1";
 const SERVICE_NAME = "clob_order_service";
+const ASOS_ARGMAX_LIVE_STRATEGY_ID = "asos_argmax_new_high_yes_v1";
+const ASOS_ARGMAX_EXIT_STRATEGY_ID = "asos_argmax_yes_exit_099_v1";
+const ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID = "asos_argmax_rotation_sell_fak_v1";
+const ASOS_ARGMAX_LIVE_STATIONS = new Set([
+  "KATL", "KAUS", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
+]);
 const RETIRED_STRATEGY_IDS = new Set([
   "weather_copy_follow_v1",
 ]);
@@ -126,6 +132,314 @@ export function livePausePresent(pausePath = LIVE_PAUSE_FILE) {
   } catch {
     // An unreadable pause boundary must fail closed.
     return true;
+  }
+}
+
+export function latestContiguousArgmaxPeriods(rawPeriods) {
+  if (!Array.isArray(rawPeriods)) return [];
+  const valid = rawPeriods
+    .map((period) => ({
+      period,
+      start: Date.parse(String(period?.start_utc || "")),
+      end: Date.parse(String(period?.end_utc || "")),
+    }))
+    .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end) && end > start)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  if (!valid.length) return [];
+  const clusters = [];
+  for (const item of valid) {
+    const current = clusters.at(-1);
+    if (!current || item.start > current.end) {
+      clusters.push({ start: item.start, end: item.end, items: [item] });
+    } else {
+      current.end = Math.max(current.end, item.end);
+      current.items.push(item);
+    }
+  }
+  const selected = clusters.reduce((latest, cluster) => (
+    !latest || cluster.end > latest.end
+      || (cluster.end === latest.end && cluster.start > latest.start)
+      ? cluster : latest
+  ), null);
+  return selected ? selected.items.map(({ period }) => period) : [];
+}
+
+export function asosArgmaxExitAdmission(payload, dbPath = DB_PATH) {
+  if (!truthy(env("PM_ASOS_ARGMAX_LIVE_ENABLED", "0"), false)) {
+    return { ok: false, reason: "asos_argmax_live_not_enabled" };
+  }
+  if (String(payload?.strategy_id || "") !== ASOS_ARGMAX_EXIT_STRATEGY_ID) {
+    return { ok: false, reason: "not_asos_argmax_exit_strategy" };
+  }
+  const exitID = String(payload?.order_intent_id || "");
+  const buyID = String(payload?.buy_order_intent_id || "");
+  const entryID = String(payload?.entry_fact_id || "");
+  const tokenID = String(payload?.token_id || "");
+  if (!exitID || !buyID || !entryID || !/^[0-9]+$/.test(tokenID)) {
+    return { ok: false, reason: "asos_argmax_exit_identity_invalid" };
+  }
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare(`
+      SELECT x.strategy_id,x.station_id,x.event_date,x.yes_token,x.side,x.order_type,
+             x.limit_price,x.size,x.source_buy_size_matched,x.idempotency_key,
+             x.guard_snapshot_sha256,x.state,x.buy_order_intent_id,x.entry_fact_id,
+             b.state AS buy_state,b.size_matched AS buy_size_matched,b.yes_token AS buy_yes_token
+        FROM reported_trajectory_asos_argmax_exit_order_intents x
+        JOIN reported_trajectory_asos_argmax_order_intents b
+          ON b.order_intent_id=x.buy_order_intent_id
+       WHERE x.exit_order_intent_id=? AND x.buy_order_intent_id=? AND x.entry_fact_id=?
+    `).get(exitID, buyID, entryID);
+    if (!row) return { ok: false, reason: "asos_argmax_exit_intent_missing" };
+    const exact = (left, right) => Math.abs(Number(left) - Number(right)) <= 1e-8;
+    if (
+      row.strategy_id !== ASOS_ARGMAX_EXIT_STRATEGY_ID
+      || !ASOS_ARGMAX_LIVE_STATIONS.has(String(row.station_id || ""))
+      || row.state !== "SUBMITTING" || row.buy_state !== "EXCHANGE_ACCEPTED"
+      || row.yes_token !== tokenID || row.buy_yes_token !== tokenID
+      || row.side !== "SELL" || row.order_type !== "GTC"
+      || String(payload?.side || "").toUpperCase() !== "SELL"
+      || String(payload?.order_type || "").toUpperCase() !== "GTC"
+      || payload?.allow_market !== false || payload?.post_only !== false
+      || String(payload?.idempotency_key || "") !== row.idempotency_key
+      || String(payload?.guard_snapshot_sha256 || "") !== row.guard_snapshot_sha256
+      || String(payload?.buy_order_intent_id || "") !== row.buy_order_intent_id
+      || String(payload?.entry_fact_id || "") !== row.entry_fact_id
+      || !exact(payload?.price, 0.99) || !exact(payload?.limit_price, 0.99)
+      || !exact(row.limit_price, 0.99)
+      || !exact(payload?.size, row.size)
+      || !exact(row.size, row.source_buy_size_matched)
+      || !exact(row.size, row.buy_size_matched)
+      || Number(row.size) <= 0 || !exact(payload?.notional, 0)
+    ) {
+      return { ok: false, reason: "asos_argmax_exit_intent_mismatch" };
+    }
+    const market = db.prepare(`
+      SELECT 1 AS ok FROM reported_trajectory_market_registry
+       WHERE station_id=? AND event_date=? AND yes_token=?
+         AND source_lane='awc' AND source_eligible=1
+         AND market_active=1 AND market_accepting_orders=1
+       LIMIT 1
+    `).get(row.station_id, row.event_date, tokenID);
+    if (!market) return { ok: false, reason: "asos_argmax_exit_market_not_active" };
+    return {
+      ok: true,
+      reason: "asos_argmax_exit_exact_filled_shares",
+      station_id: row.station_id,
+    };
+  } catch (err) {
+    return { ok: false, reason: `asos_argmax_exit_admission_error:${redactErrorText(err?.message || String(err || ""))}` };
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
+export function asosArgmaxRotationSellAdmission(payload, dbPath = DB_PATH) {
+  if (!truthy(env("PM_ASOS_ARGMAX_LIVE_ENABLED", "0"), false)) {
+    return { ok: false, reason: "asos_argmax_live_not_enabled" };
+  }
+  if (String(payload?.strategy_id || "") !== ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID) {
+    return { ok: false, reason: "not_asos_argmax_rotation_sell_strategy" };
+  }
+  const rotationID = String(payload?.order_intent_id || "");
+  const targetEntryID = String(payload?.target_entry_fact_id || "");
+  const sourceBuyID = String(payload?.source_buy_order_intent_id || "");
+  const oldToken = String(payload?.token_id || "");
+  const newToken = String(payload?.new_yes_token || "");
+  if (
+    !rotationID || !targetEntryID || !sourceBuyID
+    || !/^[0-9]+$/.test(oldToken) || !/^[0-9]+$/.test(newToken)
+    || oldToken === newToken
+  ) {
+    return { ok: false, reason: "asos_argmax_rotation_sell_identity_invalid" };
+  }
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare(`
+      SELECT r.strategy_id,r.station_id,r.event_date,r.old_yes_token,r.new_yes_token,
+             r.side,r.order_type,r.limit_price,r.size,r.ws_snapshot_sha256,
+             r.guard_snapshot_sha256,r.state,r.idempotency_key,
+             r.target_entry_fact_id,r.source_buy_order_intent_id,
+             b.state AS buy_state,b.yes_token AS buy_yes_token,
+             b.size_matched AS buy_size_matched,
+             f.station_id AS target_station_id,f.event_date AS target_event_date,
+             f.yes_token AS target_yes_token
+        FROM reported_trajectory_asos_argmax_rotation_sell_intents r
+        JOIN reported_trajectory_asos_argmax_order_intents b
+          ON b.order_intent_id=r.source_buy_order_intent_id
+        JOIN reported_trajectory_asos_argmax_entry_facts f
+          ON f.entry_fact_id=r.target_entry_fact_id
+       WHERE r.rotation_sell_intent_id=?
+         AND r.target_entry_fact_id=?
+         AND r.source_buy_order_intent_id=?
+    `).get(rotationID, targetEntryID, sourceBuyID);
+    if (!row) return { ok: false, reason: "asos_argmax_rotation_sell_intent_missing" };
+    const exact = (left, right) => Math.abs(Number(left) - Number(right)) <= 1e-8;
+    if (
+      row.strategy_id !== ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID
+      || !ASOS_ARGMAX_LIVE_STATIONS.has(String(row.station_id || ""))
+      || row.state !== "SUBMITTING" || row.buy_state !== "EXCHANGE_ACCEPTED"
+      || row.station_id !== row.target_station_id || row.event_date !== row.target_event_date
+      || row.old_yes_token !== oldToken || row.buy_yes_token !== oldToken
+      || row.new_yes_token !== newToken || row.target_yes_token !== newToken
+      || row.old_yes_token === row.new_yes_token
+      || row.side !== "SELL" || row.order_type !== "FAK"
+      || String(payload?.side || "").toUpperCase() !== "SELL"
+      || String(payload?.order_type || "").toUpperCase() !== "FAK"
+      || payload?.allow_market !== true || payload?.post_only !== false
+      || String(payload?.idempotency_key || "") !== row.idempotency_key
+      || String(payload?.ws_snapshot_sha256 || "") !== row.ws_snapshot_sha256
+      || String(payload?.guard_snapshot_sha256 || "") !== row.guard_snapshot_sha256
+      || !exact(payload?.price, row.limit_price)
+      || !exact(payload?.limit_price, row.limit_price)
+      || !exact(payload?.size, row.size)
+      || Number(row.size) <= 0 || Number(row.size) > Number(row.buy_size_matched) + 1e-8
+      || Number(row.limit_price) <= 0 || Number(row.limit_price) >= 1
+      || !exact(payload?.notional, 0)
+    ) {
+      return { ok: false, reason: "asos_argmax_rotation_sell_intent_mismatch" };
+    }
+    const oldMarket = db.prepare(`
+      SELECT 1 AS ok FROM reported_trajectory_market_registry
+       WHERE station_id=? AND event_date=? AND yes_token=?
+         AND source_lane='awc' AND source_eligible=1
+         AND market_active=1 AND market_accepting_orders=1
+       LIMIT 1
+    `).get(row.station_id, row.event_date, oldToken);
+    const newMarket = db.prepare(`
+      SELECT 1 AS ok FROM reported_trajectory_market_registry
+       WHERE station_id=? AND event_date=? AND yes_token=?
+         AND source_lane='awc' AND source_eligible=1
+         AND market_active=1 AND market_accepting_orders=1
+       LIMIT 1
+    `).get(row.station_id, row.event_date, newToken);
+    if (!oldMarket || !newMarket) {
+      return { ok: false, reason: "asos_argmax_rotation_sell_market_not_active" };
+    }
+    return {
+      ok: true,
+      reason: "asos_argmax_rotation_sell_exact_remaining_shares",
+      station_id: row.station_id,
+    };
+  } catch (err) {
+    return { ok: false, reason: `asos_argmax_rotation_sell_admission_error:${redactErrorText(err?.message || String(err || ""))}` };
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
+export function asosArgmaxLiveAdmission(payload, dbPath = DB_PATH, nowMs = Date.now()) {
+  if (!truthy(env("PM_ASOS_ARGMAX_LIVE_ENABLED", "0"), false)) {
+    return { ok: false, reason: "asos_argmax_live_not_enabled" };
+  }
+  const strategyID = String(payload?.strategy_id || "");
+  if (strategyID === ASOS_ARGMAX_EXIT_STRATEGY_ID) {
+    return asosArgmaxExitAdmission(payload, dbPath);
+  }
+  if (strategyID === ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID) {
+    return asosArgmaxRotationSellAdmission(payload, dbPath);
+  }
+  if (strategyID !== ASOS_ARGMAX_LIVE_STRATEGY_ID) {
+    return { ok: false, reason: "not_asos_argmax_live_strategy" };
+  }
+  const intentID = String(payload?.order_intent_id || "");
+  const entryFactID = String(payload?.entry_fact_id || "");
+  const tokenID = String(payload?.token_id || "");
+  if (!intentID || !entryFactID || !/^[0-9]+$/.test(tokenID)) {
+    return { ok: false, reason: "asos_argmax_live_identity_invalid" };
+  }
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare(`
+      SELECT i.strategy_id,i.station_id,i.event_date,i.yes_token,i.side,i.order_type,
+             i.limit_price,i.size,i.requested_notional,i.idempotency_key,
+             i.ws_snapshot_sha256,i.guard_snapshot_sha256,i.state,
+             f.observed_at_utc,f.received_at_utc,f.reason,w.argmax_periods_json
+        FROM reported_trajectory_asos_argmax_order_intents i
+        JOIN reported_trajectory_asos_argmax_entry_facts f
+          ON f.entry_fact_id=i.entry_fact_id
+        JOIN reported_trajectory_asos_argmax_windows w
+          ON w.window_id=f.window_id
+       WHERE i.order_intent_id=? AND i.entry_fact_id=?
+    `).get(intentID, entryFactID);
+    if (!row) return { ok: false, reason: "asos_argmax_live_intent_missing" };
+    const exact = (left, right) => Math.abs(Number(left) - Number(right)) <= 1e-8;
+    if (
+      row.strategy_id !== ASOS_ARGMAX_LIVE_STRATEGY_ID
+      || !ASOS_ARGMAX_LIVE_STATIONS.has(String(row.station_id || ""))
+      || row.state !== "SUBMITTING"
+      || row.reason !== "ASOS_NEW_HIGH_RECEIVED_DURING_ARGMAX_PERIOD"
+      || row.yes_token !== tokenID
+      || row.side !== "BUY" || row.order_type !== "FOK"
+      || String(payload?.side || "").toUpperCase() !== "BUY"
+      || String(payload?.order_type || "").toUpperCase() !== "FOK"
+      || payload?.allow_market !== true || payload?.post_only !== false
+      || String(payload?.idempotency_key || "") !== row.idempotency_key
+      || String(payload?.ws_snapshot_sha256 || "") !== row.ws_snapshot_sha256
+      || String(payload?.guard_snapshot_sha256 || "") !== row.guard_snapshot_sha256
+      || !exact(payload?.price, row.limit_price)
+      || !exact(payload?.size, row.size)
+      || !exact(payload?.notional, row.requested_notional)
+      || Number(row.requested_notional) <= 0 || Number(row.requested_notional) > 2.0
+      || Number(row.limit_price) <= 0 || Number(row.limit_price) >= 1
+      || Number(row.size) <= 0
+    ) {
+      return { ok: false, reason: "asos_argmax_live_intent_mismatch" };
+    }
+    const observed = Date.parse(String(row.observed_at_utc || ""));
+    const received = Date.parse(String(row.received_at_utc || ""));
+    let periods = [];
+    try {
+      periods = JSON.parse(String(row.argmax_periods_json || "[]"));
+    } catch {}
+    periods = latestContiguousArgmaxPeriods(periods);
+    const exactPeriodActive = (
+      Number.isFinite(observed)
+      && Number.isFinite(received)
+      && Number.isFinite(Number(nowMs))
+      && observed <= received
+      && Array.isArray(periods)
+      && periods.some((period) => {
+        const start = Date.parse(String(period?.start_utc || ""));
+        const end = Date.parse(String(period?.end_utc || ""));
+        return Number.isFinite(start) && Number.isFinite(end) && end > start
+          && observed >= start && observed < end
+          && received >= start && received < end
+          && Number(nowMs) >= start && Number(nowMs) < end;
+      })
+    );
+    if (!exactPeriodActive) {
+      return { ok: false, reason: "asos_argmax_live_period_not_active" };
+    }
+    const market = db.prepare(`
+      SELECT 1 AS ok FROM reported_trajectory_market_registry
+       WHERE station_id=? AND event_date=? AND yes_token=?
+         AND source_lane='awc' AND source_eligible=1
+         AND market_active=1 AND market_accepting_orders=1
+       LIMIT 1
+    `).get(row.station_id, row.event_date, tokenID);
+    if (!market) return { ok: false, reason: "asos_argmax_live_market_not_active" };
+    const activeStates = "'PREPARED','SUBMITTING','EXCHANGE_ACCEPTED','RECONCILE_REQUIRED'";
+    const total = Number(db.prepare(`
+      SELECT COALESCE(SUM(requested_notional),0) AS used
+        FROM reported_trajectory_asos_argmax_order_intents WHERE state IN (${activeStates})
+    `).get()?.used || 0);
+    const station = Number(db.prepare(`
+      SELECT COALESCE(SUM(requested_notional),0) AS used
+        FROM reported_trajectory_asos_argmax_order_intents
+       WHERE station_id=? AND state IN (${activeStates})
+    `).get(row.station_id)?.used || 0);
+    if (total > 20.0 + 1e-8 || station > 2.0 + 1e-8) {
+      return { ok: false, reason: "asos_argmax_live_budget_invalid" };
+    }
+    return { ok: true, reason: "asos_argmax_live_exact_intent", station_id: row.station_id };
+  } catch (err) {
+    return { ok: false, reason: `asos_argmax_live_admission_error:${redactErrorText(err?.message || String(err || ""))}` };
+  } finally {
+    try { db?.close(); } catch {}
   }
 }
 
@@ -828,7 +1142,60 @@ export class ClobOrderService {
     if (truthy(env("PM_CLOB_BALANCE_PREFETCH_ENABLED", "0"), false)) {
       this.startBalancePrefetch();
     }
+    this.startProxyRecoveryWatch();
     this.readyAt = new Date();
+  }
+
+  /**
+   * Recover from a boot that raced the local proxy.
+   *
+   * `configureProxy()` runs exactly once in `_start()`, so a service that
+   * booted while the local proxy port was still down stays pinned at
+   * `proxy_required_missing` forever, and `placeOrder` rejects every request
+   * with `proxy_required_unavailable` -- including the ASOS argmax side lane,
+   * whose read-only/live-pause exemptions do not cover the proxy gate.
+   *
+   * Recovery deliberately re-execs the process rather than re-running
+   * `configureProxy()` in place.  The global-agent `bootstrap()` inside that
+   * function only affects agents constructed after it runs, so an in-process
+   * retry would have to rebuild the axios agents and the CLOB client in the
+   * exact original order; a clean launchd restart replays the one startup path
+   * that is already proven.  This is safe precisely because the service cannot
+   * have submitted anything in this state: there are no in-flight orders to
+   * strand, and the WS snapshot plus balance caches rebuild on boot.
+   *
+   * The watch is a no-op unless the proxy is both required and currently
+   * missing, and it only exits once a probe confirms the proxy is reachable
+   * again -- a permanently unavailable proxy therefore cannot cause a restart
+   * loop.
+   */
+  startProxyRecoveryWatch({ probe = configureProxy, exit = process.exit } = {}) {
+    if (!truthy(env("PM_CLOB_FORCE_PROXY", "0"))) return null;
+    if (this.proxy?.mode === "proxy") return null;
+    const intervalMs = Math.max(5000, Math.floor(positiveNumber(
+      env("PM_CLOB_PROXY_RECOVERY_INTERVAL_MS", "15000"), 15000,
+    )));
+    const timer = setInterval(async () => {
+      if (this.proxy?.mode === "proxy") {
+        clearInterval(timer);
+        return;
+      }
+      let recovered = null;
+      try {
+        recovered = await probe();
+      } catch {
+        return;
+      }
+      if (recovered?.mode !== "proxy") return;
+      clearInterval(timer);
+      console.error(
+        `[${SERVICE_NAME}] proxy recovered (${recovered.proxy}); exiting for a clean`
+        + " launchd restart so the CLOB transport is rebuilt in startup order",
+      );
+      exit(0);
+    }, intervalMs);
+    timer.unref?.();
+    return timer;
   }
 
   buildClient() {
@@ -1823,6 +2190,7 @@ export class ClobOrderService {
       live_pause_file: LIVE_PAUSE_FILE,
       live_pause_present: livePaused,
       order_submission_enabled: !livePaused && !truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0")),
+      asos_argmax_live_submission_enabled: truthy(env("PM_ASOS_ARGMAX_LIVE_ENABLED", "0"), false),
     };
   }
 
@@ -1943,6 +2311,9 @@ export class ClobOrderService {
       }
       const status = normalizedExchangeOrderStatus(order.status);
       const matched = order.size_matched ?? order.sizeMatched ?? order.matched_size ?? null;
+      const sharesMatched = String(order.side || request.side || "").toUpperCase() === "SELL"
+        ? (order.makingAmount ?? order.making_amount ?? matched)
+        : matched;
       const original = order.original_size ?? order.originalSize ?? null;
       const reconcileKind = exchangeOrderReconcileKind(order);
       if (reconcileKind.kind === "reconcile_required") {
@@ -1960,6 +2331,7 @@ export class ClobOrderService {
           status: status || "unknown",
           original_size: original,
           size_matched: matched,
+          shares_matched: sharesMatched,
         };
       }
       const response = {
@@ -1980,6 +2352,7 @@ export class ClobOrderService {
         side: String(order.side || request.side || "").toUpperCase(),
         original_size: order.original_size ?? null,
         size_matched: order.size_matched ?? null,
+        shares_matched: sharesMatched,
         price: order.price ?? null,
       };
       if (reconcileKind.kind === "submit_failed") {
@@ -2256,7 +2629,27 @@ export class ClobOrderService {
         source: SERVICE_NAME,
       };
     }
-    if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0"))) {
+    const asosLiveAdmission = asosArgmaxLiveAdmission(payload);
+    const isAsosLive = asosLiveAdmission.ok === true;
+    if (
+      [
+        ASOS_ARGMAX_LIVE_STRATEGY_ID,
+        ASOS_ARGMAX_EXIT_STRATEGY_ID,
+        ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID,
+      ].includes(
+        String(payload?.strategy_id || "")
+      ) && !isAsosLive
+    ) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: asosLiveAdmission.reason,
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
+      };
+    }
+    if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0")) && !isAsosLive) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
         error: "clob_order_service_read_only",
@@ -2267,14 +2660,16 @@ export class ClobOrderService {
       };
     }
     if (livePausePresent()) {
-      return {
-        ok: false, accepted: false, pending: false, reconcile_required: false,
-        error: "clob_order_service_live_paused",
-        exchange_post_started: false,
-        idempotency_key: String(payload?.idempotency_key || ""),
-        order_intent_id: String(payload?.order_intent_id || ""),
-        source: SERVICE_NAME,
-      };
+      if (!isAsosLive) {
+        return {
+          ok: false, accepted: false, pending: false, reconcile_required: false,
+          error: "clob_order_service_live_paused",
+          exchange_post_started: false,
+          idempotency_key: String(payload?.idempotency_key || ""),
+          order_intent_id: String(payload?.order_intent_id || ""),
+          source: SERVICE_NAME,
+        };
+      }
     }
     const key = String(payload.idempotency_key || stableKey(payload));
     const orderIntentId = String(payload.order_intent_id || key);
@@ -2738,6 +3133,11 @@ export class ClobOrderService {
       original_size: response.original_size ?? response.originalSize ?? (Number.isFinite(size) ? size : null),
       size_matched: response.size_matched ?? response.sizeMatched ?? response.matched_size
         ?? response.takingAmount ?? response.taking_amount ?? null,
+      shares_matched: side === Side.SELL
+        ? (response.makingAmount ?? response.making_amount ?? response.size_matched
+          ?? response.sizeMatched ?? response.matched_size ?? null)
+        : (response.size_matched ?? response.sizeMatched ?? response.matched_size
+          ?? response.takingAmount ?? response.taking_amount ?? null),
       exchange_response: response,
       source: SERVICE_NAME,
       service_pid: process.pid,

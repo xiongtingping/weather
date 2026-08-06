@@ -1,0 +1,30 @@
+{
+  "activation_count_after": 4,
+  "activation_count_before": 2,
+  "calls_order_gateway": false,
+  "content_sha256": "e819e49ede62d9275f47957b5c91f0310dbf10fe0af13a1a3eb897f7259ab103",
+  "contract_content_sha256": "d295ce0380518fd4384cecf18d332f6095f925dbc896b06f64f9a13fedd2b079",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "ingress_receipt": {
+    "builder_id": "republisher_distribution_activation_builder_v1",
+    "calls_order_gateway": false,
+    "canonical_schema": "bayes_basket_target_canonical_republisher_no_live_activation_contract_v1",
+    "contract_content_sha256": "d295ce0380518fd4384cecf18d332f6095f925dbc896b06f64f9a13fedd2b079",
+    "inserted_count": 2,
+    "orders_submitted": 0,
+    "receipt_sha256": "9e41c9e557566e5f1793038a33c03972aa79279ec60a65c3b1bdf0248920f8d7",
+    "replayed_count": 0,
+    "schema": "bayes_basket_target_canonical_model_ingress_v1",
+    "state": "COMMITTED",
+    "validated_counts": {
+      "republisher_no_live_activation": 2
+    },
+    "writes_production_database": false,
+    "writes_target_database": true
+  },
+  "orders_submitted": 0,
+  "p0_written": false,
+  "production_no_live_only": true,
+  "schema": "republisher_distribution_activation_materialization_receipt_v1",
+  "state": "COMMITTED"
+}

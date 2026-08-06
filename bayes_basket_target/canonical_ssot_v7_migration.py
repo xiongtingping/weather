@@ -13,11 +13,11 @@ from .canonical_ssot_schema import (
     V7_TRIGGERS,
     inspect_canonical_ssot_schema,
 )
-from .canonical_ssot_v6_migration import (
-    _assert_disk_capacity,
-    _assert_no_incoming_foreign_keys,
-    _row_fingerprint,
-    _trigger_snapshot,
+from .canonical_ssot_migration_common import (
+    assert_disk_capacity,
+    assert_no_incoming_foreign_keys,
+    row_fingerprint,
+    trigger_snapshot,
 )
 from .contracts import content_sha256
 from .migration_quiescence import validate_writer_quiescence_receipt
@@ -65,6 +65,44 @@ TARGET_TRIGGER_DDL = (
 
 class CanonicalSSOTV7MigrationError(RuntimeError):
     """Fail-closed V7 migration error."""
+
+
+def _assert_disk_capacity(database: Path) -> dict[str, int]:
+    return assert_disk_capacity(
+        database,
+        error_type=CanonicalSSOTV7MigrationError,
+        error_prefix="canonical_ssot_v7",
+    )
+
+
+def _assert_no_incoming_foreign_keys(conn: sqlite3.Connection) -> None:
+    assert_no_incoming_foreign_keys(
+        conn,
+        table=TABLE,
+        error_type=CanonicalSSOTV7MigrationError,
+        error_prefix="canonical_ssot_v7",
+    )
+
+
+def _row_fingerprint(
+    conn: sqlite3.Connection, *, table: str = TABLE
+) -> tuple[int, str, dict[str, int]]:
+    return row_fingerprint(conn, table=table)
+
+
+def _trigger_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    table: str = TABLE,
+    trigger_names: tuple[str, ...],
+) -> dict[str, str]:
+    return trigger_snapshot(
+        conn,
+        table=table,
+        trigger_names=trigger_names,
+        error_type=CanonicalSSOTV7MigrationError,
+        error_prefix="canonical_ssot_v7",
+    )
 
 
 def _schema_state(conn: sqlite3.Connection) -> str:

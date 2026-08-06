@@ -14,6 +14,7 @@ import time as time_module
 from collections.abc import Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, datetime, time, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,6 +22,12 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .ecmwf_pf50_raw_reuse import (
+    RetainedMemberField,
+    find_content_addressed_message,
+    load_retained_field_index,
+    store_content_addressed_message,
+)
 from .future_temperature_curve import build_native_family_temperature_curve
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import decode_nearest_temperatures_c
@@ -47,29 +54,56 @@ PRIMARY_BASE_URL = (
     "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
 )
 FALLBACK_BASE_URL = "https://ecmwf-forecasts.s3.amazonaws.com"
-BASE_URL = PRIMARY_BASE_URL
+GCS_OFFICIAL_REPLICA_BASE_URL = (
+    "https://storage.googleapis.com/ecmwf-open-data"
+)
+ALLOWED_TRANSPORT_BASE_URLS = frozenset(
+    {PRIMARY_BASE_URL, FALLBACK_BASE_URL, GCS_OFFICIAL_REPLICA_BASE_URL}
+)
+# The configured value selects transport only.  Every allowed endpoint serves
+# ECMWF's date-addressed Open Data namespace; it does not change provider,
+# model, member, or native lineage.  A process uses one base for an entire
+# packet so ``source_prefix`` remains truthful and cannot hide mixed hosts.
+BASE_URL = os.environ.get(
+    "ECMWF_ARCHIVE_TRANSPORT_BASE_URL", PRIMARY_BASE_URL
+).rstrip("/")
 MAX_INDEX_BYTES = 3 * 1024 * 1024
 MAX_MESSAGE_BYTES = 1024 * 1024
 MAX_TOTAL_RESPONSE_BYTES = 768 * 1024 * 1024
 MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_STATION_COUNT = 64
+DEFAULT_RETAINED_PACKET_DIR = Path(
+    "output/audits/native_ensemble_history"
+)
+DEFAULT_RAW_OBJECT_DIR = Path(
+    "data/runtime/official_nwp_sources/ecmwf_pf50/raw"
+)
+DEFAULT_RAW_SEARCH_ROOTS = (
+    Path("data/runtime/official_nwp_sources/ecmwf/raw"),
+    Path(
+        "output/audits/bayes_basket_target_45station_native_history/"
+        "ecmwf_18z_d2_objects/ecmwf_ifs025_official/raw"
+    ),
+)
 # ECMWF's public archive throttles sustained parallel range requests with
 # ``503 Slow Down``.  Historical recovery is deliberately conservative: one
-# process with four bounded workers is fast enough while avoiding the repeated
-# eight-way retry storms observed during the 45-station PF50 backfill.
-MAX_DOWNLOAD_WORKERS = 4
+# process with three bounded workers avoids both the repeated eight-way retry
+# storms and the reproducible four-worker ``503 Slow Down`` failure.
+MAX_DOWNLOAD_WORKERS = 3
+MAX_GCS_DOWNLOAD_WORKERS = 16
 EXPECTED_MEMBER_COUNT = 50
 # A failed GET may be retried only for an explicitly transient network
 # failure.  The cap applies independently to each official S3 endpoint; with
 # the regional endpoint plus its global same-object fallback this bounds every
-# request to at most six attempts.  A 503 adds at most twelve seconds of
-# sleep across the two same-object endpoints; other transient failures keep
-# the short 0.25s/0.5s schedule.
-MAX_TRANSPORT_ATTEMPTS = 3
+# request to at most ten attempts.  Four parallel workers repeatedly tripped
+# the public archive's sustained-request limiter; the production recovery
+# path is fixed at three workers and gives a throttled immutable object enough
+# bounded time to become readable without restarting the whole settled day.
+MAX_TRANSPORT_ATTEMPTS = 5
 MAX_RETRY_BACKOFF_SECONDS = 1.0
 RETRY_BACKOFF_BASE_SECONDS = 0.25
 # S3 ``Slow Down`` needs materially longer than a socket retry.  The scope is
-# deliberately narrow: only HTTP 503 takes the two bounded 2s/4s waits.
+# deliberately narrow: only HTTP 503 takes the bounded 2s/4s/8s/8s waits.
 S3_SLOW_DOWN_BACKOFF_BASE_SECONDS = 2.0
 MAX_S3_SLOW_DOWN_BACKOFF_SECONDS = 8.0
 S3_FALLBACK_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
@@ -77,6 +111,7 @@ TRANSIENT_TRANSPORT_ERRORS = (
     httpx.ConnectError,
     httpx.ConnectTimeout,
     httpx.PoolTimeout,
+    httpx.ProxyError,
     httpx.ReadError,
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
@@ -215,7 +250,7 @@ def _get_bytes(
                 # not proof that the immutable object is absent.  Retry the
                 # same official object with the existing bounded exponential
                 # schedule before trying the regional/global same-object
-                # fallback.  Both dimensions are capped at three attempts;
+                # fallback.  Both dimensions are capped at five attempts;
                 # a day capture therefore remains resumable by rerunning its
                 # unchanged content-addressed output after a final failure.
                 last_http_error = exc
@@ -336,7 +371,16 @@ def _download_message(
     object_key: str,
     row: Mapping[str, Any],
     timeout_seconds: float,
+    retained: RetainedMemberField | None = None,
+    raw_roots: Sequence[Path] = (),
+    raw_store: Path | None = None,
 ) -> tuple[bytes, dict[str, Any]]:
+    if retained is not None:
+        local = find_content_addressed_message(
+            retained.message_sha256, raw_roots
+        )
+        if local is not None:
+            return local.read_bytes(), dict(retained.receipt)
     offset = int(row["_offset"])
     length = int(row["_length"])
     message, headers = _get_bytes(
@@ -348,7 +392,7 @@ def _download_message(
     if len(message) != length:
         raise ContractError("ecmwf_archive_range_length_mismatch")
     member_number = int(row["number"])
-    return message, {
+    receipt = {
         "member_id": f"perturbed_{member_number:02d}",
         "member_number": member_number,
         "forecast_step": int(row["step"]),
@@ -360,6 +404,104 @@ def _download_message(
         "message_sha256": hashlib.sha256(message).hexdigest(),
         "last_modified": str(headers.get("last-modified") or ""),
     }
+    if retained is not None:
+        if hashlib.sha256(message).hexdigest() != retained.message_sha256:
+            raise ContractError("ecmwf_archive_retained_message_sha_mismatch")
+        # Availability evidence belongs to the immutable ECMWF object, not
+        # to the AWS/GCS mirror used for this replay.  Preserve the retained
+        # receipt after byte identity has been proved.
+        receipt = dict(retained.receipt)
+    if raw_store is not None:
+        store_content_addressed_message(
+            message,
+            root=raw_store,
+            expected_sha256=str(receipt["message_sha256"]),
+        )
+    return message, receipt
+
+
+def _retained_packet_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "ECMWF_PF50_RETAINED_PACKET_DIR",
+            str(DEFAULT_RETAINED_PACKET_DIR),
+        )
+    ).expanduser().resolve()
+
+
+def _raw_object_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "ECMWF_PF50_RAW_OBJECT_DIR", str(DEFAULT_RAW_OBJECT_DIR)
+        )
+    ).expanduser().resolve()
+
+
+def _raw_search_roots(raw_store: Path) -> tuple[Path, ...]:
+    configured = os.environ.get("ECMWF_PF50_RAW_SEARCH_ROOTS")
+    candidates = (
+        [Path(value) for value in configured.split(os.pathsep) if value]
+        if configured is not None
+        else list(DEFAULT_RAW_SEARCH_ROOTS)
+    )
+    roots: list[Path] = [raw_store]
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if resolved not in roots:
+            roots.append(resolved)
+    return tuple(roots)
+
+
+@lru_cache(maxsize=4)
+def _retained_fields_for_directory(
+    directory_text: str,
+) -> dict[tuple[str, str, str, int], RetainedMemberField]:
+    directory = Path(directory_text)
+    if not directory.is_dir():
+        return {}
+    return load_retained_field_index(
+        [
+            *directory.glob("ECMWF_PF50_45station_*_official_d2.json"),
+            *directory.glob("official_ecmwf_ifs_forward_*.json"),
+        ]
+    )
+
+
+def _retained_index_rows(
+    *, run_init_utc: str, forecast_steps: Sequence[int]
+) -> list[tuple[str, str, str, dict[str, Any], RetainedMemberField]] | None:
+    index = _retained_fields_for_directory(str(_retained_packet_dir()))
+    rows: list[tuple[str, str, str, dict[str, Any], RetainedMemberField]] = []
+    for number in range(1, EXPECTED_MEMBER_COUNT + 1):
+        member_id = f"perturbed_{number:02d}"
+        for step in forecast_steps:
+            field = index.get((SYSTEM_ID, run_init_utc, member_id, int(step)))
+            if field is None:
+                return None
+            receipt = field.receipt
+            try:
+                start = int(receipt["range_start"])
+                end = int(receipt["range_end"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ContractError("ecmwf_archive_retained_range_invalid") from exc
+            object_key = str(receipt.get("object_key") or "")
+            index_sha = str(receipt.get("index_sha256") or "")
+            if not object_key or len(index_sha) != 64 or end < start:
+                raise ContractError("ecmwf_archive_retained_receipt_invalid")
+            row = {
+                "number": number,
+                "step": int(step),
+                "_offset": start,
+                "_length": end - start + 1,
+            }
+            rows.append((
+                f"{BASE_URL}/{object_key}",
+                index_sha,
+                object_key,
+                row,
+                field,
+            ))
+    return rows
 
 
 def _build_station_capture(
@@ -512,6 +654,8 @@ def capture_ecmwf_station_days(
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
 ) -> dict[str, Any]:
+    if BASE_URL not in ALLOWED_TRANSPORT_BASE_URLS:
+        raise ContractError("ecmwf_archive_transport_base_url_invalid")
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=2),
@@ -521,6 +665,7 @@ def capture_ecmwf_station_days(
     query_at = datetime.fromisoformat(
         archive_query_at_utc.replace("Z", "+00:00")
     ).astimezone(timezone.utc)
+    projection_generated_at = query_at
     if (
         query_at <= run_init
         or not 1 <= len(station_scopes) <= MAX_STATION_COUNT
@@ -534,7 +679,12 @@ def capture_ecmwf_station_days(
         )
     except ValueError as exc:
         raise ContractError("ecmwf_archive_worker_count_invalid") from exc
-    workers = max(1, min(MAX_DOWNLOAD_WORKERS, requested_workers))
+    worker_cap = (
+        MAX_GCS_DOWNLOAD_WORKERS
+        if BASE_URL == GCS_OFFICIAL_REPLICA_BASE_URL
+        else MAX_DOWNLOAD_WORKERS
+    )
+    workers = max(1, min(worker_cap, requested_workers))
     scopes: dict[str, dict[str, Any]] = {}
     for raw in station_scopes:
         station = str(raw.get("station_id") or "").strip().upper()
@@ -583,7 +733,9 @@ def capture_ecmwf_station_days(
     }
     receipts = []
     total_bytes = 0
-    index_rows = []
+    index_rows: list[
+        tuple[str, str, str, Mapping[str, Any], RetainedMemberField | None]
+    ] = []
 
     def fetch_index(
         step: int,
@@ -599,38 +751,78 @@ def capture_ecmwf_station_days(
         )
         return step, grib_url, object_prefix, index_raw
 
-    # Index objects are about 2 MiB each and historical S3 throughput is
-    # intentionally modest. Fetch at the same four-connection ceiling used
-    # for message ranges instead of serializing 15-17 independent objects.
-    # Results are sorted before parsing so output identity remains stable.
-    with ThreadPoolExecutor(
-        max_workers=workers,
-        thread_name_prefix="ecmwf-index",
-    ) as index_executor:
-        index_futures = [
-            index_executor.submit(fetch_index, step)
-            for step in union_steps
-        ]
-        fetched_indexes = [
-            future.result()
-            for future in index_futures
-        ]
-    for step, grib_url, object_prefix, index_raw in sorted(
-        fetched_indexes,
-        key=lambda row: row[0],
-    ):
-        total_bytes += len(index_raw)
-        index_sha = hashlib.sha256(index_raw).hexdigest()
-        for row in _parse_index(
-            index_raw,
-            forecast_step=step,
+    run_init_text = run_init.isoformat().replace("+00:00", "Z")
+    retained_rows = _retained_index_rows(
+        run_init_utc=run_init_text,
+        forecast_steps=union_steps,
+    )
+    retained_arrival_evidence: dict[str, Any] | None = None
+    if retained_rows is not None:
+        # The old 45-station packet is a receipt manifest for the global
+        # member fields.  Reuse its exact range coordinates and hashes; the
+        # absence of a new pilot artifact is not a reason to fetch indexes.
+        index_rows.extend(retained_rows)
+        retained_fields = [row[4] for row in retained_rows]
+        retained_at = max(
+            datetime.fromisoformat(
+                field.retained_at_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            for field in retained_fields
+        )
+        if retained_at > projection_generated_at:
+            raise ContractError(
+                "ecmwf_archive_retained_arrival_after_projection"
+            )
+        query_at = retained_at
+        retained_arrival_evidence = {
+            "schema": "official_native_retained_arrival_projection_v1",
+            "ensemble_system_id": SYSTEM_ID,
+            "retained_at_utc": query_at.isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z"),
+            "projection_generated_at_utc": projection_generated_at.isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z"),
+            "source_packet_content_sha256s": sorted({
+                field.source_packet_content_sha256
+                for field in retained_fields
+            }),
+            "source_packet_refs": sorted({
+                field.source_packet_ref for field in retained_fields
+            }),
+            "field_count": len(retained_fields),
+            "network_download_count": 0,
+        }
+        retained_arrival_evidence["content_sha256"] = content_sha256(
+            retained_arrival_evidence
+        )
+    else:
+        # Only a genuinely absent receipt scope may query the index service.
+        with ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix="ecmwf-index",
+        ) as index_executor:
+            index_futures = [
+                index_executor.submit(fetch_index, step)
+                for step in union_steps
+            ]
+            fetched_indexes = [future.result() for future in index_futures]
+        for step, grib_url, object_prefix, index_raw in sorted(
+            fetched_indexes,
+            key=lambda row: row[0],
         ):
-            index_rows.append((
-                grib_url,
-                index_sha,
-                object_prefix + ".grib2",
-                row,
-            ))
+            total_bytes += len(index_raw)
+            index_sha = hashlib.sha256(index_raw).hexdigest()
+            for row in _parse_index(index_raw, forecast_step=step):
+                index_rows.append((
+                    grib_url,
+                    index_sha,
+                    object_prefix + ".grib2",
+                    row,
+                    None,
+                ))
+    raw_store = _raw_object_dir()
+    raw_roots = _raw_search_roots(raw_store)
     with ThreadPoolExecutor(
         max_workers=workers,
         thread_name_prefix="ecmwf-download",
@@ -640,7 +832,7 @@ def capture_ecmwf_station_days(
 
         def submit_next() -> bool:
             try:
-                grib_url, index_sha, object_key, row = next(
+                grib_url, index_sha, object_key, row, retained = next(
                     row_iter
                 )
             except StopIteration:
@@ -652,6 +844,9 @@ def capture_ecmwf_station_days(
                 object_key=object_key,
                 row=row,
                 timeout_seconds=timeout_seconds,
+                retained=retained,
+                raw_roots=raw_roots,
+                raw_store=raw_store,
             )
             pending[future] = int(row["step"])
             return True
@@ -738,6 +933,10 @@ def capture_ecmwf_station_days(
         "archive_query_at_utc": query_at.isoformat().replace(
             "+00:00", "Z"
         ),
+        "projection_generated_at_utc": projection_generated_at.isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z"),
+        "retained_arrival_evidence": retained_arrival_evidence,
         "single_download_per_global_member_field": True,
         "training_only": True,
         "holdout_eligible": False,

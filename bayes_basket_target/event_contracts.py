@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, content_sha256
 
@@ -40,6 +41,15 @@ def _sha(name: str, value: Any) -> str:
     result = _text(name, value).lower()
     if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
         raise ContractError(f"{name}_invalid")
+    return result
+
+
+def _timezone(name: str, value: Any) -> str:
+    result = _text(name, value)
+    try:
+        ZoneInfo(result)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ContractError(f"{name}_invalid") from exc
     return result
 
 
@@ -180,6 +190,7 @@ class CanonicalObservationEvent:
     observation_id: str
     station_id: str
     event_date: str
+    settlement_timezone: str
     source_lane: str
     report_type: str
     sequence: int
@@ -196,6 +207,7 @@ class CanonicalObservationEvent:
             "observation_id",
             "station_id",
             "event_date",
+            "settlement_timezone",
             "source_lane",
             "report_type",
             "sequence",
@@ -206,13 +218,16 @@ class CanonicalObservationEvent:
             "supersedes_observation_id",
         }
         _strict_fields(raw, allowed=allowed, contract="canonical_observation")
-        if raw.get("schema") not in {None, "bayes_basket_canonical_observation_event_v1"}:
+        if raw.get("schema") not in {
+            None,
+            "bayes_basket_canonical_observation_event_v2",
+        }:
             raise ContractError("canonical_observation_schema_invalid")
         lane = _text("source_lane", raw.get("source_lane")).lower()
-        if lane not in {"amsc", "awc"}:
+        if lane not in {"amsc", "awc", "asos_1min", "madis_hfmetar"}:
             raise ContractError("canonical_observation_source_lane_invalid")
         report_type = _text("report_type", raw.get("report_type")).upper()
-        if report_type not in {"METAR", "SPECI"}:
+        if report_type not in {"METAR", "SPECI", "ASOS_1MIN", "ASOS_HF"}:
             raise ContractError("canonical_observation_report_type_invalid")
         qc_state = _text("qc_state", raw.get("qc_state")).upper()
         if qc_state not in {"ACCEPTED", "REVIEW_REQUIRED"}:
@@ -234,6 +249,9 @@ class CanonicalObservationEvent:
             observation_id=_text("observation_id", raw.get("observation_id")),
             station_id=_text("station_id", raw.get("station_id")).upper(),
             event_date=_date("event_date", raw.get("event_date")),
+            settlement_timezone=_timezone(
+                "settlement_timezone", raw.get("settlement_timezone")
+            ),
             source_lane=lane,
             report_type=report_type,
             sequence=sequence,
@@ -250,10 +268,11 @@ class CanonicalObservationEvent:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": "bayes_basket_canonical_observation_event_v1",
+            "schema": "bayes_basket_canonical_observation_event_v2",
             "observation_id": self.observation_id,
             "station_id": self.station_id,
             "event_date": self.event_date,
+            "settlement_timezone": self.settlement_timezone,
             "source_lane": self.source_lane,
             "report_type": self.report_type,
             "sequence": self.sequence,
@@ -279,7 +298,12 @@ def validate_canonical_observation_sequence(
     ordered = tuple(sorted(rows, key=lambda item: (item.sequence, item.observation_id)))
     if len({item.observation_id for item in ordered}) != len(ordered):
         raise ContractError("canonical_observation_id_duplicate")
-    if len({(item.station_id, item.event_date) for item in ordered}) != 1:
+    if len(
+        {
+            (item.station_id, item.event_date, item.settlement_timezone)
+            for item in ordered
+        }
+    ) != 1:
         raise ContractError("canonical_observation_scope_mixed")
     for index, item in enumerate(ordered):
         if item.sequence != index + 1:

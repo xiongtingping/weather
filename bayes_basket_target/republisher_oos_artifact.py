@@ -17,6 +17,7 @@ from .canonical_contract import (
     REPUBLISHER_OOS_ARTIFACT_CONTRACT_SCHEMA,
 )
 from .contracts import ContractError, content_sha256
+from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .deterministic_republisher_oos import (
     CANDIDATE_SCHEMA,
     SCHEMA as OOS_REPORT_SCHEMA,
@@ -59,14 +60,16 @@ def _settlement_definition(
     return str(rows[0][0])
 
 
-def _candidate_index(report: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+def _candidate_index(
+    report: Mapping[str, Any], *, truth_source: str
+) -> dict[str, Mapping[str, Any]]:
     if report.get("schema") != OOS_REPORT_SCHEMA:
         raise ContractError("republisher_oos_artifact_report_schema_invalid")
     _verify_hash(report)
     if (
         report.get("source_role") != "aggregator_republisher"
         or report.get("transport_provider_id") != "OPEN_METEO"
-        or report.get("truth_source") != "canonical_ssot_fact_v7"
+        or report.get("truth_source") != truth_source
         or report.get("legacy_truth_projection_read") is not False
         or report.get("formal_p0_eligible") is not False
     ):
@@ -81,6 +84,22 @@ def _candidate_index(report: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
             raise ContractError("republisher_oos_artifact_candidate_scope_invalid")
         if candidate.get("schema") != CANDIDATE_SCHEMA:
             raise ContractError("republisher_oos_artifact_candidate_schema_invalid")
+        if (
+            str(candidate.get("model_id") or "").strip().upper()
+            != str(report.get("model_id") or "").strip().upper()
+            or candidate.get("provider_id") != report.get("provider_id")
+            or candidate.get("transport_provider_id") != "OPEN_METEO"
+            or candidate.get("source_role") != "aggregator_republisher"
+            or candidate.get("authority_scope") != "PRODUCTION_NO_LIVE_CANDIDATE"
+            or candidate.get("formal_p0_eligible") is not False
+            or candidate.get("native_arrival_index_eligible") is not False
+            or candidate.get("p1_eligible") is not False
+            or candidate.get("future_event_count") != 0
+            or candidate.get("run_cycle") is not None
+            or candidate.get("run_cycle_scope")
+            != "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE"
+        ):
+            raise ContractError("republisher_oos_artifact_candidate_lineage_invalid")
         if candidate.get("state") == "PRODUCTION_NO_LIVE_OOS_PASS":
             result[station] = candidate
     return result
@@ -95,7 +114,13 @@ def build_republisher_oos_artifact_contract(
 ) -> dict[str, Any]:
     """Return a strict canonical contract for passed station artifacts."""
 
-    candidates = _candidate_index(report)
+    inspection = inspect_canonical_ssot_schema(database)
+    state = str(inspection.get("state") or "")
+    if state not in {"V7", "V8", "V9", "V10"} or inspection.get("errors"):
+        raise ContractError("republisher_oos_artifact_canonical_schema_invalid")
+    candidates = _candidate_index(
+        report, truth_source=f"canonical_ssot_fact_{state.lower()}"
+    )
     requested = (
         sorted({str(value).strip().upper() for value in station_ids})
         if station_ids is not None
@@ -130,7 +155,7 @@ def build_republisher_oos_artifact_contract(
             "settlement_timezone": str(candidate.get("settlement_timezone") or ""),
             "settlement_definition": settlement_definition,
             "lead_bucket": str(candidate.get("lead_bucket") or ""),
-            "run_cycle": str(candidate.get("run_cycle") or ""),
+            "run_cycle": candidate.get("run_cycle"),
             "run_cycle_scope": str(candidate.get("run_cycle_scope") or ""),
             "season_bin": str(candidate.get("season_bin") or ""),
             "forecast_extraction_version": str(

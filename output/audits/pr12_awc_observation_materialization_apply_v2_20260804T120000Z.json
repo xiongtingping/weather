@@ -1,0 +1,56 @@
+{
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "builder_receipt_sha256": "282a2b17a404f904101537c28577b44a31896651a2084acc365210c938c9160d",
+  "calls_order_gateway": false,
+  "canonical_fact_counts_after": {
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "canonical_fact_counts_before": {
+    "truth_observation_day_bounds": 0,
+    "truth_observation_revision": 0
+  },
+  "canonical_ingress_receipt": {
+    "calls_order_gateway": false,
+    "canonical_ingress_receipt": {
+      "builder_id": "pr12.awc_observation_builder.v1",
+      "calls_order_gateway": false,
+      "canonical_schema": "bayes_basket_target_canonical_awc_observation_contract_v1",
+      "contract_content_sha256": "958dd605b94a76904de0efa35cc18888b59ddfe51d25032725e2761a277d738e",
+      "inserted_count": 1174,
+      "orders_submitted": 0,
+      "receipt_sha256": "0addb1d068bd4b2f31a242aab41c1f12c663f0a0783d3976e1ac1a3c011f6c4e",
+      "replayed_count": 0,
+      "schema": "bayes_basket_target_canonical_model_ingress_v1",
+      "state": "STAGED_IN_CALLER_TRANSACTION",
+      "validated_counts": {
+        "truth_observation_day_bounds": 46,
+        "truth_observation_revision": 1128
+      },
+      "writes_production_database": false,
+      "writes_target_database": true
+    },
+    "commits_outer_transaction": false,
+    "contract_content_sha256": "958dd605b94a76904de0efa35cc18888b59ddfe51d25032725e2761a277d738e",
+    "orders_submitted": 0,
+    "receipt_sha256": "b95c30ce9db83fa16469fe21133321ea41b763016d9a3e26dc7c89abdeb0c193",
+    "schema": "bayes_basket_target_pr12_awc_observation_atomic_stage_v1",
+    "state": "STAGED_IN_CALLER_TRANSACTION",
+    "writes_legacy_projection": false
+  },
+  "canonical_rows_inserted": 1174,
+  "content_sha256": "a3a9b18a9942c97ea359a59c972af12b166186037733a58cdd4779d74ae85459",
+  "contract_content_sha256": "958dd605b94a76904de0efa35cc18888b59ddfe51d25032725e2761a277d738e",
+  "current_pointer_changed": false,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "live_pause_released": false,
+  "materialization_state": "MATERIALIZED_UNPUBLISHED",
+  "orders_submitted": 0,
+  "production_service_started": false,
+  "release_state": "MATERIALIZED_UNPUBLISHED",
+  "schema": "bayes_basket_target_pr12_awc_materialization_receipt_v2",
+  "state": "MATERIALIZED_UNPUBLISHED",
+  "terminal_gap_count": 2737,
+  "writer_quiescence_receipt_sha256": "adaad3fcee4d1087ca823c72f96aea89e737251cf5f67852787ba70491deddce",
+  "writes_legacy_projection": false
+}

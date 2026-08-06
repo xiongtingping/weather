@@ -1,0 +1,3456 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00.000Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "blocker_counts": {
+    "DATA_MISSING": 18,
+    "LINEAGE_MISMATCH": 21
+  },
+  "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+  "consumable": false,
+  "content_sha256": "b2d29a0be71d72846bf3446f041c35956ede389f97447b97084601ebb1d57fc5",
+  "diagnostic_counts": {
+    "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING": 18,
+    "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION": 21
+  },
+  "expected_scope_count": 39,
+  "fact_count": 0,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "publishes_pr04_pointer": false,
+  "release_state": "BLOCKED",
+  "releases_live_pause": false,
+  "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_bundle_v1",
+  "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+  "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+  "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+  "starts_services": false,
+  "state": "BLOCKED",
+  "terminal_count": 39,
+  "terminals": [
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "13a421e9107c60f2a3ea5b49b8cdda2b1feb9ddf6765b8b097e76a2fcade9174",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "CYYZ",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "2903e3b8a6533ac51c1980c55d85affb1fad8df0a4a130e4ca10ed4886980aef",
+      "truth_observation_revision_vector_sha256": "6436891e1bd1bbf9e02318e7c1f3925b70877d4973bddd09074859e84438a506",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "656e341a21bcf0159046e43ed43b36559f7190d750cfd5085b4bc341d1a1cc12",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "EPWA",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "7b3c6fa467dc70539dac3bd0eb3acad1da07c31cfc03d37ff22835e8afe37a8d",
+      "truth_observation_revision_vector_sha256": "9c525e2023b5b570e2fe26cf3ecff06bac874340e46c67673e5bc1dfa650cae6",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "556438a3e6237e091b411602c8d5c489b47ab520a5ef422e5ef81ca2c183a6b9",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "FACT",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "56f73997d39b4fc4bde30ed7e4882599bf158e489da0a37e8efccaabde0a1eda",
+      "truth_observation_revision_vector_sha256": "8e6135906d918606e386f9c91b9bf0ea277bbe4d9bf33d7871f9c07701dac0ab",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "dc073b388163e4a3960dcefe2404ff833453f8342f300caa9f32467541aa2e3a",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "LEMD",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "11da49755cb4e7a3e1bf377f3f9c09f2d28eb5d1121132e78f3dc6ef0d130898",
+      "truth_observation_revision_vector_sha256": "68e4d5686be6bade34ac71097b64c84fb70bc0297f68426b83935951137609b5",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "3122bdba7ebff37c1b0967787e42ebe6c84867bb2bcd8e4ab873373245aad8a3",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "LFPB",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "a96c5125601f4951d20167bf9f819fb9db7c6e522da42fd0fa2a0149eaccf615",
+      "truth_observation_revision_vector_sha256": "ffaf08de6ca4daf7af19c8a8da5740b2d77845a86e2c302f6709d049869b2df2",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "930eab2313538bf082ea5b1e5da5b82d6101e39a59db48b26bd4e9dd3309b3bc",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "NZWN",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "fc34659cc5cb2e02f3b90ff576a17942c0dd66ecb099630803c213f81bae13fc",
+      "truth_observation_revision_vector_sha256": "b814f88629e96b5236b9740c4d46369d5ee12ab87c9c30dd0cb64532760509d5",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "aaee8fe54587702c4467938b511779ec87f08f14a3fe9dae909daaae8971cc97",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "OEJN",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "72c84ecbaaadd3f82fae06bb34143ca1c9760318e34418ca9540e9a1bc4b2d81",
+      "truth_observation_revision_vector_sha256": "5ef01d098be6d0bbe6a5a084d1c664ecc97b85c3e5f31bd775f4c882a168607d",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "095500d22f17336674561099dbef21a7a5535f5c28dca84ad362fa25f40a5ea3",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RCSS",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "6b0bfe8703a538068ae77f5b0f275e21bda7cc90c792da66aa7d2441b57670e2",
+      "truth_observation_revision_vector_sha256": "0ea10b1e0ff0762769ee1cc6e8462f58cc389edfc7ef4748060057397ac03534",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "771175d579eaf4322d4a41f7fa9baa4d73962fd37e14155f5ddd3e6f4840158a",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RJTT",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "2dcb2d6a8616802152589d7b78b923f6b4daa737a8c5e964e5317c9482d6c9ec",
+      "truth_observation_revision_vector_sha256": "2b5fe84b75fb1c3198feadbb8855d8ae9507bd43d69cd06974b2a32884f4b454",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "0f725c8c06cd1b97bf2bd69d6e4ac252c066cc8b7a9f19d7e1af44be93a0805a",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RKSI",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "bb263e7a7ebb5cc566581b56ab3058154c3d759f208db64ed838ceb726fde722",
+      "truth_observation_revision_vector_sha256": "495d5efc1acdb9c32e6d05809c6692c6457dcebb4072fc59e6ee27b35e7e91ae",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "e2c80fa7a418a1bd036d22a8001fa6eae76cbc44fa9c46759d74960791279128",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RPLL",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "773709be7d6507b0059e2ac828e71bb84abc623b8c9c599bd9eb80897751db1d",
+      "truth_observation_revision_vector_sha256": "ae24d0b85aafb5c6797e339bb9ec787d7c06bc0df79d0fe997fe583a60c90316",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "46e342860b09fe6d3e664f1874452d7c35128fd2354f44d99f670939eb82dc64",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "SBGR",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "09777b98933eb5bab67928b46eae337249c56a75ee49cbc5f580bc1fe709a604",
+      "truth_observation_revision_vector_sha256": "a8e600af7f38fa6f5d769d10df322d84430bb0290a30c751a915bd92b9a100fd",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "cc534e42b2996dfc1dbeeead9abcf4c2e341ad598ad4b7a0dce84b022c62cccc",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "WSSS",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "b4d423a653b3ee9d804ce5c52cbd707d50bb0de7adc8481e62c6dac19442a951",
+      "truth_observation_revision_vector_sha256": "2b1c1f30ef9bcf19e3a20845e30cc02a1f505d1608229169f431d8953a1c3f9c",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "08f168c93599f148fae3db28081d698d38f5cec6d4276e6bad20bdfd621b0f04",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZBAA",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "1ea377fbcccad4009523ea88247f5d979902383c0af79f433b9c4955c3fe1cf6",
+      "truth_observation_revision_vector_sha256": "cebbf304d6c3dbf5b42eec01c71508f836b7c9608294fd42a987ca6052196658",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "a0a44c50f32f5acfdc4eb4908e432d845974307d501e547268ee6589d06e563a",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZGGG",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "784055f5548bbf3e5471a0215535e27ff5c16bb7bc76576733fb24cb5140ce32",
+      "truth_observation_revision_vector_sha256": "39d7a528e025a54ba541fe08e601f9dcb366a665bd791520663a21d85ba8c158",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "494ed7e7847ce21cbf2eb02a2cab29e9b527573966a9806cedd1e38b3fc36517",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZGSZ",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "fd2da942bdcc95e434ea962ceb1cc49eaca3622b5e2866c9f152e4fa7bdd8a66",
+      "truth_observation_revision_vector_sha256": "ec572dc2f07360b2dab74076b1b03e8ae22aa39f9ec2fc4838528a1510d6bfff",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "0d021c046d3f36dfbee892631bb3c9d7260d8cee55f92998ad62527ebf0a3110",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZHHH",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "d48d4262127fc0b456cb2f017ea3889bd791420a28a631f35bb4645d852c3eef",
+      "truth_observation_revision_vector_sha256": "1dd065c6c810890c7c613e8e1834798b416397265c341183e5506a6b916b786e",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "b3067f392f74e09d2682923ef8d153609d26d75e66b226a1ee0a7cfae9e85033",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZSPD",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "a9446aa2b93c80a0195564776bcb6da84ac10cdca35492a79a2e09e8502d41d8",
+      "truth_observation_revision_vector_sha256": "7d18ce2eb4d2f8f92f2e419ef2bd15a5c56d63c261564b37926b5b57d9ca5fcb",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "21f06b7d3254dafc91b5e7bdfdb8911f769454d9e072ce6b93d6e6f9bc1ef396",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZSQD",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "745b6afd37b3e1576c01b9c85ec76ab5511a64df714ae1a2b10fde386000b54a",
+      "truth_observation_revision_vector_sha256": "c2efcc5ec588bca4a3a1849abc75d65c80e9769320f5756f7cac38ed53468a99",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "f7a45a77ec7f206a6e2087d3d0f723d29fd5430bff0df881b34f7c257b84bab8",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZUCK",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "17a06946cb55289c830673da02667ec89e1f9a4659a2b0b21fdd8bcca7f217be",
+      "truth_observation_revision_vector_sha256": "163a8cb72406c63ab4f6914033bff11c0d6472f31f464812fe887192a69f9bec",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "LINEAGE_MISMATCH",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "21817c22c4bca7f98497730ae960e48ad23957762a8e06cb8c1c22dc481bae83",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_RECEIPT_AFTER_D1_DECISION",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-01",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:04.000Z",
+          "raw_object_sha256": "46ecec850885c670a8c340362b178fe61a3e50ee8cc298aa44c9449b0a8f27b5",
+          "received_at_utc": "2026-08-01T05:36:43.000Z",
+          "transport_receipt_sha256": "d00d54123e5a20b4f3c6b4bd2ff39e64a74f54a139390ebf4a50e72590248338",
+          "valid_time_utc": "2026-08-01T06:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:16.000Z",
+          "raw_object_sha256": "cb76a8f4671f3da828b92e6c9c89184f19c2cf1ef856a9b48ff561ffcc5c2e3e",
+          "received_at_utc": "2026-08-01T05:36:52.000Z",
+          "transport_receipt_sha256": "890e7a22aa7ac091b20dc478aa985ec7b9381ed3b07ad39b6a7d056680a318c8",
+          "valid_time_utc": "2026-08-01T12:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:03.000Z",
+          "raw_object_sha256": "349945fca63bc0734a87015b549903f830f1a91b19aafb567128c5fc0407a5a4",
+          "received_at_utc": "2026-08-01T05:37:01.000Z",
+          "transport_receipt_sha256": "f3dc0dc742e374e3089b1c93e48a51737629c88c6978245824b6e722faf411d1",
+          "valid_time_utc": "2026-08-01T18:00:00.000Z"
+        },
+        {
+          "published_at_utc": "2026-07-31T23:28:54.000Z",
+          "raw_object_sha256": "e9bcbc80a66d6b9f522171439e700337376e91c2c31cb150a16d647ffd95a3b0",
+          "received_at_utc": "2026-08-01T05:37:09.000Z",
+          "transport_receipt_sha256": "2d645ba0e78ea5dbcc2437d551513daf06ed32139840096097b0960a53c6a4d7",
+          "valid_time_utc": "2026-08-02T00:00:00.000Z"
+        }
+      ],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-01T06:00:00.000Z",
+        "2026-08-01T12:00:00.000Z",
+        "2026-08-01T18:00:00.000Z",
+        "2026-08-02T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "b7d358cae041a9e5cd5dcc3bb191d0ba411f0fca6d62b0a8f3e35515d4cf2527",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZUUU",
+      "strict_decision_at_utc": "2026-08-01T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "24cd9b538564df565e2d3db8d0eb6a8be58817486911364f29158319973c1416",
+      "truth_observation_revision_vector_sha256": "eec08b07c0b3921f59e6822b9092e47286527e0f8108fd058ca563dc93331dde",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "f1e1145e2f37dd2f0dcaba60ee14e2429f8fa286488f6e404190cb7c2bc2733a",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "EPWA",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "8e86e47ee7daeea2cfbee40549e26d322099d3418f546664c5929e9ab92a6fc7",
+      "truth_observation_revision_vector_sha256": "9ec88311230dd65a0b77974f75db9b503aaa175d14ce59eacb58be903114ca38",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "c50f4659665463a8bbdb3f3b213de2407c30be2f517d934d2c49a62cfc29c1f8",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "LEMD",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "6816d5344dcdb9888e8c01e9e411966d5cbab6186735df5e80f74480e480e906",
+      "truth_observation_revision_vector_sha256": "25bdd0450bdf34a8196ed33b649cf05450eeb781f39b10c1b3f5b1fb7fabeb7e",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "c7a5bf01fecc65ed111e988cb9aa9c15f082f46d940015c427e2bab181a81168",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "LFPB",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "39cc77330368f9e0307902e96e4483db6e8acadaec49210dd0e77added1c4ee6",
+      "truth_observation_revision_vector_sha256": "43767da8bc46419f8dcc9704942e69e6fd2d38b2783fcefc5953591964605657",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "0fbce7f372bb55b2f57d927bf6e513ab2153d90a609066305adcae64faaf70b5",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "NZWN",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "aa5d503c7062af744ac0e60e6640dc675355f1efdff6a5c3e233a1a0917196b6",
+      "truth_observation_revision_vector_sha256": "533d74f1f3d527244a075a0106d5f89fef529a58ce77062e889afb2cbde42d73",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "c18634cff0ce5c6224b70262ffea5e7ccbc3c4173f713737d1b07916c6b82ad5",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "OEJN",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "add4ef1cdaec8a38f45d06910d6ba6d2227117754e6acf437c5d1b45efe245a4",
+      "truth_observation_revision_vector_sha256": "18557ead9a6b3983faa75eed06604fa97a21e783b390fd6ba61f0cfe901fd3eb",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "5cb8a9a1b6aaa4199d22de94b3e5d8948b514962b5f90a508933324781292c28",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RCSS",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "294edb631a05c7c4a18e0c5edd47f6b8177380256632254d9fafe4c717f0ca43",
+      "truth_observation_revision_vector_sha256": "22e769c9db9165f63b426d72ea7a876ce7bbce6c1c7a448097e8f7a07f0c63dc",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "06240683cdcf02ddb9ff7289859badb54c7fea1058237c01f7ad8f340de9bf9e",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RJTT",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "e914eaebaf262b9d89bb2abd97b7c768868886af38a93475e11dd2b890d4a100",
+      "truth_observation_revision_vector_sha256": "dd97357cb885abbbdd42dcde7b7f04bf16eb25bf91b8c32fb4995e5f72f7a7a7",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "e1404157054a1a391427fe6391d7da766fda3701209437181db2a15f9b86bb32",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RKPK",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "b52bdfe441fb0da14c1e7f8dfc1672f316a9fdb48a7593cbda6db2d8dd194e12",
+      "truth_observation_revision_vector_sha256": "878d087be5621cce3c31cd221b01d2538e9161ab0d0113f91a7e17374c80e23f",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "ccefa14880adfcff7d918d7e12f426d7748fee726859f6db1efef57445510ae9",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "RKSI",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "1e59493b0eeb028a484a42b5728bf455d761671f396af40fab931dfde9599736",
+      "truth_observation_revision_vector_sha256": "7fe55c1fb3bb697b9f785c19b9694413ae449624d443f35ca0816c6309d233a2",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "fc42aeca375e518216747c3cc441da1c9ccd3e2f2503ecc8b723d9b10ff60ef9",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "SBGR",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "7ee83fd8728bcc3ef8dc80d24bc623d9e6f3cc447fdc35f8ce11d82ad195700b",
+      "truth_observation_revision_vector_sha256": "c1821e6a1c11cd1523a686c7e531f718eab72a53e35e7818e9119fe279a54f3b",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "aa84a86397e44e530222ec7335d38b82ba0fc24bd8d1ca9663db9b6e6e382c24",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "WSSS",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "d9dd615e19e5091a1a06513837ae4396f121f205129b647533c65de10f80297d",
+      "truth_observation_revision_vector_sha256": "17edc5c7cdea0a57eed7a179a81bb36b8382a01c493c7dd8de3238377ca03eb1",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "7f48ed2a2430e5efebc643959e634e352aa90f70f65e1919f181aca789aec354",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZGGG",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "7584c2abbf7a49904e74d82e69977f698a2110fbd7f496f8edc2ed2118118d55",
+      "truth_observation_revision_vector_sha256": "932be15b3a98b6298ab161edd35570fbf339b3833efb2416e9921dcabd5d6279",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "5cb08a47ebb4d70fe09ebddab7b07388672fcaa0c65420b36ea442057307cd88",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZGSZ",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "3f8793c24c176158a90c4dfe558c936762a0e0fcc592852732457a169064c487",
+      "truth_observation_revision_vector_sha256": "605a8cf3e2e1ddb9e50a612b642c437cc83f779191dfaf6c3d9c114e3d7013d8",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "e5756068b39dadbfe7d075e17801a9000e706a7e0b0873d89d90ca44268584df",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZHHH",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "99668c6ff9c8cd26ba7694a4717535d7e184fccb8ef5390ca5fa36ff148c62a7",
+      "truth_observation_revision_vector_sha256": "07a954c0808e600d6cf2ea461fc1641bfe9e776ec6dcf470adbdbe0ec1382b49",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "b860f2004914667c8aa66d6769af02ce7d8c20224516147cf735ee57cab4fa71",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZSPD",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "b943a3841833f4340b569ef9a9742383993dc3a9d727e4ef72a9e721aff9d718",
+      "truth_observation_revision_vector_sha256": "71c6f5eda957c46c67f691e81246ec6d82b6785b735aeb898a94c8573c5b77ee",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "996438e8e1e7a6ffff112e18846b022aced5976c7ad0b90ebce92aa86f0f2a6e",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZSQD",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "f63fd19d35fef8ea17c6b33159903fe475123220037efbdab9a2dce0326b675a",
+      "truth_observation_revision_vector_sha256": "1d9b648044d70a8d95c54d9ef96126cf86efef321ba9e39d99312736597e6459",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "b634e9edc0de956a51776f9ddf76c69dba9b54fffb77aa84ff50b31ac66cb653",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZUCK",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "c6978b02b75a32cc137ea571c560144809710209644be8d43820406cfb1a270b",
+      "truth_observation_revision_vector_sha256": "70664aacb45330736122f906ac63dcc36afbf97992606c47ff4c55225d26fe87",
+      "writes_database": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00.000Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blocker": "DATA_MISSING",
+      "builder_id": "pr06.aifs_single.et_historical_terminal.v1",
+      "consumable": false,
+      "content_sha256": "ac81361ec6a54a65b77e1c5566fa6f0858e92beb8b168b375b021f25423d0393",
+      "diagnostic": "OFFICIAL_NATIVE_AIFS_ET_SLOT_MISSING",
+      "ensemble_system_id": null,
+      "event_date": "2026-08-02",
+      "independence_family_id": "ECMWF",
+      "lead_bucket": "d1",
+      "missing_valid_time_utcs": [
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "model_family": "global_deterministic",
+      "model_id": "AIFS",
+      "model_product_registry_content_sha256": "96a09f70f72242ebc3635878d47ff9d36a5ac5b9cd3d73d5283d91f3b71afd86",
+      "model_product_registry_version": "CANONICAL_MODEL_PRODUCT_IDENTITY_REGISTRY_V2",
+      "orders_submitted": 0,
+      "present_raw_object_vector": [
+        {
+          "published_at_utc": "2026-07-31T23:28:53.000Z",
+          "raw_object_sha256": "dd7b7c032fdbca9612dfbd3aeda9fec02028e5e86e19dfddc4fb3b8b17ef568e",
+          "received_at_utc": "2026-08-01T07:34:16.000Z",
+          "transport_receipt_sha256": "0e597e015da9cfbca83ab558fde95b0142ec58f92dd19fb05f8616f60996a80e",
+          "valid_time_utc": "2026-08-02T06:00:00.000Z"
+        }
+      ],
+      "product_id": "ECMWF_AIFS_SINGLE_0P25",
+      "production_no_live": true,
+      "provider_id": "ecmwf_aifs025_official",
+      "provider_product_id": "ecmwf_aifs025_single",
+      "publishes_pr04_pointer": false,
+      "receipt_after_decision_vector": [],
+      "release_state": "BLOCKED",
+      "releases_live_pause": false,
+      "required_valid_time_utcs": [
+        "2026-08-02T06:00:00.000Z",
+        "2026-08-02T12:00:00.000Z",
+        "2026-08-02T18:00:00.000Z",
+        "2026-08-03T00:00:00.000Z"
+      ],
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-31T18:00:00Z",
+      "schema": "bayes_basket_target_pr06_aifs_single_historical_terminal_v1",
+      "scope_policy_content_sha256": "7e3eb20749b50e434130c6225da224f134b87114a1247e9b0473b022c9fc31bd",
+      "settlement_timezone": "America/New_York",
+      "source_capture_content_sha256": "e9c0bfc7245c93953c43dff83231231823c8e53f0fb1aa87b210e1296dfe6274",
+      "source_capture_file_sha256": "095020e4df5a075da4bfdd5b19987ede987a6226edd61662483c7d651ae6e540",
+      "source_class": "native_official",
+      "source_decode_content_sha256": "b8c116b71dd1145ec2c2257f55c561cb9feb0fb6d4358a545c2562c6081cb634",
+      "source_legacy_model_label": "ECMWF",
+      "starts_services": false,
+      "state": "BLOCKED",
+      "station_id": "ZUUU",
+      "strict_decision_at_utc": "2026-08-02T03:00:00.000Z",
+      "truth_day_bounds_content_sha256": "f7d79c58b6a97451195449764d7e3d6cdd51f12dcf061f97bb5449f7b42fef63",
+      "truth_observation_revision_vector_sha256": "682f806129167df428377b321dc8a9571f31ecd1b55161b921d744cc009186a0",
+      "writes_database": false
+    }
+  ],
+  "truth_contract_content_sha256": "5873b825d59510f15a8334c4ae99b0c6e2267e7cdd0311353ec6c02cafa38960",
+  "writes_database": false
+}

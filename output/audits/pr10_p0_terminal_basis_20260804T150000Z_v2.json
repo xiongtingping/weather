@@ -1,0 +1,1376 @@
+{
+  "activation_bound_station_count": 2,
+  "activation_missing_station_count": 43,
+  "activation_missing_station_ids": [
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "as_of_utc": "2026-08-04T15:00:00Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "blockers": [
+    "ACTIVATION_ROOT_MISSING",
+    "LINEAGE_MISMATCH"
+  ],
+  "builder_id": "pr10.canonical_p0_native_terminal_basis.v1",
+  "calls_order_gateway": false,
+  "canonical_gen2_activation_count": 2,
+  "canonical_station_count": 45,
+  "content_sha256": "5651b6a58fd6498d6c4dd337260989c0ad5692704902326600bf61b7e0e31f80",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_data_version": 2,
+  "database_schema_version": 853,
+  "future_data_counts_as_oos": false,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "release_state": "BLOCKED",
+  "schema": "bayes_basket_target_pr10_p0_terminal_basis_v1",
+  "source_inventory_content_sha256": "2f0eb4461be8a8e99d092433d7194aae3f0afb6d95c2935db08d9dcc545c6a84",
+  "state": "BLOCKED",
+  "terminal_scope_count": 45,
+  "terminal_scopes": [
+    {
+      "activation_content_sha256": "5efa81e6178b47b638a5aca866f21beba608972b3c0f446d14e13962fc1e1954",
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "event_date": "2026-08-04",
+      "evidence_role": "observational_candidate_not_oos",
+      "failure_code": "native_current_product_activation_lineage_unbound",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": "42169892f952ac46fe170799ae099f549aa1dd8ab1ebd62f4b64f639300ab8a2",
+      "probe_result_content_sha256": "b10844c5d906b29355d98be66adebd94a90273cdeaf39491b8d08240bc269c4e",
+      "production_no_live_only": true,
+      "selection_content_sha256": "91d67069c132d637d21cfa8e6b3b5f504e70588b58acef4645b4a785089c7e4b",
+      "settlement_timezone": "America/Toronto",
+      "state": "BLOCKED",
+      "station_id": "CYYZ",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_SNAPSHOT_ATTEMPT",
+      "terminal_receipt_content_sha256": "cd68f679c9fcc7f3cf4de1d007d784b867ca5dd8da7c6dcf2f24be5fe69943f7",
+      "unproven_p0_snapshot_natural_key_fields": [
+        "decision_at_utc",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "EDDM",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "EFHK",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "EGLC",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "EHAM",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "EPWA",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "FACT",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KATL",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KAUS",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KBKF",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KDAL",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KHOU",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KLAX",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KLGA",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KMIA",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KORD",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KSEA",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "KSFO",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "LEMD",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "LFPB",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "LIMC",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "LTAC",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "MMMX",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "MPMG",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": "cf87b3caa1f7a2d6fcda25854a101ebd840048a14a4329c8de643f9df46e6fbf",
+      "blockers": [
+        "LINEAGE_MISMATCH"
+      ],
+      "event_date": "2026-08-04",
+      "evidence_role": "observational_candidate_not_oos",
+      "failure_code": "native_current_product_activation_lineage_unbound",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": "6008fd06588fa3e34c24c7de0185624dfb7feae8b413e8087a697cd8e5317896",
+      "probe_result_content_sha256": "a3b280d700d4d9d70fc2a84eab20adc0a4c8585f50d0455eb1e3697ab1add1cc",
+      "production_no_live_only": true,
+      "selection_content_sha256": "ca4391b2cfcbf6e1103126696fdadf436b7397c20aca98e948f4a2c2ace3ea71",
+      "settlement_timezone": "Pacific/Auckland",
+      "state": "BLOCKED",
+      "station_id": "NZWN",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_SNAPSHOT_ATTEMPT",
+      "terminal_receipt_content_sha256": "e4d12869bf2efd361c9e90bcc8a9cba4e2a82d59cfc47f048310ee6af98e107e",
+      "unproven_p0_snapshot_natural_key_fields": [
+        "decision_at_utc",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "OEJN",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "OPKC",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "RCSS",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "RJTT",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "RKPK",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "RKSI",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "RPLL",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "SAEZ",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "SBGR",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "VILK",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "WMKK",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "WSSS",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZBAA",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZGGG",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZGSZ",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZHHH",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZSPD",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZSQD",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZUCK",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    },
+    {
+      "activation_content_sha256": null,
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "event_date": null,
+      "evidence_role": "historical_activation_gap",
+      "failure_code": "canonical_gen2_activation_missing",
+      "formal_live_authority": false,
+      "p1_eligible": false,
+      "probability_distribution_artifact_content_sha256": null,
+      "probe_result_content_sha256": null,
+      "production_no_live_only": true,
+      "selection_content_sha256": null,
+      "settlement_timezone": null,
+      "state": "BLOCKED",
+      "station_id": "ZUUU",
+      "strict_oos_sample_eligible": false,
+      "terminal_kind": "P0_STATION_SCOPE",
+      "terminal_receipt_content_sha256": null,
+      "unproven_p0_snapshot_natural_key_fields": [
+        "event_date",
+        "settlement_timezone",
+        "decision_at_utc",
+        "activation_content_sha256",
+        "forward_applicability_content_sha256",
+        "probability_root_sha256"
+      ]
+    }
+  ],
+  "writes_canonical_fact": false,
+  "writes_database": false,
+  "writes_pointer": false,
+  "writes_probability_envelope": false
+}

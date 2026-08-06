@@ -1,0 +1,54 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "3ba9fa9403febeac09f8eee9ff436056d98f52c4d609fb8a2e1f7136fccbcdec",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 4747739136,
+  "database_shm_bytes": 32768,
+  "database_wal_bytes": 0,
+  "fact_type_counts_after": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596
+  },
+  "fact_type_counts_before": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596
+  },
+  "free_bytes": 16966279168,
+  "required_free_bytes": 14243315712,
+  "row_count_after": 103938,
+  "row_count_before": 103938,
+  "rows_content_sha256_after": "898fd7766849446c89e83473a1bbc4021e114b4dde951e6abbf015b8bba72eaf",
+  "rows_content_sha256_before": "898fd7766849446c89e83473a1bbc4021e114b4dde951e6abbf015b8bba72eaf",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v12_migration_receipt_v1",
+  "schema_after": "V12",
+  "schema_before": "V11",
+  "source_footprint_bytes": 4747771904,
+  "state": "APPLIED_V12",
+  "trigger_names_after": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "trigger_names_before": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writer_quiescence_receipt_sha256": "e899eaf4c3286472e07054db66cd837d661247747519a17b584ce0a250eb59fc",
+  "writes_database": true,
+  "writes_orders": false
+}

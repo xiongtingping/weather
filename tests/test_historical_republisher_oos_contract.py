@@ -124,6 +124,7 @@ def _db() -> sqlite3.Connection:
         "official_tmax_c": 20.0,
         "source_lane": "AWC",
         "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Etc/UTC",
         "revision_no": 0,
         "published_at_utc": "2026-06-02T03:00:00Z",
         "received_at_utc": "2026-06-02T03:00:00Z",
@@ -138,10 +139,10 @@ def _db() -> sqlite3.Connection:
     conn.execute(
         "INSERT INTO calibration_station_daily_high_truth "
         "(truth_id,station_id,local_date,official_tmax_c,source_lane,"
-        "settlement_definition,revision_no,published_at_utc,received_at_utc,"
+        "settlement_definition,settlement_timezone,revision_no,published_at_utc,received_at_utc,"
         "canonical_committed_at_utc,timestamps_complete,qc_status,source_role,"
         "source_payload_sha256,observation_ids_json,authority_scope,"
-        "content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (TRUTH_ID, *truth.values(), content_sha256(truth)),
     )
     return conn

@@ -220,6 +220,7 @@ def test_v4_member_and_arrival_use_only_ingress_and_gate_closes_after_call() -> 
             "model": 0,
             "ensemble_member": 1,
             "native_arrival": 1,
+            "ensemble_member_receipt_manifest": 0,
             "ensemble_member_arrival_binding": 0,
             "truth": 0,
             "residual": 0,

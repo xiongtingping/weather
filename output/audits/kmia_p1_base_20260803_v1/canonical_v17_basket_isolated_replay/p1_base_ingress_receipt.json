@@ -1,0 +1,17 @@
+{
+  "builder_id": "canonical.p1_base.v1",
+  "calls_order_gateway": false,
+  "canonical_schema": "bayes_basket_target_canonical_p1_base_contract_v1",
+  "contract_content_sha256": "bd708491ea31dd0139e25f47c1b69210b475a3c76c2888a90426f7e03796d8de",
+  "inserted_count": 0,
+  "orders_submitted": 0,
+  "receipt_sha256": "e80f934bf82935a405f0dbe8f73053c6ab6c70d4c0237b3c31d091504516428d",
+  "replayed_count": 1,
+  "schema": "bayes_basket_target_canonical_model_ingress_v1",
+  "state": "STAGED_IN_CALLER_TRANSACTION",
+  "validated_counts": {
+    "p1_base": 1
+  },
+  "writes_production_database": false,
+  "writes_target_database": false
+}

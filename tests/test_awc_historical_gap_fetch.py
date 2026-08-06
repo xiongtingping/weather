@@ -21,7 +21,7 @@ def _target_identity() -> dict[str, object]:
         "station_id": "KJFK",
         "event_date": "2026-08-03",
         "expected_valid_at_utc": "2026-08-03T12:00:00Z",
-        "expected_report_type": "METAR",
+        "expected_report_type": "AWC_REPORT",
         "requested_revision_key": "ALL_OFFICIAL_REVISIONS",
     }
 
@@ -54,7 +54,7 @@ def _inventory(*, action: str = "FETCH_REQUIRED") -> dict[str, object]:
             "exact_truth_gap_receipt_bound": True,
             "exact_replay_station_leaves_bound": True,
             "closed_historical_days_only": True,
-            "exact_hour_metar_slots_only": True,
+            "hour_bucket_awc_report_coverage": True,
             "provider_revision_number_invented": False,
             "forward_data_counted_as_oos": False,
         },
@@ -69,12 +69,16 @@ def _inventory(*, action: str = "FETCH_REQUIRED") -> dict[str, object]:
     return {**identity, "content_sha256": content_sha256(identity)}
 
 
-def _awc_row(raw_text: str = "METAR KJFK 031200Z 18005KT 10SM CLR 25/10 A2992") -> dict[str, object]:
-    stamp = datetime(2026, 8, 3, 12, tzinfo=timezone.utc).timestamp()
+def _awc_row(
+    raw_text: str = "METAR KJFK 031200Z 18005KT 10SM CLR 25/10 A2992",
+    *,
+    minute: int = 0,
+) -> dict[str, object]:
+    stamp = datetime(2026, 8, 3, 12, minute, tzinfo=timezone.utc).timestamp()
     return {
         "icaoId": "KJFK",
         "obsTime": stamp,
-        "metarType": "METAR",
+        "metarType": raw_text.split()[0],
         "temp": 25.0,
         "rawOb": raw_text,
     }
@@ -103,7 +107,7 @@ def test_inventory_expands_missing_slots_without_inventing_revision() -> None:
                 "event_date": "2026-08-03",
                 "station_day_start_utc": "2026-08-03T04:00:00Z",
                 "station_day_end_utc": "2026-08-04T04:00:00Z",
-                "missing_exact_hour_metar_slots": [
+                "missing_awc_report_hour_slots": [
                     "2026-08-03T12:00:00Z",
                     "2026-08-03T13:00:00Z",
                 ],
@@ -190,7 +194,7 @@ def test_success_retains_official_raw_and_rerun_does_not_fetch(tmp_path: Path) -
     ("rows", "status", "expected_state", "expected_subtype"),
     [
         (None, 204, "DATA_MISSING", "OFFICIAL_PRODUCT_NOT_FOUND"),
-        ([], 200, "DATA_MISSING", "EXACT_SLOT_MISSING_FROM_OFFICIAL_RESPONSE"),
+        ([], 200, "DATA_MISSING", "HOUR_COVERAGE_MISSING_FROM_OFFICIAL_RESPONSE"),
         ([], 429, "BLOCKED", "HTTP_OR_NETWORK_FAILURE"),
     ],
 )
@@ -221,7 +225,7 @@ def test_expired_window_is_terminal_without_network(tmp_path: Path) -> None:
         "station_id": "KJFK",
         "event_date": "2026-07-01",
         "expected_valid_at_utc": "2026-07-01T12:00:00Z",
-        "expected_report_type": "METAR",
+        "expected_report_type": "AWC_REPORT",
         "requested_revision_key": "ALL_OFFICIAL_REVISIONS",
     }
     target.update(
@@ -267,6 +271,39 @@ def test_conflicting_official_revisions_are_retained_but_quarantined(tmp_path: P
     assert observations["observation_count"] == 0
 
 
+def test_distinct_minutes_in_same_hour_are_coverage_not_revision_conflict(tmp_path: Path) -> None:
+    rows = [
+        _awc_row("METAR KJFK 031251Z 18005KT 10SM CLR 25/10 A2992", minute=51),
+        _awc_row("METAR KJFK 031256Z 19006KT 10SM CLR 26/10 A2991", minute=56),
+    ]
+    receipt, observations = execute_gap_fetch(
+        _inventory(),
+        raw_root=tmp_path,
+        requested_at_utc="2026-08-04T05:00:00Z",
+        transport=_transport_with(rows),
+    )
+    terminal = receipt["terminals"][0]
+    assert terminal["state"] == "FETCHED_OFFICIAL_RAW"
+    assert terminal["subtype"] == "OFFICIAL_HOUR_COVERAGE_RETAINED"
+    assert len(terminal["raw_sha256s"]) == 2
+    assert observations["observation_count"] == 2
+
+
+def test_official_speci_satisfies_awc_report_hour_coverage(tmp_path: Path) -> None:
+    receipt, observations = execute_gap_fetch(
+        _inventory(),
+        raw_root=tmp_path,
+        requested_at_utc="2026-08-04T05:00:00Z",
+        transport=_transport_with(
+            [_awc_row("SPECI KJFK 031212Z 18005KT 10SM CLR 26/10 A2992", minute=12)]
+        ),
+    )
+    terminal = receipt["terminals"][0]
+    assert terminal["state"] == "FETCHED_OFFICIAL_RAW"
+    assert terminal["subtype"] == "OFFICIAL_HOUR_COVERAGE_RETAINED"
+    assert observations["observations"][0]["report_type"] == "SPECI"
+
+
 def test_transport_failure_is_durable_and_retryable(tmp_path: Path) -> None:
     def failing_transport(*_args):
         raise TimeoutError("proxy timeout")
@@ -305,7 +342,7 @@ def test_prior_receipt_retries_only_retryable_targets(tmp_path: Path) -> None:
     )
     assert frozen["query_count"] == 0
     assert frozen["prior_receipt_content_sha256"] == missing["content_sha256"]
-    assert frozen["terminals"][0]["subtype"] == "EXACT_SLOT_MISSING_FROM_OFFICIAL_RESPONSE"
+    assert frozen["terminals"][0]["subtype"] == "HOUR_COVERAGE_MISSING_FROM_OFFICIAL_RESPONSE"
     assert frozen_observations["observation_count"] == 0
 
     def failing_transport(*_args):

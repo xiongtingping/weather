@@ -1212,6 +1212,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--station-lane-map", type=Path, default=DEFAULT_LANE_MAP)
     parser.add_argument("--timezone-registry", type=Path, default=DEFAULT_TIMEZONE_REGISTRY)
+    parser.add_argument(
+        "--target-settlement-timezone",
+        choices=("America/New_York",),
+        help="Explicit canonical target scope; bypasses mixed legacy market rows.",
+    )
     parser.add_argument("--event-date", action="append", required=True)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--observations-output", type=Path, default=DEFAULT_OBSERVATIONS)
@@ -1282,10 +1287,13 @@ def main() -> int:
         observations_path=None if args.reference_only else args.observations_output,
         reference_output_path=args.reference_output,
         raw_root=args.raw_root,
-        target_timezone=_registry_timezone(
-            args.timezone_registry,
-            station_ids=station_ids,
-            event_dates=event_dates,
+        target_timezone=(
+            args.target_settlement_timezone
+            or _registry_timezone(
+                args.timezone_registry,
+                station_ids=station_ids,
+                event_dates=event_dates,
+            )
         ),
         fetch_amsc=fetch_amsc,
         fetch_awc=fetch_awc,

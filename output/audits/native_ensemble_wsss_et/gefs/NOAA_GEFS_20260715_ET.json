@@ -1,0 +1,3096 @@
+{
+  "archive_query_at_utc": "2026-08-05T10:37:30.955000Z",
+  "calls_order_gateway": false,
+  "captures": [
+    {
+      "archive_query_at_utc": "2026-08-05T10:37:30.955000Z",
+      "bucket_contract_sha256": "288438162b6d87d7647bf6fd780ecd3315780a506b26441b470cc6ea9253d859",
+      "bucket_intervals": {
+        "27°C or below": [
+          null,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C": [
+          28.5,
+          29.5
+        ],
+        "30°C": [
+          29.5,
+          30.5
+        ],
+        "31°C": [
+          30.5,
+          31.5
+        ],
+        "32°C": [
+          31.5,
+          32.5
+        ],
+        "33°C": [
+          32.5,
+          33.5
+        ],
+        "34°C": [
+          33.5,
+          34.5
+        ],
+        "35°C": [
+          34.5,
+          35.5
+        ],
+        "36°C": [
+          35.5,
+          36.5
+        ],
+        "37°C or higher": [
+          36.5,
+          null
+        ]
+      },
+      "calls_order_gateway": false,
+      "content_sha256": "9513b17af7b69617ea7568bb5d24e247c37aff4f7f729301f129e4305147d78f",
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "event_date": "2026-07-15",
+      "family_temperature_curve": {
+        "available_at_utc": "2026-08-05T10:37:30.955Z",
+        "content_sha256": "859e60b1e6137113d6efef379dd980912f5ad8af4a930ffb73c1027aa4b67fc4",
+        "ensemble_system_id": "NOAA_GEFS_05",
+        "event_date": "2026-07-15",
+        "independence_family_id": "NOAA_GEFS",
+        "points": [
+          {
+            "temperature_c": 29.430327778477857,
+            "valid_time_utc": "2026-07-15T06:00:00.000Z"
+          },
+          {
+            "temperature_c": 28.613527753276244,
+            "valid_time_utc": "2026-07-15T09:00:00.000Z"
+          },
+          {
+            "temperature_c": 26.124147870463744,
+            "valid_time_utc": "2026-07-15T12:00:00.000Z"
+          },
+          {
+            "temperature_c": 25.695480248235928,
+            "valid_time_utc": "2026-07-15T15:00:00.000Z"
+          },
+          {
+            "temperature_c": 25.457572297127054,
+            "valid_time_utc": "2026-07-15T18:00:00.000Z"
+          },
+          {
+            "temperature_c": 25.300985225554466,
+            "valid_time_utc": "2026-07-15T21:00:00.000Z"
+          },
+          {
+            "temperature_c": 25.98633915070568,
+            "valid_time_utc": "2026-07-16T00:00:00.000Z"
+          },
+          {
+            "temperature_c": 28.84173150831657,
+            "valid_time_utc": "2026-07-16T03:00:00.000Z"
+          }
+        ],
+        "schema": "bayes_basket_native_family_temperature_curve_v1",
+        "settlement_timezone": "America/New_York",
+        "source_field_receipt_set_sha256": "83bc01ab0a88eb9960716bdc3c5eccd872216946d42957ecaf0a365b1fb42880",
+        "station_id": "WSSS"
+      },
+      "field_receipt_count": 248,
+      "field_receipt_set_sha256": "83bc01ab0a88eb9960716bdc3c5eccd872216946d42957ecaf0a365b1fb42880",
+      "field_receipts": [
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11417294:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=low-res ctl",
+          "index_sha256": "eb4bd1e84817f92f20ef279ed1619bad348a04120e568eb96e2a0a9561519725",
+          "last_modified": "Mon, 13 Jul 2026 21:58:43 GMT",
+          "member_id": "control",
+          "message_sha256": "16da890819c038faff40c12d9de6e2a4951595eb7e50ae1ce23d7f02aea98d97",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f036",
+          "range_end": 11561992,
+          "range_start": 11417294
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11418756:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=low-res ctl",
+          "index_sha256": "4d91d3f2b131dc4c2d12edce71e5a61b7229601e9d2fb0ed383078ae946adc16",
+          "last_modified": "Mon, 13 Jul 2026 22:00:50 GMT",
+          "member_id": "control",
+          "message_sha256": "08d0473cd829c8c3b26727f02e694531f7b7b9a671f2a5483e3a7055bc3dc4e3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f039",
+          "range_end": 11564187,
+          "range_start": 11418756
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11426214:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=low-res ctl",
+          "index_sha256": "86b74198273b09e9044030bb870cfa1146fa1ff580ea9c8e2703fe6df13b83f4",
+          "last_modified": "Mon, 13 Jul 2026 22:00:50 GMT",
+          "member_id": "control",
+          "message_sha256": "46b23a18c4ab7ae0afc72b8bcc42c78c86a80e9ce99f45458976d921e2484e42",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f042",
+          "range_end": 11571691,
+          "range_start": 11426214
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11633546:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=low-res ctl",
+          "index_sha256": "dcbb5aa01256a5a5dab3921b84a6f1376be331ecfc4ece3bd269114f0b43e59d",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "control",
+          "message_sha256": "7d8f096412ddc98dcf9b2e55ba02cfe21c78c20ef500a9b3d8e434c808762e1c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f045",
+          "range_end": 11779031,
+          "range_start": 11633546
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11650598:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=low-res ctl",
+          "index_sha256": "5f3add7d63285fa8957f09ba6a43f48dfd1e74ed472a9523f7c3f35d31dd28ce",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "control",
+          "message_sha256": "63ddd1f1517bb0edcfdffaf1bc4f0afe29b4e13e5a4c18359d3309d0f48021ef",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f048",
+          "range_end": 11795664,
+          "range_start": 11650598
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11848501:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=low-res ctl",
+          "index_sha256": "7401e8eeedc80fadcad62262742e44e628896b03b1b1bb738e1de09b41015271",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "control",
+          "message_sha256": "b13c5f9e9da32ebd9a128c92d2e34cd0162a902f6d234e42aff305ac0e3a7de3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f051",
+          "range_end": 11993770,
+          "range_start": 11848501
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11825517:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=low-res ctl",
+          "index_sha256": "a54824e4c39843dd938960092390e388df73297cf8dc01c8e2285dcb5131fe0d",
+          "last_modified": "Mon, 13 Jul 2026 22:05:22 GMT",
+          "member_id": "control",
+          "message_sha256": "289128e21f60139a9756899d8b94a63bedf62bc45021bc27f5d0d6c9ded86748",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f054",
+          "range_end": 11969878,
+          "range_start": 11825517
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11815266:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=low-res ctl",
+          "index_sha256": "d26ae1ae6cc714c3bc06e8180a94cc64e01e7e148c617bdd19083f084f969d8f",
+          "last_modified": "Mon, 13 Jul 2026 22:05:30 GMT",
+          "member_id": "control",
+          "message_sha256": "f117b017f836628d0b8d1290aa12fc25bab05959f237c9915f3a506e8414ac72",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gec00.t18z.pgrb2a.0p50.f057",
+          "range_end": 11959826,
+          "range_start": 11815266
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11941926:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+1",
+          "index_sha256": "83f55cda1674fc28f7f3d3faca2100601a8ac39c932ce3f0170753dcc087fa02",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "b36f17886b91805b9659b9ce5e8f391fd0dfdacc9de3c5c968e83be1d8bd743e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f036",
+          "range_end": 12086538,
+          "range_start": 11941926
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11944733:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+1",
+          "index_sha256": "975a277fd2ffcda1b88aac4e687fd8e02a7cd92dcf9594ef05420c27b7bf9ad1",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "4e7e88b6ff7bb117318a1bd07fead2d405b8f9039fa53b7db7ad0d0815dee31a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f039",
+          "range_end": 12090186,
+          "range_start": 11944733
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11740268:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+1",
+          "index_sha256": "b476a65f71981517daa69bfb4cee5ca040155bc4fa2ef0e81809c5781e784666",
+          "last_modified": "Mon, 13 Jul 2026 22:03:27 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "04538a9a5e015e1a69b3ddcb449eb6bb3907f3e1d062c83f8d879f76e1c4d32b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f042",
+          "range_end": 11885971,
+          "range_start": 11740268
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11728719:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+1",
+          "index_sha256": "126f116740598106f7c9f4e26874fdf37423df9a6a99c5d0eab6f064908fc45a",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "9d0af5569201e929c364a3c4afd46b2cd3ab7655a4e8274af9629b30fc455daa",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f045",
+          "range_end": 11873250,
+          "range_start": 11728719
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11731391:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+1",
+          "index_sha256": "51eb214544cf56ee33980ca9010e71a217e7b5a10ffb34201cbe7fdf700dc9f3",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "b71dc077532a90b2668f9ed54ebe10da77863e3fe8025179de12ce6c862034d0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f048",
+          "range_end": 11875683,
+          "range_start": 11731391
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11717423:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+1",
+          "index_sha256": "d499cf47fd965a2b024cd8bec9436cb53c724a4cdc85fc2cde336f5466386e69",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "ba892024d0d2b1e20fabc2ec663c2e9c5149928b8cd1e0bc3c6e3bd5d45261b2",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f051",
+          "range_end": 11861459,
+          "range_start": 11717423
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11688451:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+1",
+          "index_sha256": "c7fbbad7fb048d1a2069de97c314d869e909b4e1479972c0f5731de1a3ae708e",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "d4af77175a461992ada513fdd4ba59c8d1da841398e7b47d133a753301606b1b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f054",
+          "range_end": 11832374,
+          "range_start": 11688451
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11878072:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+1",
+          "index_sha256": "230f6bbdb0fc07b344cf50a59b79804f86c7cdb346cc4b8132113ca37ad6afd9",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_01",
+          "message_sha256": "998a772db6ae5ffce2d0528f47c1d5b29b8fd77b6df496245d5a60065d41333d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep01.t18z.pgrb2a.0p50.f057",
+          "range_end": 12022026,
+          "range_start": 11878072
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11743236:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+2",
+          "index_sha256": "4c337c0a5077767851d5f95fd9adc76b8ac6a68e0d543af254986903fe8becae",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "4313e603b9af03b02484c2c34465f15a201078e9bc801cb5790afb10eb237473",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f036",
+          "range_end": 11888123,
+          "range_start": 11743236
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11739216:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+2",
+          "index_sha256": "c7457a4bccb4c4b1a4e065eeea11d654b66f4e8b92209aa38f1570a5d5902904",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "d4f2a5940da54d7a959781f7f731be913a5a836121e183192ffa108dddbfe8c9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f039",
+          "range_end": 11884972,
+          "range_start": 11739216
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11740308:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+2",
+          "index_sha256": "5f3fa378e473bf692e0d4d549a7f947511faeed15bc0ccbd57c89350230c3b58",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "4f9c6f9907a9a33f8f18314e38c5179d9f515cfa881af32852897c74b0cfc4af",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f042",
+          "range_end": 11886095,
+          "range_start": 11740308
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11731247:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+2",
+          "index_sha256": "079246dec87530ecb784315190c1bcb889581ccd4bff51b60a452b1caa0033d3",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "b085267143f162a435a4284255ba9a6e6580789cfa0ed74c5c1bc2adf4899a81",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f045",
+          "range_end": 11876550,
+          "range_start": 11731247
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11735852:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+2",
+          "index_sha256": "b9e86b8e2c18645c648caa5ed2cd0626de513d0646665885f8e4796646e2a18e",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "1978971050bde1fa31ce2433e4b7dd17b94766441e3fb570538e4c9c8dc4a47d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f048",
+          "range_end": 11882114,
+          "range_start": 11735852
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11726656:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+2",
+          "index_sha256": "82398e537846adaba58d13293a58c3697cc89d3a090e409d2d21e4e4a81fda8a",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "00dfac6a38fc5115730024b36bbf4fd1e68f01fd8dafb72ffa054fac35040240",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f051",
+          "range_end": 11871146,
+          "range_start": 11726656
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11705734:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+2",
+          "index_sha256": "3530b05fecf104950ee85feb15339e5a002cf3b59032552f96eda7bdf1250324",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "1b317b05bf2fbd4ed96be427d49c3d32e0329daaa7aa1800b3d104d8dbe4425d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f054",
+          "range_end": 11849041,
+          "range_start": 11705734
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11885366:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+2",
+          "index_sha256": "2bc8a194e2f658ff68409330be19d4e15abd0ff2e70d181208b8d7fe188c3653",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_02",
+          "message_sha256": "19e670495f3c7bb3bf489a659435febdf935b2d8f9dfad04b439cee79d9f5943",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep02.t18z.pgrb2a.0p50.f057",
+          "range_end": 12028873,
+          "range_start": 11885366
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11552591:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+3",
+          "index_sha256": "8fc4b2be08120236f219823ffd4ecf3c8e295795e8cc779af06088312c48d7ef",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "9f36b955f9ec4f334ea4d49cb86e4ff57cb5e02ee71ef1fa00a5a28056016fb0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f036",
+          "range_end": 11697173,
+          "range_start": 11552591
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11546761:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+3",
+          "index_sha256": "3869ef47556605b7c3213dbc19bf3a143622c4eaa9f5ed709b550c6d482fe514",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "972abe7f45c540eecf67fb5f944bc765886b7453dbc06b7e887b657549a7bbdc",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f039",
+          "range_end": 11692535,
+          "range_start": 11546761
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11550802:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+3",
+          "index_sha256": "800e34a3138e5610b8f974640b8d99309352122dbf7a71bac2730e30391667a8",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "ebabe5c804ec86452fbf8d808a400c92670496f7b5b23b522d7c0dace449fa52",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f042",
+          "range_end": 11696336,
+          "range_start": 11550802
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11547368:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+3",
+          "index_sha256": "ee4823e75c00d37521d9b0cad9a38a8169c5ea6ed53c4d511cf4bce26d12d18b",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "7e00579b98233502526bd0e3055f983385170e07fc55486b1610f3901a4b787d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f045",
+          "range_end": 11692433,
+          "range_start": 11547368
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11757549:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+3",
+          "index_sha256": "6f3b436e6ca353516d86d610b80336547151896893771cc78e4054be091e521b",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "57c54d8b705d1ed6b50a90dd07a7b8807e5ca1b38503a3c489f2fc49432f8ee5",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f048",
+          "range_end": 11902539,
+          "range_start": 11757549
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11729489:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+3",
+          "index_sha256": "ba5b3d9cb6931a7f2572609ce3e2ea989ec3ea7880e34c0c30e737f6c2b9d909",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "7158b3cdda074cee3387110655d0ec7d2844ae788f085e18bae5fe48f8f5ea5f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f051",
+          "range_end": 11873949,
+          "range_start": 11729489
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11724939:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+3",
+          "index_sha256": "8cdacc1d0591e62d959c88abfbd8232af89113a2b768b1e327197c14c39cb6a3",
+          "last_modified": "Mon, 13 Jul 2026 22:09:53 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "d005120aebff22c64206290315e38777a3f400740d9efae4983c7a1f85068686",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f054",
+          "range_end": 11869099,
+          "range_start": 11724939
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11893717:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+3",
+          "index_sha256": "0f5d5143dd807abdc19d51512645cc54f0a25b30f3e11596cc78ddd99b07baa4",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_03",
+          "message_sha256": "9cf7b4a5092eacb116c285d2d4610440d0fc34076f838b05475cd1b693108d2e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep03.t18z.pgrb2a.0p50.f057",
+          "range_end": 12038043,
+          "range_start": 11893717
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11523053:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+4",
+          "index_sha256": "f07c9ee13d8c7bea62e49af9e0263d41d892563e9cd3384a62bf216b658f5ea6",
+          "last_modified": "Mon, 13 Jul 2026 22:00:52 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "02fcdaec1b90f4f5c767298643fdb5f68d18a1871eba803f863d4d5d839bb10a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f036",
+          "range_end": 11667891,
+          "range_start": 11523053
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11516008:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+4",
+          "index_sha256": "80e5a8b05ed22fed1c1470fca825b7929a5d39f140678c8c7dc031665e27f6f8",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "46bb9d1c4303a83e92cfe1bb1a135e97e9250e8c71cfab807fe459fb79fb983f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f039",
+          "range_end": 11661370,
+          "range_start": 11516008
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11495815:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+4",
+          "index_sha256": "3a5d801d23f1f98d35e8a501c9487340f06e1c3e542e693e62b17216df636784",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "b543b67f4f2f3b2296b2702441d2a6fbcd7b18232d71bc52272a053a29e858e3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f042",
+          "range_end": 11641512,
+          "range_start": 11495815
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11493554:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+4",
+          "index_sha256": "421e24b7657bdd0363144b325eccaa0c63b319a0d735e032527fbbf33b07328c",
+          "last_modified": "Mon, 13 Jul 2026 22:05:21 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "1ac014d3675a7c15d71239bad9395a1694a75e5a500bb84f60b4c4783a089d44",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f045",
+          "range_end": 11638373,
+          "range_start": 11493554
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11916086:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+4",
+          "index_sha256": "8fc54e76ba48b25a29b9500f9af4938175734142033975f1b551d32447879f55",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "e48c822d7b574c32ef75ccc384dcaa91d658a6d218c7cef26e31178f28cceba9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f048",
+          "range_end": 12060814,
+          "range_start": 11916086
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11899640:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+4",
+          "index_sha256": "94b1270c2127b42f0a70b7e866722b9459c9f216987af2a3289ed4a28abd3b61",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "42144755c8f09a8e781d18ac9ee63a227f4a55c7b751163527982a404a09bdcd",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f051",
+          "range_end": 12043636,
+          "range_start": 11899640
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11873783:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+4",
+          "index_sha256": "fc413bf7e51e4fb2ea0c1d343e105608b5cbdaa3dd207bf3f5352c1b02adf0d0",
+          "last_modified": "Mon, 13 Jul 2026 22:09:53 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "e762a97a12604a3064cfd52301a3442a89587a063c751855cc4c0bee9e6ed192",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f054",
+          "range_end": 12016772,
+          "range_start": 11873783
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11844502:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+4",
+          "index_sha256": "2461b60c6dc167cb65b6eaff645839e84f208dbe9cfe4cdac9557f0f267b391e",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_04",
+          "message_sha256": "5c70ed21665aba30d553859c5f6931bb4b9081de8b04710bd856bb2cc22e6f9a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep04.t18z.pgrb2a.0p50.f057",
+          "range_end": 11988628,
+          "range_start": 11844502
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11523240:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+5",
+          "index_sha256": "23753545e6b3102cab97e7601cb385805ed760c89416a85a3ab6551d16de37ed",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "9ba960382113c58505213bf535da7589453da62658b460c888daf52048ce25c1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f036",
+          "range_end": 11668014,
+          "range_start": 11523240
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11719434:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+5",
+          "index_sha256": "21b27e9da59cdf569a4489131c4af15de71b1a406b8af2fde654c56b92af71b7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "ea6b9dc0b1615f553600ba123d6a8b0c375b9f81464327e1ff4bca11aeee0643",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f039",
+          "range_end": 11865013,
+          "range_start": 11719434
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11714875:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+5",
+          "index_sha256": "f2bab742c4967a37c60f9491c7c6d8ea239ff6e84778a73d2d04fbd9390178c2",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "639a482eaca16d4351d00d5bb138b08bf5ce5fc1c5e36ac13dca8698f55c82ec",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f042",
+          "range_end": 11860359,
+          "range_start": 11714875
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11717064:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+5",
+          "index_sha256": "c18510697c8484f99c7c0c5707c2eea2c588c437aef98b7313ad1c60bb2b8aa8",
+          "last_modified": "Mon, 13 Jul 2026 22:05:22 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "b6e835fa74b326dc5af15746c5d821093fc387c7b0286b67c5187bed6cce9ed9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f045",
+          "range_end": 11862733,
+          "range_start": 11717064
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11726698:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+5",
+          "index_sha256": "966e1ab6ee24dfdc23aeb8279109abb2e4fdcf2c75ce4fc148accdbe336b3925",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "0825ba20f890a6e351518a45ab3dee0d882d845df437fa08bfb0be4b19244c0f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f048",
+          "range_end": 11871458,
+          "range_start": 11726698
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11705301:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+5",
+          "index_sha256": "7930ca98896ac0fd22c033123cddc8435baeca5564a0790ff766c3e0df746a44",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "c14c3f67fc831e2c323d75f36079b6fdfa23aabdf081018f0e6d4623a44e26f4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f051",
+          "range_end": 11849483,
+          "range_start": 11705301
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11686848:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+5",
+          "index_sha256": "a73098517cfbca24e31e33ff56175e37931c0e7d194b5db7d7aa1d7d6ff67e62",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "3187aa48e9b0b30805cc98ac2abc0519936874c004d6bf55055393edab0ec929",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f054",
+          "range_end": 11831087,
+          "range_start": 11686848
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11634864:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+5",
+          "index_sha256": "083d4e92c2d79df5a16a44f5a41bd4102b5a82defb0fe6e1e2a24aa3080a1bdc",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_05",
+          "message_sha256": "b92794825ba7c68ceb1124d8ec284c63ba8a9165cf2c9aad78cde5d9754d06e6",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep05.t18z.pgrb2a.0p50.f057",
+          "range_end": 11778189,
+          "range_start": 11634864
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11955383:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+6",
+          "index_sha256": "14765299b5043f8984ddbe9659707617f8f08697626bf7dbeb872223c6565045",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "fd983fd16c9db986c6a19b2aafc80fb4c417acba4f1d8f2f872078a3b4f7954c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f036",
+          "range_end": 12099877,
+          "range_start": 11955383
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11763375:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+6",
+          "index_sha256": "e0813506d0e09ee0c510f3db40f6371a88eef8d2cf3f2c35b99529a944264c53",
+          "last_modified": "Mon, 13 Jul 2026 22:03:27 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "509c72d27ac35e686f9c82dc7be2cf91c3a54a49315e22c9dc373697d4aced1b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f039",
+          "range_end": 11908873,
+          "range_start": 11763375
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11966259:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+6",
+          "index_sha256": "bd1fb31cadc5f918bd9c992b23befba0d63cd1187c872faec13d4d69de0e8bb7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "90746e615a9049585b17c118d9dbcc9a7a115e870758b9a43852aa5e0f6beb48",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f042",
+          "range_end": 12111680,
+          "range_start": 11966259
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11752620:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+6",
+          "index_sha256": "3680960c043a39ea741ef7ca1604d0397ab8ffc63dfe0e190027afad0479f9c4",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "a8c795afdcaa83d756553f42edacba107965f9892cd963e1e6e7e69c12ca3984",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f045",
+          "range_end": 11897549,
+          "range_start": 11752620
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11720790:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+6",
+          "index_sha256": "cd91f1404fb2c0c725ddee0beb5a85c2e8f23c55933ab9dc9c6b7d3ff85feee9",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "757dda37abff70a57a3c0a7ed177480e114ddbba2b8464314c3f55cddd76a248",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f048",
+          "range_end": 11866453,
+          "range_start": 11720790
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11927751:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+6",
+          "index_sha256": "3591e44a8eaa6a608b18d453923f98c08a67968059301b47ba38fa132ba5ccc2",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "3ce3af175efb83c4cf2a0b5dffdf718840e2366e63c504d24bc5fe50a6b9b5bb",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f051",
+          "range_end": 12071942,
+          "range_start": 11927751
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11901022:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+6",
+          "index_sha256": "a2521a1b02c0b2a4dc889c44a0270dc4fe673b040db316afaefecebc894e7a07",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "5ffd0f58a0b4454110fd2226f9a65beac286921d7cb2fa184f8dcd5b024fdddd",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f054",
+          "range_end": 12044750,
+          "range_start": 11901022
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11874616:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+6",
+          "index_sha256": "ab84085f524e2b792ca09d3d04b66624868b56f89961786338c7e698f45277f4",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_06",
+          "message_sha256": "5d19bcc5fc2e5a26c9c6d8f8adbe20b43612400bbe4d41110c282e724fbf7c01",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep06.t18z.pgrb2a.0p50.f057",
+          "range_end": 12018574,
+          "range_start": 11874616
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11751046:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+7",
+          "index_sha256": "af748196b97b6bbad2fcc5c8d1273dfea5c63837d3e032ff6e7527d0693984bc",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "010d02b2019a8aed8f99021d02b084a90ac7f2e9a4e06bcf67449babb8bd59b7",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f036",
+          "range_end": 11895280,
+          "range_start": 11751046
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11941010:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+7",
+          "index_sha256": "c7beeb6ba5a5fbbf63b621a3407747d857373216b240acfb799db421f5d10587",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "907361adddbdcd3675cce0bed08a80626858334f041edd870df9ab0a2aa2db79",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f039",
+          "range_end": 12086491,
+          "range_start": 11941010
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11952695:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+7",
+          "index_sha256": "5af810c2f532e128f1f6d9c5ca5c6ad6b40bf601d411ceed21d38d0ccfba95ea",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "3dc8c17bd434f3a7c9d5dabcd700f02c78204ff846062124217df8e6da6d8c0c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f042",
+          "range_end": 12098250,
+          "range_start": 11952695
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11945438:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+7",
+          "index_sha256": "23e03c82b17a9010ae0f10b07232139742f42fd4c6533abebe2a4ba557324301",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "d754ee44d7fa6082c31cf2e4b5fd7133413d36580e48d9d714f330cc0500e330",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f045",
+          "range_end": 12090246,
+          "range_start": 11945438
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11935490:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+7",
+          "index_sha256": "d2c2866aff15e8d0257299d421207a2726ac2b554025d6a8b4a2209f4e51571e",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "1966c504042f0a0de169fe936754a49be58ce023a74e6f6f080e62e4c253b4d2",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f048",
+          "range_end": 12080423,
+          "range_start": 11935490
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11924290:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+7",
+          "index_sha256": "60f4e75363491b9aab242ed468006675194166f675debdde7765eae442bb6ef3",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "3760b62be05a5471998d9723ede2de3c8cd35b2f7ba0c68fb8df1874696a1fd1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f051",
+          "range_end": 12068703,
+          "range_start": 11924290
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11887248:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+7",
+          "index_sha256": "69cb8f816d38b01ae857765a6f038d727714bd7805765d45d85d8be4c6bb868e",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "4566e96ec090eab74a5307ee696445b48217d86317d68fd96b1367fd8a327f7f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f054",
+          "range_end": 12031417,
+          "range_start": 11887248
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11869445:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+7",
+          "index_sha256": "486b6fda96a9a314972ba56faf75bf29cbe7fef82ee5f0571f87d679470f0a9f",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_07",
+          "message_sha256": "d7d22103f22ca12ef457dce24708b5f31bbcf3a464389a36e8c40d8467cf235d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep07.t18z.pgrb2a.0p50.f057",
+          "range_end": 12013917,
+          "range_start": 11869445
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11545708:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+8",
+          "index_sha256": "ed8e52326fa793ffe543bc558bb31f70a0059f4ee9dba8fa8ce8c635f83e3211",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "9fafb19e368fd1c5633a380cd74eb64f02fba6a30ff4a5b5f8eb3b6544458286",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f036",
+          "range_end": 11690430,
+          "range_start": 11545708
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11532283:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+8",
+          "index_sha256": "9d2764d2b0777e261e8be364f243051b7683ca0537f8d7d707e5e23ca74bfa3c",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "56d4a2ae65ca85d6fff33b070c697cebccceabbfde50cb9ac22387474a4e25d4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f039",
+          "range_end": 11677834,
+          "range_start": 11532283
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11726315:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+8",
+          "index_sha256": "b005408e4cd1f27dccd6bfcde908bcb53451b26dd7cf8be9b245c887045d4627",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "131104964589e796b7739ebad47483d2ae62bc99c6fd98350a8c51bda26412d2",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f042",
+          "range_end": 11871482,
+          "range_start": 11726315
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11523981:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+8",
+          "index_sha256": "2c3e62c83d51b371be0bf14e343b0270334e4e65b44a946946ea2bc623c60183",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "9613510dbd501e1fb3a241d838070b48e3deef68b6ab98f5280f930afcc69827",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f045",
+          "range_end": 11669162,
+          "range_start": 11523981
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11943381:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+8",
+          "index_sha256": "55ea34f3d68bc0de0ef01484a58e8156b70efb20a003f80407ca113eaec461cb",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "576e2b051a610db8fdad0378a762b59a9bf0c0b0f78bf4d86138d305c9a92497",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f048",
+          "range_end": 12088148,
+          "range_start": 11943381
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11736456:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+8",
+          "index_sha256": "03a2999e4822b8fd24cca8851932c4177d2fc13a660566d4fcbfbb4169dd48b4",
+          "last_modified": "Mon, 13 Jul 2026 22:07:43 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "0e395df3d2e21ba648a03c332109245847cae157043bf3c118ee1c3dd24d0ba5",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f051",
+          "range_end": 11880307,
+          "range_start": 11736456
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11919908:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+8",
+          "index_sha256": "9ab0f5c15811b444cbc2502f7bfd8e4834ab6b5316d0ef6bedcab6124874c073",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "f6fc954015e7e742475ca5475a6de68d6cec70761aa1a49bd6153c61ae62f071",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f054",
+          "range_end": 12063841,
+          "range_start": 11919908
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11881773:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+8",
+          "index_sha256": "42ee4a84678b5abf715a22f09133ad55c969ca8379d2727009d2a5897cb16deb",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_08",
+          "message_sha256": "ebf303f5f99b07931ae542102729636e9154a7860e9753146e3e4aec17362ebc",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep08.t18z.pgrb2a.0p50.f057",
+          "range_end": 12026090,
+          "range_start": 11881773
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11757385:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+9",
+          "index_sha256": "6f0be6fba6308e5bcea9e5e64027b7181e1e5c0bc3541ab053f6e8500aa63396",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "993fa7e407252685875e6d633afef1d7331005166158fe060f27e2c03fd2c68b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f036",
+          "range_end": 11902240,
+          "range_start": 11757385
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11750777:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+9",
+          "index_sha256": "5a110cc63c0ad31b35ff3942399b75492e398a0ffa4e757832f0e770cb3b06cb",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "866d64c23b1ab068af62fdff3609e1b28e48e1ed62b0da8ed5a03a97e1b4c377",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f039",
+          "range_end": 11896395,
+          "range_start": 11750777
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11536503:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+9",
+          "index_sha256": "9be59c24208965bb54a6c55c28cc1cc0da7fbb0f71e66c8c3efdb32db9357429",
+          "last_modified": "Mon, 13 Jul 2026 22:03:27 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "f53ba510040765e2dd79408e70ae7ddc15eaee4916806cfa0e77ab2c3b2d7cc9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f042",
+          "range_end": 11681606,
+          "range_start": 11536503
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11540518:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+9",
+          "index_sha256": "c85a07619bc3e8acde3bd0c6450b4ee0069dfc00cdcf50ac3143ddbc262af597",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "63d248bed0e0fefdc2472bbd5327a0d46a4486b4e6c41007d94e5ed6ee0502a1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f045",
+          "range_end": 11686109,
+          "range_start": 11540518
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11735396:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+9",
+          "index_sha256": "d4efbdd9e100effb791322441cc7ce699dcc532b45ec87b7ce7c8c6a301b5c85",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "2cb7f76f90167d2a7d60b2623a11ce2b505824374ba734f5bbb4a6983416391f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f048",
+          "range_end": 11880271,
+          "range_start": 11735396
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11912844:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+9",
+          "index_sha256": "994029480470b5ba5019c247660a12dbebd4e8ec8591f9ea5776a40e74f766bd",
+          "last_modified": "Mon, 13 Jul 2026 22:07:46 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "67c4931bcb8583771f6eb84e83f62f8e6d3694aadab0a4fb45813c266fac9a5d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f051",
+          "range_end": 12056994,
+          "range_start": 11912844
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11903815:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+9",
+          "index_sha256": "c8454ed6bcdcbf52d2482fd2090bbff3d10974147a0f36d8c84aa01baedab9cc",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "dbfef9c66609f4251b5df57684a14ebba2ceef9c117d2f5875105d18c3c64464",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f054",
+          "range_end": 12047217,
+          "range_start": 11903815
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11894507:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+9",
+          "index_sha256": "100cad03c41a5b053de61e54be6137789f86fce318c78ea255e9e801a8856d46",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_09",
+          "message_sha256": "f11844271ee19d750eb0f7a9c73e1c4af278c4e559be1d6a553cbb43aebee7a5",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep09.t18z.pgrb2a.0p50.f057",
+          "range_end": 12039050,
+          "range_start": 11894507
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11549491:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+10",
+          "index_sha256": "7a5131dfb9111186071940f9e0ee23e9c12cddd52897fdbb2da79fef31c9b05a",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "7f4e7b05fab22413b789ba2449be680214a823c0487e2a887919dff59f442659",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f036",
+          "range_end": 11694064,
+          "range_start": 11549491
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11519589:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+10",
+          "index_sha256": "591c408f37ce5db0ff71ea1b4de408311708791728bc22fee29218b0a5fdf2e7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:27 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "fc3e87a6e39ec10a696eaede71af15cbeb35d278247dbce9747c442179cd87e2",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f039",
+          "range_end": 11665275,
+          "range_start": 11519589
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11528682:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+10",
+          "index_sha256": "b9d595ba0e67047f9990d6f6336680d9064f7efb45f10f0a08a342e4509ea541",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "2900ce2c11d633b01c51baae591acaf67f8830bc715da451cec3fa838e70651b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f042",
+          "range_end": 11674048,
+          "range_start": 11528682
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11527500:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+10",
+          "index_sha256": "b4e1189a0aa2a7f037eda101a58cb6c1ab6d9322db78427050745f4760e48183",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "f3b5adde0c6ce95b63b6fe5e93658369f3c38980e18c967d17324228f95713da",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f045",
+          "range_end": 11672763,
+          "range_start": 11527500
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11715518:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+10",
+          "index_sha256": "dcba28a7ed4dec2a9f27459a089202ae5a78bb97f24976641e28dc0ddcc4c718",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "6ec3d5d5fa6e8e2beb0b002dd563f55fbcebbef72ab8c5472029910fe5b9c63a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f048",
+          "range_end": 11860266,
+          "range_start": 11715518
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11730116:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+10",
+          "index_sha256": "c91a2b3992cd9c6df58d22facd9651b455b5a4ce5ef2b7f15abaa7fd3afc562c",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "294165a139377b7bb772f4e674af41c5025b9039851d58bc0d937381a142d3a3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f051",
+          "range_end": 11874366,
+          "range_start": 11730116
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11503777:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+10",
+          "index_sha256": "ecd69c1184f436a1f5732db86c4f42fbc8771f5e7a6efe2a1cc52818f2252ffc",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "19ce567efef844f4746a7fff009798e889444614d853f732771bed31435bca56",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f054",
+          "range_end": 11647735,
+          "range_start": 11503777
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11675199:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+10",
+          "index_sha256": "8d9dbe00ff3c477491d55942435b80958d8eb7dbef18a9fc903e92477faea3f9",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_10",
+          "message_sha256": "04da8a592b20bb2e1dc1add880becd7b3202c558d7eec122b1cf787a125d7987",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep10.t18z.pgrb2a.0p50.f057",
+          "range_end": 11818971,
+          "range_start": 11675199
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11958533:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+11",
+          "index_sha256": "42060152b2eb2fafa2c8a7e58eb47ae7c0978b0b50a56740fd1a39bbb7720026",
+          "last_modified": "Mon, 13 Jul 2026 22:00:52 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "58947e8dbb8e3f49957f1ce592bbbb558a68853d260215482fa729d9d978ef4b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f036",
+          "range_end": 12103616,
+          "range_start": 11958533
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11749852:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+11",
+          "index_sha256": "4a1b87cd9908815e5ca2ef408df107c8c586e6b933d49a3904680f2e3c672605",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "2c25ec169746c08c0c1e5943b0c6fd5c5fe3c7bb6d802665a06e6cecffcaaf3e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f039",
+          "range_end": 11895729,
+          "range_start": 11749852
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11754864:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+11",
+          "index_sha256": "15941a3ae141869dd02aba02053c631c0e43749e784ee80ffa673ee62d6d5a99",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "4e33b4eb7f9cb54495b1f11f8140fc8fe8ce82e74570327bedea45ff0ad3046b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f042",
+          "range_end": 11900496,
+          "range_start": 11754864
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11733889:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+11",
+          "index_sha256": "5189da097d3bbbd1766180be24b2252e5d409d21ff1c3ca4855b920fe0a059d4",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "d2da1cd0b9731095968545e6106e42d1c7464ef9d06bd2edf73bc85009877c4a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f045",
+          "range_end": 11878933,
+          "range_start": 11733889
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11939158:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+11",
+          "index_sha256": "5fed8f20c64158e22f85d4f9ffff48e32b7161851f9c1202f1d0a97ab4e4d355",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "e65bf43d0c5f40aaf364b5e3a7d4930430636f0fc2764cfb5b26a3ad0c298cc3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f048",
+          "range_end": 12083741,
+          "range_start": 11939158
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11926431:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+11",
+          "index_sha256": "351ba936f3b46614c7d500cb33dcd0790bf4efc6f2364939167aa44f5e5fc805",
+          "last_modified": "Mon, 13 Jul 2026 22:07:43 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "d25c5bed5d0033654f3877b35f37a2e6c31e6c800f7e732930ee7403d211c085",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f051",
+          "range_end": 12070656,
+          "range_start": 11926431
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11899365:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+11",
+          "index_sha256": "dff317fe0f6b9423085ed4684f4f460a4ee286e1501601f54ac488ddea83fc1d",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "066b8ce6fc9793e694d7fa8e40371d4717cecc6ac8c7f9c27ca6255a873863b4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f054",
+          "range_end": 12042624,
+          "range_start": 11899365
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11885935:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+11",
+          "index_sha256": "13415b56261dc45fcff66a5cb767baee892c75fd41334095bbc76c23ae34a319",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_11",
+          "message_sha256": "dd4c0e5adc04ca8982282066a855716d5444a8f0017d72a6f471c53276879264",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep11.t18z.pgrb2a.0p50.f057",
+          "range_end": 12029383,
+          "range_start": 11885935
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11578424:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+12",
+          "index_sha256": "febaf306a74ad3fb6898af8272263f97c3ab6d94dd433a3c92afee51c5891292",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "bbeeb47a46eba95965002a0f1832665b2409cc41a4217224f38e4b21e7c7b19b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f036",
+          "range_end": 11723408,
+          "range_start": 11578424
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11562493:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+12",
+          "index_sha256": "562c08dbe6bf1f5d1e47a9c0f26f2481820106867043475294909cd5ac93dae9",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "a1f4b214693c15afd09fd47bab95eeef164bff6effa10976791b6bb73ec10660",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f039",
+          "range_end": 11708582,
+          "range_start": 11562493
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11553072:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+12",
+          "index_sha256": "cfde48917b55c503fc16ac904cc6f6d5420fd097d570365dce2ffc0f66a9d0aa",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "5950d704f6b2c284e1e8fe169f825c8752148687b4ba880f85d2ea9890e83d2f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f042",
+          "range_end": 11698918,
+          "range_start": 11553072
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11565794:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+12",
+          "index_sha256": "12ddc6ff39f1fd13ef38b45958dc305f9e5f4356419eb482b59ebb6080a43236",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "47a47e74de29f8ecd7ec35b062ad2385ef585df02e8fc9e854377a009ba839c0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f045",
+          "range_end": 11712091,
+          "range_start": 11565794
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11758150:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+12",
+          "index_sha256": "3cc3a965d0dd90c75d23449626c0c80c15133fae9d16749bb5e73e89fefe0329",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "9e61bd400a69c33477dd030bdd5541c18652113d92db40bd3ac2cc4d016556b8",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f048",
+          "range_end": 11903571,
+          "range_start": 11758150
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11765674:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+12",
+          "index_sha256": "3582d4a60dfc64ba92870ee80617531d6fd60a3e9c73d7d2f98da0dbe711b137",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "4fd44f151c9df72d92463a8bfcb4f40e108f8e2b1d6917b749b869cfee1ab879",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f051",
+          "range_end": 11910471,
+          "range_start": 11765674
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11952967:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+12",
+          "index_sha256": "b8a6a4953ea7ae946c9811adc55b084e62dc1ccf96cd9da6d768eac8a9a82347",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "37143d1886a9d322572c35171142c0d1333430d57f0d315a9fe5bc2528d3b1ed",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f054",
+          "range_end": 12097246,
+          "range_start": 11952967
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11744355:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+12",
+          "index_sha256": "b881e8278145edbe775ee1e44723f36719aa1d51d74352e19fd8b950234120ce",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_12",
+          "message_sha256": "6321e456d33c4d4da7aa1bcc5b2dc048d83d552ca33b146ac04b5fdd817b4cdf",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep12.t18z.pgrb2a.0p50.f057",
+          "range_end": 11889102,
+          "range_start": 11744355
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11547018:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+13",
+          "index_sha256": "59a49aa32a74bd87ed585ae905b372554268414c0cb050a64390c646930ca85d",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "844420b196c7a0113889b3cc399b0809c1b5806437b908880a4046e0b9be57df",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f036",
+          "range_end": 11691818,
+          "range_start": 11547018
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11550041:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+13",
+          "index_sha256": "dec9bba55a47f8323a14e55481148c6388d1137e0a9f517778bceb4a63baa52d",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "40afcdbc16a5f27ab36324eb082131685d852071de945c8243fbf187cd27742f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f039",
+          "range_end": 11695538,
+          "range_start": 11550041
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11527280:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+13",
+          "index_sha256": "f65d7e82243b0f8455b888a9983cab81b65d9b21c62d31e419a25bdf55ee45ed",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "aa2e1582de9ec8c8c90c0a6d6ba8f056ac25ec56344d6e95280903a84ceb7853",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f042",
+          "range_end": 11673040,
+          "range_start": 11527280
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11731967:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+13",
+          "index_sha256": "7a958a8f70c032a7e6b9ba943fe30ebbd43474a0a17ed2ece26966492a6d3d73",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "e75df0a74679147bdb613db25d916e71ac81d830032427780ba582f1e2e99525",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f045",
+          "range_end": 11877276,
+          "range_start": 11731967
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11924997:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+13",
+          "index_sha256": "13e37335b131bdb336be54292254e373547a45d1bc77ef0e3d62bd1db554e838",
+          "last_modified": "Mon, 13 Jul 2026 22:07:42 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "d7f4bac72a2f099446cf7c64b6429221456194119ff988273a3b8787892c5158",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f048",
+          "range_end": 12070134,
+          "range_start": 11924997
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11913360:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+13",
+          "index_sha256": "92399eb84a7c88971f23b5117faf301d14594205e89ce62e6ce8739673f1470b",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "262faf5a1118f95f92c93dc073c83cd5c1666e846b13465760ce917f332c4cdd",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f051",
+          "range_end": 12058149,
+          "range_start": 11913360
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11889230:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+13",
+          "index_sha256": "4735518b3bdf85baf94814861db3fb3b296681a550e2db95cbedb8f43f3c94f5",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "2522f9737b56193ddb26da24189e605c6b35c3db6855134a9ce3bb9d18f9b809",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f054",
+          "range_end": 12033681,
+          "range_start": 11889230
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11867370:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+13",
+          "index_sha256": "f0750279645fa2ce2211ad8e80b65543e10e68cfc2f25a3b8fac4b103496fe5a",
+          "last_modified": "Mon, 13 Jul 2026 22:12:35 GMT",
+          "member_id": "perturbed_13",
+          "message_sha256": "334f1bd5e94fdf8faed9405150fc9c6ae2daea4e8345d3fd38dd2277139ecff3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep13.t18z.pgrb2a.0p50.f057",
+          "range_end": 12012064,
+          "range_start": 11867370
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11741226:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+14",
+          "index_sha256": "65a461bfaad4260330c180d52406ed681460967eadc2fc1caccf631d73410249",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "f5fef33d10cec4673834d3c4b7b44ac2b592547804d91eec2459b07918b6e47c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f036",
+          "range_end": 11885824,
+          "range_start": 11741226
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11731174:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+14",
+          "index_sha256": "6a900dcd88fa2ccd221fbfa68dd0bb1b12ba159004210b3c852dedfe26a60978",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "d56e7a1074181f10b09af6740f59774aa586cd8a9cab7a846054890981d61563",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f039",
+          "range_end": 11876496,
+          "range_start": 11731174
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11522127:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+14",
+          "index_sha256": "d74b5ff62ce48c290d058cdeb87e14a3749ca49089e0fe6ed0e2e1d8836fea3f",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "c1589e572c22c159ddfcb631773345a0889f3ae5687164d1c56c26b2232f0e83",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f042",
+          "range_end": 11667646,
+          "range_start": 11522127
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11535881:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+14",
+          "index_sha256": "b718e70a440981c35d16748ec4123b45d04dbbc7cf44fba56ba06b0a27ff5e28",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "4a399910eadd419f8f73849ae97219b10581552cb6204966288a79fb1e9312c9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f045",
+          "range_end": 11681068,
+          "range_start": 11535881
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11952787:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+14",
+          "index_sha256": "845e24092ec82a1df19df18274ff5e647e9b4fabb488d025b2ac312a88b2f52d",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "2642c393b4327d0635f9412044b7a6a15be9392ea60a029726814dfeb08e5ca3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f048",
+          "range_end": 12097674,
+          "range_start": 11952787
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11929150:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+14",
+          "index_sha256": "9cec7648e3953d65424c92cb8a815ea4fb44e5c96fbafa2b7421a59f30c8680a",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "a5894eedc5fe41ab58c572aba723d33355b2c62eba48d4d32413753a608b50a8",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f051",
+          "range_end": 12073587,
+          "range_start": 11929150
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11917233:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+14",
+          "index_sha256": "ee4a2a23324b3cb2840587097fe272a80700fb3d9848cfe88d389a0668320828",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "3e482973c2f9c688303f479d572e1a5c0f9ecd25cdd72b1663518f10de0c976b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f054",
+          "range_end": 12061448,
+          "range_start": 11917233
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11897294:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+14",
+          "index_sha256": "60fc18d00921659225671b5b7e59fcd3bf9b094852cb974b2f884eece787be89",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_14",
+          "message_sha256": "ab99cff47afb00e6df8a3af3b92e8d29a4baed6f490ed957dfc92dc414701f65",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep14.t18z.pgrb2a.0p50.f057",
+          "range_end": 12041685,
+          "range_start": 11897294
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11526466:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+15",
+          "index_sha256": "f363d6b8269e4e858309c1d722f8f380213d95af2ada683078b7c8b76925b2bd",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "be263425c4a5ed14f2b4221f4b520818c7f95596a8046a605cd212bbff9ef544",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f036",
+          "range_end": 11671297,
+          "range_start": 11526466
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11938522:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+15",
+          "index_sha256": "17aaf47b5ccfa087d3305dc1aa7d73567f69b9e14dc8a235aaa31135783f5760",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "2b53c488e394d5286dbacae2e144f0e90d7d4b26aa9b286ba3a2c241fb83eaf9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f039",
+          "range_end": 12084392,
+          "range_start": 11938522
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11519603:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+15",
+          "index_sha256": "21cf1e490ec3b76e4afd45fbd4951ceb893c76a3951a14b34fef00812464bafc",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "af89448c919a53fe578dcbf301ae5d796e57044ed2425dea530229f96dc8fa02",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f042",
+          "range_end": 11665324,
+          "range_start": 11519603
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11525480:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+15",
+          "index_sha256": "fb39a87d06dcbdfb787a27e7d259f95cf695f456994712b7b9e8d9ed10540310",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "0a40db35e577ea638bbcaeb572ccf8af0b7f5ac47d42bd8365c5cd633047c8ae",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f045",
+          "range_end": 11671260,
+          "range_start": 11525480
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11928160:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+15",
+          "index_sha256": "43071bf855a65ac663df4e87a8e7bc9ea06f8fba5080d0ac8587df4c7e89c697",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "6d59db7996764bb099eb2c36351fb49f8039969084fecc7e35bec99489aa8efe",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f048",
+          "range_end": 12073142,
+          "range_start": 11928160
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11718631:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+15",
+          "index_sha256": "b233a888a65b0b24a4e19293de7e9b029fae6eed481097d7ffbc11af6a49fc8e",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "fab75f84beaefe471e0f155b053208e9463bc24999041a87ce12de93298388ff",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f051",
+          "range_end": 11862942,
+          "range_start": 11718631
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11690293:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+15",
+          "index_sha256": "c57f00b7e46574dbe20aff6ccbbbc35c79ac952a021397ce6775de24a5e802e6",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "3144a0c07bc4d5f2452a3cee5bc95a1d9428a9d9d07124621ee6a895d813c8b3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f054",
+          "range_end": 11834986,
+          "range_start": 11690293
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11648047:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+15",
+          "index_sha256": "628c6bb2ec8b0f168e45a59f1614794f92cde8b016547eb6606d98ca2b3b58bb",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_15",
+          "message_sha256": "358c28e57d91f6b6bffd65579bcae87278fe64b9629d5f0ebd398f037db5f4ba",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep15.t18z.pgrb2a.0p50.f057",
+          "range_end": 11792461,
+          "range_start": 11648047
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11756738:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+16",
+          "index_sha256": "bbe4c8fc922ff9333daf76cfcdd07184cf600160d971a12e6b7af122d7b7d830",
+          "last_modified": "Mon, 13 Jul 2026 22:00:55 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "a79b1abfb262af11abc8134830d471986a4a71dcedaa0d6a94c544aa3db7c4a3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f036",
+          "range_end": 11901355,
+          "range_start": 11756738
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11954552:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+16",
+          "index_sha256": "74db5047d6a53d0abff85ec480bd6fe8b13bab0493ec9a881953931995ec0f8f",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "6b50ddd281570f4af4c81e46180f5f16d3f1ae846646d99b9679d9f5cb5ea418",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f039",
+          "range_end": 12100303,
+          "range_start": 11954552
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11750400:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+16",
+          "index_sha256": "1f32eab74edea3a75eae7aa5e2de0e9a1ff7ee266e708c0b9c1e57475e6a216e",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "da71aa2cfd9312bae8a3e0df715be5c40d9dfcc10ed9f4ef70696f73e9639d2d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f042",
+          "range_end": 11895926,
+          "range_start": 11750400
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11743552:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+16",
+          "index_sha256": "d5b65f3a583c0a5e2c7f5b85765847acc6d298753f2b2c9011bf4aad287fa001",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "56339968f66373caf71b9e1c9d3e4fdd1c1a39b27cbbc6cfece6773fa7a2e455",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f045",
+          "range_end": 11888205,
+          "range_start": 11743552
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11942390:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+16",
+          "index_sha256": "12a3a9f5d4c4225d9c7e1585b8469c7e338d166eb73d2e15565de86153f120d6",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "5cf405b44ee0383813894ad67c8d3f94dd1a9373d21457c06496164e24bff8ed",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f048",
+          "range_end": 12087147,
+          "range_start": 11942390
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11720212:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+16",
+          "index_sha256": "139a8735437b0ba7b9dc689a153875081bade623f641dc0598c7a1db63333447",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "a669835346645da7f1c7445f05fadf206fc47ba4ba2665218467cf9b9f3db45b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f051",
+          "range_end": 11864169,
+          "range_start": 11720212
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11913171:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+16",
+          "index_sha256": "43b7029761fa6136dc2a8fff789ce832e303e9a6b62c1fb4aca50e4e6baf8a5f",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "b83f7f2864156fb00b094e61a407e92720f2053464469a997e5e62beb89b446a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f054",
+          "range_end": 12056416,
+          "range_start": 11913171
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11892662:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+16",
+          "index_sha256": "0f32ee4982ce21c6d4f15981e3239d4f048730ec72087522ef1c7335fedd18a2",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_16",
+          "message_sha256": "70c08adce6f87b8427f64724da79201328e15991b0cab6e5e76d855e3b34cb41",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep16.t18z.pgrb2a.0p50.f057",
+          "range_end": 12036650,
+          "range_start": 11892662
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11950686:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+17",
+          "index_sha256": "5aa8cd33000326709cf3e8ade4d463987be9a9908bd84d4348dc70db065f2de2",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "dd1081080cbbbd42aa5cc0d94ead04683e2f59521e680d1fc50556549134391b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f036",
+          "range_end": 12095400,
+          "range_start": 11950686
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11735550:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+17",
+          "index_sha256": "5b111a8022d5e1b447af1f52b97f435ea60c6795cc640b04f7f1b135c6aa8a9e",
+          "last_modified": "Mon, 13 Jul 2026 22:03:31 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "6e557f981744c72e937f97f69424872585f914b97c00bef9e388a774be95f894",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f039",
+          "range_end": 11881324,
+          "range_start": 11735550
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11726556:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+17",
+          "index_sha256": "3b8ec902f0d6722083a87cddd94092c74b8997a018ed583b98114fa98ff26e2f",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "5a7567c84422c93a264ae6c76550d5b43e0074eecb588701e2b70c274dcd1801",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f042",
+          "range_end": 11872551,
+          "range_start": 11726556
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11923323:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+17",
+          "index_sha256": "09eb6e9491f83dcb6461bcc4f1993576ecc5e913246195bc20e9fac181689e11",
+          "last_modified": "Mon, 13 Jul 2026 22:05:30 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "6e412e9bda26c2e2ac3bbd673aefe2e6e46157bcf888772d75863fb169b45e32",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f045",
+          "range_end": 12068247,
+          "range_start": 11923323
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11908352:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+17",
+          "index_sha256": "2fbe6b84fdc4a10427141de3c8fa3ad5ce9a4cc03133dd554aa28fcc630bc168",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "0a9b32f825845408a2f706c647309fff319c90a15625f2d67ae646366936d14a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f048",
+          "range_end": 12054431,
+          "range_start": 11908352
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11921804:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+17",
+          "index_sha256": "42f801670d4aac7d47cf44d9758381c031168618124fba4e46ef87306468926a",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "bd653b00647492222bf30f2f011ea3423a8fe7f000a9fba9bdd8a7532c6c29dd",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f051",
+          "range_end": 12066267,
+          "range_start": 11921804
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11694370:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+17",
+          "index_sha256": "ee3836d8930cde9e6c64c42f013d03730beeffe174b15e4d75e57082d5d12b2b",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "a8991e8df0d537932ec8df907f70b8e93510db0ea816d4b1b29a5e7386d2271d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f054",
+          "range_end": 11839006,
+          "range_start": 11694370
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11881514:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+17",
+          "index_sha256": "de682270d4015ff197ca0b3ae8e7155fffbf7053743aa4895bc6ba31db344e54",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_17",
+          "message_sha256": "3aed8de375004ead94f4ce4c18ad1e09e90f5bc677a2d0f99ca6298378b649e7",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep17.t18z.pgrb2a.0p50.f057",
+          "range_end": 12025802,
+          "range_start": 11881514
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11540680:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+18",
+          "index_sha256": "284361f6d456abcaf6306f9bc74f72eef8d223951c3cba120d594435c60d4d05",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "b59d5ad54f88cb051ad117ff4b11c895685d7ec0d82e8db1027c770049c8f40c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f036",
+          "range_end": 11685091,
+          "range_start": 11540680
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11919279:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+18",
+          "index_sha256": "abf4ab9854146e046cf3bee99e6ee0a3721330ee2fae0eda09b339c86ee0d60f",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "8d4483e8c050f539dc794ef7af05dd41ef2d4fd0693e0c475d720b7ec3e2c22c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f039",
+          "range_end": 12064715,
+          "range_start": 11919279
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11715892:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+18",
+          "index_sha256": "990a1972723147bb59512a86a6a9289b77ab16d9d245d602986a29de42325e78",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "bc0d3174c167e66998f7d5aa1f6d4f01bc8c716e556651fff8a4f60a9c9bc1ca",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f042",
+          "range_end": 11861281,
+          "range_start": 11715892
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11696258:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+18",
+          "index_sha256": "08d10cd700363310cc51c2b951233ec1a6b0083b138f699b6465f28ab85ff1d4",
+          "last_modified": "Mon, 13 Jul 2026 22:05:24 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "16b24afdcc6d82026adeb0bcafc94c5f0adaf4b392a12a79f2fb5506abf7aab1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f045",
+          "range_end": 11841714,
+          "range_start": 11696258
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11723699:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+18",
+          "index_sha256": "5af2eff35675cc4370e3a794856fbd919ef06fe0576dc42c219fa53d23cf7582",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "d0a3739411616587ff8bcb91fd0813c6ccf8012b3e56a0371f63c0b1c7acf489",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f048",
+          "range_end": 11868452,
+          "range_start": 11723699
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11707488:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+18",
+          "index_sha256": "7d07079a2accbdf741728f8626bbabf18378614816c0510ae6852332f50e0396",
+          "last_modified": "Mon, 13 Jul 2026 22:07:45 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "732ed19b6eb69ef165d30adfdf18599c89f79bb5d845975cefdbb8ee7bb09c95",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f051",
+          "range_end": 11851790,
+          "range_start": 11707488
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:12106549:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+18",
+          "index_sha256": "c246789b71a8efbf6e3680a24fca385054c54969d5f600a899d44088bdeffd29",
+          "last_modified": "Mon, 13 Jul 2026 22:09:54 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "4c4f6f68d960ed45e71786c97be2f4b656168385ebbf5de41885610816699f5d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f054",
+          "range_end": 12249848,
+          "range_start": 12106549
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11880295:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+18",
+          "index_sha256": "b3abc3671655283407b7385f4b5a9fba8365960acf245b365247960e61f5af30",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_18",
+          "message_sha256": "549c63798edd8622ba76514b2df469085da832b0cf6a95b0efe867c4219ba5b0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep18.t18z.pgrb2a.0p50.f057",
+          "range_end": 12023665,
+          "range_start": 11880295
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11534065:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+19",
+          "index_sha256": "fbe87b80945c34ef51e759797ff99696478a8a0c59bedef610dcf810db813b62",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "cf5ccd2dd6a2bebb69f5da3fcd53af2e5d0a3ed36680933e89a6ed172b95bc7e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f036",
+          "range_end": 11678508,
+          "range_start": 11534065
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11535981:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+19",
+          "index_sha256": "6bd66aa582beb56b9ebefdd8928688577dfa1242fd4d9fe625bc0191b70bcec9",
+          "last_modified": "Mon, 13 Jul 2026 22:03:27 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "b6f6faba6e326b977d7f00843dd6f87443fb43a486fbebde41d36a3f30c3a5af",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f039",
+          "range_end": 11681330,
+          "range_start": 11535981
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11740183:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+19",
+          "index_sha256": "524f255f1a9134770055bd51b9a6b39a56c27d1e1e2d3bfa0eaf1fd56599e13d",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "40340dab30ef77bcaff83cacc921bb730aa636118840b96d0b20cb7e52f7aca8",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f042",
+          "range_end": 11885382,
+          "range_start": 11740183
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11735029:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+19",
+          "index_sha256": "7660ce1f82742482ad7871d3631e07ce1efa44e06e5346840a01f2b1324e6517",
+          "last_modified": "Mon, 13 Jul 2026 22:05:31 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "f2d8770c1c0e309fd3f5964ab888d9715dbb73e7f3636eb1822b7e0487d8d281",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f045",
+          "range_end": 11879625,
+          "range_start": 11735029
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11942014:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+19",
+          "index_sha256": "387d3f3cbf133353150b439c6b50e4e655fefd25fd1079604eeddf14cce8b12b",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "d32362255c62f31fe7d24811a6354473252dcdf18a910795d7384625dffec84d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f048",
+          "range_end": 12086717,
+          "range_start": 11942014
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11946415:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+19",
+          "index_sha256": "356301ae0753daf45ae416a74af3fc4aeeb36ce43d0a38545edce109443f1f77",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "a5867ceb4f08e6f5a263abd1911b0fe81b1f81499510ea646c802b33f3929d3a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f051",
+          "range_end": 12090448,
+          "range_start": 11946415
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11916260:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+19",
+          "index_sha256": "901430ea1ea40e737ba986891d1cff76d25e5eeff765cda1beccf236a8b874e9",
+          "last_modified": "Mon, 13 Jul 2026 22:09:57 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "764a971f3f55dd5163d850c393a0f585cd133cb57562b735d016ba88913e6303",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f054",
+          "range_end": 12060083,
+          "range_start": 11916260
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11904645:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+19",
+          "index_sha256": "7058052bf4bb56445d11650f5672add64a801228e3e28f7ce2ec5547998c9221",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_19",
+          "message_sha256": "3771e4486735952db61243536072d5238410a6709b038d9f0f170a1df9ae307f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep19.t18z.pgrb2a.0p50.f057",
+          "range_end": 12048582,
+          "range_start": 11904645
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11758680:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+20",
+          "index_sha256": "1a2173806a3716a7cf8139b04d53aff3339b35dd593a2d318f3170f78673249a",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "d65c338554c982d398288bf3177332ad6712162f7f5968a10d0a4640bf9c0d27",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f036",
+          "range_end": 11903800,
+          "range_start": 11758680
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11759302:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+20",
+          "index_sha256": "5b446066c9b51d5aff6367c11ba77ea7e8d115d8bc51a41899de4d9a33c0a4d7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "8c329ca351474cd1ec8efabbadef50e1d532bfae3e26dbf009cbc8d827ff82b7",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f039",
+          "range_end": 11905389,
+          "range_start": 11759302
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11558454:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+20",
+          "index_sha256": "503942bb40a9b7b3733f123142a5e00b1653da1509b718bac4539493221d876b",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "14430068e667d86b44c6cfbe55826c3c1569c7e61b206d7fce4bea7f7c8b8f82",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f042",
+          "range_end": 11704472,
+          "range_start": 11558454
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11968448:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+20",
+          "index_sha256": "6ea8887406c594c25d6422ba12a3963770720c4812bf2f404546f0d71c297986",
+          "last_modified": "Mon, 13 Jul 2026 22:05:30 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "856c1aa39ae00042dc4e1643cd4ef0df150bdcf3099abb2fa95751e6316df624",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f045",
+          "range_end": 12114696,
+          "range_start": 11968448
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11954853:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+20",
+          "index_sha256": "6c4e142b570c00bc26b52050c5efd6dd6a891196c25e2e6f4287446f4f07589c",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "4f48ce5c9c54104caa505c7ce61313ad9d971424dfffff6f8b944c537ba9217d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f048",
+          "range_end": 12099967,
+          "range_start": 11954853
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11942606:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+20",
+          "index_sha256": "d2831df8d43ed3f3a9077f09434a837d83a2afe2d1612f3a241de758b21bc614",
+          "last_modified": "Mon, 13 Jul 2026 22:07:46 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "ab828d45b1f74d1520e1b569e787bd4f6ad585f0f374ed6f27280f9245de606e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f051",
+          "range_end": 12087371,
+          "range_start": 11942606
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11913867:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+20",
+          "index_sha256": "8c07a2aec4b7ed0dae5da11f0d4e35a7106a09979c8ab6378ceae28d0403fba0",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "1c5d6c9e992c9d1a92779998cd91e25ab445d747339880ebba9b5d4ef6431b46",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f054",
+          "range_end": 12058160,
+          "range_start": 11913867
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11895799:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+20",
+          "index_sha256": "a00c8c8b5711925d84998897b1514f994b9cbd89637905e523d50b9f85f4bfe7",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_20",
+          "message_sha256": "6da028d272ea15d9579375bf65e13af2afafd449aaa25313e2669f0c9ca80bf1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep20.t18z.pgrb2a.0p50.f057",
+          "range_end": 12040351,
+          "range_start": 11895799
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11963011:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+21",
+          "index_sha256": "73b618572d0599a35686fa7e460d5f1e318754d74a2fd89da6ce046d3b587403",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "18aba041b8ef7d292ffd52109a78d949f1059cbeaec941bef4fbbe67cebd2bae",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f036",
+          "range_end": 12107560,
+          "range_start": 11963011
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11546955:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+21",
+          "index_sha256": "12d9ae0c7b9fe3cde73c80154372ecc5cd352f8f5460d82bed5877048946b90e",
+          "last_modified": "Mon, 13 Jul 2026 22:03:26 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "ead16b75a859016bc79ef03d3eb7492c0e55f822d858dcd6362861151e54eb56",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f039",
+          "range_end": 11692634,
+          "range_start": 11546955
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11541420:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+21",
+          "index_sha256": "a815aa2b8b8f77e40c8873319e20e88f88f1532b01898928494b71a3a757380e",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "9c32b0c4188b55d4527f89c6fd10b7d36a9bb6a5f478c4a7e0d5f2a2b7312015",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f042",
+          "range_end": 11687096,
+          "range_start": 11541420
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11551363:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+21",
+          "index_sha256": "ee85930017d12f66ae6bd1436850415a0d73ad8bf1997ded3c30ebc304b637b7",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "012074be9005350d61b8803fa9c149b1f3baafcbd84e74ca8ce4b1407df0d6d3",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f045",
+          "range_end": 11696966,
+          "range_start": 11551363
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11570267:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+21",
+          "index_sha256": "179509a1e169509a4137924a5c055b66f6502400d5f310d73a8e4c6c7ef0b080",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "7c298c373aea486954214451131512b78ec8de6107e4e9b7739537c59370b854",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f048",
+          "range_end": 11715378,
+          "range_start": 11570267
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11760449:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+21",
+          "index_sha256": "99a604b02be4df6a71821f201ab4bc6802e596d3180fe875246052dfcd4e38e6",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "9f8d55ed61defeb111de98d1989e62b17acdcd78fce9f63b6de912a8046bd125",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f051",
+          "range_end": 11905265,
+          "range_start": 11760449
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11938572:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+21",
+          "index_sha256": "c0a95f57dd82b3e6037890f90aa828be7103f8863b0194a38e58c488d37b97ae",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "098c0aaca4f8e6894cc5c7c601ba3d2885efcd1b254c51e88ac5220e23b06aa0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f054",
+          "range_end": 12083403,
+          "range_start": 11938572
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11920551:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+21",
+          "index_sha256": "e17c4d6075efd63e3ced48c0ceb47d8c679e6277e667c9ea1e70934e7cd95d90",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_21",
+          "message_sha256": "c92779d2d38e5ae26e09e4d6ba4aa280d6ec9967b31ece0c676b5deebee2f3ac",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep21.t18z.pgrb2a.0p50.f057",
+          "range_end": 12064297,
+          "range_start": 11920551
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11747208:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+22",
+          "index_sha256": "a0d5e664969056e5d1c1275db77d24ddb62b659f4cd1167b86fcb44c192c9ba0",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "373af810528292fb55df454518b2a34fc91e0dfc1516d5de6b514af1bf2cf6e1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f036",
+          "range_end": 11890846,
+          "range_start": 11747208
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11721632:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+22",
+          "index_sha256": "c7436ec53cc7148ffa4fb1935e58aed0a64524d087d2b85ed9d8f6dfaede1ce4",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "db5b88f805f0a08709355915ba2b36f89204226ea5e3efc6bba7889ec7e2883a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f039",
+          "range_end": 11867167,
+          "range_start": 11721632
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11746077:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+22",
+          "index_sha256": "4701f05cc0e509b958e46feb0ff12a5caaf29981797e21d6eceb4549549acf58",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "4ae95013e75b0a33c5e49b7ac881bb5c1a6ddc89970214ce1aa519a97ff0180b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f042",
+          "range_end": 11891384,
+          "range_start": 11746077
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11729153:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+22",
+          "index_sha256": "906550009737379e9391305424550c2893a6632dfbed556a567363ddf58cb8da",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "499dfa0a1d632529e4cf916f7707c966dd2def8eeb13f2fd9f308f91076a9866",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f045",
+          "range_end": 11873769,
+          "range_start": 11729153
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11936098:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+22",
+          "index_sha256": "71237bd677def75b57bb51c8c61a9750f0e69d51145fc0322e10451005a68201",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "c7566a8ac10e64af620629b1987eb1c2f21539787c685eb421941e6dfaf9c906",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f048",
+          "range_end": 12080505,
+          "range_start": 11936098
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11920471:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+22",
+          "index_sha256": "a11e779e3eb0f07211e2f18ec1d81e60e7789765e3c7265d7efc22393b489e4b",
+          "last_modified": "Mon, 13 Jul 2026 22:07:45 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "976578e2a33723a3903675d4a838700b3044289da887af7ee4e307687bd2bd69",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f051",
+          "range_end": 12064532,
+          "range_start": 11920471
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11895898:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+22",
+          "index_sha256": "79792cbe2f4d15809f2e445456301d22fe7fe4ee186d30e26e6ade537148e952",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "5083db474bf5856a7d8d3e314dd94233e2a343aa85469b38a9cb4238ef8dc31a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f054",
+          "range_end": 12039931,
+          "range_start": 11895898
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11887011:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+22",
+          "index_sha256": "17c0cb076188b4efcb1de8668892478f167bd0299414b7290e8a8aa3288ea32e",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_22",
+          "message_sha256": "2353a70758fe96a988ed5e0baff633c6190ae1fed16574bf2d3c594541672b3c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep22.t18z.pgrb2a.0p50.f057",
+          "range_end": 12031135,
+          "range_start": 11887011
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11727902:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+23",
+          "index_sha256": "84a5e436d9a46052a89366efa832f71164bf213bdcf60a5de24be31ca38cfb0f",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "3c947ca1998fc3c264d0626ffcc42d9c07537aefedfccb5ffcc1d2a8829d8168",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f036",
+          "range_end": 11872782,
+          "range_start": 11727902
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11713944:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+23",
+          "index_sha256": "864fd37a5f3ddd59a3019a2f7d87da613a6e623ce8f4407295d7c88beba31c14",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "62cc29ec0fd294536a5b6e3512f581abdc5165d5fe6da5ab5cb5513957053528",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f039",
+          "range_end": 11859784,
+          "range_start": 11713944
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11697877:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+23",
+          "index_sha256": "be141e07ef74d64eb64a3c571b1a2338bfce25624c67c6d92f87e9388125c6bc",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "bb97e52f48ec108bcf93c71a97b426cac40e6b2feb4a8330c4f1ad8ec6c73b41",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f042",
+          "range_end": 11843858,
+          "range_start": 11697877
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11914578:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+23",
+          "index_sha256": "27858db1a496aa8a911a42478f3b5eacf8e7238b02d77e7e73a2d6ad5510780c",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "4a8c40124416eece170a3b613db3372bf7a20a715b1c46e4bb5edec70657d10e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f045",
+          "range_end": 12060541,
+          "range_start": 11914578
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11923169:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+23",
+          "index_sha256": "57e30ebcaa7ad305acf02855a096c4e2adba6adef2e379c292857a54631d7afb",
+          "last_modified": "Mon, 13 Jul 2026 22:07:42 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "7718fcc8de8efbf05393795da9b1a231a642e400566da8f795e89435d1c70379",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f048",
+          "range_end": 12067804,
+          "range_start": 11923169
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11922936:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+23",
+          "index_sha256": "6bbbe4addb72175880d11e8990c11e904837975a9e2f98ef71e922c375fe2b0a",
+          "last_modified": "Mon, 13 Jul 2026 22:07:45 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "7b4461df97be90940f56aaf6a386aac5070891ea8ef30b6ce15686243038ff01",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f051",
+          "range_end": 12066876,
+          "range_start": 11922936
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11893401:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+23",
+          "index_sha256": "ad5acb5959118d37aa05d33757a66862cb8efe6849768f6f14f55ad1a91acb5f",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "da657ee3aebf29f8e4e2cf524d3e1a9cd50c54971f1222edc8f7f931cd045a7d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f054",
+          "range_end": 12037247,
+          "range_start": 11893401
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11851707:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+23",
+          "index_sha256": "9be1fefedda9c0ca10b3c2a1840c0feb448d9a16f2b4ae6344a7a1dfcddaf72a",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_23",
+          "message_sha256": "5380411bc74e03eace0a79ccec84cf5d010c0c99fce1edfce951474ed1db5730",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep23.t18z.pgrb2a.0p50.f057",
+          "range_end": 11995220,
+          "range_start": 11851707
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11716455:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+24",
+          "index_sha256": "00977e71a6a457c74d5880e36221c72b3744f91d5b3060167536092b4164ef7e",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "85ed66093f02bf959011bb91c2b949e55e8d9b90f65dd442c02f8076d4aaa589",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f036",
+          "range_end": 11860849,
+          "range_start": 11716455
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11717399:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+24",
+          "index_sha256": "d0d72559a0a1fbf6291f2f249549a6094d3bdea3ad9579f4997ea62d35566754",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "06ef2b12e29ad9397acbe24c0f9334ba495e465da670d541196b68c751eb937b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f039",
+          "range_end": 11862740,
+          "range_start": 11717399
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11711048:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+24",
+          "index_sha256": "4bf7efe16008893816d9d8b9acf38655985077bdef3def921714c8e624b65d57",
+          "last_modified": "Mon, 13 Jul 2026 22:03:28 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "926d9416c00c5ae843f6615d2eae72e109c8cb0cf03cc3cba9d0cf60ae8ef3c6",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f042",
+          "range_end": 11856222,
+          "range_start": 11711048
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11501303:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+24",
+          "index_sha256": "63a050485150ab922dd9f491c09f03b9b5443fbf87e7e54b92ad467b8f8857a4",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "fc9df8174053bf7b77c87055a6d3563298fa88b02fc34efe3a1285f35fad516e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f045",
+          "range_end": 11645071,
+          "range_start": 11501303
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11901723:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+24",
+          "index_sha256": "3b7cec7d2236ad42415d2553a0250c670e9b82d8897d6e2fb0e10c91dbf39330",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "be543bde83e8a44e6a0079416cc44c8067ede85a5b14a9a6831ed790318f4fc4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f048",
+          "range_end": 12045916,
+          "range_start": 11901723
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11894589:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+24",
+          "index_sha256": "ec499879761b691f40f3c48d8c4e0882a4cbd12a6c8af594b5708d67f9d07d45",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "be2193cc6877d0e26c74d7069a71d1ff3d6f80005a1354681a58f298a891e161",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f051",
+          "range_end": 12038299,
+          "range_start": 11894589
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11876040:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+24",
+          "index_sha256": "6bbe93fb359abbe539eea604b946ae1b01378885938a584bf0ab9a55f6158a55",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "0dd02dad7130ffb2a342e0011d1417e3d3ea58603aad6ccd7850dd310b084617",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f054",
+          "range_end": 12019208,
+          "range_start": 11876040
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11666263:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+24",
+          "index_sha256": "684013e98203dcb215c51d5cbb2aba7199979203054e95e1c913cb6140dcbbd7",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_24",
+          "message_sha256": "2df4aab717e46092a507de181e632ccd0d9cbde6daaffd7443ee23ca27cfd290",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep24.t18z.pgrb2a.0p50.f057",
+          "range_end": 11810189,
+          "range_start": 11666263
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11564177:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+25",
+          "index_sha256": "817905193fd990b19c75e3b4134934da7eb7b870dd295a0ae46081570d56a1f0",
+          "last_modified": "Mon, 13 Jul 2026 22:00:52 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "4ef542e444a4f6ac81cd02138d2cf87136deebf4d65c4aa7c0e28d0468a67b23",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f036",
+          "range_end": 11709186,
+          "range_start": 11564177
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11563417:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+25",
+          "index_sha256": "6134a1d785eb21f3dab8d057789a566e25353a5c8b628177852276d8183f1da6",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "498ed6c6a237ba8b53a9c4274f185bac30e039a5c905f5646fe61991fd39f3ff",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f039",
+          "range_end": 11709197,
+          "range_start": 11563417
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11548356:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+25",
+          "index_sha256": "423a90bbeb3d46e2a346495a5b29ed12c575f4ac73ab0beb395fb88c7fa88019",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "a27a6620988a896dda17b23fdc911c1ec3452d3b991fa17a701b250d1d7df2f4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f042",
+          "range_end": 11694036,
+          "range_start": 11548356
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11729660:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+25",
+          "index_sha256": "3732a318a396975a14a3478946796cf35b396cc7ad40919681e2b166238f2ccd",
+          "last_modified": "Mon, 13 Jul 2026 22:05:25 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "6762062c32a67d4c30f85d8a0cc65ef58e13ad7bd06bc723bd91912ddeea00fe",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f045",
+          "range_end": 11875333,
+          "range_start": 11729660
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11754905:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+25",
+          "index_sha256": "39e5819d191aeaafbe55fac8b979272ecb19ab03c8c130c538d2b6fc9d3f52b0",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "fccc2f0cd5b87ac570c47941b0bdfe731f54a710e9cf96d16c059d409f291a1a",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f048",
+          "range_end": 11899673,
+          "range_start": 11754905
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11947225:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+25",
+          "index_sha256": "7a3c8943a42715a0ae0e4449fe464f4b5546a2484c559d9548e986b61bcfd405",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "07ad55c178b76c3001b26399d0121fa446c8e425c173f462f5d7bc915e3d9092",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f051",
+          "range_end": 12092557,
+          "range_start": 11947225
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11709945:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+25",
+          "index_sha256": "e828be036f4973819d44481f51e01620dc2726bea9b71ca6fb9d0986cd971cdd",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "d866652223283a5a32870ddd5a361e6e4dcaa04ace7e4d2c463a2884efacb70c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f054",
+          "range_end": 11853771,
+          "range_start": 11709945
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11894001:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+25",
+          "index_sha256": "fa1d3dc7d81cb845312fbb8465328335646ba18ee4a67ba48bd3064eb46ae0ef",
+          "last_modified": "Mon, 13 Jul 2026 22:10:02 GMT",
+          "member_id": "perturbed_25",
+          "message_sha256": "fe324f34ed41fb9e94a950d1864ef9ffb9c71bddf99b5313bacd11cdfadcb0bb",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep25.t18z.pgrb2a.0p50.f057",
+          "range_end": 12038286,
+          "range_start": 11894001
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11743183:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+26",
+          "index_sha256": "87ec450321d067fb05d5048c7af4136f34c680ade45824f2f0744fa7deeaae59",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "e6b474a37defc8be32783969f36ed306e0c8041a8dc22f98bdf9b6dfa664a546",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f036",
+          "range_end": 11887690,
+          "range_start": 11743183
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11744243:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+26",
+          "index_sha256": "483acc665133d99bd5c486d6a188d7c15bf9cabbd795507c46c4f34b564a0b78",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "6f93d84e5891e85ca9d82695b5f55b232d56313acdaf80622a350364d285038d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f039",
+          "range_end": 11890035,
+          "range_start": 11744243
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11948352:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+26",
+          "index_sha256": "6d81dca341c876ab26247550342a1f12a089566e26f891ac03e2e8ccc6d249b4",
+          "last_modified": "Mon, 13 Jul 2026 22:05:23 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "97d5783e64eea5f364140637cbf431786d293d422f4dcde77a16a1431c08a092",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f042",
+          "range_end": 12094132,
+          "range_start": 11948352
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11740430:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+26",
+          "index_sha256": "8ce66a78cb92dd72f7d79dd2c27d7593cab6cf7222686b33b967d586e2c229c2",
+          "last_modified": "Mon, 13 Jul 2026 22:05:30 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "8a170bfb87fbba55e0ca15594cea2bc0927022b3e41a466dbf567dc5b7678220",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f045",
+          "range_end": 11885196,
+          "range_start": 11740430
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11535554:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+26",
+          "index_sha256": "05258e41cb27c552da9c77a41dea0bcfd1c965410a3af568fa8d979c9055cbad",
+          "last_modified": "Mon, 13 Jul 2026 22:07:42 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "096ab4ab6a887511bb43721b5a80335567bd7697b5cceb9d907a896a02250ebe",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f048",
+          "range_end": 11680283,
+          "range_start": 11535554
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11736338:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+26",
+          "index_sha256": "95b505295d6ca069e9c669aeac6bf267e81b7eec11a2b47b84be20e4d53f5807",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "e201e08b30191f09053849edbcf83d7775a7a7b78d944a80b245eb5153040bba",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f051",
+          "range_end": 11881733,
+          "range_start": 11736338
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11714195:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+26",
+          "index_sha256": "36038e87036384f59e11ca6b0d6f6cf8c166f19a8e98f0202f72f7f32d3390c9",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "f645994d027535813d72613f78c38da4e269fbef6b9087e3d15fa8532af14c8c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f054",
+          "range_end": 11857536,
+          "range_start": 11714195
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11879753:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+26",
+          "index_sha256": "2d814854ed3bf7c24fa9dcf3ab6de4c1fc4a6d5312e13a29b405a8cdf0a43dd9",
+          "last_modified": "Mon, 13 Jul 2026 22:12:36 GMT",
+          "member_id": "perturbed_26",
+          "message_sha256": "4adb2ae39c880edb56f3f4dd3fef622c8f9b046ec80ca467514c608a873c6212",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep26.t18z.pgrb2a.0p50.f057",
+          "range_end": 12024221,
+          "range_start": 11879753
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11957830:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+27",
+          "index_sha256": "5d50c895750c1278745911789f9f57a8f84d077712914765c5ad05a94f59211e",
+          "last_modified": "Mon, 13 Jul 2026 22:00:53 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "f8e31377be05c5521163a4e991b82f2a33add34c4422346148655327dd561e8d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f036",
+          "range_end": 12102288,
+          "range_start": 11957830
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11748003:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+27",
+          "index_sha256": "b4ad53ab1ec3953835a7dc5009cdfc69474e084ee26f319c033d308d1d871a0f",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "db5f14f94a52eda366348feec1df401735a3e9dbc6db49931685cae45cef344f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f039",
+          "range_end": 11893730,
+          "range_start": 11748003
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11731210:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+27",
+          "index_sha256": "f275d20cd6003aa3c5c477acd797acdebe31933ea93b1dafce00c5afddb421b7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:30 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "4af2bf2061f8eb8516311ff99b57ffa5a965910ced4d180cdbf31f4122d99455",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f042",
+          "range_end": 11876716,
+          "range_start": 11731210
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11728332:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+27",
+          "index_sha256": "89d84a69e850ac23e439c42de6ce0a251c5b1cc21836ccf648bc5aa9d1c5686f",
+          "last_modified": "Mon, 13 Jul 2026 22:05:28 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "f2cc00c1c1474d7bc266dca61dfef076572077352fbf8c20c8156148fe51ed85",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f045",
+          "range_end": 11874107,
+          "range_start": 11728332
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11725722:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+27",
+          "index_sha256": "f07b5725c0fd4f8321bdca4b2fd1891754c0e2aa7f73fcdca7fee7532169c1ed",
+          "last_modified": "Mon, 13 Jul 2026 22:07:42 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "675b40465ec62d99a6006aa7d2ea0df3bf446eed7e1245c2451f4d72e6fd5c91",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f048",
+          "range_end": 11870563,
+          "range_start": 11725722
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11725189:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+27",
+          "index_sha256": "c176d0a13325811e28c3ebc2c3813c63638a4d76637bef6b0958d777a689c2fc",
+          "last_modified": "Mon, 13 Jul 2026 22:07:45 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "f5c15e9947e5caeb7b6ea5927f248e791936ea3d7d58b8a8f50cb376f4015ef9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f051",
+          "range_end": 11869950,
+          "range_start": 11725189
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11703681:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+27",
+          "index_sha256": "99980d910883eb158b653dce2a3451ef9c045f016e9cd99fe24302d25cc8337b",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "cf02e2781624dbd5384b5c769a5643410c97443ca6ee3933c7829ce8a97b77a1",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f054",
+          "range_end": 11847743,
+          "range_start": 11703681
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11685587:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+27",
+          "index_sha256": "2b91e50590adfac4b6dbefbf4674c9637f09538d3ef387c650b346c1489dd3ae",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_27",
+          "message_sha256": "6411d8da0c2952563b518fda506fd9dd1720929037d901603091aca28b540200",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep27.t18z.pgrb2a.0p50.f057",
+          "range_end": 11830130,
+          "range_start": 11685587
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11948504:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+28",
+          "index_sha256": "bb1ee6f00c4ea2de75d6a8aad10e88f965139ab00643167818a9900d9584b006",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "b31365100326172099481c19ed024610fc9555fdf08dcca58acef19ffcaa8ae4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f036",
+          "range_end": 12092956,
+          "range_start": 11948504
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11943564:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+28",
+          "index_sha256": "2cf9504b3644eb8b512639e4c3780473a524264b075f0b21fda48ff4de5e8331",
+          "last_modified": "Mon, 13 Jul 2026 22:03:23 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "842c07a4d7078e1652a39734ad7f0110aae92d850ea2fbf76cc76877a4147e4f",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f039",
+          "range_end": 12089164,
+          "range_start": 11943564
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11534209:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+28",
+          "index_sha256": "8994627defd08100caef9f922cd08a6dfb2b9e5baa1064b9d294c879840a7f4b",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "0ddb36339bab19fd2eb16d035e5760bae0e34f91a50cc11df9f1a1ca9612b303",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f042",
+          "range_end": 11679553,
+          "range_start": 11534209
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11734100:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+28",
+          "index_sha256": "8a6d48b5f7f398139d101f65e9221dd6ae026d38579e08c2cab37b075ae172db",
+          "last_modified": "Mon, 13 Jul 2026 22:05:27 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "2b773294ceed4b1245c7888a29de9df1ecab8a7fb24f9ab3a2342e29241252bb",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f045",
+          "range_end": 11879905,
+          "range_start": 11734100
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11751454:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+28",
+          "index_sha256": "e1582dd15e4cb8c4829fe672d8485a46b238ff37bf88e25aaafb84685f3460a6",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "dcb413faa60eb33b05df9dc0e7ff8c83ffd4bc91bbab00d5872e9dd8d6f013d5",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f048",
+          "range_end": 11896037,
+          "range_start": 11751454
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11740217:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+28",
+          "index_sha256": "3916f72e6bc767578008ed1a87873d6adb94db0aeed5988737f52520cb545788",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "99368497410b37c5d02321f9bdac7742326e80aa1de7daead5acd6ba3a361d7e",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f051",
+          "range_end": 11885383,
+          "range_start": 11740217
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11916142:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+28",
+          "index_sha256": "3f9cd6295ae3ab20351960cb2003d6e1624545eed0725d46a098455ed4a886d3",
+          "last_modified": "Mon, 13 Jul 2026 22:09:55 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "d8b852eeb4e597eeb974cdfa508ebc26b00462f9f889c328625315b3617813de",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f054",
+          "range_end": 12059690,
+          "range_start": 11916142
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11898274:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+28",
+          "index_sha256": "ab4986b0490bf1a92bb29d70fbec59b0c2e56ac9416ab158c5b23cd173ad2461",
+          "last_modified": "Mon, 13 Jul 2026 22:10:03 GMT",
+          "member_id": "perturbed_28",
+          "message_sha256": "3a5f400d001176b263f06e774e1ba5704297c0525493dd9452ab2629084582f5",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep28.t18z.pgrb2a.0p50.f057",
+          "range_end": 12042082,
+          "range_start": 11898274
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11563426:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+29",
+          "index_sha256": "045c98956026f7c792bc82b414426150123d1a07d5bc483e9a26761e8aef832c",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "a41e0ce50780e4e182284d2945fb4f72eb5cbac5204b5dc84e6db5a8314b42e0",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f036",
+          "range_end": 11708478,
+          "range_start": 11563426
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11762522:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+29",
+          "index_sha256": "15217f31665cd5bdcd586caa0ac572c7bea6a993439c9cc52fcf2cf75ac49926",
+          "last_modified": "Mon, 13 Jul 2026 22:03:25 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "bdc2b225575fe94296af275fd8eb786dc79adb5452f658c61ca96d4abe1cc3ff",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f039",
+          "range_end": 11908609,
+          "range_start": 11762522
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11766737:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+29",
+          "index_sha256": "f16375a352763f03653c71dd2d794a45e01c7e1de78a5f59e30292948b8c71f7",
+          "last_modified": "Mon, 13 Jul 2026 22:03:31 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "9317d021a5ec8958500b5f4f1c9bbe8fb7d264558c5f3459983f81300a655242",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f042",
+          "range_end": 11912737,
+          "range_start": 11766737
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11773491:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+29",
+          "index_sha256": "bc6a55dc281811b20a20e2ec09beee024c45d2e1661582c38a3645a7e9298904",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "a8a60f376c899be66fcfc9edea992c989785fcb622f209230e76a68385daa9e8",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f045",
+          "range_end": 11919757,
+          "range_start": 11773491
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11578354:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+29",
+          "index_sha256": "6bcf082ca12753e144c48618a18ae5eb4decde4bd72bbbaef4a484152a1f1923",
+          "last_modified": "Mon, 13 Jul 2026 22:07:41 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "575a2896a6f10b6e6dd011395d7a1f12abb320280bcdd3d6b1a6edda3e01f521",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f048",
+          "range_end": 11723525,
+          "range_start": 11578354
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11758963:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+29",
+          "index_sha256": "4c21064c9f8af13d9b328b66a79d741884f0efc39acba349dbdb2fc70f1893ab",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "91bc61a4c8c4ade8dfdda57bad92ceeba27179cb41fa139d6973e04e61fc9472",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f051",
+          "range_end": 11903488,
+          "range_start": 11758963
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11741850:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+29",
+          "index_sha256": "1658991f0493059a83090dc87bf8707fb945de459aa88847e4f639c5ccfdbefa",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "7a3aaf1dc422a992fd375fa264a495b08dd599e07fb5c153d7574208567b2c46",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f054",
+          "range_end": 11886228,
+          "range_start": 11741850
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11723466:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+29",
+          "index_sha256": "12e1e6cac911cec35449b15a0521ef508ee4345da5653531706bcf39ad29916a",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_29",
+          "message_sha256": "b5180da28f3968247448e156c46e87d6c3dda7850800bffde60f486d07fe679c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep29.t18z.pgrb2a.0p50.f057",
+          "range_end": 11867816,
+          "range_start": 11723466
+        },
+        {
+          "forecast_hour": 36,
+          "index_line": "63:11929193:d=2026071318:TMP:2 m above ground:36 hour fcst:ENS=+30",
+          "index_sha256": "3225cf19e7e4dacb8acad12108f1481718fac5627221f9f417ed15a09478ee3f",
+          "last_modified": "Mon, 13 Jul 2026 22:00:54 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "c08ab0379614884777be9672ba9fe3bb2ad0667bbb62245c583fc3f87e46f90d",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f036",
+          "range_end": 12073917,
+          "range_start": 11929193
+        },
+        {
+          "forecast_hour": 39,
+          "index_line": "63:11930219:d=2026071318:TMP:2 m above ground:39 hour fcst:ENS=+30",
+          "index_sha256": "db56bba9b214fae306aaed05d5def241c92729d49b11469bbe44c3e413895c84",
+          "last_modified": "Mon, 13 Jul 2026 22:03:24 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "0f382324ab58a21985abbb13e524cd6158cd31559afdbf1ec15c55995131fe7b",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f039",
+          "range_end": 12075784,
+          "range_start": 11930219
+        },
+        {
+          "forecast_hour": 42,
+          "index_line": "63:11912415:d=2026071318:TMP:2 m above ground:42 hour fcst:ENS=+30",
+          "index_sha256": "a6291dc5d1261cc21ce2d46acbc55969cf9c11da67bb6d11c0bab33ea23efcfe",
+          "last_modified": "Mon, 13 Jul 2026 22:03:29 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "c929da1779ec0ad781c60403b8689b0283fc20a56bc68c4dcdd3d1c066be44b9",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f042",
+          "range_end": 12057827,
+          "range_start": 11912415
+        },
+        {
+          "forecast_hour": 45,
+          "index_line": "63:11911581:d=2026071318:TMP:2 m above ground:45 hour fcst:ENS=+30",
+          "index_sha256": "ada3cd238d8f030da0465bc1dda1240c8ed471e539108821c9c29cdc1382e9ca",
+          "last_modified": "Mon, 13 Jul 2026 22:05:26 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "edab4d2e95975d5543d295046a984d20a1105578e23b03cfe5ad9d6002a63529",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f045",
+          "range_end": 12057335,
+          "range_start": 11911581
+        },
+        {
+          "forecast_hour": 48,
+          "index_line": "63:11690163:d=2026071318:TMP:2 m above ground:48 hour fcst:ENS=+30",
+          "index_sha256": "d75e0c1eae5dd6a38ec1a0a0f9e6145e4d412c1c29d549198aca754516a50147",
+          "last_modified": "Mon, 13 Jul 2026 22:07:42 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "a158b65e67f03cef6433abef186fde64c002da38cdba78a6de81c8fd57d334e4",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f048",
+          "range_end": 11835069,
+          "range_start": 11690163
+        },
+        {
+          "forecast_hour": 51,
+          "index_line": "63:11703333:d=2026071318:TMP:2 m above ground:51 hour fcst:ENS=+30",
+          "index_sha256": "1503070c43b42041112572bed7574d9acab3fcecab465daed779e0cd9adcfd3d",
+          "last_modified": "Mon, 13 Jul 2026 22:07:44 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "1164af0f2c026f1e5343602bf21a2edc3fe90e740a0b4ec1361d57c0d49e89f6",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f051",
+          "range_end": 11847489,
+          "range_start": 11703333
+        },
+        {
+          "forecast_hour": 54,
+          "index_line": "63:11679247:d=2026071318:TMP:2 m above ground:54 hour fcst:ENS=+30",
+          "index_sha256": "fd9c6d425995a39a89eb3c8c486720c059aa28835203e913184b640c18dec427",
+          "last_modified": "Mon, 13 Jul 2026 22:09:56 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "0af648ec18aea7afe44f8303f2620bec109fb9996c615a259dc6e8cdda251d56",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f054",
+          "range_end": 11823363,
+          "range_start": 11679247
+        },
+        {
+          "forecast_hour": 57,
+          "index_line": "63:11646817:d=2026071318:TMP:2 m above ground:57 hour fcst:ENS=+30",
+          "index_sha256": "fb3b5c5a62f93deb001ce41bb4f380dec044ed02ae13040c4d2aef0495e4ac6c",
+          "last_modified": "Mon, 13 Jul 2026 22:10:01 GMT",
+          "member_id": "perturbed_30",
+          "message_sha256": "a0225009353c210eb730e942f3338bbf3dd3c02de80410324ba07ee82233d54c",
+          "object_key": "gefs.20260713/18/atmos/pgrb2ap5/gep30.t18z.pgrb2a.0p50.f057",
+          "range_end": 11790979,
+          "range_start": 11646817
+        }
+      ],
+      "forecast_hours": [
+        36,
+        39,
+        42,
+        45,
+        48,
+        51,
+        54,
+        57
+      ],
+      "holdout_eligible": false,
+      "independence_family_id": "NOAA_GEFS",
+      "latitude": 1.368,
+      "live_submit_authorized": false,
+      "longitude": 103.982,
+      "member_count": 31,
+      "member_set_sha256": "9daf2aa8a06541ee3c76d96724496a96a4f77f47d20033f1dc3dd3853e99c2d6",
+      "members": [
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 29.590502929687545
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.049975585937545
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.049975585937545
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.09052734375001
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.150000000000034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.682470703125034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.350000000000023
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.32294921875001
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.782519531250045
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.650195312500045
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.504077148437545
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.84541015625001
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.69599609375001
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.426367187500034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.977026367187534
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.150000000000034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.55000000000001
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.909472656250045
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.284838867187545
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.86567382812501
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.490502929687523
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.150000000000034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.757958984375023
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.477050781250057
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.987304687500057
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.722949218750045
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.290502929687534
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.650000000000034
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.687304687500045
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.796166992187523
+        },
+        {
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "member_id": "perturbed_30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.749975585937534
+        }
+      ],
+      "native_publication_at_known": false,
+      "native_run_init_known": true,
+      "offline_chronological_oos_eligible": true,
+      "orders_submitted": 0,
+      "raw_bucket_probabilities": {
+        "27°C or below": 0.0,
+        "28°C": 0.0,
+        "29°C": 0.41935483870967744,
+        "30°C": 0.5806451612903226,
+        "31°C": 0.0,
+        "32°C": 0.0,
+        "33°C": 0.0,
+        "34°C": 0.0,
+        "35°C": 0.0,
+        "36°C": 0.0,
+        "37°C or higher": 0.0
+      },
+      "run_cycle": "18Z",
+      "run_init_utc": "2026-07-13T18:00:00Z",
+      "schema": "noaa_gefs_official_historical_station_members_v2",
+      "settlement_timezone": "America/New_York",
+      "source_class": "OFFICIAL_NATIVE_ARCHIVE",
+      "source_prefix": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.20260713/18/atmos/pgrb2ap5/",
+      "station_id": "WSSS",
+      "training_only": true
+    }
+  ],
+  "content_sha256": "fd05ee8d3f59ce577fb6bf4d8458e10b7fd371175d09b3e5cdbf13432991e52c",
+  "downloaded_field_receipt_count": 248,
+  "downloaded_field_receipt_set_sha256": "83bc01ab0a88eb9960716bdc3c5eccd872216946d42957ecaf0a365b1fb42880",
+  "ensemble_system_id": "NOAA_GEFS_05",
+  "event_date": "2026-07-15",
+  "holdout_eligible": false,
+  "independence_family_id": "NOAA_GEFS",
+  "live_submit_authorized": false,
+  "orders_submitted": 0,
+  "run_cycle": "18Z",
+  "run_init_utc": "2026-07-13T18:00:00Z",
+  "schema": "noaa_gefs_official_historical_multistation_members_v2",
+  "single_download_per_global_field": true,
+  "station_count": 1,
+  "station_ids": [
+    "WSSS"
+  ],
+  "total_response_bytes": 35916052,
+  "training_only": true,
+  "union_forecast_hours": [
+    36,
+    39,
+    42,
+    45,
+    48,
+    51,
+    54,
+    57
+  ]
+}

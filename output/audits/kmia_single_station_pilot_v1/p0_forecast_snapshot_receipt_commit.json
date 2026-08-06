@@ -1,0 +1,42 @@
+{
+  "calls_order_gateway": false,
+  "component_forward_receipt_count": 2,
+  "content_sha256": "ec6ec6410d76e5299aaa2e552848674269afc4351e33840b7b3a12a3d878e6e6",
+  "contract_content_sha256": "b1c8228e099cdc545c5a1e1b3ef8ee4c4c41a7593d574e9520f2d150edc2a341",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "ingress_receipt": {
+    "builder_id": "canonical.p0_forecast_snapshot.v1",
+    "calls_order_gateway": false,
+    "canonical_schema": "bayes_basket_target_canonical_p0_forecast_snapshot_contract_v1",
+    "contract_content_sha256": "b1c8228e099cdc545c5a1e1b3ef8ee4c4c41a7593d574e9520f2d150edc2a341",
+    "inserted_count": 1,
+    "orders_submitted": 0,
+    "receipt_sha256": "a9c04a11f5d1f47f6c036d7fbe7ffe56ac8932bfcae441dfd20dd4a19cbe9c73",
+    "replayed_count": 0,
+    "schema": "bayes_basket_target_canonical_model_ingress_v1",
+    "state": "COMMITTED",
+    "validated_counts": {
+      "p0_forecast_snapshot": 1
+    },
+    "writes_production_database": false,
+    "writes_target_database": true
+  },
+  "orders_submitted": 0,
+  "production_no_live_only": true,
+  "publishes_pr04_pointer": false,
+  "releases_live_pause": false,
+  "schema": "canonical_native_p0_forecast_snapshot_materialization_receipt_v1",
+  "snapshot_content_sha256s": [
+    "23d4bdb09dd3e2784bad0685302c535ae66b9ba09ba117d19a6f365281fe379c"
+  ],
+  "snapshot_count_after": 1,
+  "snapshot_count_before": 0,
+  "source_packet_paths": [
+    "/Users/xiong/weather/output/audits/kmia_single_station_pilot_v1/forward/ecmwf/ECMWF_PF50_20260803_ET.json",
+    "/Users/xiong/weather/output/audits/kmia_single_station_pilot_v1/forward/gefs/NOAA_GEFS_20260803_ET.json"
+  ],
+  "starts_services": false,
+  "state": "COMMITTED",
+  "station_id": "KMIA",
+  "writes_database": true
+}

@@ -1,0 +1,58 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "ef2d0c67641a697f6662fafdaf6a16504996a495ee8c256229f50a3468569b53",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 5477761024,
+  "database_shm_bytes": 32768,
+  "database_wal_bytes": 292552,
+  "fact_type_counts_after": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 680,
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "fact_type_counts_before": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 680,
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "free_bytes": 16682106880,
+  "required_free_bytes": 16434259032,
+  "row_count_after": 105196,
+  "row_count_before": 105196,
+  "rows_content_sha256_after": "1ae32e4b923bff36d92f080edbb747eb1c02e7cca74f218ecfbf1516d69f459f",
+  "rows_content_sha256_before": "1ae32e4b923bff36d92f080edbb747eb1c02e7cca74f218ecfbf1516d69f459f",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v15_migration_receipt_v1",
+  "schema_after": "V15",
+  "schema_before": "V14",
+  "source_footprint_bytes": 5478086344,
+  "state": "APPLIED_V15",
+  "trigger_names_after": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "trigger_names_before": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writer_quiescence_receipt_sha256": "1fa2114d30184c51eb64726cfdf9dbfffd94b40430c03d1b625eeac857824d6f",
+  "writes_database": true,
+  "writes_orders": false
+}

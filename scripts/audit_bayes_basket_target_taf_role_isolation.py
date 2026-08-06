@@ -560,10 +560,11 @@ def _base_revision(kind: str, sequence: int, supersedes: str | None) -> dict[str
 
 def _base_observation(report_type: str, sequence: int, supersedes: str | None) -> dict[str, Any]:
     return {
-        "schema": "bayes_basket_canonical_observation_event_v1",
+        "schema": "bayes_basket_canonical_observation_event_v2",
         "observation_id": f"obs-{report_type.lower()}-{sequence}",
         "station_id": "TEST",
         "event_date": "2026-07-27",
+        "settlement_timezone": "UTC",
         "source_lane": "amsc",
         "report_type": report_type,
         "sequence": sequence,

@@ -1,0 +1,14 @@
+{
+  "blocker": "NATIVE_COMPLETE_NO_FALLBACK",
+  "calls_order_gateway": false,
+  "canonical_rows_inserted": 0,
+  "content_sha256": "919e922e41affd8f378867346914cfda63c981b54ec6ce806c7e59f20108d6d2",
+  "evidence_manifest_content_address": "cas+sha256://probe_manifests/c8e3fd0394cb1f2d652f465c201b30f912da7b835142a171cdf33436d87d0fe9",
+  "evidence_manifest_content_sha256": "c8e3fd0394cb1f2d652f465c201b30f912da7b835142a171cdf33436d87d0fe9",
+  "forward_applicability_written": false,
+  "orders_submitted": 0,
+  "p0_written": false,
+  "plan_content_sha256": "e0b484e47de3c960faae1866154f08e8872bb43662c4d7514bfd9c04602c1979",
+  "schema": "republisher_native_first_forward_materialization_receipt_v1",
+  "state": "BLOCKED_NO_CAPTURE"
+}

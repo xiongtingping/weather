@@ -17,7 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -80,6 +81,23 @@ from weather_basket_yes_schema import (
     weather_basket_yes_schema_status,
 )
 from reported_trajectory_sources import fetch_awc_temperature_reports, utc_now
+from asos_one_minute_ingress import (
+    AsosOneMinuteIngress,
+    fetch_asos_one_minute_temperature,
+    icao_to_iem_station,
+)
+from madis_hfmetar import (
+    decode_madis_hfmetar_object,
+    fetch_madis_hfmetar_object,
+    ingest_madis_hfmetar_object,
+)
+from asos_argmax_window import (
+    LIVE_STATIONS as ASOS_ARGMAX_LIVE_STATIONS,
+    materialize_missing_argmax_windows,
+)
+from asos_argmax_entry import materialize_argmax_entry_facts
+from asos_argmax_execution import process_pending_argmax_orders
+from asos_argmax_taf_reference import materialize_argmax_taf_references
 from bayes_basket_target.database import DEFAULT_TARGET_DB
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
@@ -90,6 +108,7 @@ from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_ACTIVATION,
     DEFAULT_TARGET_MARKET_MANIFEST,
     DEFAULT_TARGET_NWP_RUNTIME_ROOT,
+    DEFAULT_TARGET_TAF_INBOX,
     TargetProductionWorker,
     open_target_writer_if_enabled,
 )
@@ -134,7 +153,50 @@ TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
 MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
+# Warning headroom sits well above the fail-closed floor above.  The floor is
+# the last line of defence and must stay low, because tripping it blocks every
+# lane; but a 20+GB archive on a filesystem with single-digit free GB was
+# already producing recurring ``disk I/O error`` while the guard still reported
+# ``within_budget``.  These thresholds make that approach visible in the status
+# file without stopping a system that is still able to commit.
+WARN_ARCHIVE_FREE_BYTES = 16 * 1024 * 1024 * 1024
+WARN_ARCHIVE_WAL_BYTES = 64 * 1024 * 1024
+# This archive's WAL stops growing at exactly 128MiB and every write then fails
+# with ``disk I/O error``; the fail-closed ceiling above is never reached
+# because ingest dies first.  Maintenance therefore triggers at half of the
+# observed stall point, which at ~9MB/min leaves roughly seven minutes of slack
+# for a busy checkpoint to be retried before the WAL can reach it.  Never raise
+# this to the stall point itself: a threshold sitting on the fault is a
+# threshold that can never fire in time.
+WAL_MAINTENANCE_TRIGGER_BYTES = 64 * 1024 * 1024
+WAL_MAINTENANCE_INTERVAL_SEC = 60.0
+# Mirrors WEATHER_SERVICE_LOG_MAX_BYTES in scripts/lib/bounded_service_logs.sh.
+SERVICE_LOG_MAX_BYTES = int(os.environ.get("WEATHER_SERVICE_LOG_MAX_BYTES") or 67108864)
+SERVICE_LOG_PATHS = (
+    ROOT / "data" / "logs" / "weather_basket_yes.out.log",
+    ROOT / "data" / "logs" / "weather_basket_yes.err.log",
+)
+MAX_MADIS_BACKFILL_OBJECTS_PER_POLL = 12
+MAX_MADIS_BACKFILL_COMPRESSED_BYTES = 96 * 1024 * 1024
 _SLUG_DATE_RE = re.compile(r"-on-(?P<month>[a-z]+)-(?P<day>\d{1,2})-(?P<year>\d{4})$", re.I)
+
+
+def _parse_utc(value: str) -> datetime:
+    text = str(value or "").strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        raise ValueError("resident_datetime_timezone_missing")
+    return parsed.astimezone(timezone.utc)
+
+
+def _iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        raise ValueError("resident_datetime_timezone_missing")
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def is_recoverable_sqlite_io_error(exc: BaseException) -> bool:
@@ -256,15 +318,108 @@ def archive_storage_guard(db_path: Path) -> dict[str, Any]:
         violations.append("archive_wal_bytes_exceeded")
     if free_bytes < MIN_ARCHIVE_FREE_BYTES:
         violations.append("archive_free_bytes_below_minimum")
+    # Warnings never gate a lane.  They exist so that shrinking headroom is
+    # visible before it becomes an I/O fault, instead of the guard reporting
+    # "within_budget" while ingest is already failing.
+    warnings: list[str] = []
+    if not violations:
+        if free_bytes < WARN_ARCHIVE_FREE_BYTES:
+            warnings.append("archive_free_bytes_low_headroom")
+        if wal_bytes >= WARN_ARCHIVE_WAL_BYTES:
+            warnings.append("archive_wal_bytes_growing")
+    if violations:
+        state = "blocked_fail_closed"
+    elif warnings:
+        state = "within_budget_low_headroom"
+    else:
+        state = "within_budget"
     return {
         "ok": not violations,
         "database": str(database),
         "wal_bytes": wal_bytes,
         "max_wal_bytes": MAX_ARCHIVE_WAL_BYTES,
+        "warn_wal_bytes": WARN_ARCHIVE_WAL_BYTES,
         "free_bytes": free_bytes,
         "min_free_bytes": MIN_ARCHIVE_FREE_BYTES,
+        "warn_free_bytes": WARN_ARCHIVE_FREE_BYTES,
         "violations": violations,
-        "state": "within_budget" if not violations else "blocked_fail_closed",
+        "warnings": warnings,
+        "state": state,
+    }
+
+
+def bounded_service_log_maintenance(log_paths: Sequence[Path]) -> dict[str, Any]:
+    """Bound the resident's own logs without an rlimit.
+
+    This replaces the `ulimit -f` that the launcher used to set.  RLIMIT_FSIZE
+    applied to every file the process wrote, so it capped SQLite's WAL at the
+    same 128MiB and turned ordinary ingest into `disk I/O error`.  Trimming the
+    specific log paths here keeps the same size boundary while leaving database
+    writes unconstrained.
+    """
+
+    trimmed: list[str] = []
+    for log_path in log_paths:
+        try:
+            if not log_path.is_file():
+                continue
+            if log_path.stat().st_size <= SERVICE_LOG_MAX_BYTES:
+                continue
+            # Truncate in place rather than rotating: launchd holds these fds
+            # open, so a rename would leave the service writing to an unlinked
+            # inode and the visible log permanently empty.
+            with log_path.open("r+b") as handle:
+                handle.truncate(0)
+            trimmed.append(str(log_path))
+        except OSError:
+            # Log hygiene must never stop ingest.
+            continue
+    return {"ok": True, "trimmed": trimmed, "max_bytes": SERVICE_LOG_MAX_BYTES}
+
+
+def archive_wal_checkpoint_maintenance(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Reclaim the archive WAL before it grows into a hard I/O fault.
+
+    ``wal_autocheckpoint`` cannot keep this database bounded.  The resident
+    holds several long-lived connections against a 20+GB archive, so a reader
+    almost always pins an old snapshot and the passive checkpointer can never
+    recycle the head of the WAL -- it only ever appends.  Observed growth is
+    roughly 14MB/minute, which reaches the fail-closed ceiling in well under an
+    hour and, before that, produced a recurring ``disk I/O error`` that stalled
+    every lane until the WAL was truncated by hand.
+
+    ``TRUNCATE`` is attempted rather than ``PASSIVE`` because only a truncating
+    checkpoint returns the file to zero; a passive one leaves the file at its
+    high-water mark.  A busy result is an expected, non-fatal outcome: readers
+    are active, so the attempt is simply retried on the next interval.  Failures
+    are reported, never raised, because WAL maintenance must not become a new
+    way to stop ingest.
+    """
+
+    started = time.monotonic()
+    try:
+        row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    except sqlite3.Error as exc:
+        return {
+            "ok": False,
+            "state": "checkpoint_failed",
+            "mode": "TRUNCATE",
+            "reason": f"{type(exc).__name__}:{exc}",
+            "at": utc_now(),
+        }
+    busy, log_frames, checkpointed_frames = (
+        (int(row[0]), int(row[1]), int(row[2])) if row is not None else (1, -1, -1)
+    )
+    return {
+        # A busy checkpoint reclaimed nothing but broke nothing either.
+        "ok": busy == 0,
+        "state": "checkpointed" if busy == 0 else "busy_readers_retry_next_interval",
+        "mode": "TRUNCATE",
+        "busy": busy,
+        "log_frames": log_frames,
+        "checkpointed_frames": checkpointed_frames,
+        "duration_ms": round((time.monotonic() - started) * 1000.0, 3),
+        "at": utc_now(),
     }
 
 
@@ -391,14 +546,51 @@ def run_target_forecast_refresh_cycle(
                 }
             else:
                 now = utc_now()
-                registry_rows = load_active_registry_rows(
-                    taf_scope_conn
-                )
+                scope_source = "target_local_active_market_registry"
+                try:
+                    registry_rows = load_active_registry_rows(taf_scope_conn)
+                except Exception:
+                    canonical_source = Path(
+                        getattr(worker, "canonical_source_db_path", "") or ""
+                    )
+                    registry_rows = _canonical_live_taf_registry_rows(
+                        canonical_source
+                    )
+                    scope_source = "canonical_live_market_registry_read_only"
                 catalog = build_taf_rotation_catalog(
                     registry_rows,
                     as_of_utc=now,
                     station_ids=tuple(
                         getattr(worker, "station_allowlist", ()) or ()
+                    ),
+                )
+                if not catalog and scope_source == "target_local_active_market_registry":
+                    canonical_source = Path(
+                        getattr(worker, "canonical_source_db_path", "") or ""
+                    )
+                    if canonical_source.expanduser().resolve().is_file():
+                        canonical_rows = _canonical_live_taf_registry_rows(
+                            canonical_source
+                        )
+                        canonical_catalog = build_taf_rotation_catalog(
+                            canonical_rows,
+                            as_of_utc=now,
+                            station_ids=tuple(
+                                getattr(worker, "station_allowlist", ()) or ()
+                            ),
+                        )
+                        if canonical_catalog:
+                            catalog = canonical_catalog
+                            scope_source = "canonical_live_market_registry_read_only"
+                catalog = sorted(
+                    catalog,
+                    key=lambda item: (
+                        0 if str(item.get("station_id") or "").upper()
+                        in ASOS_ARGMAX_LIVE_STATIONS else 1,
+                        0 if str(item.get("day_state") or "") == "not_started" else 1,
+                        str(item.get("event_date") or ""),
+                        str(item.get("station_id") or ""),
+                        str(item.get("settlement_timezone") or ""),
                     ),
                 )
                 rotation_path = Path(
@@ -487,7 +679,7 @@ def run_target_forecast_refresh_cycle(
                         if capture_failures
                         else "no_active_registry_scope"
                     ),
-                    "scope_source": "target_local_active_market_registry",
+                    "scope_source": scope_source,
                     "catalog_scope_count": len(catalog),
                     "selected_scope_count": len(selected),
                     "selected_scope_keys": [
@@ -617,6 +809,49 @@ def resident_nwp_in_flight_receipt(
         "live_submit_authorized": False,
         "orders_submitted": 0,
     }
+
+
+def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
+    """Project read-only AWC live scopes for optional forward TAF capture."""
+
+    source = source_db.expanduser().resolve()
+    if not source.is_file():
+        return []
+    with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as source_conn:
+        return [
+            {
+                "slug": str(row[0]),
+                "event_date": str(row[1]),
+                "station_id": str(row[2]),
+                # Carry the registry's own market settlement timezone.  This
+                # projection feeds mainline forward TAF capture, whose
+                # `settlement_timezone` means "the timezone this market settles
+                # its daily high in" -- not the canonical ET event day.
+                #
+                # Overriding the ASOS argmax stations to America/New_York here
+                # leaked that side lane's ET clock into mainline scope: KSEA,
+                # KSFO and KLAX settle in America/Los_Angeles and KAUS, KDAL,
+                # KHOU and KORD in America/Chicago, so every captured revision
+                # for them failed `forward_taf_market_scope_invalid` and blocked
+                # the whole production mainline.  (KATL, KLGA and KMIA settle in
+                # ET anyway, which is why the override looked harmless.)  The
+                # side lane keeps its own ET constant in asos_argmax_window.
+                "settlement_timezone": str(row[3]),
+                "settlement_unit": str(row[4]),
+                "outcome": str(row[5]),
+                "yes_token": str(row[6]),
+                "registry_json": str(row[7]),
+                "source_lane": "awc",
+            }
+            for row in source_conn.execute(
+                """SELECT slug,event_date,station_id,settlement_timezone,
+                          settlement_unit,outcome,yes_token,registry_json
+                     FROM reported_trajectory_market_registry
+                    WHERE source_lane='awc' AND source_eligible=1
+                      AND market_active=1 AND market_accepting_orders=1
+                 ORDER BY station_id,event_date,slug,outcome"""
+            )
+        ]
 
 
 def run_target_production_cycle(
@@ -1099,6 +1334,212 @@ def awc_poll_interval(config: dict[str, Any], now: datetime) -> float:
     return max(0.5, float(policy.get("awc_background_poll_sec", 2.0)))
 
 
+def poll_asos_priority_source(
+    conn: sqlite3.Connection,
+    station_ids: list[str],
+    *,
+    now_utc: datetime | None = None,
+    minimum_interval_sec: float = 900.0,
+) -> dict[str, Any]:
+    """Ingest bounded ASOS minute windows before canonical source selection.
+
+    The market registry remains a station/day scope registry, not a source
+    identity registry.  Only unambiguous K-prefix stations enter this lane.
+    IEM remains explicitly marked as an NCEI republisher.
+    """
+
+    stations = sorted({
+        str(value).strip().upper()
+        for value in station_ids
+        if icao_to_iem_station(str(value)) is not None
+    })
+    if not stations:
+        return {"ok": True, "state": "no_asos_station", "scopes": []}
+    latest = conn.execute(
+        "SELECT MAX(updated_at) FROM reported_trajectory_asos_station_day_coverage"
+    ).fetchone()
+    if latest is not None and latest[0]:
+        age = (
+            (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+            - _parse_utc(str(latest[0]))
+        ).total_seconds()
+        if age < max(60.0, float(minimum_interval_sec)):
+            return {
+                "ok": True,
+                "state": "rate_limited_cached",
+                "source_age_sec": round(max(0.0, age), 3),
+                "scopes": [],
+            }
+    placeholders = ",".join("?" for _ in stations)
+    rows = conn.execute(
+        f"""SELECT DISTINCT station_id,event_date,settlement_timezone
+              FROM reported_trajectory_market_registry
+             WHERE source_lane='awc' AND source_eligible=1
+               AND market_active=1 AND market_accepting_orders=1
+               AND station_id IN ({placeholders})
+             ORDER BY station_id,event_date""",
+        stations,
+    ).fetchall()
+    now = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    grouped: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
+    for station, event_date, settlement_timezone in rows:
+        scope_timezone = (
+            "America/New_York"
+            if str(station).upper() in ASOS_ARGMAX_LIVE_STATIONS
+            else str(settlement_timezone)
+        )
+        window = settlement_day_window(str(event_date), scope_timezone)
+        start = datetime.fromisoformat(
+            str(window["target_day_start_utc"]).replace("Z", "+00:00")
+        )
+        end = datetime.fromisoformat(
+            str(window["target_day_end_utc"]).replace("Z", "+00:00")
+        )
+        if now < start or now > end + timedelta(hours=30):
+            continue
+        through = min(now, end)
+        grouped.setdefault((_iso(start), _iso(through)), []).append(
+            (str(station), str(event_date), scope_timezone)
+        )
+    ingress = AsosOneMinuteIngress(conn)
+    scope_results: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for (start_text, end_text), scopes in sorted(grouped.items()):
+        if end_text <= start_text:
+            continue
+        try:
+            poll = fetch_asos_one_minute_temperature(
+                [scope[0] for scope in scopes],
+                start_utc=_parse_utc(start_text),
+                end_utc=_parse_utc(end_text),
+                timeout=12.0,
+            )
+            if poll.get("source_receipt_sha256"):
+                ingested = ingress.ingest(poll)
+                for station, event_date, settlement_timezone in scopes:
+                    selected = ingress.refresh_station_day(
+                        station_id=station,
+                        event_date=event_date,
+                        settlement_timezone=settlement_timezone,
+                        as_of_utc=end_text,
+                        source_receipt_sha256=str(poll["source_receipt_sha256"]),
+                    )
+                    scope_results.append({
+                        "station_id": station,
+                        "event_date": event_date,
+                        **selected,
+                    })
+                conn.commit()
+                scope_results.append({"ingress": ingested})
+        except Exception as exc:
+            conn.rollback()
+            errors.append(f"{','.join(scope[0] for scope in scopes)}:{type(exc).__name__}:{exc}")
+    return {
+        "ok": not errors,
+        "state": "available" if scope_results else "data_missing",
+        "scopes": scope_results,
+        "errors": errors,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+    }
+
+
+def poll_madis_hfmetar_source(
+    conn: sqlite3.Connection,
+    station_ids: list[str],
+    *,
+    now_utc: datetime | None = None,
+    minimum_interval_sec: float = 300.0,
+) -> dict[str, Any]:
+    """Fetch the current NOAA MADIS HF-METAR object and retain exact lineage."""
+
+    stations = sorted({
+        str(value).strip().upper()
+        for value in station_ids
+        if icao_to_iem_station(str(value)) is not None
+    })
+    if not stations:
+        return {"ok": True, "state": "no_asos_station"}
+    latest = conn.execute(
+        "SELECT MAX(fetch_completed_at_utc) FROM reported_trajectory_madis_hfmetar_objects"
+    ).fetchone()
+    now = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+    et_start = now.astimezone(ZoneInfo("America/New_York")).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(timezone.utc)
+    desired_hours: list[datetime] = []
+    cursor = et_start
+    while cursor <= current_hour:
+        desired_hours.append(cursor)
+        cursor += timedelta(hours=1)
+    existing = {
+        str(row[0]) for row in conn.execute(
+            "SELECT DISTINCT object_hour_utc FROM reported_trajectory_madis_hfmetar_objects"
+        )
+    }
+    missing = [hour for hour in desired_hours if _iso(hour) not in existing]
+    latest_age = None
+    if latest is not None and latest[0]:
+        latest_age = (now - _parse_utc(str(latest[0]))).total_seconds()
+    due_current_refresh = latest_age is None or latest_age >= max(
+        60.0, float(minimum_interval_sec)
+    )
+    fetch_hours = missing[:MAX_MADIS_BACKFILL_OBJECTS_PER_POLL]
+    if due_current_refresh and current_hour not in fetch_hours:
+        if len(fetch_hours) >= MAX_MADIS_BACKFILL_OBJECTS_PER_POLL:
+            fetch_hours[-1] = current_hour
+        else:
+            fetch_hours.append(current_hour)
+    if not fetch_hours:
+        return {
+            "ok": True, "state": "rate_limited_cached",
+            "source_age_sec": round(max(0.0, float(latest_age or 0.0)), 3),
+            "missing_object_hours": 0,
+        }
+    raw_root = ROOT / "data" / "raw" / "madis_hfmetar"
+    raw_root.mkdir(parents=True, exist_ok=True)
+    total_compressed = 0
+    decoded_count = 0
+    inserted_count = 0
+    fetched_hours: list[str] = []
+    errors: list[str] = []
+    for hour in fetch_hours:
+        try:
+            fetched = fetch_madis_hfmetar_object(hour, timeout=30.0)
+            payload = bytes(fetched.pop("payload"))
+            total_compressed += len(payload)
+            if total_compressed > MAX_MADIS_BACKFILL_COMPRESSED_BYTES:
+                raise RuntimeError("madis_hfmetar_backfill_compressed_limit_exceeded")
+            rows = decode_madis_hfmetar_object(payload, wanted_station_ids=stations)
+            retained = raw_root / f"{fetched['compressed_sha256']}.gz"
+            if not retained.exists():
+                temporary = retained.with_name(f".{retained.name}.tmp.{os.getpid()}")
+                temporary.write_bytes(payload)
+                os.replace(temporary, retained)
+            result = ingest_madis_hfmetar_object(
+                conn, fetched, rows, retained_path=str(retained), committed_at_utc=utc_now()
+            )
+            conn.commit()
+            fetched_hours.append(str(fetched["object_hour_utc"]))
+            decoded_count += len(rows)
+            inserted_count += int(result.get("inserted_observation_count") or 0)
+        except Exception as exc:
+            conn.rollback()
+            errors.append(f"{_iso(hour)}:{type(exc).__name__}:{exc}")
+    remaining = max(0, len(missing) - len({hour for hour in fetch_hours if hour in missing}))
+    return {
+        "ok": not errors,
+        "state": "available" if fetched_hours else "source_error",
+        "object_hours": fetched_hours,
+        "decoded_observation_count": decoded_count,
+        "inserted_observation_count": inserted_count,
+        "compressed_bytes": total_compressed,
+        "remaining_missing_object_hours": remaining,
+        "errors": errors,
+    }
+
+
 def run_once(
     conn: sqlite3.Connection,
     config: dict[str, Any],
@@ -1123,6 +1564,16 @@ def run_once(
         margin_hours=float(policy.get("awc_settlement_lookback_margin_hours", 1.0)),
         maximum_hours=float(policy.get("awc_settlement_lookback_max_hours", 30.0)),
     )
+    madis_priority = poll_madis_hfmetar_source(
+        conn,
+        stations,
+        minimum_interval_sec=float(policy.get("madis_hfmetar_poll_interval_sec", 300.0)),
+    )
+    asos_priority = poll_asos_priority_source(
+        conn,
+        stations,
+        minimum_interval_sec=float(policy.get("asos_poll_interval_sec", 900.0)),
+    )
     poll = dict(fetch_awc_temperature_reports(stations, hours=awc_hours, timeout=8.0))
     poll["source_lane"] = "awc"
     poll["transport"] = str(poll.get("transport") or "official_awc")
@@ -1141,6 +1592,49 @@ def run_once(
         request_started_at=request_started_at,
         response_completed_at=response_completed_at,
     )
+    # Re-run the single selector after the AWC transaction so an incomplete
+    # ASOS scope deterministically falls back to the just-materialized AWC
+    # bound instead of retaining a pre-AWC blocked result.
+    selector = AsosOneMinuteIngress(conn)
+    post_awc_selection: list[dict[str, Any]] = []
+    selection_scopes: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for scope in asos_priority.get("scopes") or ():
+        if isinstance(scope, Mapping) and scope.get("station_id") and scope.get("event_date"):
+            selection_scopes[(str(scope["station_id"]), str(scope["event_date"]))] = scope
+    placeholders = ",".join("?" for _ in stations)
+    for station_id, event_date in conn.execute(
+        f"""SELECT DISTINCT station_id,event_date
+              FROM reported_trajectory_market_registry
+             WHERE source_lane='awc' AND source_eligible=1
+               AND market_active=1 AND market_accepting_orders=1
+               AND station_id IN ({placeholders})""",
+        stations,
+    ):
+        selection_scopes[(str(station_id), str(event_date))] = {
+            "station_id": str(station_id), "event_date": str(event_date)
+        }
+    for scope in selection_scopes.values():
+        if not isinstance(scope, Mapping) or not scope.get("station_id"):
+            continue
+        selected = selector.select_canonical_bound(
+            station_id=str(scope["station_id"]),
+            event_date=str(scope["event_date"]),
+            as_of_utc=response_completed_at,
+        )
+        post_awc_selection.append({
+            "station_id": scope["station_id"],
+            "event_date": scope["event_date"],
+            **selected,
+        })
+    if post_awc_selection:
+        conn.commit()
+    # The 10-station ASOS argmax side lane is deliberately absent here.  Its
+    # entry facts and order processing own a separate worker, connection and
+    # failure boundary (``AsosArgmaxEntryWorker``) so that an AWC transport or
+    # SQLite fault on this canonical main line can never suppress the lane, and
+    # so that the lane can never call the order gateway from the main line's
+    # transaction.  Partition isolation is a charter requirement, not a
+    # scheduling convenience.
     return {
         "schema": SCHEMA_VERSION,
         "ok": not poll.get("station_errors"),
@@ -1151,6 +1645,9 @@ def run_once(
         "fallback_reasons": poll.get("fallback_reasons") or {},
         "source_deferred": bool(poll.get("source_deferred")),
         "awc_requested_hours": awc_hours,
+        "asos_priority_source": asos_priority,
+        "madis_hfmetar_source": madis_priority,
+        "canonical_surface_selection": post_awc_selection,
         "new_observation_count": int(result.get("new_observation_count") or 0),
         "station_day_fact_updates": list(result.get("station_day_fact_updates") or []),
         "canonical_ingress": result,
@@ -1262,11 +1759,101 @@ class RegistryRefreshWorker:
         self.conn = _open_runtime(self.db_path)
 
 
+class AsosArgmaxWindowWorker:
+    """Independent official forecast timing worker for the 10-station lane."""
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self.conn = _open_runtime(db_path)
+
+    def run(self) -> dict[str, Any]:
+        nws = materialize_missing_argmax_windows(
+            self.conn,
+            sorted(ASOS_ARGMAX_LIVE_STATIONS),
+            raw_root=ROOT / "data" / "raw" / "nws_hourly_argmax",
+            minimum_retry_seconds=300.0,
+            timeout=10.0,
+        )
+        try:
+            taf_reference = materialize_argmax_taf_references(
+                self.conn,
+                inbox_path=DEFAULT_TARGET_TAF_INBOX,
+                station_ids=sorted(ASOS_ARGMAX_LIVE_STATIONS),
+            )
+        except Exception as exc:
+            taf_reference = {
+                "ok": False,
+                "state": "optional_reference_failed_isolated",
+                "reason": f"{type(exc).__name__}:{exc}",
+                "modifies_nws_window": False,
+                "blocks_entry": False,
+            }
+        return {**nws, "taf_tx_reference": taf_reference}
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def reopen(self) -> None:
+        self.conn.close()
+        self.conn = _open_runtime(self.db_path)
+
+
+class AsosArgmaxEntryWorker:
+    """Independent entry-fact and order worker for the 10-station ASOS lane.
+
+    This is the only resident component allowed to call the order gateway.  It
+    is kept off the AWC canonical main line on purpose: the charter requires the
+    side lane's state, budget, intents and receipts to be partitioned, so that a
+    main-line fault blocks only the main line.  Before this worker existed the
+    lane ran at the tail of the AWC ingress transaction, and a single recurring
+    ``disk I/O error`` in AWC ingress silently suppressed every entry fact and
+    every order for the whole event day.
+
+    Entry materialization and order processing stay in one worker because they
+    are one causal step: a newly materialized entry fact must reach the gateway
+    within the same frozen argmax period that authorized it.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self.conn = _open_runtime(db_path)
+
+    def run(self) -> dict[str, Any]:
+        entry = materialize_argmax_entry_facts(
+            self.conn, sorted(ASOS_ARGMAX_LIVE_STATIONS)
+        )
+        # Order processing must still run when no new entry fact appeared this
+        # cycle: prepared intents, unresolved submissions and exits from an
+        # earlier cycle have to keep converging toward a reconciled state.
+        execution = process_pending_argmax_orders(self.conn, root=ROOT)
+        submitted = int(execution.get("submission_attempt_count") or 0)
+        return {
+            "ok": bool(entry.get("ok", True)) and bool(execution.get("ok", True)),
+            "state": "processed",
+            "entry": entry,
+            "execution": execution,
+            "calls_order_gateway": int(execution.get("gateway_call_count") or 0) > 0,
+            "places_orders": submitted > 0,
+            "orders_submitted": submitted,
+        }
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def reopen(self) -> None:
+        self.conn.close()
+        self.conn = _open_runtime(self.db_path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--status", type=Path, default=DEFAULT_STATUS)
-    parser.add_argument("--once", choices=("registry", "awc", "all", "production"), default="")
+    parser.add_argument(
+        "--once",
+        choices=("registry", "awc", "argmax", "asos-lane", "all", "production"),
+        default="",
+    )
     args = parser.parse_args()
     config = load_config()
     conn = _open_runtime(args.db)
@@ -1306,6 +1893,28 @@ def main() -> int:
         )
         state["registry"] = registry
         if args.once:
+            if args.once == "argmax":
+                argmax_worker = AsosArgmaxWindowWorker(args.db)
+                try:
+                    state["asos_argmax_window"] = argmax_worker.run()
+                finally:
+                    argmax_worker.close()
+                state["completed_at"] = utc_now()
+                _atomic_json(args.status, state)
+                print(json.dumps(state, ensure_ascii=False, sort_keys=True))
+                return 0 if state["asos_argmax_window"].get("ok") else 1
+            if args.once == "asos-lane":
+                # This is the one diagnostic path that may reach the order
+                # gateway.  `--once awc` deliberately no longer can.
+                entry_worker = AsosArgmaxEntryWorker(args.db)
+                try:
+                    state["asos_argmax_lane"] = entry_worker.run()
+                finally:
+                    entry_worker.close()
+                state["completed_at"] = utc_now()
+                _atomic_json(args.status, state)
+                print(json.dumps(state, ensure_ascii=False, sort_keys=True))
+                return 0 if state["asos_argmax_lane"].get("ok") else 1
             if args.once == "production":
                 commit_error = None
                 try:
@@ -1376,8 +1985,21 @@ def main() -> int:
             max_workers=1,
             thread_name_prefix="reported-trajectory-market-registry",
         )
+        argmax_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-asos-argmax",
+        )
+        # The entry/order lane gets its own single-worker pool so that a slow
+        # NWS forecast fetch in the window worker can never delay an entry fact
+        # that must reach the gateway inside its frozen argmax period.
+        argmax_entry_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-asos-argmax-entry",
+        )
         lane_workers = {lane: LaneWorker(args.db, config, lane) for lane in enabled_lanes}
         registry_worker = RegistryRefreshWorker(args.db, config)
+        argmax_worker = AsosArgmaxWindowWorker(args.db)
+        argmax_entry_worker = AsosArgmaxEntryWorker(args.db)
         commit_error = None
         try:
             commit_conn = open_target_writer_if_enabled(
@@ -1419,10 +2041,14 @@ def main() -> int:
         production_future: Any = None
         forecast_future: Any = None
         registry_future: Any = None
+        argmax_future: Any = None
+        argmax_entry_future: Any = None
         production_recovery_attempts = 0
         production_lock_contention_attempts = 0
         forecast_recovery_attempts = 0
         registry_recovery_attempts = 0
+        argmax_recovery_attempts = 0
+        argmax_entry_recovery_attempts = 0
         now_mono = time.monotonic()
         registry_refresh_sec = max(
             60.0,
@@ -1438,11 +2064,19 @@ def main() -> int:
         materialized_registry_poll_sec = 60.0
         next_materialized_registry_read = now_mono
         next_registry_refresh = now_mono
+        next_argmax_refresh = now_mono
+        # A MADIS HF-METAR slot lands every five minutes and an exact ASOS
+        # minute observation can land at any time.  Poll the lane far more often
+        # than either cadence so a new station-day high reaches the gateway well
+        # inside its frozen argmax period.
+        argmax_entry_interval_sec = 30.0
+        next_argmax_entry = now_mono
         next_source = {lane: now_mono for lane in enabled_lanes}
         next_status_write = now_mono
         next_production = now_mono
         next_forecast = now_mono
         next_storage_probe = 0.0
+        next_wal_maintenance = 0.0
         storage_guard: dict[str, Any] = {
             "ok": False,
             "state": "storage_probe_not_run_fail_closed",
@@ -1460,6 +2094,19 @@ def main() -> int:
                     }
                 state["storage_guard"] = storage_guard
                 next_storage_probe = now_mono + 5.0
+                # Trigger on the measured WAL size rather than on the warning
+                # list: warnings are a reporting concern and are suppressed once
+                # the guard blocks, but maintenance is most needed exactly then.
+                if (
+                    int(storage_guard.get("wal_bytes") or 0) >= WAL_MAINTENANCE_TRIGGER_BYTES
+                    and now_mono >= next_wal_maintenance
+                ):
+                    wal_maintenance = archive_wal_checkpoint_maintenance(conn)
+                    state["archive_wal_maintenance"] = wal_maintenance
+                    state["service_log_maintenance"] = bounded_service_log_maintenance(
+                        SERVICE_LOG_PATHS
+                    )
+                    next_wal_maintenance = now_mono + WAL_MAINTENANCE_INTERVAL_SEC
             if now_mono >= next_materialized_registry_read:
                 try:
                     materialized_registry = current_registry_summary(conn)
@@ -1493,8 +2140,14 @@ def main() -> int:
                 if not future.done():
                     continue
                 try:
-                    state["source_results"][lane] = future.result()
+                    lane_result = future.result()
+                    state["source_results"][lane] = lane_result
                     lane_recovery_attempts[lane] = 0
+                    # A newly materialized observation may be the station-day
+                    # high that authorizes an entry.  Wake the side lane now
+                    # instead of spending up to a full poll interval waiting.
+                    if int(lane_result.get("new_observation_count") or 0) > 0:
+                        next_argmax_entry = min(next_argmax_entry, time.monotonic())
                 except Exception as exc:
                     result = {"ok": False, "error": f"{type(exc).__name__}:{exc}", "at": utc_now()}
                     if is_recoverable_sqlite_io_error(exc):
@@ -1522,9 +2175,24 @@ def main() -> int:
                 try:
                     registry_result = registry_future.result()
                     registry_recovery_attempts = 0
+                    changed_registry_rows = int(
+                        registry_result.get("changed_registry_row_count") or 0
+                    )
+                    live_pipeline_woken = changed_registry_rows > 0
+                    if live_pipeline_woken:
+                        # A newly tokenized market must not wait for the
+                        # independent 15-minute argmax cadence or the cached
+                        # 60-second station scope.  WS catalog discovery is
+                        # already content-marker driven and probes each second.
+                        next_argmax_refresh = min(
+                            next_argmax_refresh, time.monotonic()
+                        )
+                        for lane_worker in lane_workers.values():
+                            lane_worker.next_station_refresh = 0.0
                     state["registry_refresh"] = {
                         "ok": True,
                         **registry_result,
+                        "live_pipeline_woken": live_pipeline_woken,
                         "calls_order_gateway": False,
                         "places_orders": False,
                     }
@@ -1561,6 +2229,49 @@ def main() -> int:
                     }
                     next_registry_refresh = time.monotonic() + registry_retry_sec
                 registry_future = None
+            if argmax_future is not None and argmax_future.done():
+                try:
+                    argmax_result = argmax_future.result()
+                    argmax_recovery_attempts = 0
+                    state["asos_argmax_window"] = argmax_result
+                except Exception as exc:
+                    argmax_recovery_attempts += 1
+                    state["asos_argmax_window"] = {
+                        "ok": False,
+                        "state": "blocked",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                        "attempt": argmax_recovery_attempts,
+                        "calls_order_gateway": False,
+                        "orders_submitted": 0,
+                    }
+                    try:
+                        argmax_worker.reopen()
+                    except Exception:
+                        pass
+                argmax_future = None
+            if argmax_entry_future is not None and argmax_entry_future.done():
+                try:
+                    state["asos_argmax_lane"] = argmax_entry_future.result()
+                    argmax_entry_recovery_attempts = 0
+                except Exception as exc:
+                    argmax_entry_recovery_attempts += 1
+                    state["asos_argmax_lane"] = {
+                        "ok": False,
+                        "state": "blocked",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                        "attempt": argmax_entry_recovery_attempts,
+                        "calls_order_gateway": False,
+                        "places_orders": False,
+                        "orders_submitted": 0,
+                    }
+                    # Rebuild the lane connection on any fault, including a
+                    # transient SQLite I/O error, so the side lane recovers on
+                    # its own schedule instead of waiting for a main-line cycle.
+                    try:
+                        argmax_entry_worker.reopen()
+                    except Exception:
+                        pass
+                argmax_entry_future = None
             if production_future is not None and production_future.done():
                 try:
                     production_result = production_future.result()
@@ -1676,6 +2387,22 @@ def main() -> int:
                 registry_future = registry_executor.submit(
                     registry_worker.run
                 )
+            if (
+                storage_ok
+                and now_mono >= next_argmax_refresh
+                and argmax_future is None
+            ):
+                argmax_future = argmax_executor.submit(argmax_worker.run)
+                next_argmax_refresh = time.monotonic() + 300.0
+            if (
+                storage_ok
+                and now_mono >= next_argmax_entry
+                and argmax_entry_future is None
+            ):
+                argmax_entry_future = argmax_entry_executor.submit(
+                    argmax_entry_worker.run
+                )
+                next_argmax_entry = time.monotonic() + argmax_entry_interval_sec
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -1739,6 +2466,8 @@ def main() -> int:
             "executor",
             "forecast_executor",
             "registry_executor",
+            "argmax_executor",
+            "argmax_entry_executor",
         ):
             resident_executor = locals().get(executor_name)
             if resident_executor is not None:
@@ -1755,6 +2484,8 @@ def main() -> int:
             "production_worker",
             "forecast_worker",
             "registry_worker",
+            "argmax_worker",
+            "argmax_entry_worker",
         ):
             resident_worker = locals().get(worker_name)
             if resident_worker is not None:

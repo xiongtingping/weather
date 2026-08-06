@@ -275,6 +275,7 @@ def snapshot_from_probability_envelope(
         "reported_high_bucket",
         "reported_high_ordinal",
         "canonical_observation_event_id",
+        "settlement_timezone",
         "hard_bound_id",
     }
     present_risk_keys = {

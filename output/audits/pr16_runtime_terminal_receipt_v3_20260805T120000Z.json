@@ -1,0 +1,23 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00Z",
+  "blockers": [
+    "CURRENT_POINTER_MISSING"
+  ],
+  "calls_order_gateway": false,
+  "canonical_expected_basis_emitted": true,
+  "content_sha256": "b4693c1f31739bcd2d12362fc628a5e2b7940e0630a0c46ba960dc38cc5db39c",
+  "current_pointer_content_sha256": null,
+  "current_pointer_state": "MISSING",
+  "expected_basis_content_sha256": "660866edbfd369a4a698cfabbe93e32d1cb1c8bf24e7919e1d3a1b0f8f698763",
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "publishes_pr04_pointer": false,
+  "release_state": "BLOCKED",
+  "releases_live_pause": false,
+  "runtime_expected_key_count": 0,
+  "schema": "bayes_basket_target_pr16_runtime_terminal_bundle_v1",
+  "starts_services": false,
+  "state": "BLOCKED",
+  "terminal_basis_content_sha256": "e646fd828fcdd7806feae00c1f6cc719459e4a983d19cfbb607335046d469503",
+  "unresolved_service_count": 3
+}

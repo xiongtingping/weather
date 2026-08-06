@@ -1,0 +1,61 @@
+{
+  "activation_count": 2,
+  "calls_order_gateway": false,
+  "canonical_activation_count_after": 2,
+  "canonical_activation_count_before": 2,
+  "contains_forward_snapshot": false,
+  "content_sha256": "0a03247cdb92a74becbde26e374724b32f764d2974ec3d3700bbb27de6833a5f",
+  "contract_content_sha256": "608d0d5805bfd0dd979e4a778b51f72cf7a534dcae8a1477d3d515836f74e036",
+  "contract_output": "/Users/xiong/weather/output/audits/open_meteo_aifs_icon_republisher_no_live_activation_contract_v9_20260804_v1.json",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "forbidden_surface_counts_after": {
+    "canonical:activation": 0,
+    "canonical:ensemble_member_arrival_binding": 0,
+    "canonical:ensemble_member_receipt_manifest": 0,
+    "canonical:native_arrival": 0,
+    "table:basket_p0_preselection_plan": 10643,
+    "table:basket_probability_envelope": 2531,
+    "table:calibration_cross_native_ensemble_artifact": 295,
+    "table:calibration_cross_native_ensemble_oos_prediction": 2250,
+    "table:calibration_native_ensemble_activation": 1004,
+    "table:calibration_republisher_ensemble_activation": 0
+  },
+  "forbidden_surface_counts_before": {
+    "canonical:activation": 0,
+    "canonical:ensemble_member_arrival_binding": 0,
+    "canonical:ensemble_member_receipt_manifest": 0,
+    "canonical:native_arrival": 0,
+    "table:basket_p0_preselection_plan": 10643,
+    "table:basket_probability_envelope": 2531,
+    "table:calibration_cross_native_ensemble_artifact": 295,
+    "table:calibration_cross_native_ensemble_oos_prediction": 2250,
+    "table:calibration_native_ensemble_activation": 1004,
+    "table:calibration_republisher_ensemble_activation": 0
+  },
+  "formal_live_authority_written": false,
+  "ingress_receipt": {
+    "builder_id": "republisher-no-live-activation-v1",
+    "calls_order_gateway": false,
+    "canonical_schema": "bayes_basket_target_canonical_republisher_no_live_activation_contract_v1",
+    "contract_content_sha256": "608d0d5805bfd0dd979e4a778b51f72cf7a534dcae8a1477d3d515836f74e036",
+    "inserted_count": 0,
+    "orders_submitted": 0,
+    "receipt_sha256": "282aa457d83ad61bf6ab2ba3249a172b08156797caccd534a8479ec67bd834f6",
+    "replayed_count": 2,
+    "schema": "bayes_basket_target_canonical_model_ingress_v1",
+    "state": "COMMITTED",
+    "validated_counts": {
+      "republisher_no_live_activation": 2
+    },
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "legacy_activation_written": false,
+  "native_arrival_written": false,
+  "orders_submitted": 0,
+  "p0_written": false,
+  "p1_written": false,
+  "production_no_live_only": true,
+  "schema": "republisher_no_live_activation_materialization_receipt_v1",
+  "state": "COMMITTED"
+}

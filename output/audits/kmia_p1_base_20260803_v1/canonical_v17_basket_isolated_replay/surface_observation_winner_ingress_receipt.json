@@ -1,0 +1,17 @@
+{
+  "builder_id": "canonical.surface_observation_winner.v1",
+  "calls_order_gateway": false,
+  "canonical_schema": "bayes_basket_target_canonical_surface_observation_winner_contract_v1",
+  "contract_content_sha256": "e5336a56c52eaca3f121e27a2415ba531697e43f7cc44bf6ea5a6da24244c8b0",
+  "inserted_count": 0,
+  "orders_submitted": 0,
+  "receipt_sha256": "0e8079a6df0731f8e503ed3c5b93ab308c5edf2aa74e8d548bce1964c7d59a9b",
+  "replayed_count": 1,
+  "schema": "bayes_basket_target_canonical_model_ingress_v1",
+  "state": "STAGED_IN_CALLER_TRANSACTION",
+  "validated_counts": {
+    "surface_observation_winner": 1
+  },
+  "writes_production_database": false,
+  "writes_target_database": false
+}

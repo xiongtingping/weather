@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .awc_observation_contract import CanonicalAWCObservationContract
 from .contracts import ContractError, canonical_json, content_sha256
 from .basket_kernel.state_machine import basket_lifecycle_projection
 from .et_history import assert_event_day_started, event_day_window
@@ -44,15 +45,18 @@ from .ssot import (
 )
 
 
-SCHEMA = "bayes_basket_target_atomic_ledger_v1"
-OBSERVATION_SCHEMA = "basket_target_observation_fact_v1"
-BOUND_SCHEMA = "basket_target_bound_fact_v1"
+SCHEMA = "bayes_basket_target_atomic_ledger_v2"
+OBSERVATION_SCHEMA = "basket_target_observation_projection_v2"
+BOUND_SCHEMA = "basket_target_bound_projection_v2"
 PLAN_SCHEMA = "basket_target_plan_v1"
 DECISION_SCHEMA = "basket_target_decision_fact_v1"
 INTENT_SCHEMA = "basket_target_order_intent_v1"
 RESERVATION_SCHEMA = "basket_target_capital_reservation_v1"
 STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
     "basket_target_stage_zero_execution_anchor_v1"
+)
+TARGET_PROJECTION_AUTHORIZATION_FUNCTION = (
+    "target_canonical_projection_ingress_authorized"
 )
 
 TARGET_LEDGER_TABLES = (
@@ -356,10 +360,10 @@ def _assert_plan_observation_bound_lineage(
         "canonical_observation_event_id": str(
             observation.get("observation_id") or ""
         ),
-        "canonical_observation_sha256": str(
-            observation.get("raw_sha256") or ""
+        "truth_observation_revision_content_sha256": str(
+            observation.get("truth_observation_revision_content_sha256") or ""
         ).lower(),
-        "canonical_observation_committed_at": str(
+        "canonical_observation_committed_at_utc": str(
             observation.get("canonical_committed_at") or ""
         ),
         "hard_bound_id": str(bound.get("bound_id") or ""),
@@ -368,7 +372,7 @@ def _assert_plan_observation_bound_lineage(
     }
     for field, expected_value in expected.items():
         actual = str(plan_lineage.get(field) or "")
-        if field == "canonical_observation_sha256":
+        if field == "truth_observation_revision_content_sha256":
             actual = actual.lower()
         elif field in {"source_lane", "report_type"}:
             actual = actual.upper()
@@ -401,7 +405,8 @@ def _assert_plan_lane_contract(
 
 def build_target_atomic_bundle(
     *,
-    observation: Mapping[str, Any],
+    awc_observation_contract: Mapping[str, Any],
+    truth_observation_revision_content_sha256: str,
     bound: Mapping[str, Any],
     plan: Mapping[str, Any],
     decision: Mapping[str, Any],
@@ -417,28 +422,52 @@ def build_target_atomic_bundle(
     """Normalize a candidate and derive every identity from immutable content."""
 
     created_at = _timestamp("created_at_utc", created_at_utc)
+    canonical_contract = CanonicalAWCObservationContract.from_mapping(
+        awc_observation_contract
+    )
+    revision_sha = _sha(
+        "truth_observation_revision_content_sha256",
+        truth_observation_revision_content_sha256,
+    )
+    matching_revisions = [
+        fact for fact in canonical_contract.revision_facts
+        if fact.content_sha256 == revision_sha
+    ]
+    if len(matching_revisions) != 1:
+        raise AtomicLedgerError(
+            "truth_observation_revision_reference_not_exact"
+        )
+    revision = matching_revisions[0].raw
     obs = {
-        "observation_id": _text("observation_id", observation.get("observation_id")),
-        "station_id": _text("observation_station_id", observation.get("station_id")),
-        "event_date": _date("observation_event_date", observation.get("event_date")),
+        "observation_id": _text("observation_id", revision.get("observation_id")),
+        "station_id": _text("observation_station_id", revision.get("station_id")),
+        "event_date": _date("observation_event_date", revision.get("event_date")),
         "settlement_timezone": _settlement_timezone(
             "observation_settlement_timezone",
-            observation.get("settlement_timezone"),
+            revision.get("settlement_timezone"),
         ),
         "source_lane": _awc_source_lane(
-            "observation_source_lane", observation.get("source_lane")
+            "observation_source_lane", revision.get("source_lane")
         ),
-        "report_type": _text("observation_report_type", observation.get("report_type")).upper(),
-        "raw_sha256": _sha("observation_raw_sha256", observation.get("raw_sha256")),
+        "report_type": _text("observation_report_type", revision.get("report_type")).upper(),
+        "observed_at_utc": _timestamp(
+            "observation_observed_at_utc", revision.get("observed_at_utc")
+        ),
+        "raw_sha256": _sha("observation_raw_sha256", revision.get("raw_object_sha256")),
+        "awc_source_receipt_sha256": _sha(
+            "observation_awc_source_receipt_sha256",
+            revision.get("awc_source_receipt_sha256"),
+        ),
         "canonical_committed_at": _timestamp(
-            "observation_canonical_committed_at", observation.get("canonical_committed_at")
+            "observation_canonical_committed_at", revision.get("canonical_committed_at_utc")
         ),
+        "truth_observation_revision_content_sha256": revision_sha,
     }
     if obs["report_type"] not in {"METAR", "SPECI"}:
         raise AtomicLedgerError("observation_report_type_invalid")
     obs_sha = _content_hash(OBSERVATION_SCHEMA, obs)
     observation_fact_id = _verify_or_set_id(
-        "observation_fact_id", observation.get("observation_fact_id"), _derive_id("obsfact", obs)
+        "observation_fact_id", None, _derive_id("obsfact", obs)
     )
 
     bound_payload = _mapping("bound_json", bound.get("bound_json", bound.get("hard_bound" , {})))
@@ -450,6 +479,7 @@ def build_target_atomic_bundle(
         "bound_generation": int(bound.get("bound_generation", 0)),
         "hard_lower_bound": None if bound.get("hard_lower_bound") in (None, "") else int(bound["hard_lower_bound"]),
         "bound_json": bound_payload,
+        "truth_observation_revision_content_sha256": revision_sha,
     }
     if bound_identity["bound_generation"] < 0:
         raise AtomicLedgerError("bound_generation_invalid")
@@ -684,6 +714,7 @@ def build_target_atomic_bundle(
     result = {
         "schema": SCHEMA,
         "created_at": created_at,
+        "awc_observation_contract": dict(awc_observation_contract),
         "observation": {**obs, "observation_fact_id": observation_fact_id, "content_sha256": obs_sha},
         "bound": {**bound_identity, "bound_fact_id": bound_fact_id, "content_sha256": bound_sha},
         "plan": {"plan_id": plan_id, "plan_sha256": plan_sha, "plan_json": plan_payload},
@@ -720,6 +751,12 @@ def build_target_atomic_bundle(
 def apply_target_ledger_schema(conn: sqlite3.Connection, *, commit: bool = True) -> dict[str, Any]:
     """Install only the explicit M5 ledger DDL on a migration connection."""
 
+    conn.create_function(
+        TARGET_PROJECTION_AUTHORIZATION_FUNCTION,
+        0,
+        lambda: 0,
+        deterministic=True,
+    )
     upgrade_execution_vector_contract(conn)
     statement = ""
     for line in PRODUCTION_LEDGER_DDL.splitlines(keepends=True):
@@ -732,6 +769,8 @@ def apply_target_ledger_schema(conn: sqlite3.Connection, *, commit: bool = True)
     if statement.strip():
         raise AtomicLedgerError("sqlite_ledger_script_incomplete_statement")
     for table in (
+        "basket_target_observation_facts",
+        "basket_target_bound_facts",
         "basket_target_execution_cycles",
         "auto_trade_decisions",
         "basket_target_order_intents",
@@ -739,6 +778,15 @@ def apply_target_ledger_schema(conn: sqlite3.Connection, *, commit: bool = True)
         columns = {
             str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
         }
+        if (
+            table in {"basket_target_observation_facts", "basket_target_bound_facts"}
+            and "truth_observation_revision_content_sha256" not in columns
+        ):
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN "
+                "truth_observation_revision_content_sha256 TEXT "
+                "CHECK(length(truth_observation_revision_content_sha256)=64)"
+            )
         if table == "basket_target_execution_cycles" and "settlement_timezone" not in columns:
             conn.execute(
                 f"ALTER TABLE {table} ADD COLUMN settlement_timezone TEXT"
@@ -765,6 +813,12 @@ def target_ledger_schema_status(conn: sqlite3.Connection) -> dict[str, Any]:
             "observation_fact_id", "observation_id", "station_id",
             "event_date", "settlement_timezone", "source_lane",
             "report_type", "raw_sha256", "canonical_committed_at",
+            "truth_observation_revision_content_sha256",
+            "content_sha256",
+        },
+        "basket_target_bound_facts": {
+            "bound_fact_id", "bound_id", "observation_id", "station_id",
+            "event_date", "truth_observation_revision_content_sha256",
             "content_sha256",
         },
         "auto_trade_decisions": {
@@ -828,6 +882,17 @@ def target_ledger_schema_status(conn: sqlite3.Connection) -> dict[str, Any]:
     vector_table_sql = str(vector_table_sql_row[0] or "") if vector_table_sql_row else ""
     legacy_vector_policy_present = "LEGACY_CAS" in vector_table_sql
     missing_tables = sorted(set(TARGET_LEDGER_TABLES) - tables)
+    triggers = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        )
+    }
+    required_projection_triggers = {
+        "basket_target_observation_canonical_insert_only",
+        "basket_target_bound_canonical_insert_only",
+    }
+    missing_projection_triggers = sorted(required_projection_triggers - triggers)
     return {
         "schema": SCHEMA,
         "ok": (
@@ -835,11 +900,13 @@ def target_ledger_schema_status(conn: sqlite3.Connection) -> dict[str, Any]:
             and not any(missing_columns.values())
             and not forbidden_vector_columns
             and not legacy_vector_policy_present
+            and not missing_projection_triggers
         ),
         "missing_tables": missing_tables,
         "missing_columns": {key: value for key, value in missing_columns.items() if value},
         "forbidden_execution_vector_columns": forbidden_vector_columns,
         "legacy_execution_vector_policy_present": legacy_vector_policy_present,
+        "missing_projection_ingress_triggers": missing_projection_triggers,
         "blocking_authority": "auto_trade_decisions",
         "places_orders": False,
         "calls_order_gateway": False,
@@ -1400,13 +1467,15 @@ def _assert_existing_cycle_weather_fact_binding(
     """Fail closed if an idempotent replay has lost either immutable fact."""
 
     observation_row = conn.execute(
-        "SELECT observation_fact_id,settlement_timezone,content_sha256 FROM "
+        "SELECT observation_fact_id,settlement_timezone,"
+        "truth_observation_revision_content_sha256,content_sha256 FROM "
         "basket_target_observation_facts WHERE observation_id=?",
         (str(observation.get("observation_id") or ""),),
     ).fetchone()
     expected_observation = (
         str(observation.get("observation_fact_id") or ""),
         str(observation.get("settlement_timezone") or ""),
+        str(observation.get("truth_observation_revision_content_sha256") or ""),
         str(observation.get("content_sha256") or ""),
     )
     if (
@@ -1419,13 +1488,15 @@ def _assert_existing_cycle_weather_fact_binding(
         )
 
     bound_row = conn.execute(
-        "SELECT bound_fact_id,observation_id,content_sha256 FROM "
+        "SELECT bound_fact_id,observation_id,"
+        "truth_observation_revision_content_sha256,content_sha256 FROM "
         "basket_target_bound_facts WHERE bound_id=?",
         (str(bound.get("bound_id") or ""),),
     ).fetchone()
     expected_bound = (
         str(bound.get("bound_fact_id") or ""),
         str(observation.get("observation_id") or ""),
+        str(observation.get("truth_observation_revision_content_sha256") or ""),
         str(bound.get("content_sha256") or ""),
     )
     if (
@@ -1435,6 +1506,88 @@ def _assert_existing_cycle_weather_fact_binding(
     ):
         raise AtomicLedgerError(
             "cycle_existing_bound_fact_binding_drift"
+        )
+
+
+def _stage_canonical_target_projections(
+    conn: sqlite3.Connection,
+    *,
+    observation: Mapping[str, Any],
+    bound: Mapping[str, Any],
+    revision_sha: str,
+    created_at: str,
+    fault_after: str | None,
+) -> None:
+    """Write target projections only after exact canonical revision binding."""
+
+    gate = {"enabled": False}
+    conn.create_function(
+        TARGET_PROJECTION_AUTHORIZATION_FUNCTION,
+        0,
+        lambda: 1 if gate["enabled"] else 0,
+        deterministic=True,
+    )
+    try:
+        gate["enabled"] = True
+        existing = conn.execute(
+            "SELECT settlement_timezone,"
+            "truth_observation_revision_content_sha256,content_sha256 FROM "
+            "basket_target_observation_facts WHERE observation_id=?",
+            (observation["observation_id"],),
+        ).fetchone()
+        if existing is not None:
+            if tuple(str(value or "") for value in existing) != (
+                str(observation["settlement_timezone"]),
+                revision_sha,
+                str(observation["content_sha256"]),
+            ):
+                raise AtomicLedgerError(
+                    "basket_target_observation_facts_content_address_drift"
+                )
+        else:
+            conn.execute(
+                "INSERT INTO basket_target_observation_facts("
+                "observation_fact_id,observation_id,station_id,event_date,"
+                "settlement_timezone,source_lane,report_type,observed_at_utc,"
+                "raw_sha256,awc_source_receipt_sha256,canonical_committed_at,"
+                "truth_observation_revision_content_sha256,content_sha256,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    observation["observation_fact_id"], observation["observation_id"],
+                    observation["station_id"], observation["event_date"],
+                    observation["settlement_timezone"], observation["source_lane"],
+                    observation["report_type"], observation["observed_at_utc"],
+                    observation["raw_sha256"], observation["awc_source_receipt_sha256"],
+                    observation["canonical_committed_at"], revision_sha,
+                    observation["content_sha256"], created_at,
+                ),
+            )
+        _fault(fault_after, "projection")
+        if not _assert_existing_or_absent(
+            conn, "basket_target_bound_facts", "bound_id", bound["bound_id"],
+            "content_sha256", bound["content_sha256"],
+        ):
+            conn.execute(
+                "INSERT INTO basket_target_bound_facts("
+                "bound_fact_id,bound_id,observation_id,station_id,event_date,"
+                "bound_generation,hard_lower_bound,bound_json,"
+                "truth_observation_revision_content_sha256,content_sha256,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    bound["bound_fact_id"], bound["bound_id"], bound["observation_id"],
+                    bound["station_id"], bound["event_date"], bound["bound_generation"],
+                    bound["hard_lower_bound"], canonical_json(bound["bound_json"]),
+                    revision_sha, bound["content_sha256"], created_at,
+                ),
+            )
+        _fault(fault_after, "bound_projection")
+    finally:
+        gate["enabled"] = False
+        conn.create_function(
+            TARGET_PROJECTION_AUTHORIZATION_FUNCTION,
+            0,
+            lambda: 0,
+            deterministic=True,
         )
 
 
@@ -1471,7 +1624,10 @@ def commit_target_atomic_bundle(
         raise AtomicLedgerError("atomic_bundle_schema_invalid")
     # Re-normalization is intentionally not implicit: callers must use the
     # builder so that stored hashes and IDs are checked before entering SQL.
-    required = ("observation", "bound", "plan", "cycle", "decision", "intents", "reservation")
+    required = (
+        "awc_observation_contract", "observation", "bound", "plan", "cycle",
+        "decision", "intents", "reservation",
+    )
     if any(key not in bundle for key in required):
         raise AtomicLedgerError("atomic_bundle_incomplete")
     obs = dict(bundle["observation"])
@@ -1479,6 +1635,24 @@ def commit_target_atomic_bundle(
         "observation_source_lane", obs.get("source_lane")
     )
     bound = dict(bundle["bound"])
+    try:
+        awc_contract = CanonicalAWCObservationContract.from_mapping(
+            bundle["awc_observation_contract"]
+        )
+    except ContractError as exc:
+        raise AtomicLedgerError("atomic_awc_observation_contract_invalid") from exc
+    revision_sha = _sha(
+        "truth_observation_revision_content_sha256",
+        obs.get("truth_observation_revision_content_sha256"),
+    )
+    revisions = [
+        fact for fact in awc_contract.revision_facts
+        if fact.content_sha256 == revision_sha
+    ]
+    if len(revisions) != 1:
+        raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
+    if bound.get("truth_observation_revision_content_sha256") != revision_sha:
+        raise AtomicLedgerError("atomic_bound_revision_reference_mismatch")
     cycle = dict(bundle["cycle"])
     decision = dict(bundle["decision"])
     intents = [dict(item) for item in bundle["intents"]]
@@ -1640,6 +1814,27 @@ def commit_target_atomic_bundle(
     for row in vector_rows:
         row["training_fact_id"] = training_fact_id
     with _atomic_transaction(conn, operation="commit_target_atomic_bundle"):
+        try:
+            from .canonical_ingress import stage_awc_observation_contract
+
+            stage_awc_observation_contract(
+                conn, awc_contract, ingested_at_utc=created_at
+            )
+        except ContractError as exc:
+            raise AtomicLedgerError("atomic_awc_canonical_stage_rejected") from exc
+        _fault(fault_after, "canonical_stage")
+        canonical_rows = conn.execute(
+            "SELECT fact_json,content_sha256 FROM canonical_ssot_fact "
+            "WHERE fact_type='truth_observation_revision' "
+            "AND content_sha256=? ORDER BY fact_id",
+            (revision_sha,),
+        ).fetchall()
+        if (
+            len(canonical_rows) != 1
+            or str(canonical_rows[0][1]) != revision_sha
+            or json.loads(str(canonical_rows[0][0])) != revisions[0].raw
+        ):
+            raise AtomicLedgerError("atomic_awc_canonical_revision_binding_invalid")
         existing_cycle = conn.execute(
             "SELECT plan_sha256,requested_reserve_usdc,state,settlement_timezone "
             "FROM basket_target_execution_cycles WHERE cycle_id=?",
@@ -1788,33 +1983,14 @@ def commit_target_atomic_bundle(
                     "target_active_candidate_supersession_required"
                 )
 
-        existing_observation = conn.execute(
-            "SELECT settlement_timezone,content_sha256 FROM "
-            "basket_target_observation_facts WHERE observation_id=?",
-            (obs["observation_id"],),
-        ).fetchone()
-        if existing_observation is not None:
-            if (
-                str(existing_observation[0] or "")
-                != obs["settlement_timezone"]
-                or str(existing_observation[1] or "")
-                != obs["content_sha256"]
-            ):
-                raise AtomicLedgerError(
-                    "basket_target_observation_facts_content_address_drift"
-                )
-        else:
-            conn.execute(
-                "INSERT INTO basket_target_observation_facts(observation_fact_id,observation_id,station_id,event_date,settlement_timezone,source_lane,report_type,raw_sha256,canonical_committed_at,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (obs["observation_fact_id"], obs["observation_id"], obs["station_id"], obs["event_date"], obs["settlement_timezone"], obs["source_lane"], obs["report_type"], obs["raw_sha256"], obs["canonical_committed_at"], obs["content_sha256"], created_at),
-            )
-        _fault(fault_after, "observation")
-        if not _assert_existing_or_absent(conn, "basket_target_bound_facts", "bound_id", bound["bound_id"], "content_sha256", bound["content_sha256"]):
-            conn.execute(
-                "INSERT INTO basket_target_bound_facts(bound_fact_id,bound_id,observation_id,station_id,event_date,bound_generation,hard_lower_bound,bound_json,content_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (bound["bound_fact_id"], bound["bound_id"], bound["observation_id"], bound["station_id"], bound["event_date"], bound["bound_generation"], bound["hard_lower_bound"], canonical_json(bound["bound_json"]), bound["content_sha256"], created_at),
-            )
-        _fault(fault_after, "bounds")
+        _stage_canonical_target_projections(
+            conn,
+            observation=obs,
+            bound=bound,
+            revision_sha=revision_sha,
+            created_at=created_at,
+            fault_after=fault_after,
+        )
         conn.execute(
             "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,requested_reserve_usdc,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (cycle["cycle_id"], cycle["plan_id"], cycle["station_id"], cycle["event_date"], cycle_timezone, cycle["strategy_lane"], cycle["plan_sha256"], cycle["requested_reserve_usdc"], "prepared", created_at, created_at),

@@ -36,27 +36,47 @@ def _db(tmp_path: Path) -> Path:
               state TEXT,created_at TEXT);
             """
         )
-        truth = {
-            "truth_id": "truth-katl-r1",
+        observation = {
+            "observation_id": "rtobs-1",
             "station_id": "KATL",
             "event_date": "2026-07-20",
-            "truth_revision_no": 1,
+            "settlement_timezone": "America/New_York",
+            "revision_no": 1,
+            "sequence": 1,
+            "observed_at_utc": "2026-07-20T12:00:00Z",
             "canonical_committed_at_utc": "2026-07-21T05:00:00Z",
-            "closed_day": True,
+            "qc_state": "ACCEPTED",
+            "halt_state": "CLEAR",
             "source_lane": "AWC",
-            "source_role": "AWC_HISTORICAL_REPLAY_INGRESS",
             "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
         }
         conn.execute(
             "INSERT INTO canonical_ssot_fact VALUES(?,?,?,?,?,?,?)",
             (
-                "truth:" + "1" * 64,
-                "truth",
-                "KATL|2026-07-20|1",
+                "truth_observation_revision:" + "1" * 64,
+                "truth_observation_revision",
+                "KATL|rtobs-1|1",
                 "1" * 64,
-                json.dumps(truth),
+                json.dumps(observation),
                 "{}",
                 "2026-07-21T05:00:00Z",
+            ),
+        )
+        day_bounds = {
+            "station_id": "KATL", "event_date": "2026-07-20",
+            "settlement_timezone": "America/New_York", "bounds_version": 1,
+            "canonical_committed_at_utc": "2026-07-21T05:00:00Z",
+            "closed_day": True, "source_lane": "AWC",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        }
+        conn.execute(
+            "INSERT INTO canonical_ssot_fact VALUES(?,?,?,?,?,?,?)",
+            (
+                "truth_observation_day_bounds:" + "a" * 64,
+                "truth_observation_day_bounds",
+                "KATL|2026-07-20|America/New_York|1",
+                "a" * 64,
+                json.dumps(day_bounds), "{}", "2026-07-21T05:00:00Z",
             ),
         )
         conn.execute(
@@ -148,6 +168,7 @@ def _db(tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     "scope,expected_records",
     (
+        ("TRUTH_OBSERVATION", 1),
         ("TRUTH_DAY", 1),
         ("TAF_P0M", 1),
         ("TRAJECTORY_P1", 1),
@@ -166,8 +187,13 @@ def test_real_source_scopes_build_canonical_candidate_envelopes(
     validated = CanonicalTypedScopeEnvelope.from_mapping(envelope)
     assert validated.scope_type == scope
     assert len(validated.records) == expected_records
-    assert all(record.state == "CANDIDATE_ONLY" for record in validated.records)
-    assert all(record.blockers == ("ACTIVATION_ROOT_MISSING",) for record in validated.records)
+    expected_state = "DATA_READY" if scope == "TRUTH_OBSERVATION" else "CANDIDATE_ONLY"
+    assert all(record.state == expected_state for record in validated.records)
+    assert all(
+        record.blockers
+        == (() if scope == "TRUTH_OBSERVATION" else ("ACTIVATION_ROOT_MISSING",))
+        for record in validated.records
+    )
     assert receipt["state"] == "CANDIDATE_ONLY"
     assert receipt["writes_database"] is False
     after = path.stat()
@@ -187,6 +213,16 @@ def test_p1_uses_exact_awc_lineage_and_not_later_legacy_row(tmp_path: Path) -> N
 @pytest.mark.parametrize(
     "scope,fields",
     (
+        ("P0_ACTIVATION", ["activation_content_sha256"]),
+        (
+            "P0_SNAPSHOT",
+            [
+                "p0_snapshot_content_sha256",
+                "probability_envelope_content_sha256",
+                "market_bucket_bridge_content_sha256",
+            ],
+        ),
+        ("STRATEGY_POLICY", ["strategy_policy_activation_content_sha256"]),
         (
             "STRATEGY_UTILITY",
             ["candidate_inventory_sha256", "baseline_inventory_sha256"],

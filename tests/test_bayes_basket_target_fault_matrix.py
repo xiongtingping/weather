@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 from bayes_basket_target import ContractError, content_sha256
+from bayes_basket_target.awc_observation_contract import (
+    AUTHORITY_SCOPE, CONTRACT_SCHEMA, RAW_OBJECT_KIND,
+)
+from bayes_basket_target.canonical_ssot_v12_migration import (
+    TARGET_TABLE_DDL as V12_TABLE_DDL,
+    TARGET_TRIGGER_DDL as V12_TRIGGER_DDL,
+)
 from bayes_basket_target.atomic_ledger import (
     InjectedAtomicFault,
     apply_target_ledger_schema,
@@ -47,6 +54,43 @@ VALID_UNTIL = "2026-08-01T00:00:00Z"
 SHA_A = "a" * 64
 
 
+def _seal(value: dict[str, object]) -> dict[str, object]:
+    return {**value, "content_sha256": content_sha256(value)}
+
+
+def _awc_contract(index: int) -> tuple[dict[str, object], str]:
+    canonical_time = "2026-07-23T05:00:00.000Z"
+    revision = _seal({
+        "station_id": "ZUUU", "observation_id": f"fault-obs-{index}",
+        "revision_no": 1, "event_date": "2026-07-23",
+        "settlement_timezone": SETTLEMENT_TIMEZONE, "source_lane": "AWC",
+        "authority_scope": AUTHORITY_SCOPE, "report_type": "METAR", "sequence": 1,
+        "observed_at_utc": canonical_time, "received_at_utc": canonical_time,
+        "first_seen_at_utc": canonical_time, "parsed_at_utc": canonical_time,
+        "fetch_started_at_utc": canonical_time,
+        "fetch_completed_at_utc": canonical_time,
+        "origin_committed_at_utc": canonical_time,
+        "source_observation_committed_at_utc": canonical_time,
+        "canonical_committed_at_utc": canonical_time, "reported_temperature_c": 38.0,
+        "raw_object_kind": RAW_OBJECT_KIND, "raw_object_sha256": SHA_A,
+        "awc_source_receipt_sha256": "b" * 64,
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_authority": "NOAA/NWS Aviation Weather Center worldwide relay",
+        "origin_url": "https://aviationweather.gov/data/api/",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "origin_registry_sha256": "c" * 64, "origin_record_sha256": "d" * 64,
+        "correction_kind": "NONE", "correction_state": "NO_CORRECTION",
+        "supersedes_observation_fact_sha256": None, "qc_state": "ACCEPTED",
+        "review_receipt_sha256": None, "halt_state": "CLEAR",
+    })
+    contract = _seal({
+        "schema": CONTRACT_SCHEMA, "as_of_utc": canonical_time,
+        "builder_id": "fault-matrix.pr12.v1", "revision_facts": [revision],
+        "day_bounds_facts": [],
+    })
+    return contract, str(revision["content_sha256"])
+
+
 def _exact_vector(index: int = 0) -> dict[str, str]:
     return {
         "schema": "bayes_basket_target_execution_version_vector_v2",
@@ -67,6 +111,9 @@ def _exact_vector(index: int = 0) -> dict[str, str]:
 def _ledger_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     apply_target_ledger_schema(conn)
+    conn.execute(V12_TABLE_DDL)
+    for ddl in V12_TRIGGER_DDL:
+        conn.execute(ddl)
     initialize_capital_pool(
         conn, balance_usdc=20.0, capital_epoch_id="fault-matrix-epoch", updated_at_utc=NOW
     )
@@ -74,17 +121,10 @@ def _ledger_db() -> sqlite3.Connection:
 
 
 def _bundle(index: int = 0, *, amount: float = 4.0) -> dict[str, object]:
+    contract, revision_sha = _awc_contract(index)
     return build_target_atomic_bundle(
-        observation={
-            "observation_id": f"fault-obs-{index}",
-            "station_id": "ZUUU",
-            "event_date": "2026-07-23",
-            "settlement_timezone": SETTLEMENT_TIMEZONE,
-            "source_lane": "AMSC",
-            "report_type": "METAR",
-            "raw_sha256": SHA_A,
-            "canonical_committed_at": NOW,
-        },
+        awc_observation_contract=contract,
+        truth_observation_revision_content_sha256=revision_sha,
         bound={
             "bound_id": f"fault-bound-{index}",
             "station_id": "ZUUU",
@@ -102,10 +142,10 @@ def _bundle(index: int = 0, *, amount: float = 4.0) -> dict[str, object]:
                 "probability_stage": "P1",
                 "settlement_timezone": SETTLEMENT_TIMEZONE,
                 "canonical_observation_event_id": f"fault-obs-{index}",
-                "canonical_observation_sha256": SHA_A,
-                "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": revision_sha,
+                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": f"fault-bound-{index}",
-                "source_lane": "AMSC",
+                "source_lane": "AWC",
                 "report_type": "METAR",
             },
         },
@@ -149,8 +189,11 @@ def _counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {table: int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) for table in tables}
 
 
-def test_fault_matrix_transaction_six_points_are_all_or_zero() -> None:
-    for point in ("observation", "bounds", "cycle", "decision", "intent", "reserve"):
+def test_fault_matrix_transaction_points_are_all_or_zero() -> None:
+    for point in (
+        "canonical_stage", "projection", "bound_projection", "cycle",
+        "decision", "intent", "reserve",
+    ):
         with _ledger_db() as conn:
             with pytest.raises(InjectedAtomicFault, match=point):
                 commit_target_atomic_bundle(conn, bundle=_bundle(), fault_after=point)
@@ -505,7 +548,8 @@ def test_fault_matrix_unknown_partial_and_gateway_boundary_never_authorize() -> 
                     "plan": {"station_id": "ZUUU", "event_date": "2026-07-23"},
                 },
                 market_snapshot={"station_id": "ZUUU", "event_date": "2026-07-23"},
-                observation={},
+                    awc_observation_contract={},
+                    truth_observation_revision_content_sha256="",
                 bound={},
                 created_at_utc=NOW,
             )

@@ -1,0 +1,34 @@
+{
+  "bridge_content_sha256": "c58f562d9ab4f4db27f2d46060346f89af5dade799db501e5ab8606dffe929e5",
+  "bridge_count_after": 0,
+  "bridge_count_before": 0,
+  "calls_order_gateway": false,
+  "content_sha256": "596d95b25368636bc2b4ffc8165f635ab61292dedb323e4dd4c4519bc43ea5f7",
+  "contract_content_sha256": "1be479f56ad0de2a438e0e3acd61001188cf08d755a08c915f156a4b935535a4",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "event_date": "2026-08-03",
+  "ingress_receipt": {
+    "builder_id": "official_awc_market_bucket_bridge_builder_v1",
+    "calls_order_gateway": false,
+    "canonical_schema": "bayes_basket_target_canonical_market_bucket_bridge_contract_v1",
+    "contract_content_sha256": "1be479f56ad0de2a438e0e3acd61001188cf08d755a08c915f156a4b935535a4",
+    "inserted_count": 0,
+    "orders_submitted": 0,
+    "receipt_sha256": "0473136869de9f8868be07cb2161643946ae826275ac2960efc947c0a1fe0c1d",
+    "replayed_count": 0,
+    "schema": "bayes_basket_target_canonical_model_ingress_v1",
+    "state": "VALIDATED_NO_WRITE",
+    "validated_counts": {
+      "market_bucket_bridge": 1
+    },
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "orders_submitted": 0,
+  "p0_written": false,
+  "production_no_live_only": true,
+  "registry_snapshot_sha256": "638b0c4f1c8aba1265f43bf1dd79db569a56e75526bfdbdea393b8a52b3ba465",
+  "schema": "canonical_market_bucket_bridge_materialization_receipt_v1",
+  "state": "VALIDATED_NO_WRITE",
+  "station_id": "CYYZ"
+}

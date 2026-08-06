@@ -15,8 +15,15 @@ AS_OF = "2026-08-04T00:00:00Z"
 
 
 VALID_KEYS = {
-    ("TRUTH_DAY", "REVISION"): {
-        "station_id": "KATL", "event_date": "2026-07-20", "truth_revision_no": 1,
+    ("TRUTH_OBSERVATION", "REVISION"): {
+        "station_id": "KATL", "event_date": "2026-07-20",
+        "settlement_timezone": "America/New_York", "observation_id": "rtobs-1",
+        "revision_no": 1, "observed_at_utc": "2026-07-20T12:00:00Z",
+        "canonical_committed_at_utc": "2026-07-20T12:01:00Z", "source_lane": "AWC",
+    },
+    ("TRUTH_DAY", "DAY_BOUNDS"): {
+        "station_id": "KATL", "event_date": "2026-07-20",
+        "settlement_timezone": "America/New_York", "bounds_version": 1,
     },
     ("TAF_P0M", "ARTIFACT"): {
         "station_id": "KATL", "settlement_timezone": "America/New_York",
@@ -66,6 +73,7 @@ def _record(scope_type: str, scope_kind: str, *, state: str = "BLOCKED") -> dict
         "scope_type": scope_type,
         "scope_kind": scope_kind,
         "natural_key": deepcopy(VALID_KEYS[(scope_type, scope_kind)]),
+        "version": None,
         "as_of_utc": AS_OF,
         "state": state,
         "blockers": [] if state.endswith("READY") else ["ACTIVATION_ROOT_MISSING"],
@@ -99,8 +107,8 @@ def test_each_typed_scope_natural_key_is_exact(
 
 
 def test_typed_scope_rejects_missing_or_guessed_natural_key_field() -> None:
-    record = _record("TRUTH_DAY", "REVISION")
-    record["natural_key"].pop("truth_revision_no")
+    record = _record("TRUTH_DAY", "DAY_BOUNDS")
+    record["natural_key"].pop("bounds_version")
     record["content_sha256"] = content_sha256(
         {key: value for key, value in record.items() if key != "content_sha256"}
     )

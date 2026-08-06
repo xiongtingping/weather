@@ -164,6 +164,7 @@ def _observation(
             "observation_id": f"obs-{suffix}",
             "station_id": station,
             "event_date": event_date,
+            "settlement_timezone": "Asia/Seoul",
             "source_lane": lane,
             "report_type": "METAR",
             "sequence": sequence,

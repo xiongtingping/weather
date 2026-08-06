@@ -20,6 +20,11 @@ from .contracts import ContractError, canonical_json, content_sha256
 SCHEMA = "calibration_station_global_awc_source_authority_v1"
 SOURCE_LANE = "AWC"
 MAX_STATIONS = 45
+AUTHORITY_FIELDS = {
+    "authority_id", "station_id", "source_lane", "authority_version",
+    "activated_at_utc", "legacy_registry_content_sha256", "lineage_json",
+    "lineage", "content_sha256",
+}
 
 
 def _utc(value: Any) -> str:
@@ -81,9 +86,50 @@ def resolve_global_awc_source_authority(
         "legacy_registry_content_sha256": _sha(newest[4]),
         "lineage_json": canonical_json(lineage),
     }
-    if content_sha256(identity) != _sha(newest[6]):
+    return validate_global_awc_source_authority(
+        {**identity, "lineage": lineage, "content_sha256": str(newest[6])},
+        station_id=station,
+    )
+
+
+def validate_global_awc_source_authority(
+    raw: Mapping[str, Any], *, station_id: str | None = None,
+) -> Mapping[str, Any]:
+    """Validate one portable authority projection without consulting another table."""
+
+    if set(raw) != AUTHORITY_FIELDS:
+        raise ContractError("station_source_authority_fields_mismatch")
+    value = dict(raw)
+    station = str(value.get("station_id") or "").strip().upper()
+    if not station or (station_id is not None and station != str(station_id).strip().upper()):
+        raise ContractError("station_source_authority_station_mismatch")
+    lineage = value.get("lineage")
+    if not isinstance(lineage, Mapping) or canonical_json(lineage) != value.get("lineage_json"):
+        raise ContractError("station_source_authority_lineage_invalid")
+    if (
+        value.get("source_lane") != SOURCE_LANE
+        or lineage.get("schema") != SCHEMA
+        or lineage.get("current_ssot_awc_global_formal") is not True
+        or lineage.get("amsc_role") != "retired_history_only"
+        or lineage.get("legacy_registry_content_sha256")
+        != value.get("legacy_registry_content_sha256")
+    ):
+        raise ContractError("station_source_authority_not_awc")
+    identity = {
+        key: value[key] for key in (
+            "authority_id", "station_id", "source_lane", "authority_version",
+            "activated_at_utc", "legacy_registry_content_sha256", "lineage_json",
+        )
+    }
+    identity["station_id"] = station
+    identity["activated_at_utc"] = _utc(identity["activated_at_utc"])
+    identity["legacy_registry_content_sha256"] = _sha(
+        identity["legacy_registry_content_sha256"]
+    )
+    supplied = _sha(value.get("content_sha256"))
+    if content_sha256(identity) != supplied:
         raise ContractError("station_source_authority_content_hash_invalid")
-    return {**identity, "lineage": lineage, "content_sha256": str(newest[6])}
+    return {**identity, "lineage": dict(lineage), "content_sha256": supplied}
 
 
 def migrate_global_awc_source_authorities(

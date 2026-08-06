@@ -23,6 +23,7 @@ from .resource_bounds import (
     write_bounded_json_if_changed,
 )
 from .source_policy import (
+    AWC_METAR_TIMING_INVALID,
     SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN,
     normalize_station_lane_map,
     source_policy_reason,
@@ -31,6 +32,7 @@ from .source_policy import (
 
 SCHEMA = "bayes_basket_target_canonical_observation_evidence_v1"
 TABLE = "reported_trajectory_observations"
+POLL_TABLE = "reported_trajectory_source_polls"
 REQUIRED_COLUMNS = (
     "observation_id",
     "source_lane",
@@ -49,6 +51,8 @@ REQUIRED_COLUMNS = (
 )
 MAX_CANONICAL_SOURCE_ROWS = 20_000
 CANONICAL_FETCH_BATCH_ROWS = 256
+MAX_CANONICAL_EVIDENCE_NODES = 1_000_000
+MAX_CANONICAL_EVIDENCE_BYTES = 64 * 1024 * 1024
 
 
 def _reference_only_reason(
@@ -124,8 +128,49 @@ def _canonical_identity(row: Mapping[str, Any]) -> dict[str, Any]:
         "fetch_started_at_utc": str(row["fetch_started_at_utc"]),
         "fetch_completed_at_utc": str(row["fetch_completed_at_utc"]),
         "source_poll_id": str(row["source_poll_id"]),
+        "awc_raw_object_sha256": str(row["awc_raw_object_sha256"]),
+        "awc_source_receipt_sha256": str(row["awc_source_receipt_sha256"]),
         "correction_suspected": int(row["correction_suspected"]),
     }
+
+
+def _source_poll_receipt(raw: Mapping[str, Any], *, expected_lane: str) -> str:
+    try:
+        station_ids = json.loads(str(raw.get("poll_station_ids_json") or ""))
+        poll_json = json.loads(str(raw.get("poll_json") or ""))
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ContractError("canonical_source_poll_receipt_json_invalid") from exc
+    if not isinstance(station_ids, list) or not isinstance(poll_json, dict):
+        raise ContractError("canonical_source_poll_receipt_shape_invalid")
+    lane = str(raw.get("poll_source_lane") or "").strip().lower()
+    if lane != expected_lane:
+        raise ContractError("canonical_source_poll_lane_mismatch")
+    identity = {
+        "poll_id": str(raw.get("source_poll_id") or ""),
+        "source_lane": lane,
+        "station_ids": sorted(str(item).strip().upper() for item in station_ids),
+        "request_started_at_utc": _timestamp_text(
+            _timestamp("poll_request_started_at", raw.get("poll_request_started_at"))
+        ),
+        "response_started_at_utc": (
+            _timestamp_text(
+                _timestamp("poll_response_started_at", raw.get("poll_response_started_at"))
+            )
+            if raw.get("poll_response_started_at") else None
+        ),
+        "response_completed_at_utc": _timestamp_text(
+            _timestamp("poll_response_completed_at", raw.get("poll_response_completed_at"))
+        ),
+        "response_status": raw.get("poll_response_status"),
+        "duration_ms": float(raw.get("poll_duration_ms")),
+        "report_count": int(raw.get("poll_report_count")),
+        "new_report_count": int(raw.get("poll_new_report_count")),
+        "error_code": raw.get("poll_error_code"),
+        "poll_payload": poll_json,
+    }
+    if not identity["poll_id"] or identity["response_status"] not in {200, 206}:
+        raise ContractError("canonical_source_poll_receipt_not_successful")
+    return content_sha256(identity)
 
 
 def _read_source_rows(
@@ -143,24 +188,25 @@ def _read_source_rows(
     normalized_stations = sorted({str(item).strip() for item in station_ids if str(item).strip()})
     normalized_lanes = sorted({str(item).strip().lower() for item in source_lanes if str(item).strip()})
     if normalized_stations:
-        clauses.append("station_id IN (" + ",".join("?" for _ in normalized_stations) + ")")
+        clauses.append("o.station_id IN (" + ",".join("?" for _ in normalized_stations) + ")")
         params.extend(normalized_stations)
     if normalized_lanes:
         invalid = set(normalized_lanes) - {"amsc", "awc"}
         if invalid:
             raise ContractError("canonical_source_lane_filter_invalid")
-        clauses.append("source_lane IN (" + ",".join("?" for _ in normalized_lanes) + ")")
+        clauses.append("o.source_lane IN (" + ",".join("?" for _ in normalized_lanes) + ")")
         params.extend(normalized_lanes)
     if as_of_utc:
         as_of = _timestamp("as_of_utc", as_of_utc)
-        clauses.append("canonical_committed_at <= ?")
+        clauses.append("o.canonical_committed_at <= ?")
         params.append(_timestamp_text(as_of))
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     sql = (
-        "SELECT observation_id,source_lane,station_id,report_type,valid_at,"
-        "reported_temperature_c,raw_sha256,first_seen_at,parsed_at,canonical_committed_at,"
-        "fetch_started_at,fetch_completed_at,source_poll_id,correction_suspected "
-        f"FROM {TABLE}{where} ORDER BY source_lane,station_id,valid_at,report_type,observation_id "
+        "SELECT o.observation_id,o.source_lane,o.station_id,o.report_type,o.valid_at,"
+        "o.reported_temperature_c,o.raw_sha256,o.first_seen_at,o.parsed_at,o.canonical_committed_at,"
+        "o.fetch_started_at,o.fetch_completed_at,o.source_poll_id,o.correction_suspected "
+        f"FROM {TABLE} o{where} "
+        "ORDER BY o.source_lane,o.station_id,o.valid_at,o.report_type,o.observation_id "
         "LIMIT ?"
     )
     query_params = (*params, MAX_CANONICAL_SOURCE_ROWS + 1)
@@ -174,6 +220,11 @@ def _read_source_rows(
         missing = sorted(set(REQUIRED_COLUMNS) - table_columns)
         if missing:
             raise ContractError("canonical_source_schema_missing:" + ",".join(missing))
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (POLL_TABLE,),
+        ).fetchone() is None:
+            raise ContractError("canonical_source_poll_table_missing")
         cursor = conn.execute(sql, query_params)
         rows: list[dict[str, Any]] = []
         while True:
@@ -184,6 +235,36 @@ def _read_source_rows(
             if len(rows) > MAX_CANONICAL_SOURCE_ROWS:
                 raise ContractError("canonical_source_row_limit_exceeded")
             assert_process_memory_budget()
+        poll_ids = sorted({str(row["source_poll_id"]) for row in rows})
+        poll_hashes: dict[tuple[str, str], tuple[str, str]] = {}
+        for offset in range(0, len(poll_ids), 400):
+            batch_ids = poll_ids[offset : offset + 400]
+            poll_sql = (
+                "SELECT poll_id AS source_poll_id,source_lane AS poll_source_lane,"
+                "station_ids_json AS poll_station_ids_json,"
+                "request_started_at AS poll_request_started_at,"
+                "response_started_at AS poll_response_started_at,"
+                "response_completed_at AS poll_response_completed_at,"
+                "response_status AS poll_response_status,duration_ms AS poll_duration_ms,"
+                "report_count AS poll_report_count,new_report_count AS poll_new_report_count,"
+                "error_code AS poll_error_code,poll_json FROM reported_trajectory_source_polls "
+                "WHERE poll_id IN (" + ",".join("?" for _ in batch_ids) + ")"
+            )
+            for poll in conn.execute(poll_sql, batch_ids).fetchall():
+                mapped = dict(poll)
+                lane = str(mapped["poll_source_lane"]).lower()
+                poll_payload = json.loads(str(mapped["poll_json"]))
+                poll_hashes[(str(mapped["source_poll_id"]), lane)] = (
+                    _source_poll_receipt(mapped, expected_lane=lane),
+                    content_sha256(poll_payload),
+                )
+        for row in rows:
+            key = (str(row["source_poll_id"]), str(row["source_lane"]).lower())
+            binding = poll_hashes.get(key)
+            if binding is None:
+                raise ContractError("canonical_source_poll_receipt_missing")
+            row["awc_source_receipt_sha256"] = binding[0]
+            row["awc_raw_object_sha256"] = binding[1]
     return rows, {
         "source_database_path": str(source),
         "source_rows_read": len(rows),
@@ -256,6 +337,13 @@ def export_canonical_observation_evidence(
             fetch_completed = _timestamp("fetch_completed_at", raw.get("fetch_completed_at"))
             temperature = int(raw.get("reported_temperature_c"))
             raw_sha = _sha("raw_sha256", raw.get("raw_sha256"))
+            source_receipt_sha = _sha(
+                "awc_source_receipt_sha256",
+                raw.get("awc_source_receipt_sha256"),
+            )
+            raw_object_sha = _sha(
+                "awc_raw_object_sha256", raw.get("awc_raw_object_sha256")
+            )
             correction = int(raw.get("correction_suspected") or 0)
             if correction not in {0, 1}:
                 raise ContractError("correction_suspected_invalid")
@@ -271,7 +359,8 @@ def export_canonical_observation_evidence(
             )
             if policy_reason == SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN:
                 raise ContractError("canonical_source_lane_cross_fallback_forbidden")
-            if policy_reason and "reference_only" not in policy_reason:
+            timing_exclusion = policy_reason == AWC_METAR_TIMING_INVALID
+            if policy_reason and "reference_only" not in policy_reason and not timing_exclusion:
                 raise ContractError(policy_reason)
             reference_reason = policy_reason if "reference_only" in policy_reason else ""
             identity_key = (lane, station, report_type, _timestamp_text(valid_at), raw_sha)
@@ -295,10 +384,22 @@ def export_canonical_observation_evidence(
                 "fetch_started_at_utc": _timestamp_text(fetch_started),
                 "fetch_completed_at_utc": _timestamp_text(fetch_completed),
                 "source_poll_id": source_poll_id,
+                "awc_raw_object_sha256": raw_object_sha,
+                "awc_source_receipt_sha256": source_receipt_sha,
                 "correction_suspected": correction,
-                "evidence_role": "REFERENCE_ONLY" if reference_reason else "FORMAL",
+                "evidence_role": (
+                    "AUDIT_ONLY" if timing_exclusion
+                    else "REFERENCE_ONLY" if reference_reason
+                    else "FORMAL"
+                ),
                 "reference_reason": reference_reason,
-                "qc_status": "REFERENCE_ONLY" if reference_reason else ("QUARANTINED" if correction else "ACCEPTED"),
+                "policy_exclusion_reason": policy_reason if timing_exclusion else "",
+                "qc_status": (
+                    "EXCLUDED_POLICY" if timing_exclusion
+                    else "REFERENCE_ONLY" if reference_reason
+                    else "QUARANTINED" if correction
+                    else "ACCEPTED"
+                ),
                 "quarantine_reasons": ["correction_suspected"] if correction else [],
             })
         except (ContractError, TypeError, ValueError) as exc:
@@ -315,7 +416,9 @@ def export_canonical_observation_evidence(
             for item in observations:
                 if (
                     item["source_lane"].lower(), item["station_id"], item["report_type"], item["valid_at_utc"]
-                ) == (lane, station, report_type, valid_at):
+                ) == (lane, station, report_type, valid_at) and item.get(
+                    "qc_status"
+                ) != "EXCLUDED_POLICY":
                     item["qc_status"] = "QUARANTINED"
                     item["quarantine_reasons"] = sorted(set(item["quarantine_reasons"]) | {"same_slot_revision"})
 
@@ -329,7 +432,7 @@ def export_canonical_observation_evidence(
             )
             item["event_date_local"] = local_date
             item["station_timezone"] = timezone_name
-            if item["qc_status"] == "REFERENCE_ONLY":
+            if item["qc_status"] in {"REFERENCE_ONLY", "EXCLUDED_POLICY"}:
                 continue
             target = accepted_by_day if item["qc_status"] == "ACCEPTED" else quarantined_by_day
             target[(item["source_lane"], item["station_id"], local_date)].append(item)
@@ -347,7 +450,10 @@ def export_canonical_observation_evidence(
     }
     for item in observations:
         key = (item.get("source_lane"), item.get("station_id"), item.get("event_date_local"))
-        if key in quarantined_day_keys:
+        if (
+            key in quarantined_day_keys
+            and item.get("qc_status") not in {"REFERENCE_ONLY", "EXCLUDED_POLICY"}
+        ):
             item["qc_status"] = "QUARANTINED"
             item["quarantine_reasons"] = sorted(
                 set(item.get("quarantine_reasons") or []) | {"station_day_revision_halt"}
@@ -357,7 +463,7 @@ def export_canonical_observation_evidence(
     for item in observations:
         if not item.get("event_date_local"):
             continue
-        if item["qc_status"] == "REFERENCE_ONLY":
+        if item["qc_status"] in {"REFERENCE_ONLY", "EXCLUDED_POLICY"}:
             continue
         target = accepted_by_day if item["qc_status"] == "ACCEPTED" else quarantined_by_day
         target[(item["source_lane"], item["station_id"], item["event_date_local"])].append(item)
@@ -450,6 +556,20 @@ def export_canonical_observation_evidence(
         "reference_observation_count": sum(
             1 for item in observations if item.get("evidence_role") == "REFERENCE_ONLY"
         ),
+        "excluded_policy_observation_count": sum(
+            1 for item in observations if item.get("qc_status") == "EXCLUDED_POLICY"
+        ),
+        "policy_exclusion_reason_counts": {
+            reason: sum(
+                1 for item in observations
+                if item.get("policy_exclusion_reason") == reason
+            )
+            for reason in sorted({
+                str(item.get("policy_exclusion_reason") or "")
+                for item in observations
+                if item.get("policy_exclusion_reason")
+            })
+        },
         "reference_reason_counts": {
             reason: sum(1 for item in observations if item.get("reference_reason") == reason)
             for reason in sorted({
@@ -462,7 +582,12 @@ def export_canonical_observation_evidence(
     result["receipt_sha256"] = content_sha256(result)
     if output_path is not None:
         destination = Path(output_path).expanduser().resolve()
-        write_bounded_json_if_changed(destination, result)
+        write_bounded_json_if_changed(
+            destination,
+            result,
+            limit=MAX_CANONICAL_EVIDENCE_BYTES,
+            max_nodes=MAX_CANONICAL_EVIDENCE_NODES,
+        )
         result["output"] = str(destination)
     return result
 

@@ -1,0 +1,22 @@
+{
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "builder_receipt_sha256": "f042531f875a6ada3dec0b50ec5d9534ed5701cfa985f4e9ad0667809e1a8d6f",
+  "calls_order_gateway": false,
+  "canonical_fact_counts_before": {},
+  "canonical_rows_inserted": 0,
+  "content_sha256": "0610a59a972b50466f38df034326267ee4bfee168bd7cdfcbba28c6d89b69d57",
+  "contract_content_sha256": "b0d66c8ca20284b1a5de1d3f217a919e6e4ad85afb1f09ff4d551517ea245a6e",
+  "current_pointer_changed": false,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "detail": "builder produced only terminal gaps; no canonical fact is eligible",
+  "failure_code": "NO_CLOSED_AWC_FACTS",
+  "live_pause_released": false,
+  "materialization_state": "NO_WRITE",
+  "orders_submitted": 0,
+  "production_service_started": false,
+  "release_state": "BLOCKED",
+  "schema": "bayes_basket_target_pr12_awc_materialization_receipt_v2",
+  "state": "BLOCKED",
+  "terminal_gap_count": 2728,
+  "writes_legacy_projection": false
+}

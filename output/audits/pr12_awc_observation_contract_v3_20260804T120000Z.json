@@ -1,0 +1,8 @@
+{
+  "as_of_utc": "2026-08-04T12:00:00.000Z",
+  "builder_id": "pr12.awc_observation_builder.v1",
+  "content_sha256": "8f7ff9f1180213e7043b9b066dc5930ecbf7499ace181ca8cfe2919a47918501",
+  "day_bounds_facts": [],
+  "revision_facts": [],
+  "schema": "bayes_basket_target_canonical_awc_observation_contract_v1"
+}

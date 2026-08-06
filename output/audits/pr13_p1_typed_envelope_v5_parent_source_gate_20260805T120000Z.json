@@ -1,0 +1,3791 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00Z",
+  "builder_id": "pr13.canonical_awc_p1_readiness.v4",
+  "content_sha256": "b633ddee3bc3be8fcac1451d2bfa0365560df28633cc71de31c236f9ce0f2298",
+  "future_data_counts_as_oos": false,
+  "production_no_live": true,
+  "records": [
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9a461b26372f7bd546502f82b801a78b5bcb564c544f19bfda463062131d4d76",
+      "evidence_content_sha256": "2ac71bbe2cf468ceae94147873b5cc30fcfcc707c342eed8049e78d89866b0a9",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c083fde328948c4cea69d152ec4bbf9c2e2e5d46e44cfeb49c8649dff26eb0f5",
+      "evidence_content_sha256": "9bd45280eec3ec8b8326c865c93b87159105ff1be891526feb8249ccfac9f872",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f1efb8cb44038192295644c027051ab10fc2f6926b0f004ba8e28f65f15497eb",
+      "evidence_content_sha256": "0a8df2fdd11d32f6704eb17d60024501d9dbf8996e72c1911f6323042bcf11bd",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "3c259dc34ac7d46b50cd2f3f547e868f07be7f09ac96f92a1f67bf666b6f2797",
+      "evidence_content_sha256": "01aa34c32f5a6b4ba03efe505e349660b195237c76fddab992fb9cfb01ccf7b2",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e6cb15deea66ade186c514748f7839227202421cec36b58cf46f985e40a2b1d3",
+      "evidence_content_sha256": "b91b8fc9f08ca1bf8140dbf37191a409ff45f0e06e8f00bec3056d20b595307b",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EDDM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e6235a473452530cea697b7d918d22803ea43b30d1c0017b4e4260eda554b819",
+      "evidence_content_sha256": "0423c4abb039ae84a5ed65c17c2aceee91cc1f2b138e5f25666f55eaab4d4541",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EDDM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6b4573a419c45a767a0be4e61ccb729799a6d7a9e151ed8faa1f63ca89750079",
+      "evidence_content_sha256": "e8055cd47528797f19f159933085f11d9d8ca89587e426fe277f04e4b0a35c8f",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EDDM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7021a2d3f48e17bd25d1bd02d341db1fc43693f53621fa32c7570b2ea7983a52",
+      "evidence_content_sha256": "37bc0c8dab28a232b01b01bc1e85293e11d6b2a3be79b93a95cf6a99a432c925",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EDDM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "86122c21a917b2ff271b8671b998dc4479505171d325048740e710b71252fe48",
+      "evidence_content_sha256": "3ee7d29547173d630346689d0b7e39fee6c46c7b3d82b9abe616cee8ca70802f",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EFHK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "104d655a16f9466c50cb58cdb10a185124e42297b29bf209fcdb0021c5b10a15",
+      "evidence_content_sha256": "e54a669ff5ccf065b02187b539e900fc7121b7532549aba2c94b6f77f5fd9944",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EFHK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9d63b8b23a9af685dfb1ec80f66d5f3d1d3b8aa2627ba22a3799ab470f75cbbc",
+      "evidence_content_sha256": "c2335b3b273df2409d0665a8ed12dddf5cc6de51b31aa0e8af07320f9b0c84b3",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EFHK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c21813f08c7009653be63d815ea38ee5655e7b1f1bc47ebe98e535695a5c6c55",
+      "evidence_content_sha256": "6252a31aaa1770efc9d61d9592a2c279364558888ae00a61bf843c118617d4ea",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EFHK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "192b0a29a0fb9bdfc7415b799ad0ad90e73048df8d410834b3e6457c00880d69",
+      "evidence_content_sha256": "2b3172f33a40ba6be65c0d69797061b4be6d3c8950f6221ff021f0644eb9f24c",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EGLC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2b92d443680b8df604133ad83b0af61f1dd2f18c44ab611695ee71bf819a1a89",
+      "evidence_content_sha256": "782244b1c0caf138b57e5de6c59f63ff3fc73d8ad4cb2ba19a790876e2f4f26d",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EGLC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f6953c03bd6bd35db797e23c5a6dbb56940943901a2b107f053712eb7de016e3",
+      "evidence_content_sha256": "4b6e184038f070ddca3eaa3027d3b82b799a55ec7300baffa5d922aab33740ab",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EGLC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "231bfde8ffc1eceb367aebc0ae51b0abd3f7301bc522cfc24bae106689780acc",
+      "evidence_content_sha256": "dcbd3aab5f641909dfe95eb5be2e751db88bce03e98bbab6576d220d424d53bf",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EGLC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9ae8e2f05c4facfc9fae8c67b54fd8b96f14053cef23585759037080b6505b47",
+      "evidence_content_sha256": "eeee47d5e0270622b0696910fd7d15753fd28958590eadca49a2792dbe31bda6",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EHAM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4ac0a868bd06cd4b8d6ccc311c6bce40cf1e1b7c9ccc648ffd2f78c9d536d8b1",
+      "evidence_content_sha256": "99f2c8ac0e0a7f851938ae1a68cff07e4737abf4fa92fd9ef51eff83fd60f231",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EHAM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8f752d8c3c107a9e42f30a6032466c246aa1fef46fdab5bcefc5f91ee066d007",
+      "evidence_content_sha256": "a593b4232011666a629dd00a9e71c1c4b08e8d1d9a4b2a6424a45add49f0c66f",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EHAM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8dc0182c29c342ea7f8760b72f5e0ffc728ae12c7ca8a3681387ef4a9e84796b",
+      "evidence_content_sha256": "75f5ddda92cfd936d8867cc796fe157a803cc2d5791f8576e2a964897320414f",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EHAM"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dd525fd02d73525a8acc2751fa803a886e4d2e41f81e8140c8f045de50836ac1",
+      "evidence_content_sha256": "9dc7a13dda0b9add1228667bdec49cf933fba814a4ac9e7a186ddbafedb5f579",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ab5d3d2021555bfd2a4f48e645b3e87e8a4f3eb5d415609dcc30b9a9b2217736",
+      "evidence_content_sha256": "46c6df9054e713949776cf3c1af7e66e0a37cc2d4666a194309f9fe900ab15fb",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "98fa8bbf336b7681ade94d0075e07c786127bb0a48058705c3b3d8c2f6ff84d5",
+      "evidence_content_sha256": "ec03c277d21fd1c44b6a44fd50c515b4caa8a2b4a84e3407bbc2c5c5b5c23df1",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2ba6e5f47aed9ae9505513c163647bfaa4b6fd8ed00daa2c47f65c3980ba60f0",
+      "evidence_content_sha256": "14b3bfd49597cc49a83f130f2693d37d09d3ced12b29843c0643d96c515aa80e",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cf371ba98255cb2cb3ba4e48a30f12e51c931033968abc60585cc4cde734aad7",
+      "evidence_content_sha256": "ec89565917a97b0ea1a573c96d5588f3a711002cc2bac78003dcf5e0104306ff",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "FACT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cf11a319c2dc81df0097263791afd983a41ac10f17d0839249281f496ce82432",
+      "evidence_content_sha256": "93932f5420a7e5e69557d35e5e517eff61d272722725285d9b796557d76ee0d5",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "FACT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "41e3f4da2136deedef63f360da1b390d02634c9665a6082204ba7beba21a6fcd",
+      "evidence_content_sha256": "2622a4482c6354710fae2dd8155bb439fe491a61aadb0add4806047d4f6202ab",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "FACT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9d2d86c56209810164b4d2a09a67e6663f6f3f035a1b5ecd0152b5be255386ac",
+      "evidence_content_sha256": "e1bcf5f9c40c0636da9c9a4c3aabe79f7b851a264539f657a639b86e1ef0cc59",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "FACT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a186eedbc603bfebc43f0698283f773e6310443b8b4dcdde367189cc0102ce1f",
+      "evidence_content_sha256": "46e6e1a71e1f9a494bec010c2ba935b1b3fa99c8cc03f700a1a8db453da6e9d1",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KATL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "87da06754d85ed424e54c006b0f48634cb023988beb8cf47f68c65f55d162f48",
+      "evidence_content_sha256": "522b72a30a4326ba9e27059cf970cac4039be1fc03fea105a05a755a5c8e8d1c",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KATL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e15edb5da347e27bce4e60c26d24d8f17399f27314d79c73d611007f01a15d6d",
+      "evidence_content_sha256": "49b6adf73c5a9b91162becc8674b6a869b72f80aa9ae56e816ddb45439f9bc7f",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KATL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c7728fb6056e5a628b0f87f60ce0557561105ba9bed19407753c7fe2ee8f6928",
+      "evidence_content_sha256": "39c6d15627c975990fd7ea7e16f168159167574b3046f3acfff0c6a68c7033bc",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KATL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9198f641b2bdd18c8f1645da38d03d9d90cfa6c1baee7c876b98d1d58adff51c",
+      "evidence_content_sha256": "3b4ccb46b667c9421c6ab1aada5cefce627a12914d7df8057f767a9685426f45",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KAUS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2084e83bf046e44e4bb50b7f52bbf4bc375afe96609f775616b694fd86f107f3",
+      "evidence_content_sha256": "63f42ce0827768c6e71f2ef78007d9b10d2c104726737af4e5f066c9313177be",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KAUS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "06a54dfe2062ec282d0445da46cd7a0dbb538682be8c8d3a4ef084a6b5a66f92",
+      "evidence_content_sha256": "31f2094c17efc7a60a82d9f3f9f0d9af5d8dd3348776409b30be65a0420f3259",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KAUS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2058a18695dfb4f39361bf5bef977dc76d36d3108d220c9d6896b63f49682a01",
+      "evidence_content_sha256": "43d304e21a6de6ebf2c4bb3b0972e3e6f05b3a4ac642e810598f8c8fa861e123",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KAUS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c96aef30541980b39c13bb66717adb32e6c34307ae047e5524273c9cad65c9db",
+      "evidence_content_sha256": "6cf8371d75e508ef619882a04ab1e949b63cb665fb4e513eecea89d966963a96",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KBKF"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8d9b6cf10320d1c8ebc1a6ebd3b8827397756527daae4d82d957ea64d2b6d99f",
+      "evidence_content_sha256": "7aca55ac4be1f3a39608203b444f118bcbaf7410d7941603a49071ac453793a1",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KBKF"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ed990596759620ede0cb567e2580b3061e4cefd171e108d7f11a04038950fffb",
+      "evidence_content_sha256": "3a57dc5c653fbf4c55bac6b158075a7cf86e344992a22b255ca769499728ff10",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KBKF"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8eb5e4001aff36fe2cdea91ae0667784a6801a24c353063cbfa483a069e21d8e",
+      "evidence_content_sha256": "3144ddb364a71b5ff4586074237f7be22085e268a273ef37643d7efbd58304a3",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KBKF"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "937d29391cce06828b099f7b84ac67cc55b49a627b48fa4f8307a0d984558523",
+      "evidence_content_sha256": "a42594c920e458cb3328938f68a6fe2855352e7975bd4f7d75f1b6a2f9e75b84",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KDAL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "03df3ce06597f1ae408415c724b74143d3763f0a6d7f09f49008cb0c651e4b66",
+      "evidence_content_sha256": "ae26211822be542b12b90ae81fe84e42c1876c871373aa41fca0829077409e75",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KDAL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "bd1232e380a67306e4a74b2c02f2c99944354ba37bccc9af19ed79bca09bc6d3",
+      "evidence_content_sha256": "77f0d859764f420b9296fadcf4bfc42952dc97bed9d40bf48907970ac8e295b2",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KDAL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9cefaf00c706b157da12fbe34d931bc1fcad83adb282c4d28dfe546b765a5541",
+      "evidence_content_sha256": "db2330437de3c8f45cff6f1a99ca2a9bcbc675fc1435836f1499f7b279fb9cea",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KDAL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "174501c740cdd6d6c004ea61e19ba92b6ac094058b8daf764d9210bc1e30c408",
+      "evidence_content_sha256": "69237db9a1f68e49d12cfb09f77137c7ea11c1de401f6133f1f3eff8d07692ac",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KHOU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dfff2c4a856b59fb4c189c575c8fe9b7ea8741e6b62be95da2f22d0b67024704",
+      "evidence_content_sha256": "21f3586a68b0bde11b93e9598449ead6cc5f2fcbb76352fbb21fa8b3dd4385ed",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KHOU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f6c6bcc2a67b987f98e39b5e7c45f10c4885d02dea66f410acfbc52ed97bf191",
+      "evidence_content_sha256": "0776241d8804af89eb8062df81ac4c945584ff9c8de044f0a07c24a8fffa59f3",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KHOU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cdc4ef5004e3f7baaa69bff381df7e7a28c21b0aca9b7e863c1dd88ef191f38d",
+      "evidence_content_sha256": "c8bd1b3aa365265712ba436e536ce4ae6305e5c417f0e4e9947fb5ed94c38c74",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KHOU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cd7a0dca0ffb3be62862f65c74783a6a28b3ecb3097f8b0ba59ccdb372048313",
+      "evidence_content_sha256": "a9984bc77b55f19ab75dc85670f8f30ceb1bdaf43e4de2dbfe69e7bfe2caed6e",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLAX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1ed1052b82cff52c436419edbd1e228d18015b4f5e6903633936b40abaa13e00",
+      "evidence_content_sha256": "24adeebc22fab8195ecd4a5c6a966070be5aaca21f4125708463e8c6b9d01259",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLAX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "502bdc31da40d3fc2626a19664d5349354f298d2b514d8da3cc914179935ae99",
+      "evidence_content_sha256": "6e8a442d91d23a417b9428fba2781571dd3375bc2ef089583ebd4089da0235d0",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLAX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f98b12f726be0aad1d44c293fd569e96f2dceb7b44fd738e4816fc51a7ef14c0",
+      "evidence_content_sha256": "61317a68459cdd15229e25fcf55f1398e36e38807c4f50c98b111c474e56653b",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLAX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7e7262d1d32e7f4f8d65f3210bfb01254dc9df200171879b21bfa7782d1f6e1d",
+      "evidence_content_sha256": "f729616b3f8e1bbbf179a8c3706378c4cd3d6b71d81a5867a36d8715f0411322",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLGA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b2d4d6e61f3d6f00c6f15454560b75954e14ac46efe6c2edf57dfb18c23a5105",
+      "evidence_content_sha256": "4455785285bc832223c473e12931b17f30af0821df0c6a2c7f693ee4fab48d24",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLGA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6465c2fb70155538409d4f053a8cc2dc980150b8183f9312bee945deffe66939",
+      "evidence_content_sha256": "365ca45c5558cb5c1da5638fdd0c8f99d0fff93b8897343558843ad19762df19",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLGA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "20bb5198952b5cae165ea2b65eb318bedea6189fab144bb714d555ee305444f4",
+      "evidence_content_sha256": "00fb1e6c746e0b35887783b355257f3dddacbfb1538afb33da38c50363236584",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KLGA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "34a30c6e50909092aa714d567295ab0222a4913536c50068a051572537f7ab3a",
+      "evidence_content_sha256": "b788f8b2106d31221ef2c3cdb58ff6e3fccf8607c0178508325b4a587b03b006",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KMIA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2d3d97081589a00303ef5b8ba5064ba7a435bda92ec44e3bddb66d75d4874e56",
+      "evidence_content_sha256": "af4e0fcd53ac8a693bbca6ed6c2ad741c80e242be5bee11c57c6c48573d9cd2a",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KMIA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1abae055654713a01b98e7c30c909262ff03e401254e5d58f8f200100c4caa73",
+      "evidence_content_sha256": "b8823fa97c71f921f54f7d43e55f314426168252df51281a420d99285154d970",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KMIA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1681273b1de0748ce3b323ce43cbf0494ec48d3511e71ca718d1daf3d028fc69",
+      "evidence_content_sha256": "e8250b6d06afeff72fbf1c01f8207eb9f9745ecd7ec424cfff8a69274312cd41",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KMIA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0bb732e467fc8f9bd612f0b437f24d87cc90673ac0ad8410fcca796419fec092",
+      "evidence_content_sha256": "cb9490bee67bd55699b9388fc91943ca4f4ef0183d64a551469054aefe768d41",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KORD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cb72ad6530f0c8fb73e20527fffe1cc15cfdc2dbc1344398f8393fce3fb9433f",
+      "evidence_content_sha256": "ea13996371aba256432cec822b3599568c4b72d108f12004d8d45e6db08a841c",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KORD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6a7866eb64df7952894b72df5ca3c7efff6d5c7f7b1803c1b642ea034826590c",
+      "evidence_content_sha256": "be9fb129d69b360251786718f66ce53986cd46fac69b58f881f4e123418e3f07",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KORD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "de22905cd6fb02f251eb8c9f44db618c87c542d949a0f5212d5805b08b85c682",
+      "evidence_content_sha256": "a5c30877a8b147dfada9b7f5c6390d042af860ba947272e10f897bbf8ca200e6",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KORD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ef0039573b84b0bb68281b997c74ecdab736497ea46485190af4666f7000f46a",
+      "evidence_content_sha256": "7e5803c79c5e1891fc810c35f7f3bfc641166a3addba91097b54c4b021a972b8",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSEA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "be904556977a28331f891c5676478d18b3ea94373d1c77e4d1d2d3b39491a7b9",
+      "evidence_content_sha256": "df01b0aed658af2e985a77961a7fef6beffbb3b099f3191257971b7e60bc0607",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSEA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "35a5b8578e9906d3a12fb19eafd179272468906db2ceabca2f830f661a48f68b",
+      "evidence_content_sha256": "ce1c8158bd5382f3a3a9c2d952896d23bfcd07eb18828d22f8086c2d175dcade",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSEA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "53d2343cc10022f44636175f03179dd9f7d4d38e39d9ed25800bb718b5de714e",
+      "evidence_content_sha256": "76c18f35199385711cdb4db5d24c2babb44fc721dc3ce4316be7446705b749f3",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSEA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ca6776f2505fce8a71380de3af2552da1bf8f611d9e391e33f456f0c967ee308",
+      "evidence_content_sha256": "e071df332874a43508ee738ef80cca62b49e416762448aa0733e807bc1b4f167",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSFO"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2e8a44bc5b7fd790f9289a45493b378c5739fe277d9cba89ad0bd2faf07d0bfa",
+      "evidence_content_sha256": "69b9201b10b9dea185fce6c998f2a85e8084c1bfd011f21be317a242cc7da4ac",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSFO"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9019fbbcc31caf6fdd9293a722d4bf24f756535e6491953300ad66342246249f",
+      "evidence_content_sha256": "7f6f62d621f2285b2cf49823e2b75c255532f44136a9f2862f94b2be841fb951",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSFO"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b4600c552a41ab9537716baf7920c48135163d3015c38a813e55b0a52f05beed",
+      "evidence_content_sha256": "94a8c28c86f4203d0b04c675476bb496e15d7965d04ee173a026f470143e2a6b",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "KSFO"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6f2aae2f0b531d7237fb4292ae1fb98fe7839c783d819411d7dbd5bd179689ba",
+      "evidence_content_sha256": "35c9c64032e7e2783b32b23b97187a7c0a5ce138ed7102eccfe8bac90d01e582",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LEMD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c46fdb39852c8df618fe1534a8f2c45d06d7ea778f26020e3af2086acfd95d31",
+      "evidence_content_sha256": "73e55aa91e6104b5c15cb7d33c6a0535ef9557827cd9252c6ce514d76160b42f",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LEMD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1c6a34f4ffdb21a42116ddf870f50471b080e4e49e444aaf18aefcaf42ddea19",
+      "evidence_content_sha256": "702dfe4cb0fe5e08679b498023c38f7db19fc6bab4987c4762c739996f29e07b",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LEMD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c6632d0eb2079657ad8ae5aadb3811012e23b2552aa207a89e200d41424cf3db",
+      "evidence_content_sha256": "3b542d9a98fb24bc08a0d236d83b8c8e1e07e12e3c9018be510346f793c2226a",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LEMD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "3a2e1fa91e92337b92597087e6c91bd92d7bae42716b8ece724002be979d4bdc",
+      "evidence_content_sha256": "57c633348b567d65837f4fdb10475f83f22627f023583e190078d24c5d6089cd",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "73636f8e1fb7563cb32ae1a95e9bb1dbc3ab7088d55f7a7459044fa6d9acfe6b",
+      "evidence_content_sha256": "4baec42b516be7f894476facb2935a31de9079fb07aaf0b0b38ab39a7dc499ea",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "bc59871d17a1422a59f01d0afd90bd6a20958e81b80b15c1a93e63d2acb079b1",
+      "evidence_content_sha256": "0e99074f5b2dd4e10a6d7e81f435e8f5ae86eac7b555c49782ec409a7fbb4952",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "af98599701f7efb8d622af7e47f6f001e50e7eebfe9b5b23f0a790fd84257eb3",
+      "evidence_content_sha256": "f5d5fc448478f982b67a33bd423cf007ac28c2ef447566ad53f5dae8f1891869",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8d53b43e65224f4c44ea443adee387de2be7e3525416480662985d209dcbccb9",
+      "evidence_content_sha256": "5c694abe71dc83d1a1d69f136bffc95b362091153002342996303cdc620a82eb",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LIMC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1556fd5ebde036aa3f77693f808c2dfa9aaba0647bd2f68388f2debbefd2222a",
+      "evidence_content_sha256": "caea3f26ea91fee03cce0dd0585263bcacf2bb33a3304ed36d19ef305d5c7a8a",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LIMC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a7c30467f5df656885e5264431e22a5ec5fbdedaadfc56c46d4ba482af633497",
+      "evidence_content_sha256": "7230d88255877ff3cbb40abdf34c8d622e4847016d8e22e25051884d22c4b1f5",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LIMC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d1622c588d05b4a26fd97fc0f6844b572d883a6f6681cc69308bd6c991306abb",
+      "evidence_content_sha256": "c9bca6853bffdb673f773d72a998be10fd851fe32629769c197b28f57e714559",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LIMC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "933a0984ee4c3485b8bb02b7c61b482a92ea6bf9134351ea4bd70eacfea2ceea",
+      "evidence_content_sha256": "99b8117b5b6e86ad27f46e7d37327c1296d04660005a6811ef910bdb147495f5",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LTAC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "778662ea366c7cfc7dc47e40ca4302c6cb304966333bca0a5684b7c54574d0a0",
+      "evidence_content_sha256": "356500ddfcbdde0e1e3deff5d4280f3c3336e5eea5eb506e13af16b14a73b626",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LTAC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b5bd275f83ab3027f47b6636ccaf4a2d5cf2a70cc00b62745f36b6e47fa66de7",
+      "evidence_content_sha256": "2c2aa86eb00e44ecb7563b4d4f8040e78dbce3d5fbc34da1401151d9b7ac7253",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LTAC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6d4cca5dd89586acc51436e0dcecd433013aed289d0656f08576aa8660c25999",
+      "evidence_content_sha256": "33158081ec9317c1aaa1b0db60b0f20950470c290a0a142d97efde2d29dbd67e",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "LTAC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "5fc8861c83a8b439d6df2b61eb9aa0d4a281a6677b233802f8f0d9f9b1dca457",
+      "evidence_content_sha256": "b5f5a133e50a13fbedf3b303131e42897d7404f7ad137cab62c799900156e249",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MMMX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e11afd34cfd6a5c050a87206c9e801e6efed3a1a95388963abd9eadd4b6af5a4",
+      "evidence_content_sha256": "cad7bc707fe85c76c977c820a43637c6d3ef3b29ca4e80e2de437ebdaa7b687d",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MMMX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "738cfb5d1577f8a268953da6ab76c844f8b7b68bfee19656337df173271136c6",
+      "evidence_content_sha256": "f8b1256972e141f6ac6cdaef458f4068828495aa6e7b2835739a460ada69a431",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MMMX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4f4883987508f8f3fb5ca9e7aa96e3386b96e20c3039d3a8e8ed6e98af60a238",
+      "evidence_content_sha256": "3ce00311e8d9ae22ea08abaac1b52a7c0c6ca987874c2ae84b8eb46a3055ac82",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MMMX"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d35fccac9590bb675d4866b7b389ae960498e0b91b67e61e253832d744fd9d63",
+      "evidence_content_sha256": "567a84dee62eb4ed7690554cda002064cbf26081c1403d129a2a18d2a9de4ecb",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MPMG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "980debe0c446162f832840ca705860662bbd628b008cdf80645df30ea72bd045",
+      "evidence_content_sha256": "c5041d4bc6b003f70e32db90ff04bb3d617e734da4f45f4f458a88c14236b6c1",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MPMG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "95945fb0870176bd24e6e2b62b40b262d3af8596536d76ac3746e9db50c1f8df",
+      "evidence_content_sha256": "e48fff88a92bbba91198a03e1879079dd8383e6ed0f164915f0ba4a125380ea5",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MPMG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "70f670af70978d7449637ad1035bec5b4dc4e8ee158431d9e5c3289450ceb609",
+      "evidence_content_sha256": "7514e8143581992c853c2e796872504e2f34b3cf0ac0bbc786188064347c9559",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "MPMG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "52b8c3589abe54b09af810ccbdcb3550acb889280abe831c527ab269d445fba5",
+      "evidence_content_sha256": "dc73cedbaf1f08d83ae92deddd24b2fa6d432bbc58d0f99a03b5e4157e56fdb6",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "80534a254a1ba3bf80f764668c41a04f99c41aa65d25ca89ab5b242e17c9714f",
+      "evidence_content_sha256": "982cc9dd91d257526b46991680f4c2d658a17e371bebf9062162207dcd275794",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e527c13881b5052f581b4fc6911be8c5b1a8d9acac810b0b1cf8cc23ba2b75e6",
+      "evidence_content_sha256": "90853f509630935ebf51eb200ff44e00e02258a249b6972b9daffdbe8333a74b",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "81f0b707ab1ad6615b047e620775821ab76fd86d61c22848e52ebaa0d59d00f0",
+      "evidence_content_sha256": "cca5d68fed5569b884b15932bda588bef6dbca0eb146ce178ecbc393795ab73b",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dbbf68a999cebbdc363c0b83c27b1da9ce7b2572f8368ce9658bd4a4cd67ad0a",
+      "evidence_content_sha256": "1b3390bbfefd9a0840708e12a034c943bd138b780fa99a6497fb3e58aaa41d97",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7c090a1c82563130447d916c30259308256c0470b6e9d7eaa2e899a15085eb1f",
+      "evidence_content_sha256": "2f37d900d525f64b9984e8d431ab238bee63827a7d890f7498ea9600565a30fd",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b5bf184e5a950a4cbb499c80d65ee912c18d54daeb297938371068f9c3e44e18",
+      "evidence_content_sha256": "820a6bebd1ec44eb526941d19496894a8145f45342ffacf7e471e1b0b9fd9f51",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d7d93e6e4ac867479f94f2e914bcfdc686f2e77be1e7d551e2ffad78870e10c9",
+      "evidence_content_sha256": "cb17188c81e4581ecdf4b7b0886dbbfc86339b47540421a6f0ec68c1b6fca99b",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "643d63c137d2aca7d35766f2899c5303aed389a73938ba8b8a3ecfc03d6eff46",
+      "evidence_content_sha256": "d5ccd9f07f231b7736ade26469ba577612fa1089a26f8622583d07faf44184b6",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OPKC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "148f7249b2c5a7c26facfde85e5d432a4a38581b56059a9af68bd40ff71c452d",
+      "evidence_content_sha256": "0e5cc9149a5b0dd6147c7dc3490f57163b9ecc92391e23d7129bf61e4791e671",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OPKC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d669f8a94cd2a71aee1f6b9313c021154348d70fcb0f90b65eab528522d6e0f9",
+      "evidence_content_sha256": "ec4c3d70819b1f905f55addd7fba0a2a0fbee7e787fdd1ed6ea0711c8d96df36",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OPKC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f96c6c9985638bf9871ec04c5bc4fa26f22cfc8b2a589617dd54abe398d3ed44",
+      "evidence_content_sha256": "fb625f4c0ee22c7239d36719e1a69789f522f1c915d4132459cd4d5f99fe396e",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "OPKC"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a92fa37d5e27b17562ca01e372f1ffaad95b3e5f974ffad9c71fd98ce00a0107",
+      "evidence_content_sha256": "ce3ca685f3bf11b6c8f27c5cc164c78e6452c70a685d43ff3b30c7c586f6049f",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RCSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "db0a6fa8e724f07b31664e66a528cb011450c6eb2324c0ff4c2c4ed5c53db596",
+      "evidence_content_sha256": "d8a08659c23b71e8482394f78a9ca16e4338a7d50602fad7acf9e005d3889ec4",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RCSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "50f1ab6c5531800e97544711ab5d4f6e770b67cbe23dbbd834081a696ff9fb8b",
+      "evidence_content_sha256": "6ee8637e8d8de1c426e67ef7605805daa0fd9f381a3b7d65085b74e1a6f69c8a",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RCSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "927ab1cfa2457d03c3ae2849e1f94eaf4ba3199fce826b801d8a2e8815dd2e69",
+      "evidence_content_sha256": "472dc18d1c30a67fb7e546b28a05c748aae200abf29b82e6d593cde4727b7654",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RCSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "109e82c80d77127d3e4e9000045c2830f718fedd9bbff65e47fcd59158bcb4d0",
+      "evidence_content_sha256": "2654880ff3150da0f93f76a65f7a4a8e5d302d5ea82fd569cbb921b0232b8689",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "319c410053aff6fe1a3ce9765f8f7b7d91a0034bc614e9b49f3339587233f97f",
+      "evidence_content_sha256": "91d9fff9fc8789e11de4b56647227b9584496ea706a80d00bf2a1585064e7189",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "62f443e00f24dcb9f9a3f048f34be3808c9f80c8f3869245499792914a68d241",
+      "evidence_content_sha256": "6543657b478c4fc9692051b5cc1e18b9537263ff52128a8b3dde411066a96d82",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7f390eebf557676199ad7d353b28e2ce0fb4b320b5458167878ccd0f5edd46dd",
+      "evidence_content_sha256": "7ce4ce1c9f3b013695939660a78da36b65a7d7a9a7a203b86e45803735450541",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9531b5034929ad9265af06cc2951c49483af8a314b66f9fb5e2ec38d46aa395a",
+      "evidence_content_sha256": "db82c6cf9dd006a8535f3492e378f4b139df9db08b300ad2f14037a860a1fb54",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6bf3245ee19d6de022646dfb0d2cb795cf9aca819ba5e5f96aa5713de003ed7c",
+      "evidence_content_sha256": "a52bb4b0c2662d6368943882301ee4754649870d2bd565abc00514526c8fc851",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "066ff972ff7469f74c5394a4d2085da146c88c46f5ed94bbdce6d3a837ed4deb",
+      "evidence_content_sha256": "864d70e272ceb25609cddc5f53db628eb2d3c8a8a73642e792399028d106ca88",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "107208605b9e9e787eb4972b2805b4584b7db857663f7811ff6bfbb9b1c7afef",
+      "evidence_content_sha256": "ec0ba93b0cc9c6b08e6fc7e73d1fef19a69757f0cdb5684e2c629e6f7155d0a9",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a8cfbbcb1945070bc3d54ac16ed6a1e3dc5642735f8dfef74a6882be5240be3d",
+      "evidence_content_sha256": "0ff5a07dc7482c21ad1bf1dadc36bcb3fc6ff025375daaff8f324d873e2831f8",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cd06145f360cab0a741b3b784aa5d853e9ea03907a94eae7415476e4bc4c6419",
+      "evidence_content_sha256": "8873fea525a0455959a1dd371f8ea8e7931868409b558c71371a3d5b5613cdab",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7f2d6357c07bd484f00ec42a9615bdb378a77ae9e564fd396769374e65f3f99a",
+      "evidence_content_sha256": "3aa9246452ea6cc72532178ceeca0e60d89905fb5c3805b4662224302e5f98e9",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ea7779509c262fdb09278afa4a997bd7cac6d02f900bbf7dd8cbc0e74a7fb292",
+      "evidence_content_sha256": "550d2dd74cfeca4d3740300e8b4acdb2a5d69379ea4444bf475134c119804beb",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "27663ba897dfe4b81ddbe8a85a484419b95386a55520f14bb79254a5cfabecbe",
+      "evidence_content_sha256": "9549accaf63947ef63536cf90937bf9e42d86b67e22392862543bfda46a050db",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c8e034bcfad2cee4843bb34b48455f62cb441d60c650ac045a8c6cfd97197c36",
+      "evidence_content_sha256": "155fc0db39130984a215c648a9eded88e614fad8dd68e1527f54081034b7e3e9",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b7b4bb6793bb48ee3ec889415c0810c6313ed40264bfbc70162e452ca8600b0a",
+      "evidence_content_sha256": "e32198205c27ad0a4ad4fafc62eca88c9c7066bae3d2da21afa91da2896e2b0f",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dda294280ce6cbf0846c39a3dcc443225a7c2c62df64103013d562ccb46b5427",
+      "evidence_content_sha256": "18236f4502b16b9fbb3e3f43939142ba6adf7e6fe4ebede58eba2792913a9219",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "5dbef5de65efb6720d9ab8b6d80f1ab0b5512745fa5126cf38d7db23358e0caa",
+      "evidence_content_sha256": "9b765d01098e2d97006109213ec1e2ed8ef7f069df74808f650dbc1c66732c52",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SAEZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f033f4695c6662a8e7112e312757e470d5b24edac19ed9abb26921aa347dae8b",
+      "evidence_content_sha256": "26e51cdbc1b1a3805790f0949b7b2a94ac63fa6df11d85636e3de7edafda7d2b",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SAEZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "bfd90dd3565b6341f2899178cbafa77ab99b9626a4eea718c700b0ce5ccce37a",
+      "evidence_content_sha256": "bec954a80b81d8adb47201892b5b5ad222849385587c40786a1990540f863b7b",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SAEZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "013ed0df76d6a9e9ac165f464e01af4693181b6a3bc93fdabe7afa4eda72a5aa",
+      "evidence_content_sha256": "8c5ba2949be4b92a7a08b1000852f1d8e3d190ee84f7fa32dca9d50aba05ebdd",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SAEZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7acdf08a48f4108ecf27faacd7fcd107fb8eeaf34b44d6bd7957ad75a54eacf6",
+      "evidence_content_sha256": "425d84c200b9ed49012a057b8c5bb130a2010a204f9b9d70bc3f7c913f81f0fb",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9cf3561bb13e903c478652881adde00b1329491dd338869e5307c6bfa445df98",
+      "evidence_content_sha256": "8641de8325ebdbdbaeea5dab78667e616f7d3b6b88f2b5cda92124a2757936aa",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4c5312bd24ed9fda9ce8a06b25d8fff96360c1eadbd7ee56e21e1d1924867a1e",
+      "evidence_content_sha256": "e85b05e89dbcff0457452f43f8f54a90f6aeee64c6f207c93c8d982e12c5a613",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2ea4af04be8ebb4d417e927d49d3ced9ad304d619602703c1819b29cc1e7e189",
+      "evidence_content_sha256": "a1a6eab5706c509b3035c8b81a9f55178bbff47abf20ed013b0700818d2da384",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "76fc90bf314152802a81c00806d662c105b7409df6ee737cff2d578ffccc41be",
+      "evidence_content_sha256": "569bd43b21db64955ff1834690c38ff0dc7108327e7c229f064cdef9349ef0eb",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "VILK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1bb8c5ef5bb5fef3512468b747e027db1488cf2c7bd274ab642f7eeb735fb525",
+      "evidence_content_sha256": "bfb343787bfe35b1bb18e91b6038c164febbdf245b29dd60d707471d3e64566b",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "VILK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e8fc3a7b3dc08ccf1adb484304e2f8d2d4651915d8a738cc60322bde08cc1f5a",
+      "evidence_content_sha256": "f44c4f8608621f6cfda8fc8f5e1eb34a1bce4bc79852c2c3e72d64dcb8fbcce7",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "VILK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2a90cbb9325ffa4e57d56283f559e5f34f77cc4146eacd7eb424cadc3301f3cf",
+      "evidence_content_sha256": "fb6119fc973b89f4f10197d4ce7280e63f414e24e4fe9b9b538654246dbc7079",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "VILK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0487794dbc000bc95ff23938765cb4cc062d716ccdde13a0bd650ea4a83a1ed6",
+      "evidence_content_sha256": "fe23f02afe8e1417fef79a943b9a8bcdec9f9c017b7f18be4b19ee9fc210074b",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "00bef05913748e442cb0ac823ab975caead17f763f390078ecdbba01f7c9cc5b",
+      "evidence_content_sha256": "f489a5fe22ffcbabf2cf3bea85489a395c557a1b016ae821545dd84892ce810b",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d2f7b026a1a9564317f2054d2ab9d3a42bb966c55be32d80c0ae1e0a15fb02dc",
+      "evidence_content_sha256": "6e54474e6c2cf379486cddd964affc30acfc3ac40447a31c8e8b05a8212518eb",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7b77ed5652c00cddcd221ecaf93e11342c28c1df06d9b6dd0c6baba2c083fbcf",
+      "evidence_content_sha256": "94360c2bafa54d261c3012669adb853eba705d80d8300b22f7c7c4a7b6a1518e",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e72fb988974eb5c6ce57a9a9f15252dccebcfae208fa26e7ac4bedd24bc35204",
+      "evidence_content_sha256": "ecadbe07ba06e90d355c46a5986e1c21a745973f057f19ee3f7365ddc8e1fa4c",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f26b1363c9db597f1e2fa88c70b6cbe2868ada8433682ba89b514e088fdf1188",
+      "evidence_content_sha256": "25ca25e6cb84d8699197f8bfaa4a3d40154791452f26a54008d111593d94a131",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "eb8dc280b67162d65e9d137bb176edfb966656130e6b866e048da79117374812",
+      "evidence_content_sha256": "7dc46199a6b5bb733e8701fa6354306a0cd30e53b7028a4adb789bf2692945d3",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ebf81774d23e053e979bb04f31f32647ce4d4c45330e33a722846a37675a7891",
+      "evidence_content_sha256": "1505b54d3fb3559cbff80fbb37c3ead106680c63bac4ca23189182be1bb0ac3c",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "53bcc6edac3222da8ac2d38e8db4ed51d23a743495cd9169a2fc6bd112e59bae",
+      "evidence_content_sha256": "79a4a602ab00c9e861e948719e704e3b852a6a936a14c01c6cf050b06080cb2e",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZBAA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "84ab2b47634bfdd71941b0b231723d06fcd95f70b1b234d8211baf37a2128a9f",
+      "evidence_content_sha256": "2ac3c1f5271caa53fe22862e521d888c506486b0cdcfe865567b776b6b8659b9",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZBAA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "68d54fa615e12c854d1f4faef1d28977b59433432c85dac04a2a026b4cad74d3",
+      "evidence_content_sha256": "88455946e12b78aebdea1120309b88812e40e24b3f3acd87d7a8f4b2950c517d",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZBAA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4a0da0aa9f85d3278cfb0eaf22aa18abd9176bcb2df362474896bce2fb0d4f81",
+      "evidence_content_sha256": "024fc9dc5749d73b4bc63a82c0861c2f3b4429d79bfae18302e04c87028b1274",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZBAA"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "429d200ce4ef44cac8b07b4b5d880e1966ed234e05d29e079ca74840246e0346",
+      "evidence_content_sha256": "1729209edf25d24db0285a30cf9bd82f62eefaaf0b2298962c90ddb103c16e51",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGGG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "3a086fbf4ccaa6c9819b959a5199223d6231a8d452688d6f340e07b74b1f7ae3",
+      "evidence_content_sha256": "364f136be97850d483f11a4967dfa698c6490e984be4433f33889b138a02fe1a",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGGG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "42d5fada540c0b8168acb48de69b370167bb53aa9fc234505a6fba9fa7f3cee9",
+      "evidence_content_sha256": "28e0e4a9617077579050ae3445c4e384714a5e55a22a06aefde542ef315cc8f7",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGGG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "3323f1619eb6e665d931a863f7d33084f0240a8d957895eec25a39f55d9dab6d",
+      "evidence_content_sha256": "39161ed5acc216e9e4fdffb33e9927d1278a60c51c7c8d0fde2dda1cf41c4f97",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGGG"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4bdbd249737d46e5cf752b1b939a66fc7f5161242858c095a5c0d16943df2e9c",
+      "evidence_content_sha256": "b75578bf651fe45c8ec956fbf4baedc168660baec6260325240077d2b11daa7a",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGSZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1cabae4a5aa1399fe281cd1ad786ff6bda6ab96ffaa4acd90b153faa53a802cc",
+      "evidence_content_sha256": "e99de93a37a2cee260f68d94a6fab8def393fddd6522542531341fd5e6873647",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGSZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0f1405ce9f4e36d1a63206b346e786bc5b5577bc20b963c45a133c17cb1c4bc8",
+      "evidence_content_sha256": "1241a2fab22cd50e625c82741ffd5fb349e923f5633905c870ce2170f860fc2c",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGSZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c4573b5b5474bddea8efcd98cac18c9134503f087e0b4a421d11f03659a69d54",
+      "evidence_content_sha256": "6717ca592d99df99f8e4ca8f506006ac8de6630144501051ffd1b141ebb07908",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZGSZ"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "91dc8e6b439bb3399cd423a2828ec441611b8eff79ae9f944c881994d65f8f8c",
+      "evidence_content_sha256": "f012695a3b5dbea196140815ceb36440db116be19468c014131a8f627646b532",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZHHH"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "61b4c7a83da3f4776829fede9651843f92c4211bf5ce8064713b924dbc185e9c",
+      "evidence_content_sha256": "f8f7f86624da80baa59c659fe9f336c3e1694a1f9e947918e3cdcc1f3fd68be7",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZHHH"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1187b627d1de60d58ae9cff62cd4f243ce902315e10826b1c2b46d092863f4b4",
+      "evidence_content_sha256": "02b10548892127b27fc82a3dc1161908c1381a095f087246bc12aaad1dc3e48a",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZHHH"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a043c736a94f840e870bd99ac7b1bbe1af4d1711e1490719ef99bcbb957f64ad",
+      "evidence_content_sha256": "b43c85f8bc503ac3c1cabaefdc4736a9597616a42936e38d1313dcd42aca9254",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZHHH"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "3bb8670545916e5fdf6fb190e0bfe3e42bd463c00732b166134783713a9c74d9",
+      "evidence_content_sha256": "24aa2ccbcc9484f8c58310476287657728d8945e50962991a90ac4da65a7fd06",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSPD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4563c41aff60c745c1f9ba95ee95e2e15830ab391de1568dac7e6eddcc2c864e",
+      "evidence_content_sha256": "77307789213031cb5a8c777a40dc2a28c9ca862ef3b4b934e80fae23d074bcff",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSPD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a79835d360702ca88310774761ac965dff3c4549cf15599a3273522074d5fb42",
+      "evidence_content_sha256": "ea310891b95442ef3c9fd423f0dac83920c470630cde374382215736cfec3507",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSPD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "30fefba56b1474b2032cab86dbf2b637f8cab58797d43cf513e509e71512a9b4",
+      "evidence_content_sha256": "590c0f9ccb396362bbe471285c2ca7d6df54f0d69bf10ecb2d650d081fa2b651",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSPD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1e777955704123c442b56e89693c2225f73e5b2c47102f2ceda5c9032e141bfe",
+      "evidence_content_sha256": "23d2f6bdb2c38a38bf6d4b70f92e0e05baa8f92708c927cf90029bb45804f16d",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSQD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "03ddad4a73b6c728aa89d75e29a5d60f3831ee8188640de4b43d0009a9b38bd6",
+      "evidence_content_sha256": "f2426c59714c67088faae70bc6fad99388482fed8a9b63741eb8d203aa2da609",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSQD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "bf0a1f79c5ab8ad5ed585f736417e3d980e0160ad1f26859ccf831ef0fa86c36",
+      "evidence_content_sha256": "95db7e489b96c7c6c7da821715e771e9b17fc8123621d73f22572c9a1d528636",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSQD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "cf81777ab7be8cc32e07b3064730b2da0729b1e96ff1e7fbf08b37701f544206",
+      "evidence_content_sha256": "516597be5b9d93dfb32fc8bd11e7975d003d6e5d07a752561ccadd8250610e2d",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZSQD"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e2f10a81173ed37007fed2d3ffcd31a58cee2104857578b1af2b57c501a5e6a1",
+      "evidence_content_sha256": "011a45a7220c02d60478ad8650a54d11554654791e308f3b71fb61dc81c57984",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUCK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b90a8ddaf566f539babf727d03e4e3e19322dbdd0b5d3a796b33a4c8a42bf335",
+      "evidence_content_sha256": "fce096698eb3eef63e06e0e5921c9fc48e9005f223f2b56b5664537be5508cd0",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUCK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0fcf4bd89e905e289b172e0c3827ae520b88b222ad0baff2087f6f5a8fe6f9fe",
+      "evidence_content_sha256": "4b3a107903a01410590df160189edc15f949567e7e6f53dbecb2fbd2b52d1d47",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUCK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dbc9a1b6c980071ed6af9cce2eff526f4995175dc8d6e11cbeeddd7d854a29d7",
+      "evidence_content_sha256": "fd80a7b45577a979eba30bdeac8df12a4df6b27399dd8987069ae76d77826d0d",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUCK"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "a847a775cd22fad4484255d266d2f1da3e0cee84008fd9d99751eb44513e2d53",
+      "evidence_content_sha256": "6693262a9c01d1aa800dd0e1ef2a8ce3a44fc052e01d1d9c436967d325748a0c",
+      "natural_key": {
+        "intraday_bucket": "NIGHT",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUUU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f8c6e881debbed20b66a03e348bc4414ae87240880d7abea08a0f8fab95a4c19",
+      "evidence_content_sha256": "441a7bb2690786ab9db839d1d0f8a1abd2c12196501f117a931f0a3a36694f98",
+      "natural_key": {
+        "intraday_bucket": "MORNING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUUU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e941eaf751c1461a6da5bd78f85e1a8c4f8647418dbb2547b462330d955bddb8",
+      "evidence_content_sha256": "8162357a6821f42b0426e213ce8fb9f2dc06b8b7aa5796ad09899bca80f70f27",
+      "natural_key": {
+        "intraday_bucket": "AFTERNOON",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUUU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "237622e75f34b42eb83c5a9a735e7bf44ac6526591e356b2425ee0af0f2222ed",
+      "evidence_content_sha256": "ddf1ded23ced77b37a14962ab038788d815a97f6e8b8fcc609827eb8a453bcfa",
+      "natural_key": {
+        "intraday_bucket": "EVENING",
+        "maturity": "D0",
+        "season": "JJA",
+        "settlement_definition": "official_daily_tmax_c",
+        "source_lane": "AWC",
+        "station_id": "ZUUU"
+      },
+      "scope_kind": "ARTIFACT",
+      "scope_type": "TRAJECTORY_P1",
+      "state": "BLOCKED",
+      "version": null
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_typed_scope_envelope_v1",
+  "scope_type": "TRAJECTORY_P1"
+}

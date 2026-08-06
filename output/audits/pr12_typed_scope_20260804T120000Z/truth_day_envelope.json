@@ -1,0 +1,885 @@
+{
+  "as_of_utc": "2026-08-04T12:00:00Z",
+  "builder_id": "canonical.truth_day.source_projection.v1",
+  "content_sha256": "d9a063bf90688bfc8de6fbf6f777519824ea294fdf03b6c4a2faed933c3a895f",
+  "future_data_counts_as_oos": false,
+  "production_no_live": true,
+  "records": [
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "5af2a3c1fb9bfd7dabd96b6d1b912e5658efe57fefb909a735140bbaad9b0598",
+      "evidence_content_sha256": "2cf2c4bfae13eeedc117a824aff3b19a8b8a273fe8b49dab228a44076756c1ce",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-18",
+        "settlement_timezone": "America/New_York",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "27a2a5cc60b09e5e1f7c36be96067e59f70a63bdf3905534a5a29f69ccb5f86c",
+      "evidence_content_sha256": "c400812f02f647db65cd1e49b6601249b0c283a215fbc8ecb7b3c99e249b14e2",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-18",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "236cdfb241fba9d4ddc34e87273558ec84847914b92541d9263fccde966c266e",
+      "evidence_content_sha256": "02f47ebf8d6623dce45f7f81a49255a5697e18d7e8e29ac9432c14e73576eb0c",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-18",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "fce06a01fe1c6ff2148ddd4a58d8f65ba5eade03b7274333152ccfddb2ef3d9d",
+      "evidence_content_sha256": "7b89f83abcfcfff930c5e9ef0e4f127a748842973599178c40f9e86c8caed04e",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-18",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d259fd73442eb2d991f8eae6ea6ffe5f999b5dc383d6f03d52e05d5f0081ccf6",
+      "evidence_content_sha256": "6569bc7ef8dffcbdbddd72f46e4c2a1676c25e2f1f22f9839fef65687894632c",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-19",
+        "settlement_timezone": "America/New_York",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "273ac65fcd69b61217334b9c5b1474ded079e9eeeba6e148283e9e207205436c",
+      "evidence_content_sha256": "6ee18552bc0c72f2c1ab62499a0cacf3fe76e35c6d02d4e9f6b2858247258162",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-19",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d487a548088c347e3638182cff57c33b3998c3ebb5df09af44fe3a8876a6384f",
+      "evidence_content_sha256": "1ea5bbccfd2fb6f2c17bed78fd0c0c358b926843696951b2a1e5d0b13a548aad",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-19",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4b7eca5148325520073a94b77af455c520f788f2f6bcbd5d76b783e240e1d008",
+      "evidence_content_sha256": "230c404f36bf320ecad500853d3e511ba28fb0ad6d87fea35e559dfdfd99954f",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-19",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0de7dc6692e0005398132b72f7d1c8a73abcd09d2f8dc0c1409a9e4605e5be19",
+      "evidence_content_sha256": "94af136251634b14149271aababdf1b5d062aa6a5dab1874b2fbff0babc18de3",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-19",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "5edeb3e8f6f691045c3ebd0efe0396e3b81e6cb9804a286ee8e38719ea650526",
+      "evidence_content_sha256": "62e1e566881370ee66475006c3738e0d3c867da0e28e1762b8f9f61d92999ecc",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b8a3544787548a2810ea629a1e1e7fca702332688d43833352c45c2f5ed90c49",
+      "evidence_content_sha256": "ccbfb26a0d35dc5ea29ecbd3f3bc905ad262173bfb82e14a1493e217c7456e9b",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "LEMD"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b4e05b29127a46b635c84a6e474edd3d18e09d00a9ac5e36b90265d2b204f6d4",
+      "evidence_content_sha256": "d478bdaa95fa114f2015a81b8db84d5a4cdf552a348fcdd7a07fd78fd9f887f1",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f7500f4655d117dc42dea39912b57865273f336a91e3f8e22fd5b472b6bf9d1c",
+      "evidence_content_sha256": "dacaa3f49c2092cac3b1b11a4b3134c48b83c6412bf909c8c9aefd2fb5e9709b",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "MPMG"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e09f83df63b482649e5f99d221023ea28911bab93946004fd6cc0e286c6c9440",
+      "evidence_content_sha256": "bf94c31ec9d372f8a5735c5a3ee97f375a4340221ff69c900ca64a812f0b1f5c",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e863770515b9ade3438185e4aa7e459841c15d6cc2bc40a9946a80894338c364",
+      "evidence_content_sha256": "c5bfccc0220003aecee44ebad2c3563f6adcd665800350d2bab867025adcd22a",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "6f7ff69b081f61c6e554f7814260949d2b6708bfbe8396cd811ff9105355ebd2",
+      "evidence_content_sha256": "927cd95631c297ff1e6ef561cecaaaaddc72f606be4455e69dc6d22fae425152",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2c989d9dcc83054f75eebce908ed794d07a37888b0893878e739d0f5d41a8549",
+      "evidence_content_sha256": "61e5ac17b56a88e232517bef36c87b6ba988ec44b8e4c6dc44deb44a3867124f",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "8e0726c253a256360fea06fdcc6d72aed18b38fef8d007fefa43650e09c87cde",
+      "evidence_content_sha256": "94cd16084943cf5aeeb62b31b6fdcf86d5f604c69d0630e2b72465c3165e7eb7",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7c33347eb99947d362b85d64f83e22954b1f82639a8be7573379c77acc39edc7",
+      "evidence_content_sha256": "112c022705b4f6f0ea0cbd794bb07556e84dcb26ed7c7d319a4acf469732cb58",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "86b182c75d41631a4686d401e8fd67767c880872870b6ddf67f8ef172257a680",
+      "evidence_content_sha256": "1baaea4c1ff9c336b1943fec3d2f23ce2f1ffd75dcd12360d7f507855e278620",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "VILK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "e7a7db0acdccbc79d2df7391d8050d3832fdeaef6ced1b85263b6dc25d505782",
+      "evidence_content_sha256": "c533af90d4a6ab284ba686a9d71f0e6132c2d0c8d930b99565a95a71d0a62820",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "252a6bc2fd8e485df51a9fcd02ef6a1103a19699497afdbe67714e58dd120489",
+      "evidence_content_sha256": "8bac2d9e103e562dd128b7189c56e7b8715f26d959c7ff84b0baeda1770be5e0",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-28",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1e543f9fc36d6f108f18cd978027cbc934fb8f2a7aa5db6e4ae78b2c0b7fec48",
+      "evidence_content_sha256": "45fa2d28e397954610e0b04a668c55bb9e539b685ca12c3503bca372cb7e414a",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "5a997138004394910e23c70e421329f2217941663faf41213ae2726490f01cb9",
+      "evidence_content_sha256": "9145c31634d1345b0b54e37a3596efcd1b65704016108c5248498c37461c7098",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "FACT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9069a33a3ac8bcc37d4826af1120f89a1424f13b422ed3ed0b2b29a584ffc415",
+      "evidence_content_sha256": "c33d87f58971a5b03d1ee36650beade8902091daa1ec9efe1e5c2f8ac648af65",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f6ba5781ec9e2868381be0cf1b0045debf5418f7bbdc8bdb487f7c57826cdf36",
+      "evidence_content_sha256": "adac4b45b700ae3d9a80bbf6ad6e63a4e2de5b9e0ca7194d6c391ecbce4d2105",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "ea65956640088bf36f8ee07bf431f9d204ae91dc0903f253afbe918a27575ecf",
+      "evidence_content_sha256": "f0a8a6b51ad94fb784f6623440a16740ab84be93ea0b30f56100491209469e41",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "68c47473a9c44d73a977d3d99ccc5a658f1719b831869940c02e952c8ffd473f",
+      "evidence_content_sha256": "7d129c823ed15ca5f914069e4b0ca3caa38490ec499a06dd196c84e8518a31ec",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "db4120ebd8ac606230dd67bc47cb6beba2be71d213e64b5819de4ff565a5c980",
+      "evidence_content_sha256": "fc131dd87f226c456dda94ea49d3182afb0a26642919e6d28a5fa4d07f9f8846",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "9cb4dcd6ff52058308095442084dfd8446bb1f6ffc815b87558dcc6d4a062a55",
+      "evidence_content_sha256": "991fff76719b47ade09340dc29ebf709f8056f83dc1538ac903ef1846c0fa37e",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "SAEZ"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "dd2eb6362b793bb8f8c19da5f21129f8b1b0af79bab0c6beec8c007c76e2484d",
+      "evidence_content_sha256": "5b986fa3461c25601ccc7c6c56e65d60c9848e37741e84e6b69d047ed9fecdaf",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4fe3065e713dc7a6cbae94ad8fbe0e368198145d446877beb2c7d844a7e96818",
+      "evidence_content_sha256": "9d6939388f5abe7c83640a2bdf127c18cd15dc0350b806ff65dd0a81ef9bf0f1",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WMKK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4bffc47d8a873404583397c2eaf1634440122d41d38bb3a4b18dccfbe5399112",
+      "evidence_content_sha256": "70a782a7d84c91aec4f8a78a656ba40fc4fcb329cbee75f5c79dc44ca1224088",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-29",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "0dad578a7da63cd6aee04659c3d457d023f933531563b82e8d55388e5c740048",
+      "evidence_content_sha256": "529552073fb64575883d9065845a6cc0dcbeac7fa3f51e6b0b0d8270e2142433",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "2c5a1004a1865d1257d898cdf40099c1f9fd028673a78e640944436ef35548df",
+      "evidence_content_sha256": "34c70189976f0ee4d303304e19d105753f27ffa35dd6c0a90c4b3375985cd3c4",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "EPWA"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b89ed630f68a8d7f38f4f02da67d2f3647f70bd4cb2d4d4516281b79fc4351d1",
+      "evidence_content_sha256": "a04193fbf82f39d5dc4ca3378b1d64933c114525e1611c230cdda0ec50e00586",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "FACT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c91d8b36c3f23ebadf89be45230b32a67525bdbc5b785906f6382e2bb63763b4",
+      "evidence_content_sha256": "e90f5acedf4196ee4566d8ce3952aadd4f37534f613eb5998fc9fb99f8c5d136",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "LFPB"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "528893bb4689e4961cdf4f0c7093098bac7144b9e6f28e1678e8d51b057fa3ef",
+      "evidence_content_sha256": "fc7eb7b3c5a0a8485983e0e4c9d8afe3d0d53ba851c82707bdfc0f5f49bd6226",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "7e83fc7717cbcedbfad84c8597cd8302ae23bf69ae733a405ed1b5ccceddc4d7",
+      "evidence_content_sha256": "7cf54e05463455b81ec1e8ab54345dd34469685c6f6604737d282d831c8be59a",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "OEJN"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "868d85792380dc06b09a36fc7d3887cbdcc4cc5ffe7d97d31469c9411b7f546a",
+      "evidence_content_sha256": "effcba4034776b5769330df9bb4bd272d32631c2684b8d8f4f19b7eef21fd4c9",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "OPKC"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "b92c07ccae493740dce506dc84e6c39501ec827b60e6f2ace15cf6fde98cec32",
+      "evidence_content_sha256": "a2fcef87cfc0878e98a2f554641569195c85cd217ddf83c8a70a543feaae7ab4",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RJTT"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "220f9afc4da23ff6cd02382eddb2ef142cbf060a76f5f1fa71749c34c33a7503",
+      "evidence_content_sha256": "a4569cdd9d66a24c19c5e7543640e3b970122ea9a095a941e67c836edac54e67",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKPK"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "aa94b81e406ef95b74acf390786a9acced70eadbe378856f50e6b2e78cb6c151",
+      "evidence_content_sha256": "41f50051be233ac877d5b810594ec7053fb6f0ea05974aaaa270928e22b83635",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RKSI"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "1ccbfb533d395050ed69ceee27f8dec9b4d0ba5737432b7b1567df84ec8a7259",
+      "evidence_content_sha256": "24471b00a23383ad5a3968632230efb858fb557efbb5de4650023b1605af1b5d",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "RPLL"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "d5c0ea71e917cb235cbad4353e687db6614ec98ce7e93e66a6afce26171abc68",
+      "evidence_content_sha256": "ac828302af8ffae5e7addfbc49b7ee38bf7340c8f66ec9d524338ed176858274",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "SBGR"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "f0a2426e158d333242551db587e7e4b1afaa6a1f3a799d7fb5bb756801f1b56a",
+      "evidence_content_sha256": "f64299aa5f46453e44bd692c06f9f6fddd7b610cc21617a086d45e2115ad9255",
+      "natural_key": {
+        "bounds_version": 1,
+        "event_date": "2026-07-30",
+        "settlement_timezone": "America/New_York",
+        "station_id": "WSSS"
+      },
+      "scope_kind": "DAY_BOUNDS",
+      "scope_type": "TRUTH_DAY",
+      "state": "CANDIDATE_ONLY",
+      "version": null
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_typed_scope_envelope_v1",
+  "scope_type": "TRUTH_DAY"
+}

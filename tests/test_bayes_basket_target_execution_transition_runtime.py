@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 import pytest
+from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
 from bayes_basket_target.atomic_ledger import (
     apply_target_ledger_schema,
@@ -91,6 +92,7 @@ def _db() -> tuple[sqlite3.Connection, dict[str, str], str]:
     conn = sqlite3.connect(":memory:")
     apply_target_ledger_schema(conn)
     apply_production_ssot_schema(conn)
+    install_canonical_v12(conn)
     initialize_capital_pool(
         conn,
         balance_usdc=20.0,
@@ -152,17 +154,14 @@ def _db() -> tuple[sqlite3.Connection, dict[str, str], str]:
         "quote_observed_at": NOW,
         "quote_expires_at": EXPIRES,
     }
+    contract, revision_sha = awc_contract(
+        station_id="ZUUU", observation_id="observation-0",
+        event_date="2026-07-23", settlement_timezone=SCOPE["settlement_timezone"],
+        observed_at_utc=NOW, raw_object_sha256="8" * 64,
+    )
     bundle = build_target_atomic_bundle(
-        observation={
-            "observation_id": "observation-0",
-            "station_id": "ZUUU",
-            "event_date": "2026-07-23",
-            "settlement_timezone": SCOPE["settlement_timezone"],
-            "source_lane": "AMSC",
-            "report_type": "METAR",
-            "raw_sha256": "8" * 64,
-            "canonical_committed_at": NOW,
-        },
+        awc_observation_contract=contract,
+        truth_observation_revision_content_sha256=revision_sha,
         bound={
             "bound_id": "bound-0",
             "station_id": "ZUUU",
@@ -180,10 +179,10 @@ def _db() -> tuple[sqlite3.Connection, dict[str, str], str]:
                 "probability_stage": "P1",
                 "settlement_timezone": "America/New_York",
                 "canonical_observation_event_id": "observation-0",
-                "canonical_observation_sha256": "8" * 64,
-                "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": revision_sha,
+                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": "bound-0",
-                "source_lane": "AMSC",
+                "source_lane": "AWC",
                 "report_type": "METAR",
             },
         },

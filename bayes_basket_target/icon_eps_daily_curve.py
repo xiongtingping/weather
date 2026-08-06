@@ -263,6 +263,8 @@ def build_icon_eps_daily_archive(
     identity = {
         "schema": SCHEMA,
         "state": "OFFICIAL_MEMBER_DAILY_CURVES_READY_STRICT_OOS_PENDING",
+        "provider_id": PROVIDER_ID,
+        "product_id": ENSEMBLE_SYSTEM_ID,
         "event_date": str(target_day),
         "run_cycle": run_init[11:13] + "Z",
         "run_init_utc": run_init,
@@ -277,6 +279,15 @@ def build_icon_eps_daily_archive(
         "component_cohort_count": len(verified),
         "component_cohort_sha256": sorted(all_component_shas),
         "component_cohort_sha256_by_valid_time": cohort_sha_by_valid,
+        "lead_results": [
+            {
+                "forecast_hour": int(cohort["forecast_hour"]),
+                "valid_time_utc": valid,
+                "raw_sha256": str(cohort["raw_sha256"]),
+                "cohort_content_sha256": str(cohort["content_sha256"]),
+            }
+            for valid, cohort in sorted(by_valid.items())
+        ],
         "station_nearest_cell_indices_sha256": next(iter(grid_indices_sha)),
         "source_authority": {
             "source_role": "official_native",

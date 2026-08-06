@@ -59,7 +59,7 @@ def load_active_global_deterministic_facts(db: Path | str) -> tuple[dict[str, An
         schema = inspect_canonical_ssot_schema(conn)
         # V6 is the only active schema.  Accepting V5 would bypass the
         # receipt-manifest lineage contract shared by every PR05--PR09 matrix.
-        if schema.get("state") != "V7" or schema.get("ok") is not True:
+        if schema.get("state") not in {"V8", "V9", "V10"} or schema.get("ok") is not True:
             raise ContractError("benchmark_coverage_canonical_v6_required")
         rows: list[dict[str, Any]] = []
         for row in conn.execute(

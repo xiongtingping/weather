@@ -29,7 +29,7 @@ from .historical_awc_replay import (
 
 BUILD_SCHEMA = "bayes_basket_target_historical_awc_truth_contract_build_v1"
 BUILDER_ID = "truth.awc_historical_replay.initial_snapshot.v1"
-TRUTH_RULE = "max_temperature_from_exact_00_metar_and_valid_speci_v1"
+TRUTH_RULE = "max_temperature_from_valid_metar_and_speci_with_hourly_coverage_v2"
 INITIAL_REPLAY_REVISION = 0
 _HEX = frozenset("0123456789abcdef")
 
@@ -92,10 +92,10 @@ def _validate_evidence(raw: Mapping[str, Any]) -> dict[str, Any]:
         "raw_text_sha256_reverified",
         "station_timezone_exact",
         "closed_days_only",
-        "metar_exact_minute_zero_only",
+        "metar_any_valid_minute_allowed",
         "speci_allowed",
         "reference_only_excluded",
-        "station_day_metar_envelope_explicit",
+        "station_day_awc_report_hour_coverage_explicit",
     }
     if not isinstance(checks, Mapping) or any(checks.get(key) is not True for key in required_checks):
         raise ContractError("historical_awc_truth_evidence_checks_invalid")
@@ -163,14 +163,30 @@ def _validate_evidence(raw: Mapping[str, Any]) -> dict[str, Any]:
         event_date = str(item.get("event_date") or "")
         if item.get("truth_ready") is not (event_date in set(ready)):
             raise ContractError("historical_awc_truth_completeness_state_mismatch")
-        expected_slots = item.get("expected_exact_hour_metar_slots")
-        observed_slots = item.get("observed_exact_hour_metar_slots")
-        missing_slots = item.get("missing_exact_hour_metar_slots")
+        expected_slots = item.get("expected_awc_report_hour_slots")
+        observed_slots = item.get("observed_awc_report_hour_slots")
+        missing_slots = item.get("missing_awc_report_hour_slots")
         conflicts = item.get("quarantined_metar_revision_slots")
         if any(not isinstance(value, list) for value in (expected_slots, observed_slots, missing_slots, conflicts)):
             raise ContractError("historical_awc_truth_completeness_slots_invalid")
         if sorted(set(expected_slots) - set(observed_slots)) != missing_slots:
             raise ContractError("historical_awc_truth_completeness_slots_mismatch")
+        proven_slots = sorted({
+            _utc_z(
+                observation.get("valid_at_utc"),
+                "historical_awc_truth_observation_time_invalid",
+            )[1]
+            .replace(minute=0, second=0, microsecond=0)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+            for observation in observations
+            if observation.get("report_type") in {"METAR", "SPECI"}
+            and observation.get("event_date") == event_date
+        })
+        if proven_slots != observed_slots:
+            raise ContractError(
+                "historical_awc_truth_completeness_observation_slots_mismatch"
+            )
         if event_date in set(ready) and (missing_slots or conflicts):
             raise ContractError("historical_awc_truth_ready_date_incomplete")
     diagnostic_dates = [str(item.get("event_date") or "") for item in missing_diagnostics]
@@ -265,8 +281,6 @@ def _truth_facts(evidence: Mapping[str, Any]) -> list[dict[str, Any]]:
         )
         if valid_text != raw.get("valid_at_utc") or valid_at.astimezone(ZoneInfo(timezone_name)).date().isoformat() != event_date:
             raise ContractError("historical_awc_truth_observation_date_mismatch")
-        if raw.get("report_type") == "METAR" and (valid_at.minute != 0 or valid_at.second != 0):
-            raise ContractError("historical_awc_truth_metar_not_exact_hour")
         temperature = raw.get("reported_temperature_c")
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
             raise ContractError("historical_awc_truth_temperature_invalid")

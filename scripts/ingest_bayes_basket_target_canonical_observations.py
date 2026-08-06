@@ -48,7 +48,10 @@ def main() -> int:
     write_bounded_json(receipt, result)
     result["receipt"] = str(receipt)
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0 if result.get("state") in {"VALIDATED_NO_WRITE", "COMMITTED"} else 2
+    return 0 if result.get("state") in {
+        "VALIDATED_NO_WRITE",
+        "MATERIALIZED_UNPUBLISHED",
+    } else 2
 
 
 if __name__ == "__main__":

@@ -80,6 +80,7 @@ def _p1_kwargs(*, decision_at_utc: str = "2026-07-23T05:20:00Z") -> dict:
             "observation_id": "obs-awc-1",
             "station_id": "ZUUU",
             "event_date_local": "2026-07-23",
+            "settlement_timezone": "America/New_York",
             "reported_temperature_c": 38.2,
             "valid_at_utc": "2026-07-23T05:00:00Z",
             "canonical_committed_at_utc": "2026-07-23T05:10:00Z",

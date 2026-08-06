@@ -345,6 +345,13 @@ def compile_station_p1_packets(
             != previous.event_date
         ):
             continue
+        observation_timezone = str(
+            observation.get("settlement_timezone") or ""
+        ).strip()
+        if not observation_timezone:
+            raise ContractError("p1_observation_settlement_timezone_missing")
+        if observation_timezone != previous.settlement_timezone:
+            raise ContractError("p1_observation_settlement_timezone_mismatch")
         committed = _parse_utc(
             str(observation.get("canonical_committed_at_utc") or "")
         )
@@ -372,6 +379,7 @@ def compile_station_p1_packets(
                     "observation_id": observation_id,
                     "station_id": previous.station_id,
                     "event_date": previous.event_date,
+                    "settlement_timezone": observation_timezone,
                     "source_lane": str(
                         observation.get("source_lane") or ""
                     ).lower(),

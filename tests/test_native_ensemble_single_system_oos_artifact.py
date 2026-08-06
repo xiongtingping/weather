@@ -267,13 +267,13 @@ def test_builder_reads_explicit_binding_without_inferred_join(tmp_path: Path) ->
     assert manifest["artifact_count"] == 0
 
 
-def test_builder_rejects_non_v6_database(tmp_path: Path) -> None:
+def test_builder_rejects_non_v7_database(tmp_path: Path) -> None:
     database = tmp_path / "invalid.db"
     with sqlite3.connect(database) as conn:
         conn.execute("CREATE TABLE canonical_ssot_fact(fact_id TEXT)")
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as conn:
         conn.execute("PRAGMA query_only=ON")
-        with pytest.raises(ContractError, match="canonical_ssot_v6_required"):
+        with pytest.raises(ContractError, match="canonical_ssot_v7_required"):
             build_single_system_oos_artifacts(conn, compiled_at_utc=AS_OF)
 
 

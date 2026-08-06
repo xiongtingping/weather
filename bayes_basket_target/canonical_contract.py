@@ -14,8 +14,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -218,9 +220,13 @@ TOP_LEVEL_FIELDS = frozenset(
 
 TYPED_SCOPE_ENVELOPE_SCHEMA = "bayes_basket_target_canonical_typed_scope_envelope_v1"
 TYPED_SCOPE_TYPES = (
+    "P0_ACTIVATION",
+    "P0_SNAPSHOT",
+    "TRUTH_OBSERVATION",
     "TRUTH_DAY",
     "TAF_P0M",
     "TRAJECTORY_P1",
+    "STRATEGY_POLICY",
     "STRATEGY_UTILITY",
     "MARKET_WS",
     "RUNTIME",
@@ -242,10 +248,28 @@ TYPED_SCOPE_BLOCKERS = (
     "TIMEZONE_MISMATCH",
     "OOS_SAMPLE_SHORT",
     "ACTIVATION_ROOT_MISSING",
+    "MARKET_BUCKET_BRIDGE_MISSING",
 )
 TYPED_SCOPE_NATURAL_KEY_FIELDS = {
-    ("TRUTH_DAY", "REVISION"): (
-        "station_id", "event_date", "truth_revision_no",
+    ("P0_ACTIVATION", "ACTIVATION"): (
+        "station_id", "lead_bucket", "run_cycle", "run_cycle_scope",
+        "run_cycle_vector_sha256", "authority_scope", "model_family",
+        "available_system_set_sha256", "independence_family_set_sha256",
+    ),
+    ("P0_SNAPSHOT", "SNAPSHOT"): (
+        "station_id", "event_date", "decision_at_utc", "lead_bucket",
+        "run_cycle", "run_cycle_scope", "run_cycle_vector_sha256",
+        "authority_scope", "model_family", "available_system_set_sha256",
+        "independence_family_set_sha256", "probability_root_sha256",
+        "activation_content_sha256", "forward_applicability_content_sha256",
+    ),
+    ("TRUTH_OBSERVATION", "REVISION"): (
+        "station_id", "event_date", "settlement_timezone", "observation_id",
+        "revision_no", "observed_at_utc", "canonical_committed_at_utc",
+        "source_lane",
+    ),
+    ("TRUTH_DAY", "DAY_BOUNDS"): (
+        "station_id", "event_date", "settlement_timezone", "bounds_version",
     ),
     ("TAF_P0M", "ARTIFACT"): (
         "station_id", "settlement_timezone", "season", "lead_bucket", "run_cycle",
@@ -260,6 +284,10 @@ TYPED_SCOPE_NATURAL_KEY_FIELDS = {
     ("TRAJECTORY_P1", "EVENT"): (
         "station_id", "event_date", "decision_at_utc", "probability_root_sha256",
         "observation_id",
+    ),
+    ("STRATEGY_POLICY", "ACTIVATION"): (
+        "station_id", "policy_stage", "strategy_version", "season", "maturity",
+        "liquidity_regime", "activation_content_sha256",
     ),
     ("STRATEGY_UTILITY", "EVALUATION"): (
         "station_id", "event_date", "decision_at_utc", "settlement_timezone",
@@ -282,6 +310,7 @@ TYPED_SCOPE_FACT_FIELDS = frozenset(
         "scope_type",
         "scope_kind",
         "natural_key",
+        "version",
         "as_of_utc",
         "state",
         "blockers",
@@ -411,6 +440,134 @@ _OOS_METRIC_FIELDS = frozenset({"mae_c", "rmse_c", "mean_error_c"})
 _OOS_CALIBRATION_PARAMETER_FIELDS = frozenset(
     {"bias_c", "train_climatology_tmax_c"}
 )
+_REPUBLISHER_PRODUCT_LINEAGE = frozenset(
+    {
+        ("AIFS", "ecmwf_aifs025_single", "ECMWF"),
+        ("ICON", "dwd_icon_global", "DWD"),
+    }
+)
+
+REPUBLISHER_CROSS_SELECTION_CONTRACT_SCHEMA = (
+    "bayes_basket_target_canonical_republisher_cross_selection_contract_v1"
+)
+REPUBLISHER_CROSS_SELECTION_COMPONENT_FIELDS = frozenset(
+    {
+        "upstream_model_id",
+        "republisher_product_id",
+        "independence_family_id",
+        "artifact_id",
+        "artifact_content_sha256",
+        "train_case_set_sha256",
+        "holdout_case_set_sha256",
+        "strict_oos_cohort_sha256",
+        "evaluation_content_sha256",
+        "run_cycle",
+        "run_cycle_scope",
+    }
+)
+REPUBLISHER_CROSS_SELECTION_TRUTH_REF_FIELDS = frozenset(
+    {
+        "event_date",
+        "canonical_truth_fact_content_sha256",
+        "awc_truth_id",
+        "awc_truth_revision_no",
+        "awc_truth_content_sha256",
+        "awc_truth_asof_utc",
+        "station_day_end_utc",
+    }
+)
+REPUBLISHER_CROSS_SELECTION_FACT_FIELDS = frozenset(
+    {
+        "selection_id",
+        "station_id",
+        "settlement_timezone",
+        "settlement_definition",
+        "season_bin",
+        "lead_bucket",
+        "run_cycle",
+        "run_cycle_scope",
+        "source_class",
+        "transport_provider_id",
+        "authority_scope",
+        "model_family",
+        "selection_method_version",
+        "weight_rmse_floor_c",
+        "component_artifact_refs",
+        "holdout_truth_refs",
+        "holdout_truth_ref_set_sha256",
+        "train_calibrated_rmse_c",
+        "selected_weights",
+        "selected_holdout_metrics",
+        "uniform_holdout_metrics",
+        "climatology_holdout_metrics",
+        "state",
+        "future_event_count",
+        "native_arrival_indexed",
+        "p1_eligible",
+        "formal_live_authority",
+        "production_no_live_only",
+        "content_sha256",
+    }
+)
+REPUBLISHER_CROSS_SELECTION_CONTRACT_FIELDS = frozenset(
+    {"schema", "as_of_utc", "builder_id", "selection_facts", "content_sha256"}
+)
+REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_SCHEMA = (
+    "bayes_basket_target_canonical_republisher_no_live_activation_contract_v1"
+)
+REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS = frozenset(
+    {
+        "activation_id",
+        "station_id",
+        "settlement_timezone",
+        "settlement_definition",
+        "season_bin",
+        "lead_bucket",
+        "run_cycle",
+        "run_cycle_scope",
+        "source_class",
+        "transport_provider_id",
+        "authority_scope",
+        "model_family",
+        "selection_id",
+        "selection_content_sha256",
+        "activation_generation",
+        "predecessor_activation_content_sha256",
+        "activated_at_utc",
+        "state",
+        "future_event_count",
+        "native_arrival_indexed",
+        "p1_eligible",
+        "formal_live_authority",
+        "production_no_live_only",
+        "content_sha256",
+    }
+)
+REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS_V2 = frozenset(
+    {*REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS,
+     "temperature_distribution_artifact_content_sha256"}
+)
+REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_FIELDS = frozenset(
+    {"schema", "as_of_utc", "builder_id", "activation_facts", "content_sha256"}
+)
+_DECIMAL_12_RE = re.compile(r"^(?:0|[1-9][0-9]*)\.[0-9]{12}$")
+_SIGNED_DECIMAL_12_RE = re.compile(r"^-?(?:0|[1-9][0-9]*)\.[0-9]{12}$")
+
+
+def _nonnegative_decimal_12(value: Any, field: str) -> str:
+    if not isinstance(value, str) or _DECIMAL_12_RE.fullmatch(value) is None:
+        raise ContractError(f"canonical_{field}_decimal12_invalid")
+    return value
+
+
+def _signed_decimal_12(value: Any, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or _SIGNED_DECIMAL_12_RE.fullmatch(value) is None
+        or value == "-0.000000000000"
+    ):
+        raise ContractError(f"canonical_{field}_decimal12_invalid")
+    return value
 
 
 def _text(value: Any, field: str, *, allow_empty: bool = False) -> str:
@@ -539,7 +696,7 @@ class CanonicalModelFact:
     event_date: str
     run_init_utc: str
     lead_bucket: str
-    run_cycle: str
+    run_cycle: str | None
     settlement_timezone: str
     forecast_value: float
     raw_object_sha256: str
@@ -680,7 +837,7 @@ class CanonicalNativeArrivalFact:
     native_object_id: str
     run_init_utc: str
     lead_bucket: str
-    run_cycle: str
+    run_cycle: str | None
     raw_object_sha256: str
     published_at_known: bool
     published_at_utc: str
@@ -1391,9 +1548,10 @@ class CanonicalActivationFact:
         return f"{self.station_id}|{self.model_family}|{self.lead_bucket}|{self.run_cycle}|{self.activation_generation}"
 
 
-def _typed_natural_key(
+def normalize_typed_scope_natural_key(
     *, scope_type: str, scope_kind: str, raw: Any
 ) -> dict[str, Any]:
+    """Return the sole canonical representation used to hash a typed key."""
     fields = TYPED_SCOPE_NATURAL_KEY_FIELDS.get((scope_type, scope_kind))
     if fields is None:
         raise ContractError("canonical_typed_scope_kind_invalid")
@@ -1412,7 +1570,17 @@ def _typed_natural_key(
             result[field] = _timezone(value)
         elif field.endswith("_sha256"):
             result[field] = _sha(value, field)
-        elif field in {"truth_revision_no", "ws_sequence"}:
+        elif field == "run_cycle":
+            # Republisher facts explicitly prove the absence of an official
+            # native run cycle as JSON null.  Preserve that value verbatim;
+            # replacing it with a string marker would be a forbidden adapter.
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ContractError("canonical_typed_scope_run_cycle_invalid")
+            result[field] = value
+        elif field in {
+            "truth_revision_no", "revision_no", "bounds_version",
+            "ws_sequence", "activation_generation",
+        }:
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ContractError(f"canonical_typed_scope_{field}_invalid")
             result[field] = value
@@ -1420,6 +1588,13 @@ def _typed_natural_key(
             result[field] = _text(value, field)
     if result.get("source_lane") not in {None, "AWC"}:
         raise ContractError("canonical_typed_scope_source_lane_invalid")
+    if (
+        scope_type in {"P0_ACTIVATION", "P0_SNAPSHOT"}
+        and result.get("run_cycle") is None
+        and result.get("run_cycle_scope")
+        != "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE"
+    ):
+        raise ContractError("canonical_typed_scope_run_cycle_scope_invalid")
     launch_domain = result.get("launch_domain")
     if launch_domain is not None and (
         not launch_domain.startswith("gui/")
@@ -1429,11 +1604,32 @@ def _typed_natural_key(
     return result
 
 
+def _typed_scope_version(*, scope_type: str, raw: Any) -> dict[str, Any] | None:
+    """Validate non-identity version metadata for typed scope facts.
+
+    `activation_generation` is deliberately excluded from P0 natural keys. It
+    remains append-only version evidence so a consumer can inspect it without
+    silently turning every generation into a distinct business scope.
+    """
+
+    if scope_type not in {"P0_ACTIVATION", "P0_SNAPSHOT"}:
+        if raw is not None:
+            raise ContractError("canonical_typed_scope_version_unexpected")
+        return None
+    if not isinstance(raw, Mapping) or set(raw) != {"activation_generation"}:
+        raise ContractError("canonical_typed_scope_version_fields_invalid")
+    generation = raw.get("activation_generation")
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+        raise ContractError("canonical_typed_scope_version_generation_invalid")
+    return {"activation_generation": generation}
+
+
 @dataclass(frozen=True)
 class CanonicalTypedScopeFact:
     scope_type: str
     scope_kind: str
     natural_key: dict[str, Any]
+    version: dict[str, Any] | None
     as_of_utc: str
     state: str
     blockers: tuple[str, ...]
@@ -1448,11 +1644,12 @@ class CanonicalTypedScopeFact:
         if scope_type not in TYPED_SCOPE_TYPES:
             raise ContractError("canonical_typed_scope_type_invalid")
         scope_kind = _text(raw.get("scope_kind"), "scope_kind")
-        natural_key = _typed_natural_key(
+        natural_key = normalize_typed_scope_natural_key(
             scope_type=scope_type,
             scope_kind=scope_kind,
             raw=raw.get("natural_key"),
         )
+        version = _typed_scope_version(scope_type=scope_type, raw=raw.get("version"))
         state = _text(raw.get("state"), "state")
         if state not in TYPED_SCOPE_STATES:
             raise ContractError("canonical_typed_scope_state_invalid")
@@ -1474,6 +1671,7 @@ class CanonicalTypedScopeFact:
             scope_type=scope_type,
             scope_kind=scope_kind,
             natural_key=natural_key,
+            version=version,
             as_of_utc=_timestamp(raw.get("as_of_utc"), "as_of_utc"),
             state=state,
             blockers=blockers,
@@ -1491,6 +1689,7 @@ class CanonicalTypedScopeFact:
             "scope_type": self.scope_type,
             "scope_kind": self.scope_kind,
             "natural_key": dict(self.natural_key),
+            "version": None if self.version is None else dict(self.version),
             "as_of_utc": self.as_of_utc,
             "state": self.state,
             "blockers": list(self.blockers),
@@ -1868,7 +2067,7 @@ class CanonicalRepublisherOOSArtifactFact:
     settlement_timezone: str
     settlement_definition: str
     lead_bucket: str
-    run_cycle: str
+    run_cycle: str | None
     run_cycle_scope: str
     season_bin: str
     forecast_extraction_version: str
@@ -1908,9 +2107,12 @@ class CanonicalRepublisherOOSArtifactFact:
             raise ContractError("canonical_republisher_oos_authority_invalid")
         if raw.get("transport_provider_id") != "OPEN_METEO":
             raise ContractError("canonical_republisher_oos_transport_invalid")
-        if raw.get("run_cycle") != "AGGREGATOR_UNKNOWN_NATIVE_CYCLE":
+        if raw.get("run_cycle") is not None:
             raise ContractError("canonical_republisher_oos_run_cycle_invalid")
-        if raw.get("run_cycle_scope") != "REPUBLISHER_HISTORICAL_DAY_SCOPE":
+        if (
+            raw.get("run_cycle_scope")
+            != "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE"
+        ):
             raise ContractError("canonical_republisher_oos_run_cycle_scope_invalid")
         if raw.get("state") != "PRODUCTION_NO_LIVE_OOS_PASS":
             raise ContractError("canonical_republisher_oos_state_invalid")
@@ -1974,8 +2176,8 @@ class CanonicalRepublisherOOSArtifactFact:
             "settlement_timezone": str(raw.get("settlement_timezone") or "").strip(),
             "settlement_definition": str(raw.get("settlement_definition") or "").strip(),
             "lead_bucket": str(raw.get("lead_bucket") or "").strip(),
-            "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
-            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_SCOPE",
+            "run_cycle": None,
+            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
             "season_bin": str(raw.get("season_bin") or "").strip(),
             "forecast_extraction_version": str(raw.get("forecast_extraction_version") or "").strip(),
             "artifact_method_version": str(raw.get("artifact_method_version") or "").strip(),
@@ -2076,6 +2278,13 @@ class CanonicalRepublisherOOSArtifactFact:
         )
         if raw.get("artifact_id") != expected_artifact_id:
             raise ContractError("canonical_republisher_oos_artifact_id_mismatch")
+        product_lineage = (
+            scope_identity["upstream_model_id"],
+            scope_identity["republisher_product_id"],
+            scope_identity["independence_family_id"],
+        )
+        if product_lineage not in _REPUBLISHER_PRODUCT_LINEAGE:
+            raise ContractError("canonical_republisher_oos_product_lineage_invalid")
         result = cls(
             artifact_id=expected_artifact_id,
             station_id=_text(raw.get("station_id"), "station_id").upper(),
@@ -2097,8 +2306,8 @@ class CanonicalRepublisherOOSArtifactFact:
                 raw.get("settlement_definition"), "settlement_definition"
             ),
             lead_bucket=_text(raw.get("lead_bucket"), "lead_bucket"),
-            run_cycle="AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
-            run_cycle_scope="REPUBLISHER_HISTORICAL_DAY_SCOPE",
+            run_cycle=None,
+            run_cycle_scope="REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
             season_bin=_text(raw.get("season_bin"), "season_bin"),
             forecast_extraction_version=_text(
                 raw.get("forecast_extraction_version"),
@@ -2189,7 +2398,7 @@ class CanonicalRepublisherOOSArtifactFact:
                 self.settlement_timezone,
                 self.settlement_definition,
                 self.lead_bucket,
-                self.run_cycle,
+                "null",
                 self.run_cycle_scope,
                 self.season_bin,
                 self.forecast_extraction_version,
@@ -2259,6 +2468,760 @@ class CanonicalRepublisherOOSArtifactContract:
             "as_of_utc": self.as_of_utc,
             "builder_id": self.builder_id,
             "artifact_facts": [item.to_mapping() for item in self.artifact_facts],
+        }
+        return {**identity, "content_sha256": content_sha256(identity)}
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherCrossSelectionComponentRef:
+    upstream_model_id: str
+    republisher_product_id: str
+    independence_family_id: str
+    artifact_id: str
+    artifact_content_sha256: str
+    train_case_set_sha256: str
+    holdout_case_set_sha256: str
+    strict_oos_cohort_sha256: str
+    evaluation_content_sha256: str
+    run_cycle: None
+    run_cycle_scope: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherCrossSelectionComponentRef":
+        _strict_keys(
+            raw,
+            REPUBLISHER_CROSS_SELECTION_COMPONENT_FIELDS,
+            "republisher_cross_selection_component_ref",
+        )
+        product = (
+            _text(raw.get("upstream_model_id"), "upstream_model_id").upper(),
+            _text(raw.get("republisher_product_id"), "republisher_product_id"),
+            _text(raw.get("independence_family_id"), "independence_family_id"),
+        )
+        if product not in _REPUBLISHER_PRODUCT_LINEAGE:
+            raise ContractError(
+                "canonical_republisher_cross_selection_product_lineage_invalid"
+            )
+        if raw.get("run_cycle") is not None:
+            raise ContractError(
+                "canonical_republisher_cross_selection_run_cycle_invalid"
+            )
+        scope = _text(raw.get("run_cycle_scope"), "run_cycle_scope")
+        if scope != "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE":
+            raise ContractError(
+                "canonical_republisher_cross_selection_run_cycle_scope_invalid"
+            )
+        return cls(
+            upstream_model_id=product[0],
+            republisher_product_id=product[1],
+            independence_family_id=product[2],
+            artifact_id=_text(raw.get("artifact_id"), "artifact_id"),
+            artifact_content_sha256=_sha(
+                raw.get("artifact_content_sha256"), "artifact_content_sha256"
+            ),
+            train_case_set_sha256=_sha(
+                raw.get("train_case_set_sha256"), "train_case_set_sha256"
+            ),
+            holdout_case_set_sha256=_sha(
+                raw.get("holdout_case_set_sha256"), "holdout_case_set_sha256"
+            ),
+            strict_oos_cohort_sha256=_sha(
+                raw.get("strict_oos_cohort_sha256"), "strict_oos_cohort_sha256"
+            ),
+            evaluation_content_sha256=_sha(
+                raw.get("evaluation_content_sha256"), "evaluation_content_sha256"
+            ),
+            run_cycle=None,
+            run_cycle_scope=scope,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "upstream_model_id": self.upstream_model_id,
+            "republisher_product_id": self.republisher_product_id,
+            "independence_family_id": self.independence_family_id,
+            "artifact_id": self.artifact_id,
+            "artifact_content_sha256": self.artifact_content_sha256,
+            "train_case_set_sha256": self.train_case_set_sha256,
+            "holdout_case_set_sha256": self.holdout_case_set_sha256,
+            "strict_oos_cohort_sha256": self.strict_oos_cohort_sha256,
+            "evaluation_content_sha256": self.evaluation_content_sha256,
+            "run_cycle": None,
+            "run_cycle_scope": self.run_cycle_scope,
+        }
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherCrossSelectionTruthRef:
+    event_date: str
+    canonical_truth_fact_content_sha256: str
+    awc_truth_id: str
+    awc_truth_revision_no: int
+    awc_truth_content_sha256: str
+    awc_truth_asof_utc: str
+    station_day_end_utc: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherCrossSelectionTruthRef":
+        _strict_keys(
+            raw,
+            REPUBLISHER_CROSS_SELECTION_TRUTH_REF_FIELDS,
+            "republisher_cross_selection_truth_ref",
+        )
+        revision = raw.get("awc_truth_revision_no")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise ContractError(
+                "canonical_republisher_cross_selection_truth_revision_invalid"
+            )
+        as_of = _timestamp(raw.get("awc_truth_asof_utc"), "awc_truth_asof_utc")
+        day_end = _timestamp(raw.get("station_day_end_utc"), "station_day_end_utc")
+        if as_of < day_end:
+            raise ContractError(
+                "canonical_republisher_cross_selection_truth_before_day_end"
+            )
+        return cls(
+            event_date=_event_date(raw.get("event_date")),
+            canonical_truth_fact_content_sha256=_sha(
+                raw.get("canonical_truth_fact_content_sha256"),
+                "canonical_truth_fact_content_sha256",
+            ),
+            awc_truth_id=_text(raw.get("awc_truth_id"), "awc_truth_id"),
+            awc_truth_revision_no=revision,
+            awc_truth_content_sha256=_sha(
+                raw.get("awc_truth_content_sha256"), "awc_truth_content_sha256"
+            ),
+            awc_truth_asof_utc=as_of,
+            station_day_end_utc=day_end,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "event_date": self.event_date,
+            "canonical_truth_fact_content_sha256": self.canonical_truth_fact_content_sha256,
+            "awc_truth_id": self.awc_truth_id,
+            "awc_truth_revision_no": self.awc_truth_revision_no,
+            "awc_truth_content_sha256": self.awc_truth_content_sha256,
+            "awc_truth_asof_utc": self.awc_truth_asof_utc,
+            "station_day_end_utc": self.station_day_end_utc,
+        }
+
+
+def _selection_decimal_map(raw: Any, label: str) -> dict[str, str]:
+    if not isinstance(raw, Mapping):
+        raise ContractError(f"canonical_{label}_mapping_required")
+    if frozenset(raw) != frozenset({"AIFS", "ICON"}):
+        raise ContractError(f"canonical_{label}_keys_invalid")
+    return {
+        key: _nonnegative_decimal_12(raw.get(key), f"{label}_{key.lower()}")
+        for key in ("AIFS", "ICON")
+    }
+
+
+def _selection_metric_map(raw: Any, label: str) -> dict[str, str]:
+    if not isinstance(raw, Mapping):
+        raise ContractError(f"canonical_{label}_mapping_required")
+    _strict_keys(raw, _OOS_METRIC_FIELDS, label)
+    return {
+        "mae_c": _nonnegative_decimal_12(raw.get("mae_c"), f"{label}_mae_c"),
+        "mean_error_c": _signed_decimal_12(
+            raw.get("mean_error_c"), f"{label}_mean_error_c"
+        ),
+        "rmse_c": _nonnegative_decimal_12(raw.get("rmse_c"), f"{label}_rmse_c"),
+    }
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherCrossSelectionFact:
+    selection_id: str
+    station_id: str
+    settlement_timezone: str
+    settlement_definition: str
+    season_bin: str
+    lead_bucket: str
+    run_cycle: None
+    run_cycle_scope: str
+    source_class: str
+    transport_provider_id: str
+    authority_scope: str
+    model_family: str
+    selection_method_version: str
+    weight_rmse_floor_c: str
+    component_artifact_refs: tuple[CanonicalRepublisherCrossSelectionComponentRef, ...]
+    holdout_truth_refs: tuple[CanonicalRepublisherCrossSelectionTruthRef, ...]
+    holdout_truth_ref_set_sha256: str
+    train_calibrated_rmse_c: Mapping[str, str]
+    selected_weights: Mapping[str, str]
+    selected_holdout_metrics: Mapping[str, str]
+    uniform_holdout_metrics: Mapping[str, str]
+    climatology_holdout_metrics: Mapping[str, str]
+    state: str
+    future_event_count: int
+    native_arrival_indexed: bool
+    p1_eligible: bool
+    formal_live_authority: bool
+    production_no_live_only: bool
+    content_sha256: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherCrossSelectionFact":
+        _strict_keys(
+            raw,
+            REPUBLISHER_CROSS_SELECTION_FACT_FIELDS,
+            "republisher_cross_selection_fact",
+        )
+        fixed = {
+            "run_cycle": None,
+            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+            "source_class": "aggregator_republisher",
+            "transport_provider_id": "OPEN_METEO",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "model_family": "cross_global_deterministic",
+            "selection_method_version": "inverse_calibrated_train_rmse_floor_v1",
+            "weight_rmse_floor_c": "0.100000000000",
+            "state": "PRODUCTION_NO_LIVE_CROSS_SELECTION_READY",
+            "future_event_count": 0,
+            "native_arrival_indexed": False,
+            "p1_eligible": False,
+            "formal_live_authority": False,
+            "production_no_live_only": True,
+        }
+        for key, expected in fixed.items():
+            if raw.get(key) != expected:
+                raise ContractError(
+                    f"canonical_republisher_cross_selection_{key}_invalid"
+                )
+        raw_components = raw.get("component_artifact_refs")
+        if not isinstance(raw_components, list) or len(raw_components) != 2:
+            raise ContractError(
+                "canonical_republisher_cross_selection_components_invalid"
+            )
+        components = tuple(
+            CanonicalRepublisherCrossSelectionComponentRef.from_mapping(item)
+            for item in raw_components
+            if isinstance(item, Mapping)
+        )
+        if len(components) != 2 or [item.upstream_model_id for item in components] != [
+            "AIFS",
+            "ICON",
+        ]:
+            raise ContractError(
+                "canonical_republisher_cross_selection_component_order_invalid"
+            )
+        if len({item.independence_family_id for item in components}) != 2:
+            raise ContractError(
+                "canonical_republisher_cross_selection_family_independence_invalid"
+            )
+        raw_truths = raw.get("holdout_truth_refs")
+        if not isinstance(raw_truths, list) or len(raw_truths) != 8:
+            raise ContractError(
+                "canonical_republisher_cross_selection_holdout_truth_refs_invalid"
+            )
+        truths = tuple(
+            CanonicalRepublisherCrossSelectionTruthRef.from_mapping(item)
+            for item in raw_truths
+            if isinstance(item, Mapping)
+        )
+        if len(truths) != 8 or [item.event_date for item in truths] != sorted(
+            {item.event_date for item in truths}
+        ):
+            raise ContractError(
+                "canonical_republisher_cross_selection_holdout_truth_order_invalid"
+            )
+        truth_set_sha = _sha(
+            raw.get("holdout_truth_ref_set_sha256"),
+            "holdout_truth_ref_set_sha256",
+        )
+        if truth_set_sha != content_sha256([item.to_mapping() for item in truths]):
+            raise ContractError(
+                "canonical_republisher_cross_selection_truth_set_hash_mismatch"
+            )
+        train_rmse = _selection_decimal_map(
+            raw.get("train_calibrated_rmse_c"), "train_calibrated_rmse_c"
+        )
+        weights = _selection_decimal_map(raw.get("selected_weights"), "selected_weights")
+        if any(Decimal(value) <= 0 for value in weights.values()) or sum(
+            Decimal(value) for value in weights.values()
+        ) != Decimal("1.000000000000"):
+            raise ContractError(
+                "canonical_republisher_cross_selection_weights_invalid"
+            )
+        selected_metrics = _selection_metric_map(
+            raw.get("selected_holdout_metrics"), "selected_holdout_metrics"
+        )
+        uniform_metrics = _selection_metric_map(
+            raw.get("uniform_holdout_metrics"), "uniform_holdout_metrics"
+        )
+        climatology_metrics = _selection_metric_map(
+            raw.get("climatology_holdout_metrics"),
+            "climatology_holdout_metrics",
+        )
+        natural_identity = {
+            "station_id": _text(raw.get("station_id"), "station_id").upper(),
+            "settlement_timezone": _timezone(raw.get("settlement_timezone")),
+            "settlement_definition": _text(
+                raw.get("settlement_definition"), "settlement_definition"
+            ),
+            "season_bin": _text(raw.get("season_bin"), "season_bin"),
+            "lead_bucket": _text(raw.get("lead_bucket"), "lead_bucket"),
+            "run_cycle": None,
+            "run_cycle_scope": fixed["run_cycle_scope"],
+            "component_artifact_content_sha256s": [
+                item.artifact_content_sha256 for item in components
+            ],
+            "holdout_truth_ref_set_sha256": truth_set_sha,
+            "selection_method_version": fixed["selection_method_version"],
+            "weight_rmse_floor_c": fixed["weight_rmse_floor_c"],
+        }
+        selection_id = (
+            "republisher-cross-selection-"
+            + content_sha256(natural_identity)[:40]
+        )
+        if raw.get("selection_id") != selection_id:
+            raise ContractError(
+                "canonical_republisher_cross_selection_id_mismatch"
+            )
+        result = cls(
+            selection_id=selection_id,
+            station_id=natural_identity["station_id"],
+            settlement_timezone=natural_identity["settlement_timezone"],
+            settlement_definition=natural_identity["settlement_definition"],
+            season_bin=natural_identity["season_bin"],
+            lead_bucket=natural_identity["lead_bucket"],
+            run_cycle=None,
+            run_cycle_scope=fixed["run_cycle_scope"],
+            source_class=fixed["source_class"],
+            transport_provider_id=fixed["transport_provider_id"],
+            authority_scope=fixed["authority_scope"],
+            model_family=fixed["model_family"],
+            selection_method_version=fixed["selection_method_version"],
+            weight_rmse_floor_c=fixed["weight_rmse_floor_c"],
+            component_artifact_refs=components,
+            holdout_truth_refs=truths,
+            holdout_truth_ref_set_sha256=truth_set_sha,
+            train_calibrated_rmse_c=train_rmse,
+            selected_weights=weights,
+            selected_holdout_metrics=selected_metrics,
+            uniform_holdout_metrics=uniform_metrics,
+            climatology_holdout_metrics=climatology_metrics,
+            state=fixed["state"],
+            future_event_count=0,
+            native_arrival_indexed=False,
+            p1_eligible=False,
+            formal_live_authority=False,
+            production_no_live_only=True,
+            content_sha256=_sha(
+                raw.get("content_sha256"),
+                "republisher_cross_selection_content_sha256",
+            ),
+        )
+        _verify_hash(result.to_mapping(), label="republisher_cross_selection_fact")
+        return result
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "selection_id": self.selection_id,
+            "station_id": self.station_id,
+            "settlement_timezone": self.settlement_timezone,
+            "settlement_definition": self.settlement_definition,
+            "season_bin": self.season_bin,
+            "lead_bucket": self.lead_bucket,
+            "run_cycle": None,
+            "run_cycle_scope": self.run_cycle_scope,
+            "source_class": self.source_class,
+            "transport_provider_id": self.transport_provider_id,
+            "authority_scope": self.authority_scope,
+            "model_family": self.model_family,
+            "selection_method_version": self.selection_method_version,
+            "weight_rmse_floor_c": self.weight_rmse_floor_c,
+            "component_artifact_refs": [
+                item.to_mapping() for item in self.component_artifact_refs
+            ],
+            "holdout_truth_refs": [item.to_mapping() for item in self.holdout_truth_refs],
+            "holdout_truth_ref_set_sha256": self.holdout_truth_ref_set_sha256,
+            "train_calibrated_rmse_c": dict(self.train_calibrated_rmse_c),
+            "selected_weights": dict(self.selected_weights),
+            "selected_holdout_metrics": dict(self.selected_holdout_metrics),
+            "uniform_holdout_metrics": dict(self.uniform_holdout_metrics),
+            "climatology_holdout_metrics": dict(self.climatology_holdout_metrics),
+            "state": self.state,
+            "future_event_count": 0,
+            "native_arrival_indexed": False,
+            "p1_eligible": False,
+            "formal_live_authority": False,
+            "production_no_live_only": True,
+            "content_sha256": self.content_sha256,
+        }
+
+    @property
+    def scope_key(self) -> str:
+        return "|".join(
+            (
+                self.station_id,
+                self.settlement_timezone,
+                self.settlement_definition,
+                self.season_bin,
+                self.lead_bucket,
+                "null",
+                self.run_cycle_scope,
+                *(item.artifact_content_sha256 for item in self.component_artifact_refs),
+                self.holdout_truth_ref_set_sha256,
+                self.selection_method_version,
+                self.weight_rmse_floor_c,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherCrossSelectionContract:
+    as_of_utc: str
+    builder_id: str
+    selection_facts: tuple[CanonicalRepublisherCrossSelectionFact, ...]
+    content_sha256: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherCrossSelectionContract":
+        _strict_keys(
+            raw,
+            REPUBLISHER_CROSS_SELECTION_CONTRACT_FIELDS,
+            "republisher_cross_selection_contract",
+        )
+        if raw.get("schema") != REPUBLISHER_CROSS_SELECTION_CONTRACT_SCHEMA:
+            raise ContractError(
+                "canonical_republisher_cross_selection_contract_schema_invalid"
+            )
+        raw_facts = raw.get("selection_facts")
+        if (
+            not isinstance(raw_facts, list)
+            or not raw_facts
+            or any(not isinstance(item, Mapping) for item in raw_facts)
+        ):
+            raise ContractError(
+                "canonical_republisher_cross_selection_contract_facts_required"
+            )
+        facts = tuple(
+            CanonicalRepublisherCrossSelectionFact.from_mapping(item)
+            for item in raw_facts
+        )
+        _unique_scopes(facts, "republisher_cross_selection_fact")
+        as_of = _timestamp(raw.get("as_of_utc"), "as_of_utc")
+        if any(
+            truth.awc_truth_asof_utc > as_of
+            for fact in facts
+            for truth in fact.holdout_truth_refs
+        ):
+            raise ContractError(
+                "canonical_republisher_cross_selection_truth_after_contract_asof"
+            )
+        supplied = _sha(
+            raw.get("content_sha256"),
+            "republisher_cross_selection_contract_content_sha256",
+        )
+        if supplied != content_sha256(
+            {key: value for key, value in raw.items() if key != "content_sha256"}
+        ):
+            raise ContractError(
+                "canonical_republisher_cross_selection_contract_hash_mismatch"
+            )
+        return cls(
+            as_of_utc=as_of,
+            builder_id=_text(raw.get("builder_id"), "builder_id"),
+            selection_facts=facts,
+            content_sha256=supplied,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        identity = {
+            "schema": REPUBLISHER_CROSS_SELECTION_CONTRACT_SCHEMA,
+            "as_of_utc": self.as_of_utc,
+            "builder_id": self.builder_id,
+            "selection_facts": [item.to_mapping() for item in self.selection_facts],
+        }
+        return {**identity, "content_sha256": content_sha256(identity)}
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherNoLiveActivationFact:
+    activation_id: str
+    station_id: str
+    settlement_timezone: str
+    settlement_definition: str
+    season_bin: str
+    lead_bucket: str
+    run_cycle: None
+    run_cycle_scope: str
+    source_class: str
+    transport_provider_id: str
+    authority_scope: str
+    model_family: str
+    selection_id: str
+    selection_content_sha256: str
+    temperature_distribution_artifact_content_sha256: str | None
+    activation_generation: int
+    predecessor_activation_content_sha256: str | None
+    activated_at_utc: str
+    state: str
+    future_event_count: int
+    native_arrival_indexed: bool
+    p1_eligible: bool
+    formal_live_authority: bool
+    production_no_live_only: bool
+    content_sha256: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherNoLiveActivationFact":
+        raw_keys = frozenset(raw)
+        if raw_keys not in {
+            REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS,
+            REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS_V2,
+        }:
+            missing = sorted(REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS - raw_keys)
+            extra = sorted(
+                raw_keys - REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS_V2
+            )
+            raise ContractError(
+                "canonical_republisher_no_live_activation_fact_fields_mismatch:"
+                f"missing={missing}:extra={extra}"
+            )
+        distribution_sha = (
+            _sha(
+                raw.get("temperature_distribution_artifact_content_sha256"),
+                "temperature_distribution_artifact_content_sha256",
+            )
+            if raw_keys == REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS_V2
+            else None
+        )
+        fixed = {
+            "run_cycle": None,
+            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+            "source_class": "aggregator_republisher",
+            "transport_provider_id": "OPEN_METEO",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "model_family": "cross_global_deterministic",
+            "state": (
+                "PRODUCTION_NO_LIVE_REPUBLISHER_DISTRIBUTION_ACTIVATION_READY"
+                if distribution_sha is not None
+                else "PRODUCTION_NO_LIVE_REPUBLISHER_ACTIVATION_READY"
+            ),
+            "future_event_count": 0,
+            "native_arrival_indexed": False,
+            "p1_eligible": False,
+            "formal_live_authority": False,
+            "production_no_live_only": True,
+        }
+        for key, expected in fixed.items():
+            if raw.get(key) != expected:
+                raise ContractError(
+                    f"canonical_republisher_no_live_activation_{key}_invalid"
+                )
+        generation = raw.get("activation_generation")
+        if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+            raise ContractError(
+                "canonical_republisher_no_live_activation_generation_invalid"
+            )
+        predecessor_raw = raw.get("predecessor_activation_content_sha256")
+        if generation == 1:
+            if predecessor_raw is not None or distribution_sha is not None:
+                raise ContractError(
+                    "canonical_republisher_no_live_activation_predecessor_invalid"
+                )
+            predecessor = None
+        else:
+            predecessor = _sha(
+                predecessor_raw, "predecessor_activation_content_sha256"
+            )
+        root = {
+            "station_id": _text(raw.get("station_id"), "station_id").upper(),
+            "settlement_timezone": _timezone(raw.get("settlement_timezone")),
+            "settlement_definition": _text(
+                raw.get("settlement_definition"), "settlement_definition"
+            ),
+            "season_bin": _text(raw.get("season_bin"), "season_bin"),
+            "lead_bucket": _text(raw.get("lead_bucket"), "lead_bucket"),
+            "run_cycle": None,
+            "run_cycle_scope": fixed["run_cycle_scope"],
+        }
+        selection_id = _text(raw.get("selection_id"), "selection_id")
+        selection_sha = _sha(
+            raw.get("selection_content_sha256"), "selection_content_sha256"
+        )
+        activation_identity = {
+            "root": root,
+            "activation_generation": generation,
+            "selection_content_sha256": selection_sha,
+            "predecessor_activation_content_sha256": predecessor,
+        }
+        if distribution_sha is not None:
+            activation_identity[
+                "temperature_distribution_artifact_content_sha256"
+            ] = distribution_sha
+        activation_id = "republisher-no-live-activation-" + content_sha256(
+            activation_identity
+        )[:40]
+        if raw.get("activation_id") != activation_id:
+            raise ContractError(
+                "canonical_republisher_no_live_activation_id_mismatch"
+            )
+        result = cls(
+            activation_id=activation_id,
+            station_id=root["station_id"],
+            settlement_timezone=root["settlement_timezone"],
+            settlement_definition=root["settlement_definition"],
+            season_bin=root["season_bin"],
+            lead_bucket=root["lead_bucket"],
+            run_cycle=None,
+            run_cycle_scope=fixed["run_cycle_scope"],
+            source_class=fixed["source_class"],
+            transport_provider_id=fixed["transport_provider_id"],
+            authority_scope=fixed["authority_scope"],
+            model_family=fixed["model_family"],
+            selection_id=selection_id,
+            selection_content_sha256=selection_sha,
+            temperature_distribution_artifact_content_sha256=distribution_sha,
+            activation_generation=generation,
+            predecessor_activation_content_sha256=predecessor,
+            activated_at_utc=_timestamp(raw.get("activated_at_utc"), "activated_at_utc"),
+            state=fixed["state"],
+            future_event_count=0,
+            native_arrival_indexed=False,
+            p1_eligible=False,
+            formal_live_authority=False,
+            production_no_live_only=True,
+            content_sha256=_sha(
+                raw.get("content_sha256"),
+                "republisher_no_live_activation_content_sha256",
+            ),
+        )
+        _verify_hash(result.to_mapping(), label="republisher_no_live_activation_fact")
+        return result
+
+    def to_mapping(self) -> dict[str, Any]:
+        result = {
+            "activation_id": self.activation_id,
+            "station_id": self.station_id,
+            "settlement_timezone": self.settlement_timezone,
+            "settlement_definition": self.settlement_definition,
+            "season_bin": self.season_bin,
+            "lead_bucket": self.lead_bucket,
+            "run_cycle": None,
+            "run_cycle_scope": self.run_cycle_scope,
+            "source_class": self.source_class,
+            "transport_provider_id": self.transport_provider_id,
+            "authority_scope": self.authority_scope,
+            "model_family": self.model_family,
+            "selection_id": self.selection_id,
+            "selection_content_sha256": self.selection_content_sha256,
+            "activation_generation": self.activation_generation,
+            "predecessor_activation_content_sha256": self.predecessor_activation_content_sha256,
+            "activated_at_utc": self.activated_at_utc,
+            "state": self.state,
+            "future_event_count": 0,
+            "native_arrival_indexed": False,
+            "p1_eligible": False,
+            "formal_live_authority": False,
+            "production_no_live_only": True,
+            "content_sha256": self.content_sha256,
+        }
+        if self.temperature_distribution_artifact_content_sha256 is not None:
+            result["temperature_distribution_artifact_content_sha256"] = (
+                self.temperature_distribution_artifact_content_sha256
+            )
+        return result
+
+    @property
+    def activation_root(self) -> str:
+        return "|".join(
+            (
+                self.station_id,
+                self.settlement_timezone,
+                self.settlement_definition,
+                self.season_bin,
+                self.lead_bucket,
+                "null",
+                self.run_cycle_scope,
+            )
+        )
+
+    @property
+    def scope_key(self) -> str:
+        return f"{self.activation_root}|{self.activation_generation}"
+
+
+@dataclass(frozen=True)
+class CanonicalRepublisherNoLiveActivationContract:
+    as_of_utc: str
+    builder_id: str
+    activation_facts: tuple[CanonicalRepublisherNoLiveActivationFact, ...]
+    content_sha256: str
+
+    @classmethod
+    def from_mapping(
+        cls, raw: Mapping[str, Any]
+    ) -> "CanonicalRepublisherNoLiveActivationContract":
+        _strict_keys(
+            raw,
+            REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_FIELDS,
+            "republisher_no_live_activation_contract",
+        )
+        if raw.get("schema") != REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_SCHEMA:
+            raise ContractError(
+                "canonical_republisher_no_live_activation_contract_schema_invalid"
+            )
+        raw_facts = raw.get("activation_facts")
+        if (
+            not isinstance(raw_facts, list)
+            or not raw_facts
+            or any(not isinstance(item, Mapping) for item in raw_facts)
+        ):
+            raise ContractError(
+                "canonical_republisher_no_live_activation_contract_facts_required"
+            )
+        facts = tuple(
+            CanonicalRepublisherNoLiveActivationFact.from_mapping(item)
+            for item in raw_facts
+        )
+        _unique_scopes(facts, "republisher_no_live_activation_fact")
+        if len({item.activation_root for item in facts}) != len(facts):
+            raise ContractError(
+                "canonical_republisher_no_live_activation_root_duplicate"
+            )
+        as_of = _timestamp(raw.get("as_of_utc"), "as_of_utc")
+        if any(item.activated_at_utc > as_of for item in facts):
+            raise ContractError(
+                "canonical_republisher_no_live_activation_after_contract_asof"
+            )
+        supplied = _sha(
+            raw.get("content_sha256"),
+            "republisher_no_live_activation_contract_content_sha256",
+        )
+        if supplied != content_sha256(
+            {key: value for key, value in raw.items() if key != "content_sha256"}
+        ):
+            raise ContractError(
+                "canonical_republisher_no_live_activation_contract_hash_mismatch"
+            )
+        return cls(
+            as_of_utc=as_of,
+            builder_id=_text(raw.get("builder_id"), "builder_id"),
+            activation_facts=facts,
+            content_sha256=supplied,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        identity = {
+            "schema": REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_SCHEMA,
+            "as_of_utc": self.as_of_utc,
+            "builder_id": self.builder_id,
+            "activation_facts": [item.to_mapping() for item in self.activation_facts],
         }
         return {**identity, "content_sha256": content_sha256(identity)}
 
@@ -2592,6 +3555,12 @@ __all__ = [
     "CanonicalRepublisherOOSArtifactContract",
     "CanonicalRepublisherOOSArtifactFact",
     "CanonicalRepublisherOOSCohortRow",
+    "CanonicalRepublisherCrossSelectionComponentRef",
+    "CanonicalRepublisherCrossSelectionContract",
+    "CanonicalRepublisherCrossSelectionFact",
+    "CanonicalRepublisherCrossSelectionTruthRef",
+    "CanonicalRepublisherNoLiveActivationContract",
+    "CanonicalRepublisherNoLiveActivationFact",
     "CanonicalResidualFact",
     "CanonicalTruthFact",
     "CONTRACT_VERSION",
@@ -2607,6 +3576,14 @@ __all__ = [
     "REPUBLISHER_OOS_ARTIFACT_CONTRACT_SCHEMA",
     "REPUBLISHER_OOS_ARTIFACT_FACT_FIELDS",
     "REPUBLISHER_OOS_COHORT_ROW_FIELDS",
+    "REPUBLISHER_CROSS_SELECTION_COMPONENT_FIELDS",
+    "REPUBLISHER_CROSS_SELECTION_CONTRACT_FIELDS",
+    "REPUBLISHER_CROSS_SELECTION_CONTRACT_SCHEMA",
+    "REPUBLISHER_CROSS_SELECTION_FACT_FIELDS",
+    "REPUBLISHER_CROSS_SELECTION_TRUTH_REF_FIELDS",
+    "REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_FIELDS",
+    "REPUBLISHER_NO_LIVE_ACTIVATION_CONTRACT_SCHEMA",
+    "REPUBLISHER_NO_LIVE_ACTIVATION_FACT_FIELDS",
     "RESIDUAL_FACT_FIELDS",
     "FORMAL_AWC_TRUTH_ROLE",
     "HISTORICAL_AWC_REPLAY_TRUTH_ROLE",

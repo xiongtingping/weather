@@ -1,0 +1,39 @@
+{
+  "calls_order_gateway": false,
+  "confirmation_required": true,
+  "content_sha256": "0f924161ece83de9c6e704949789f4907c1fbea7b12ec6ae113bebb286755f2a",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 5721317376,
+  "database_shm_bytes": 0,
+  "database_wal_bytes": 0,
+  "fact_type_counts": {
+    "ensemble_member": 87840,
+    "market_bucket_bridge": 45,
+    "model": 12600,
+    "probability_distribution_artifact": 2,
+    "republisher_cross_selection": 2,
+    "republisher_no_live_activation": 4,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 680,
+    "truth_observation_day_bounds": 46,
+    "truth_observation_revision": 1128
+  },
+  "free_bytes": 17784500224,
+  "required_free_bytes": 17163952128,
+  "requires_writer_quiescence": true,
+  "row_count": 105196,
+  "rows_content_sha256": "1ae32e4b923bff36d92f080edbb747eb1c02e7cca74f218ecfbf1516d69f459f",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v16_migration_receipt_v1",
+  "schema_after_if_applied": "V16",
+  "schema_before": "V15",
+  "source_footprint_bytes": 5721317376,
+  "state": "PREVIEW_REQUIRES_APPLY",
+  "trigger_names": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writes_database": false,
+  "writes_orders": false
+}

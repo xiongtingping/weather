@@ -177,7 +177,7 @@ def test_role_cannot_create_second_truth_scope_for_same_revision(tmp_path: Path)
         ).fetchone()[0] == 2
 
 
-def test_tampered_or_nonexact_hour_evidence_cannot_form_truth(tmp_path: Path) -> None:
+def test_tampered_or_hour_coverage_inconsistent_evidence_cannot_form_truth(tmp_path: Path) -> None:
     evidence = _evidence(tmp_path)
     tampered = deepcopy(evidence)
     tampered["observations"][0]["reported_temperature_c"] = 99.0
@@ -193,7 +193,7 @@ def test_tampered_or_nonexact_hour_evidence_cannot_form_truth(tmp_path: Path) ->
     row["content_sha256"] = content_sha256(row_identity)
     evidence_identity = {key: value for key, value in nonexact.items() if key != "evidence_sha256"}
     nonexact["evidence_sha256"] = content_sha256(evidence_identity)
-    with pytest.raises(ContractError, match="metar_not_exact_hour"):
+    with pytest.raises(ContractError, match="completeness_observation_slots_mismatch"):
         build_historical_awc_truth_contract(
             [nonexact], as_of_utc="2026-08-04T00:00:00Z"
         )

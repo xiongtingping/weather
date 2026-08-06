@@ -68,6 +68,11 @@ def test_builds_45_by_40_complete_local_day_members_without_authority() -> None:
     )
 
     assert archive["state"] == "OFFICIAL_MEMBER_DAILY_CURVES_READY_STRICT_OOS_PENDING"
+    assert archive["provider_id"] == "icon_global_eps_official"
+    assert archive["product_id"] == "DWD_ICON_GLOBAL_EPS"
+    assert [row["forecast_hour"] for row in archive["lead_results"]] == list(
+        range(0, 24, 3)
+    )
     assert archive["station_count"] == 45
     assert archive["member_count"] == 40
     assert archive["capture_count"] == 45
@@ -77,6 +82,27 @@ def test_builds_45_by_40_complete_local_day_members_without_authority() -> None:
     assert archive["formal_p0_eligible"] is False
     assert archive["hard_no_eligible"] is False
     assert archive["boundary"]["orders_submitted"] == 0
+
+
+def test_builds_exact_et_day_from_retained_three_hour_native_slots() -> None:
+    archive = build_icon_eps_daily_archive(
+        cohorts=[_cohort(lead) for lead in range(30, 52, 3)],
+        event_date="2026-08-02",
+        station_timezones={
+            station: "America/New_York" for station in STATIONS
+        },
+        built_at_utc="2026-08-05T12:00:00Z",
+    )
+
+    assert archive["capture_count"] == 45
+    assert archive["component_cohort_count"] == 8
+    assert archive["captures"][0]["settlement_timezone"] == "America/New_York"
+    assert archive["captures"][0]["valid_times_utc"] == [
+        (datetime(2026, 8, 1, tzinfo=timezone.utc) + timedelta(hours=lead))
+        .isoformat()
+        .replace("+00:00", "Z")
+        for lead in range(30, 52, 3)
+    ]
 
 
 def test_missing_middle_lead_fails_closed() -> None:

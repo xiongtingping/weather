@@ -1,0 +1,48 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "blocked_scope_count": 0,
+  "blocker_counts": {
+    "CANONICAL_SCOPE_MISMATCH": 1
+  },
+  "builder_id": "pr10.v13_model_oos_expected_scope_basis.v1",
+  "calls_order_gateway": false,
+  "consumable": false,
+  "content_sha256": "b9c6f26c1e3365aac5d10290830f809606c42751b308b8fa3a4fe214de438dcb",
+  "expected_basis_content_sha256": "98eb306c3659e9774919a5917837c150179ebb502d9eaba0ebc9e8d083cdca2b",
+  "expected_scope_count": 0,
+  "legacy_declared_scope_count": 810,
+  "oos_ready_scope_count": 0,
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "ready_scopes": [],
+  "schema": "bayes_basket_target_pr10_model_oos_terminal_basis_v1",
+  "state": "BLOCKED",
+  "terminal_scopes": [],
+  "unresolved_input_receipts": [
+    {
+      "blocker": "CANONICAL_SCOPE_MISMATCH",
+      "invalid_key_count": 810,
+      "required_natural_key_fields": [
+        "authority_scope",
+        "ensemble_system_id",
+        "event_oos_protocol_version",
+        "independence_family_id",
+        "lead_bucket",
+        "lead_bucket_scope",
+        "model_family",
+        "model_id",
+        "provider_id",
+        "provider_product_id",
+        "run_cycle",
+        "run_cycle_scope",
+        "settlement_timezone",
+        "source_class",
+        "station_id"
+      ],
+      "state": "BLOCKED"
+    }
+  ],
+  "writes_database": false,
+  "writes_pointer": false
+}

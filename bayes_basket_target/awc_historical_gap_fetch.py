@@ -49,7 +49,7 @@ INVENTORY_SCHEMA = "awc_historical_truth_gap_inventory_v1"
 RECEIPT_SCHEMA = "awc_historical_truth_gap_fetch_receipt_v1"
 TRUTH_GAP_SCHEMA = "bayes_basket_target_historical_awc_truth_contract_build_v1"
 REPLAY_MANIFEST_SCHEMA = "bayes_basket_target_historical_awc_replay_45station_manifest_v2"
-REPLAY_EVIDENCE_SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v2"
+REPLAY_EVIDENCE_SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v4"
 ENDPOINT = "https://aviationweather.gov/api/data/metar"
 DEFAULT_PROXY_URL = "http://127.0.0.1:1082"
 USER_AGENT = "weather-pr02c-awc-history/1.0"
@@ -93,6 +93,12 @@ def _utc_text(value: datetime) -> str:
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace(
         "+00:00", "Z"
     )
+
+
+def _hour_text(value: Any) -> str:
+    return _utc(value, "awc_gap_hour").replace(
+        minute=0, second=0, microsecond=0
+    ).isoformat().replace("+00:00", "Z")
 
 
 def _sha(value: Any, label: str) -> str:
@@ -247,7 +253,7 @@ def build_gap_inventory(
     station_evidences: Sequence[Mapping[str, Any]],
     source_binding: Mapping[str, str],
 ) -> dict[str, Any]:
-    """Freeze one target per missing exact :00 METAR slot/revision policy."""
+    """Freeze one target per missing METAR-covered hour/revision policy."""
 
     receipt_stations = {
         str(row.get("station_id") or "").upper(): row
@@ -275,7 +281,7 @@ def build_gap_inventory(
             event_date = str(day.get("event_date") or "")
             if event_date not in blocked_dates:
                 continue
-            missing_slots = sorted({str(item) for item in day.get("missing_exact_hour_metar_slots") or []})
+            missing_slots = sorted({str(item) for item in day.get("missing_awc_report_hour_slots") or []})
             conflict_slots = sorted({str(item) for item in day.get("quarantined_metar_revision_slots") or []})
             for expected_slot, action in [
                 *((slot, "FETCH_REQUIRED") for slot in missing_slots),
@@ -299,7 +305,7 @@ def build_gap_inventory(
                     "station_id": station,
                     "event_date": event_date,
                     "expected_valid_at_utc": expected_slot,
-                    "expected_report_type": "METAR",
+                    "expected_report_type": "AWC_REPORT",
                     "requested_revision_key": requested_revision_key,
                 }
                 targets.append(
@@ -343,7 +349,7 @@ def build_gap_inventory(
             "exact_truth_gap_receipt_bound": True,
             "exact_replay_station_leaves_bound": True,
             "closed_historical_days_only": True,
-            "exact_hour_metar_slots_only": True,
+            "hour_bucket_awc_report_coverage": True,
             "provider_revision_number_invented": False,
             "forward_data_counted_as_oos": False,
         },
@@ -402,7 +408,7 @@ def verify_gap_inventory(value: Mapping[str, Any]) -> dict[str, Any]:
         if (
             target.get("target_id") != content_sha256(identity)
             or key in seen
-            or identity["expected_report_type"] != "METAR"
+            or identity["expected_report_type"] != "AWC_REPORT"
             or identity["requested_revision_key"] != "ALL_OFFICIAL_REVISIONS"
             or target.get("action") not in {"FETCH_REQUIRED", "REVISION_REVIEW_REQUIRED"}
         ):
@@ -585,8 +591,11 @@ def _load_retained_exact_index(raw_root: Path, wanted: set[tuple[str, str]]) -> 
             continue
         station = str(value.get("station_id") or "").upper()
         stamp = str(value.get("valid_at_utc") or "")
-        key = (station, stamp)
-        if key not in wanted or str(value.get("report_type") or "").upper() != "METAR":
+        try:
+            key = (station, _hour_text(stamp))
+        except HistoricalAwcGapError:
+            continue
+        if key not in wanted or str(value.get("report_type") or "").upper() not in {"METAR", "SPECI"}:
             continue
         raw_text = str(value.get("raw_text") or "")
         raw_sha = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
@@ -808,7 +817,7 @@ def execute_gap_fetch(
 
     targets = [dict(item) for item in inventory["targets"]]
     wanted = {
-        (str(item["station_id"]), str(item["expected_valid_at_utc"]))
+        (str(item["station_id"]), _hour_text(item["expected_valid_at_utc"]))
         for item in targets
     }
     retained = _load_retained_exact_index(root, wanted)
@@ -837,18 +846,25 @@ def execute_gap_fetch(
                 subtype="CORRECTION_REVISION_REVIEW_REQUIRED",
             )
             continue
-        exact = retained.get((str(target["station_id"]), str(target["expected_valid_at_utc"])), [])
-        hashes = sorted({str(row["raw_sha256"]) for row in exact})
-        if len(hashes) == 1:
-            raw = next(row for row in exact if row["raw_sha256"] == hashes[0])
+        hour_rows = retained.get((
+            str(target["station_id"]),
+            _hour_text(target["expected_valid_at_utc"]),
+        ), [])
+        hashes_by_valid: dict[str, set[str]] = defaultdict(set)
+        for row in hour_rows:
+            hashes_by_valid[str(row["valid_at_utc"])].add(str(row["raw_sha256"]))
+        hashes = sorted({value for values in hashes_by_valid.values() for value in values})
+        if hour_rows and all(len(values) == 1 for values in hashes_by_valid.values()):
             terminals[target_id] = _terminal(
                 target,
                 state="ALREADY_RETAINED",
-                subtype="OFFICIAL_RAW_ALREADY_RETAINED",
+                subtype="OFFICIAL_HOUR_COVERAGE_ALREADY_RETAINED",
                 raw_sha256s=hashes,
             )
-            observations[(str(raw["station_id"]), str(raw["valid_at_utc"]), hashes[0])] = _observation_row(raw)
-        elif len(hashes) > 1:
+            for raw in hour_rows:
+                raw_sha = str(raw["raw_sha256"])
+                observations[(str(raw["station_id"]), str(raw["valid_at_utc"]), raw_sha)] = _observation_row(raw)
+        elif any(len(values) > 1 for values in hashes_by_valid.values()):
             terminals[target_id] = _terminal(
                 target,
                 state="BLOCKED",
@@ -989,14 +1005,14 @@ def execute_gap_fetch(
                 )
             continue
 
-        rows_by_key: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+        rows_by_key: dict[tuple[str, str], list[tuple[datetime, Mapping[str, Any]]]] = defaultdict(list)
         if status == 200:
             for row in rows:
                 station = _row_station(row)
                 valid_at = _parse_row_time(row)
-                if not station or valid_at is None or _row_report_type(row) != "METAR":
+                if not station or valid_at is None or _row_report_type(row) not in {"METAR", "SPECI"}:
                     continue
-                rows_by_key[(station, _utc_text(valid_at))].append(row)
+                rows_by_key[(station, _hour_text(valid_at))].append((valid_at, row))
         for target in group_targets:
             target_id = str(target["target_id"])
             if status in {204, 404}:
@@ -1017,36 +1033,41 @@ def execute_gap_fetch(
                 )
                 continue
             matches = rows_by_key.get(
-                (str(target["station_id"]), str(target["expected_valid_at_utc"])), []
+                (
+                    str(target["station_id"]),
+                    _hour_text(target["expected_valid_at_utc"]),
+                ), []
             )
-            raw_candidates: dict[str, dict[str, Any]] = {}
-            for row in matches:
+            raw_candidates: dict[tuple[str, str], dict[str, Any]] = {}
+            for valid_at, row in matches:
                 try:
                     raw = _canonical_raw_object(
                         row,
                         station_id=str(target["station_id"]),
-                        valid_at=_utc(target["expected_valid_at_utc"], "awc_gap_expected_valid_at_utc"),
+                        valid_at=valid_at,
                         source_url=url,
                         source_poll_id=f"awc-historical-pr02c-{query_receipts[-1]['response_body_sha256']}",
                         received_at_utc=str(query_receipts[-1]["received_at_utc"]),
                     )
                 except HistoricalAwcGapError:
                     continue
-                raw_candidates[str(raw["raw_sha256"])] = raw
-            hashes = sorted(raw_candidates)
+                raw_candidates[(str(raw["valid_at_utc"]), str(raw["raw_sha256"]))] = raw
+            hashes_by_valid = defaultdict(set)
+            for valid_at, raw_sha in raw_candidates:
+                hashes_by_valid[valid_at].add(raw_sha)
+            hashes = sorted({raw_sha for _valid_at, raw_sha in raw_candidates})
             if not hashes:
                 terminals[target_id] = _terminal(
                     target,
                     state="DATA_MISSING",
-                    subtype="EXACT_SLOT_MISSING_FROM_OFFICIAL_RESPONSE",
+                    subtype="HOUR_COVERAGE_MISSING_FROM_OFFICIAL_RESPONSE",
                     query_id=query_id,
                 )
                 continue
-            for raw_sha in hashes:
-                raw = raw_candidates[raw_sha]
+            for raw in raw_candidates.values():
                 _path, created = _persist_raw_object(root, raw)
                 newly_retained_count += int(created)
-            if len(hashes) > 1:
+            if any(len(values) > 1 for values in hashes_by_valid.values()):
                 terminals[target_id] = _terminal(
                     target,
                     state="BLOCKED",
@@ -1055,12 +1076,13 @@ def execute_gap_fetch(
                     raw_sha256s=hashes,
                 )
                 continue
-            raw = raw_candidates[hashes[0]]
-            observations[(str(raw["station_id"]), str(raw["valid_at_utc"]), hashes[0])] = _observation_row(raw)
+            for raw in raw_candidates.values():
+                raw_sha = str(raw["raw_sha256"])
+                observations[(str(raw["station_id"]), str(raw["valid_at_utc"]), raw_sha)] = _observation_row(raw)
             terminals[target_id] = _terminal(
                 target,
                 state="FETCHED_OFFICIAL_RAW",
-                subtype="OFFICIAL_EXACT_SLOT_RETAINED",
+                subtype="OFFICIAL_HOUR_COVERAGE_RETAINED",
                 query_id=query_id,
                 raw_sha256s=hashes,
             )

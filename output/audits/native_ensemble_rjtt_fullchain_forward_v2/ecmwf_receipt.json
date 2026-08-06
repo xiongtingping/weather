@@ -1,0 +1,29 @@
+{
+  "captured_count": 1,
+  "content_sha256": "71e784d4af75599f5c6905ed35c25c2ede557d1e227fafd035aa4f4cf314deb4",
+  "end_date": "2026-08-03",
+  "evaluates_oos": false,
+  "orders_submitted": 0,
+  "packet_count": 1,
+  "packets": [
+    {
+      "content_sha256": "a1f6449cb25489e77e286d34e0a5094fb0d2cf576fa45a65035185f75803e336",
+      "event_date": "2026-08-03",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_rjtt_fullchain_forward_v2/ecmwf/ECMWF_PF50_20260803_ET.json",
+      "state": "CAPTURED"
+    }
+  ],
+  "provider": "ECMWF_PF50",
+  "publishes_pr04": false,
+  "releases_live_pause": false,
+  "replayed_count": 0,
+  "reserves_selection": false,
+  "schema": "official_native_ensemble_pilot_et_capture_receipt_v1",
+  "settlement_timezone": "America/New_York",
+  "start_date": "2026-08-03",
+  "starts_services": false,
+  "station_ids": [
+    "RJTT"
+  ],
+  "writes_ssot": false
+}

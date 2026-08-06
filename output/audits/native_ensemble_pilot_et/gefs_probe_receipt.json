@@ -1,0 +1,31 @@
+{
+  "captured_count": 1,
+  "content_sha256": "341cc208a4ed939c7010c1ee84883d8a94bb300ef873827e9e2bc970f699a071",
+  "end_date": "2026-07-02",
+  "evaluates_oos": false,
+  "orders_submitted": 0,
+  "packet_count": 1,
+  "packets": [
+    {
+      "content_sha256": "f7dd8d181c56bb01c261e952d7365a1ee5e20899bd1c9f79710c12476374008d",
+      "event_date": "2026-07-02",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/gefs/NOAA_GEFS_20260702_ET.json",
+      "state": "CAPTURED"
+    }
+  ],
+  "provider": "NOAA_GEFS",
+  "publishes_pr04": false,
+  "releases_live_pause": false,
+  "replayed_count": 0,
+  "reserves_selection": false,
+  "schema": "official_native_ensemble_pilot_et_capture_receipt_v1",
+  "settlement_timezone": "America/New_York",
+  "start_date": "2026-07-02",
+  "starts_services": false,
+  "station_ids": [
+    "CYYZ",
+    "RJTT",
+    "RKSI"
+  ],
+  "writes_ssot": false
+}

@@ -264,7 +264,7 @@ class MetarTrajectoryLikelihoodArtifact:
         source_lane = _text(
             "metar_trajectory_source_lane", raw.get("source_lane")
         ).lower()
-        if source_lane not in {"amsc", "awc"}:
+        if source_lane not in {"amsc", "awc", "asos_1min", "madis_hfmetar"}:
             raise ContractError("metar_trajectory_source_lane_invalid")
         local_time_bucket = _text(
             "metar_trajectory_local_time_bucket", raw.get("local_time_bucket")

@@ -1,0 +1,21 @@
+{
+  "as_of_utc": "2026-08-04T10:00:00Z",
+  "blockers": [],
+  "calls_order_gateway": false,
+  "content_sha256": "ba65f2b6262a0ed5816c7ffa53d3e906ee7eb45fee90734fcd82663d3c340dd8",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_data_version": 2,
+  "database_schema_version": 841,
+  "envelope_content_sha256": "571857fdb7d6d4dff7d14dcd4287df41f98118e23303fd8423712a44213ec5e8",
+  "missing_producer_fields": [],
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "record_count": 2,
+  "schema": "bayes_basket_target_canonical_typed_scope_build_receipt_v1",
+  "scope_type": "P0_ACTIVATION",
+  "source_row_count": 4,
+  "source_selection_sha256": "4288a403e3fc9e3d0faec90d058e5bd16c5d4873a95cde973908415c8709c668",
+  "source_table": "canonical_ssot_fact",
+  "state": "ACTIVATION_READY",
+  "writes_database": false
+}

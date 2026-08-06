@@ -207,7 +207,7 @@ def test_second_apply_and_preview_are_idempotent_no_write(tmp_path: Path) -> Non
     assert preview["confirmation_required"] is False
 
 
-def test_v4_requires_v5_for_standard_schema_apply_and_empty_install_is_v6(
+def test_v4_requires_v5_for_standard_schema_apply_and_empty_install_is_v10(
     tmp_path: Path,
 ) -> None:
     path = _db(tmp_path)
@@ -226,7 +226,7 @@ def test_v4_requires_v5_for_standard_schema_apply_and_empty_install_is_v6(
     current = apply_contract_schema(empty, apply=False)
     assert current["state"] == "CURRENT_NO_WRITE"
     with sqlite3.connect(empty) as conn:
-        assert inspect_canonical_ssot_schema(conn)["state"] == "V6"
+        assert inspect_canonical_ssot_schema(conn)["state"] == "V10"
 
 
 @pytest.mark.parametrize(

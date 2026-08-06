@@ -1,0 +1,22 @@
+{
+  "as_of_utc": "2026-08-04T10:00:00Z",
+  "blockers": [
+    "DATA_MISSING"
+  ],
+  "calls_order_gateway": false,
+  "content_sha256": "09ac5d405ee838ec56d19bb3f994e9e49a95767366e58d822fdd23f8ef85cf85",
+  "envelope_content_sha256": "",
+  "missing_producer_fields": [
+    "runtime_release_id"
+  ],
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "record_count": 0,
+  "schema": "bayes_basket_target_canonical_typed_scope_build_receipt_v1",
+  "scope_type": "RUNTIME",
+  "source_row_count": 0,
+  "source_selection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "source_table": "",
+  "state": "BLOCKED",
+  "writes_database": false
+}

@@ -1,0 +1,3086 @@
+{
+  "as_of_utc": "2026-08-05T04:16:41Z",
+  "blocked_station_count": 45,
+  "builder_id": "truth.awc_historical_replay.initial_snapshot.v1",
+  "calls_order_gateway": false,
+  "canonical_contract_sha256": "6e311707160439b1205e1f4d49db830a58e2d8613d4955490614fb893775599e",
+  "complete_station_count": 0,
+  "content_sha256": "4da4ca582ec3155e7eb145fc44cd64de74c97f5b6d8c8243ae33d5dfb766adfc",
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "schema": "bayes_basket_target_historical_awc_truth_contract_build_v1",
+  "station_count": 45,
+  "stations": [
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "5efd19e75a5b43ffe5e36ad5a9cf30d7ee98a65321f22226e991b0a0db723076",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "CYYZ",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "2ccf4351a1c525a7a68d45fbb0ce9ff1a9d1d7da723e9934ca73f7eb5a076ffc",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "EDDM",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "5c4bce2f94c77b9eed437fc14f2a229024460aa7e3bef1123408c88abead0449",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "EFHK",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "f81ce1e646e8af709fecb0498fec5649df7563608b489f0e87d55b9c12104d27",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "EGLC",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "8c07938587d5f3e05d65e17918f85a40a88226c14c808e8606cac265d3e92eec",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "EHAM",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "9c74a9f04cdcd05d652f788c770c317c1a81983385c1ec36dcdceef91ee09a68",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "EPWA",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "52850c5b52ed5ea0ad497a9bca72c81e5ef7ac348c84e3d0f3f13e9a2150f61d",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "FACT",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "d12b862fade5795028d1b122a3ece5fa95b61da3c78aa9b7f76cd0dbbbf433f6",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "KATL",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "48574f42953e5116c8611f0329e18196b25174a8716e451e32351dbe0bf8c4f8",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-01"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KAUS",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "3a4cce854962d57d3b4af60f4b66a59719fc6364440b64c11861de40fbac0c9f",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-31"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KBKF",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "3204ff01c4fb4791d2c1e733012ffcec29f91ac0c1f5866835ef2b72afc5650c",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "KDAL",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "66db016494b41aa902a3b76cf27ffc262a322df0b2070c04d54df11ea59fa62a",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-01"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KHOU",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "05d92504e446f4a0fa5cd8d23cb67c452b83d30e3acc0597da6cbf6902541f4a",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KLAX",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "91382e78679cb7acde5d93c5b963cee3bd0316fcf3209a5f6c8273f8106db932",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KLGA",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "979782395680886b19b9e2a72b18c03f04dd81bf1bda63eb74519059f13a3fe8",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KMIA",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "e1d6791e42a40ae011f2b27390c31968dc1e501ff3d930211dad5be8d4e1d765",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "KORD",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "6b158f8e106b009dbccb6b0f12c718f0705da6a4c608e8604dc4e9f113a7736b",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "KSEA",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "903f1e2db99ffeff4c916ce89663466e463acb90451c2c00cbe249162cbfc74b",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "KSFO",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "86163180622eb4e90c7e69484e12e77b5d8c063458a2dbf161cde63c246fb6b0",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "LEMD",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "5192cf9010af012985390f0b8d1eb45379702d3062f79680c291a6054520a230",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "LFPB",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "54600fe21755b342e632d27c93af8d3dc84f2bb605dc0ec6a8339a149c84aa1c",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "LIMC",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "12114a8c75390b14b5dfb4b43649b674354d97b88c783841d7f6f8f336c7fd7a",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "LTAC",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "da78a690bb652df99b7fddfc3ebe841882b7bc5f723ff92eb9f5cb3651081e68",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [],
+      "state": "BLOCKED",
+      "station_id": "MMMX",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "5a0be453d53cac0349b1cf1ad05b9aa0917147cdcfb2145ff1991bf5ff42fd55",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 23,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-02"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30"
+      ],
+      "state": "BLOCKED",
+      "station_id": "MPMG",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01",
+        "2026-08-02"
+      ],
+      "truth_fact_count": 0,
+      "truth_ready_dates": []
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "b673eb0fb1b6f25b249d9de040c5df1a54f3b8577eb770e77dea102386f23019",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 16,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "NZWN",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "049311abb27c26cb183b83362688e9abeafcc98b6fd0fb3ff77c2b07b1db01db",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "OEJN",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "873bd9bf456e256bcaec9a39a303e7c2e167bbafc743ffac0dfe325450c5ced1",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "OPKC",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "ac4fe87fb5591ec41727bd3d65c96ee990901d198adfa646e9bc9c3ba3baac8a",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "RCSS",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "38323447bf0a445cbd43ee3aee2eee89b2cb596cbc54a10854925c5eaa491d5e",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 13,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "RJTT",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "77295ae3538680334681d46ae909d770187f540665f4eec80d6dcb29874fdc75",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "RKPK",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "ea5f6ec847bd787be25ec9a9760dec74ff32951a4160cbcf1d5f3c26d054c796",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 13,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "RKSI",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "42d3ab963fb3bc61d133f883936d272d5e6518bb9794a54f1120ef5f0ebcc587",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "RPLL",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "cd9eb2a2336028265f3d25c13daf1eb692218e269a25372a2df15d79422a2617",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 1,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "SAEZ",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "75be5ee298cbd88008c7fd5ee3c45e9dfb61ffec39bfe00fb81548f13b21751b",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "SBGR",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "66e2f294f85862153a50d5a42a2283148feb003efee618e2ce9828b03d0baad4",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 9,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "VILK",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "19dccf3d47c0b938e0d2f25966754e127e36af9bdc84dbc7e1ea092a6c11ef6e",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "WMKK",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "96fece7f167541d0b48d15b2a245d940791035b76c0a3f872294f7633e92df9f",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "WSSS",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "3a555bd62629977936eb90b1af3194d8b332c66c278fc2ad9a9580c5707a40a2",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZBAA",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "4226d6c01b81402d95fd60c902fe4f4d8cb0a07b96259417334eee233afa1032",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZGGG",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "d059ceaec175371cbc8ed4d35b60c98a389a5e5dc5322456068a39544dd02f12",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZGSZ",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "2038db1e3bc7b51b6b01dd85eeb60e487ee6afa6027c32a2340d4c3840bfd97e",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZHHH",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "286b74fa583f1edad27aff5069b5e2a25d3211a38453e796adbb8719433b4cf6",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZSPD",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "9361bdaabaff4302ab1f3b4ce1c931fa8728ac7e0e7ad459d3bdb0bc8d494fbb",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZSQD",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "3ad0a02cffa9306e3ae191e9a933fb439e9d51d6022ac12ee5250b15438a3f7c",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZUCK",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    },
+    {
+      "blockers": [
+        "DATA_MISSING",
+        "OOS_SAMPLE_SHORT"
+      ],
+      "evidence_sha256": "dd5a33455135bc83130dd52ca4bae6c22e7a344503339862dbae0786ed73363c",
+      "missing_date_diagnostics": [
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 12,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-30"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-07-31"
+        },
+        {
+          "blockers": [
+            "DATA_MISSING",
+            "OOS_SAMPLE_SHORT"
+          ],
+          "diagnostics": [
+            {
+              "candidate_count": 24,
+              "reason": "historical_awc_exact_hour_slots_missing"
+            }
+          ],
+          "event_date": "2026-08-01"
+        }
+      ],
+      "observed_dates": [
+        "2026-07-30",
+        "2026-08-02"
+      ],
+      "state": "BLOCKED",
+      "station_id": "ZUUU",
+      "truth_blocked_dates": [
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-01"
+      ],
+      "truth_fact_count": 1,
+      "truth_ready_dates": [
+        "2026-08-02"
+      ]
+    }
+  ],
+  "truth_fact_count": 21,
+  "truth_revision_authority": "INITIAL_IMMUTABLE_REPLAY_SNAPSHOT",
+  "truth_revision_no": 0,
+  "writes_production_database": false,
+  "writes_target_database": false
+}

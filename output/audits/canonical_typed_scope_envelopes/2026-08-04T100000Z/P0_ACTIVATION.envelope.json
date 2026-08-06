@@ -1,0 +1,43 @@
+{
+  "as_of_utc": "2026-08-04T10:00:00Z",
+  "builder_id": "canonical.p0_activation.source_projection.v1",
+  "content_sha256": "b933142e999dc03dc12119c510c7bb8f0f8a7d45898d9d6c47424072be5834a0",
+  "future_data_counts_as_oos": false,
+  "production_no_live": true,
+  "records": [
+    {
+      "as_of_utc": "2026-08-04T09:35:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [],
+      "content_sha256": "35116980ab95db49075e12204af3498b035b2259211bceac69558bae3f5adb83",
+      "evidence_content_sha256": "5efa81e6178b47b638a5aca866f21beba608972b3c0f446d14e13962fc1e1954",
+      "natural_key": {
+        "activation_content_sha256": "5efa81e6178b47b638a5aca866f21beba608972b3c0f446d14e13962fc1e1954",
+        "activation_generation": 2,
+        "lead_bucket": "d0",
+        "station_id": "CYYZ"
+      },
+      "scope_kind": "ACTIVATION",
+      "scope_type": "P0_ACTIVATION",
+      "state": "ACTIVATION_READY"
+    },
+    {
+      "as_of_utc": "2026-08-04T09:35:00Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [],
+      "content_sha256": "ee42f63d243f6d95c18827147e6ffe9a90be0383584b47747f68dc47413e7f60",
+      "evidence_content_sha256": "cf87b3caa1f7a2d6fcda25854a101ebd840048a14a4329c8de643f9df46e6fbf",
+      "natural_key": {
+        "activation_content_sha256": "cf87b3caa1f7a2d6fcda25854a101ebd840048a14a4329c8de643f9df46e6fbf",
+        "activation_generation": 2,
+        "lead_bucket": "d0",
+        "station_id": "NZWN"
+      },
+      "scope_kind": "ACTIVATION",
+      "scope_type": "P0_ACTIVATION",
+      "state": "ACTIVATION_READY"
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_typed_scope_envelope_v1",
+  "scope_type": "P0_ACTIVATION"
+}

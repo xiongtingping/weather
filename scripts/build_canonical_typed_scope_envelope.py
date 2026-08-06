@@ -24,9 +24,13 @@ def main() -> int:
     parser.add_argument(
         "--scope-type",
         choices=(
+            "P0_ACTIVATION",
+            "P0_SNAPSHOT",
+            "TRUTH_OBSERVATION",
             "TRUTH_DAY",
             "TAF_P0M",
             "TRAJECTORY_P1",
+            "STRATEGY_POLICY",
             "STRATEGY_UTILITY",
             "MARKET_WS",
             "RUNTIME",

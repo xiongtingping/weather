@@ -1,0 +1,61 @@
+{
+  "captured_count": 6,
+  "content_sha256": "b6dc7c07418f4059e3155bd1aa82ca8ed60d8b087d077e3c039466e2ff8e9cb6",
+  "end_date": "2026-07-22",
+  "evaluates_oos": false,
+  "orders_submitted": 0,
+  "packet_count": 6,
+  "packets": [
+    {
+      "content_sha256": "676b0181340d7c44eeb0b0ddaeb27b02726980826ba740e633282c003619ec8d",
+      "event_date": "2026-07-17",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260717_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "989f5eb0042c4db0d31e91cae575f13cb759fc99d900fa866c24ffbf90db0a84",
+      "event_date": "2026-07-18",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260718_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "8889443e6717d9a8ab84b330e0c4c7ef0b2bbb770d380729559012b127fb2be1",
+      "event_date": "2026-07-19",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260719_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "c216d850127b4a600f4e102c0758773741e0f4d2c5bb5ee29d08d68ff247daad",
+      "event_date": "2026-07-20",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260720_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "a0cb8a100793577b6232df4b9a9262a2012017eff082e3ce435c7236d05f3784",
+      "event_date": "2026-07-21",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260721_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "a1850f4dca5c79160fe43dd7c1005be8bc213b48d94152067b1213b2d5305f41",
+      "event_date": "2026-07-22",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260722_ET.json",
+      "state": "CAPTURED"
+    }
+  ],
+  "provider": "ECMWF_PF50",
+  "publishes_pr04": false,
+  "releases_live_pause": false,
+  "replayed_count": 0,
+  "reserves_selection": false,
+  "schema": "official_native_ensemble_pilot_et_capture_receipt_v1",
+  "settlement_timezone": "America/New_York",
+  "start_date": "2026-07-17",
+  "starts_services": false,
+  "station_ids": [
+    "CYYZ",
+    "RJTT",
+    "RKSI"
+  ],
+  "writes_ssot": false
+}

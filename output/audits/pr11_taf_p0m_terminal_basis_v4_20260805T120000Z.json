@@ -1,0 +1,2127 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00Z",
+  "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+  "calls_order_gateway": false,
+  "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+  "content_sha256": "5d66673c22d76efaeef541c6e503f075f101ffb4166f35392c4e678246df06d6",
+  "expected_station_count": 45,
+  "future_data_counts_as_oos": false,
+  "legacy_exact_join_max_sample_count": 9,
+  "legacy_exact_join_qualified_scope_count_at_24": 0,
+  "legacy_exact_join_sample_count_total": 38,
+  "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "release_state": "BLOCKED",
+  "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_basis_v1",
+  "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+  "state": "BLOCKED",
+  "station_ids": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "terminal_scope_count": 45,
+  "terminal_scopes": [
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "368b5c504d3055eab74195fc93df4ff0b24e819924855374ffd17aac3be1e3b8",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "CYYZ",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "955b05f322899e9125c93420f23ac6d7725b16d051329125f7dea38b7ae67f37",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "EDDM",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "e9e43ffadf3fc308bb260800dda10df86c8aa58607037859f2514fc73c6b385a",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "EFHK",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "744e14423baf935ab4afb7410a37aeb85d86947608c17d844088ea2f3172b44f",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "EGLC",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "b9e378f5d45882bfca6f1617de2459a2b6db9cc29d0d19eaf983874683b7cca4",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "EHAM",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "4a064a34293d9fb5c850882a590dd7287a0f6546854cacb155fb34800942ea9f",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "EPWA",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "34d3cf9385b630cde8ba399539c5e2bb2e6ef3c024fec49de09f97bae833d0c0",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 15,
+      "legacy_exact_join_sample_count": 9,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "FACT",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "768d2649a291b6558e4738a1ab3248d890922b319b513b60e3b76e0b96243649",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KATL",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "62ea5fec1fa337ac70eb6b87c1ca16edac21aa68498e9e8b5f24768397ec3065",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KAUS",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "20a227e7cfc4a3f1aac5a1e5a54319eeac59b7465cf347c4e8b627a7b6fb470d",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 16,
+      "legacy_exact_join_sample_count": 8,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KBKF",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "d910bfb1e653d61b08294b67b8291d5646fd26f4a4216f7cc4a9ac57aec33bab",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KDAL",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "99b5709a293f66bceb53df0d07492fc43c91673efc0c571dd0df8e1eb9be91db",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KHOU",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "403d9a770f63d5bd524478d936c1b27ac08cb9bc0b425f134df06f926c504cfb",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KLAX",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "06b52166c183e4167c942e03e42af00756518bcfa203af66a7b4f40caaa499bf",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KLGA",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "4398682eb849ef96d3f74bdc947bb85263c1fca65b79549bc9f0904bd212f66d",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KMIA",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "45e627e8830875b434694f9d9fe324c544b754aaf70eaecfc89b854a56665039",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KORD",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "292e254f75ace3e94248d0187350e0d4c385081531e5867d5f8fe0b1c9674b76",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KSEA",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "50a4ba1c31dbae336feecba22c70e97fdc6e8b55cdd8ce90ea758ab0f6e1cdd8",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "KSFO",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "a5842c73c5781de17bb7bf9fa442edddc7e4d10c0d4ffafdd0b4501e8fd7a22a",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "LEMD",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "cdd5822656bd904acfeaaa0e332871cda0441a555f81bbf4ce3529b7e8aca829",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "LFPB",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "3758799f4b6be6e7806719188d077860b8ed15f91a3eb12c9066c98be46cb133",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "LIMC",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "506609e11350fa75e9e7e2f3cd755a96553873858c17a7a1bf3f06bb3ad6c30e",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "LTAC",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "1026b4187026052c3229fc8897240d9c02127ec416b4c0de98ab5fa7dd7305f8",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 19,
+      "legacy_exact_join_sample_count": 5,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "MMMX",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "99422e970717acc59eab4e0612bee601615cef06e436d845c26d9e85d2fd8961",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "MPMG",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "14607c239ba11c48daa1a94fec9254049bd248c22242208563bcbef4a55fcfee",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "NZWN",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "d3602f95aef7dc0eb5f361a2730b2e5b1095919b696ecabf3a0f51f187ff516c",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "OEJN",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "6514c51b17e2655693123c2d1d90564967c0244b32a3a9747387e556b672c53f",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "OPKC",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "1f7137af82f2aa3da5ebc0195ceb5d41174a5a17fdba785fb41b315b1aa3d17b",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "RCSS",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "1563b35b17458b622279106ab1d8d7c07295b34e7ba82fdedba685ca51f26b07",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "RJTT",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "2b615e609fc51cda302d70562da8bc4fba8a84496c6319caed541e9ca036d4f2",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "RKPK",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "cd69bffdef720eb313f5ab302661a1ed04cf3bdf9ea90b36afa19e24bb915d81",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "RKSI",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "35e493ff6ba90182aa5480fa2d959a2c1b1ccc183598f011176c2d3e58558d6e",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "RPLL",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "6cd7b5f3297228415b84d42f57d2065b1d8616a28dc896d154efd086a3a1f3d9",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 17,
+      "legacy_exact_join_sample_count": 7,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "SAEZ",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "8545a43506fc592f386fa586b71f7bde110fd39fb51c59d0eb36dbfe1560d35b",
+      "legacy_exact_join_diagnostic_codes": [
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 15,
+      "legacy_exact_join_sample_count": 9,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "SBGR",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "94ab1978b149651999f16f0db750f7c0a6aa8cf71025003e7e6cc7563328a5e2",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "taf_native_oos_sample_n_insufficient"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "VILK",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "354cde22b135009d4c74f855220a7b5c1397a48ca2bc30cf8c17f4c46b01e29c",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "WMKK",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "a24c217fd0b6c7c3745bddde08c3afd46d46b24e441245f4d23a77b551bc421c",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "WSSS",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "4630cba94170e86cfee5c6ba0d6b07f7805ff04759dfb42a9a1ad4fa83b26de7",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZBAA",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "7b21741f4bf07b45e52c82dd4423f78f18e64fc171e64a7d0bf9b4be05f3614f",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZGGG",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "d8c822751fb3c5b604d55b5e33ca68de22bc934ec8c5b610b6de3a6eb40808d8",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZGSZ",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "faf5628a10bb675149117dd8e5cdb32a8d6524c9db5fbadb44b573bb5c0529e0",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZHHH",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "6493a51d54322e09ba828581da77e796a3ff74907ce78631186f88e9d038566d",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZSPD",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "64a2e6661b7eec157c3cd2a2e0ec49965bd21a0928a409fe071d3c43092e43f9",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZSQD",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "7c42a321bfef39995c92f60de19e9fabbf0f7b2332bee4459793c30b8042b110",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZUCK",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    },
+    {
+      "as_of_utc": "2026-08-05T12:00:00Z",
+      "blockers": [
+        "P0_ROOT_MISSING"
+      ],
+      "builder_id": "pr11.canonical_historical_p0_taf_basis.v2",
+      "canonical_registry_sha256": "c702b1bf00f5dceab43dbb9a3a30952070d47f1ff2c9ba8edf37f88f4767ad01",
+      "canonical_schema_state": "V14",
+      "content_sha256": "fd7c5bb2951739576f78cfd366bb4dea0dd41c26d035ed6b2f831e03a3bd4993",
+      "legacy_exact_join_diagnostic_codes": [
+        "current_p0_scope_missing",
+        "exact_join_artifact_missing"
+      ],
+      "legacy_exact_join_missing_to_24": 24,
+      "legacy_exact_join_sample_count": 0,
+      "legacy_exact_join_state": "BLOCKED",
+      "legacy_probability_envelope_used": false,
+      "legacy_taf_audit_used_as_canonical_input": false,
+      "legacy_taf_gap_evidence_content_sha256": "04a512207d73047ee5b2f27aeaed7b809b88477b90f6031d63382f9d32c04dd2",
+      "legacy_taf_gap_evidence_used": true,
+      "required_artifact_key_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "required_canonical_fact_type_set_sha256": "eecd4815b052ba537c7dfbc928a24a11dde36b4b99e0acff424c29c0f68a307c",
+      "required_canonical_fact_types": [
+        "historical_p0_root",
+        "official_taf_revision",
+        "taf_p0m_exact_join"
+      ],
+      "schema": "bayes_basket_target_pr11_taf_p0m_station_terminal_v1",
+      "source_inventory_content_sha256": "e53cf25e7fc3284d380d1a1b7bd639e7e26cbce1d23b1fdb174f5373d01c3c69",
+      "state": "BLOCKED",
+      "station_id": "ZUUU",
+      "typed_scope_emitted": false,
+      "unproven_artifact_key_fields": [
+        "settlement_timezone",
+        "season",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "v14_historical_p0_root_mapper_ready": false
+    }
+  ],
+  "writes_canonical_fact": false,
+  "writes_database": false,
+  "writes_probability_envelope": false
+}

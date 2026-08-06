@@ -269,7 +269,7 @@ def test_v6_inspector_requires_exact_ordered_fact_types(
     assert inspection["state"] == state
 
 
-def test_v6_installers_create_or_require_exact_v6(tmp_path: Path) -> None:
+def test_installers_create_v10_and_reject_unmigrated_v5(tmp_path: Path) -> None:
     path = tmp_path / "installer.db"
     with sqlite3.connect(path):
         pass
@@ -277,7 +277,7 @@ def test_v6_installers_create_or_require_exact_v6(tmp_path: Path) -> None:
     assert receipt["state"] == "APPLIED"
     assert receipt["canonical_contract_schema_ok"] is True
     with sqlite3.connect(path) as conn:
-        assert inspect_canonical_ssot_schema(conn)["state"] == "V6"
+        assert inspect_canonical_ssot_schema(conn)["state"] == "V10"
         assert apply_production_ssot_schema(conn)[
             "canonical_contract_schema_ok"
         ] is True
@@ -287,6 +287,6 @@ def test_v6_installers_create_or_require_exact_v6(tmp_path: Path) -> None:
 
     v5_path = _v5_db(tmp_path, name="installer-v5.db")
     with pytest.raises(
-        RuntimeError, match="canonical_contract_schema_v6_migration_required"
+        RuntimeError, match="canonical_contract_schema_v10_migration_required"
     ):
         install_schema(v5_path, apply=True)

@@ -1,0 +1,234 @@
+{
+  "as_of_utc": "2026-08-05T12:45:00.000Z",
+  "builder_id": "canonical.p0_forecast_snapshot.v1",
+  "content_sha256": "b1c8228e099cdc545c5a1e1b3ef8ee4c4c41a7593d574e9520f2d150edc2a341",
+  "schema": "bayes_basket_target_canonical_p0_forecast_snapshot_contract_v1",
+  "snapshot_facts": [
+    {
+      "activation_root_content_sha256": "0ac81cd0c844f0963b54ec2ec440342bb8a99484c03bf3a4bcd8569d91f66130",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "available_model_set_hash": "6852141fc101884267650d10ddf1f7840fe1a4b0fef331a62f4187e2e2fd9770",
+      "bucket_probabilities": [
+        {
+          "ordinal": 0,
+          "outcome": "81°F or below",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 1,
+          "outcome": "82-83°F",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 2,
+          "outcome": "84-85°F",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 3,
+          "outcome": "86-87°F",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 4,
+          "outcome": "88-89°F",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 5,
+          "outcome": "90-91°F",
+          "probability": "0.350000000000"
+        },
+        {
+          "ordinal": 6,
+          "outcome": "92-93°F",
+          "probability": "0.450000000000"
+        },
+        {
+          "ordinal": 7,
+          "outcome": "94-95°F",
+          "probability": "0.150000000000"
+        },
+        {
+          "ordinal": 8,
+          "outcome": "96-97°F",
+          "probability": "0.050000000000"
+        },
+        {
+          "ordinal": 9,
+          "outcome": "98-99°F",
+          "probability": "0.000000000000"
+        },
+        {
+          "ordinal": 10,
+          "outcome": "100°F or higher",
+          "probability": "0.000000000000"
+        }
+      ],
+      "bucket_probability_vector_sha256": "a22e1b79c02d1c65dd941c7bd15f1e4aacfbbf59d64c288fbf32300fc63c3ba5",
+      "calibrated_distribution_content_sha256": "67332113ff382fb667dba8d1b5f2a203e77c3c2d234714b7ffc2fa237a22b827",
+      "calibrated_point_c": "33.495621958382",
+      "calibration_method_version": "ADDITIVE_BIAS_V1",
+      "component_forward_receipt_set_sha256": "fe849a728d1030ce23a1202017103cf033ed4780b4e07ce9d838721181936723",
+      "component_forward_receipts": [
+        {
+          "content_sha256": "64056b4d9194c4c39a962b1484929f39667baabc5f7d09e7d99928a40ccfb2f8",
+          "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+          "event_date": "2026-08-03",
+          "forecast_decision_at_utc": "2026-08-02T16:31:26.655Z",
+          "forecast_value_c": "31.674103698730",
+          "independence_family_id": "ECMWF",
+          "lead_bucket": "d2",
+          "member_count": 50,
+          "member_evidence_vector_sha256": "ec6fa5ebf69bf0d166dcf97f169b938690d8912fa45cad316d8e9a806cd6643a",
+          "model_available_at_utc": "2026-08-02T01:06:10.000Z",
+          "model_family": "global_ensemble",
+          "model_id": "ECMWF",
+          "model_input_content_sha256": "ceaed01844633b3d8694fb9bc6471c6e624b0721660414a341aebc41e76e0745",
+          "provider_id": "ECMWF",
+          "provider_product_id": "ecmwf_ifs_ens_open_pf50",
+          "raw_message_vector_sha256": "93014e4f633c22e8009d8e1d1ce02efbb773ac39e862c1b91cb449025f2aeaef",
+          "raw_object_id_vector_sha256": "d2329a4117738a83390b575d92d5de0ab7d8be6fd0e8de607454d48d25b56711",
+          "retained_arrival_evidence_content_sha256": "c0b7714d3b17989ad15f41d3c0e4ea5f2f2ca7b16d12e3d58dda6c2a31d70d0b",
+          "retrieved_at_utc": "2026-08-02T16:31:26.655Z",
+          "run_cycle": "18Z",
+          "run_init_utc": "2026-08-01T18:00:00.000Z",
+          "schema": "bayes_basket_target_canonical_p0_forward_component_receipt_v2",
+          "settlement_timezone": "America/New_York",
+          "source_capture_content_sha256": "274d22088d4061b5bffc74995b3ecc45dc4daf3e870e750715bb542673a2b9fb",
+          "source_class": "native_official",
+          "source_packet_content_sha256": "61481f31337f8dae433410b44933df64078152d6782d9921f3e5751134898a18",
+          "station_id": "KMIA"
+        },
+        {
+          "content_sha256": "a525b52cc013bd6aa694ce279b307be3274fdecd2b494edadd47206d60aa0d43",
+          "ensemble_system_id": "NOAA_GEFS_05",
+          "event_date": "2026-08-03",
+          "forecast_decision_at_utc": "2026-08-02T16:31:26.655Z",
+          "forecast_value_c": "34.933479555192",
+          "independence_family_id": "NOAA",
+          "lead_bucket": "d2",
+          "member_count": 31,
+          "member_evidence_vector_sha256": "16cc46912b87796d9648c8e0dd075ccf4c6cdc7f0b6188a476c64c789290db66",
+          "model_available_at_utc": "2026-08-01T22:16:51.000Z",
+          "model_family": "global_ensemble",
+          "model_id": "GFS",
+          "model_input_content_sha256": "4e4aafcc615626fd967a68795c1ee8a6bc9028b1b818511766fde98e6b39960e",
+          "provider_id": "NOAA",
+          "provider_product_id": "noaa_gefs_0p5",
+          "raw_message_vector_sha256": "5c36daa78a0c634882f2df62febbacf6f1be9bc3d02b56df9c9ae1cf3d96ca91",
+          "raw_object_id_vector_sha256": "fa98bb2572dba26fba601aa460a1347361879789c2a5d1bdb5b15007cb26ecf0",
+          "retained_arrival_evidence_content_sha256": "a377b284200228f49038f8d6f9ade435b08015f003939cbe71df2c539aa57143",
+          "retrieved_at_utc": "2026-08-02T16:31:26.655Z",
+          "run_cycle": "18Z",
+          "run_init_utc": "2026-08-01T18:00:00.000Z",
+          "schema": "bayes_basket_target_canonical_p0_forward_component_receipt_v2",
+          "settlement_timezone": "America/New_York",
+          "source_capture_content_sha256": "272e97f804539ab63df280d4917de6f641c910565930a3f93b741e8f712227d3",
+          "source_class": "native_official",
+          "source_packet_content_sha256": "24c3c26913fca7823e8c3e24e49f6c3f5bcef69182b0091063bee3a6cb2f4433",
+          "station_id": "KMIA"
+        }
+      ],
+      "content_sha256": "23d4bdb09dd3e2784bad0685302c535ae66b9ba09ba117d19a6f365281fe379c",
+      "event_date": "2026-08-03",
+      "event_oos_protocol_version": "STRICT_HISTORICAL_AWC_NATIVE_ENSEMBLE_AVAILABILITY_V1",
+      "forecast_decision_at_utc": "2026-08-02T16:31:26.655Z",
+      "lead_bucket": "d2",
+      "lead_bucket_scope": "PREVIOUS_DAY2",
+      "market_bucket_bridge_content_sha256": "8383a5dcbef665f48c215d77eb6239fcbb022e046981217bbdda5650b9a045f5",
+      "market_registry_snapshot_sha256": "638b0c4f1c8aba1265f43bf1dd79db569a56e75526bfdbdea393b8a52b3ba465",
+      "registry_scope_rowset_sha256": "03f3a6058fc5c705852a915cb51f5513798336bf8dfdf846fc6e58ae07ab6132",
+      "run_cycle": "18Z",
+      "run_cycle_scope": "NATIVE_UTC_CYCLE",
+      "season_bin": "ALL_YEAR",
+      "selection_content_sha256": "1ee9c1d592d6063102cf56adf4829e33ed7068ba95ad0d99cb4a7b42c0ca6968",
+      "settlement_timezone": "America/New_York",
+      "source_class": "native_official",
+      "state": "MATERIALIZED_UNPUBLISHED",
+      "station_id": "KMIA",
+      "temperature_scenarios": [
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "34.294560265363"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.656421521555"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.902691195365"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "35.630203203994"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "34.079651744416"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "34.401114457840"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.832611631912"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.487072131569"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.549161622696"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.061000608078"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.277219543827"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.189162347885"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.397349814769"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.904262918302"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "34.655624411779"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.266921063955"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "33.737805066338"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.976886141984"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "34.059924252227"
+        },
+        {
+          "probability": "0.050000000000",
+          "temperature_c": "32.552795223782"
+        }
+      ]
+    }
+  ]
+}

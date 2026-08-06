@@ -276,6 +276,8 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
     if value.get("production_source_allowlist") != ["awc"]:
         raise ValueError("reported_trajectory_awc_ingress_source_allowlist_invalid")
     source_policy = value.get("source_policy") if isinstance(value.get("source_policy"), Mapping) else {}
+    asos = source_policy.get("asos_1min", {}) if isinstance(source_policy.get("asos_1min"), Mapping) else {}
+    madis = source_policy.get("madis_hfmetar", {}) if isinstance(source_policy.get("madis_hfmetar"), Mapping) else {}
     awc = source_policy.get("awc", {}) if isinstance(source_policy.get("awc"), Mapping) else {}
     amsc = source_policy.get("amsc", {}) if isinstance(source_policy.get("amsc"), Mapping) else {}
     amsc_stations = _station_scope(amsc, "station_ids")
@@ -297,6 +299,26 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
         or awc.get("replaces_amsc") is not True
         or awc_excluded_stations != set()
         or awc_excluded_cities != set()
+        or asos.get("enabled") is not True
+        or asos.get("production_ingest") is not True
+        or int(asos.get("priority") or 0) != 220
+        or asos.get("provider_id") != "IEM_ASOS1MIN"
+        or asos.get("source_class") != "aggregator_republisher"
+        or asos.get("upstream_authority") != "NOAA/NCEI ASOS"
+        or asos.get("eligible_station_rule") != "ICAO_K_PREFIX_UNAMBIGUOUS"
+        or asos.get("coverage_required") is not True
+        or asos.get("fallback_lane") != "awc"
+        or madis.get("enabled") is not True
+        or madis.get("production_ingest") is not True
+        or int(madis.get("priority") or 0) != 210
+        or madis.get("provider_id") != "NOAA_MADIS_HFMETAR"
+        or madis.get("source_class") != "official_republisher"
+        or madis.get("measurement_semantics") != "ASOS_RUNNING_5_MINUTE_AVERAGE_DISSEMINATED_EVERY_5_MINUTES"
+        or madis.get("fallback_lane") != "awc"
+        or int(awc.get("priority") or 0) != 100
+        or guards.get("canonical_observation_priority") != ["asos_1min", "madis_hfmetar", "awc"]
+        or guards.get("cross_source_value_mixing_forbidden") is not True
+        or guards.get("asos_must_not_be_labeled_metar") is not True
         or guards.get("source_lanes_disjoint") is not True
         or guards.get("awc_global_primary") is not True
         or guards.get("awc_replaces_amsc") is not True
@@ -306,13 +328,17 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
         raise ValueError("reported_trajectory_awc_ingress_global_contract_invalid")
     poll = value.get("poll_policy") if isinstance(value.get("poll_policy"), Mapping) else {}
     try:
+        asos_poll_sec = float(poll.get("asos_poll_interval_sec", 0))
+        madis_poll_sec = float(poll.get("madis_hfmetar_poll_interval_sec", 0))
         gamma_pages = int(poll.get("market_registry_gamma_max_pages", 0))
         refresh_sec = float(poll.get("market_registry_refresh_sec", 0))
         retry_sec = float(poll.get("market_registry_retry_sec", 0))
     except (TypeError, ValueError) as exc:
         raise ValueError("reported_trajectory_awc_ingress_registry_poll_policy_invalid") from exc
     if (
-        not 1 <= gamma_pages <= MAX_GAMMA_PAGES
+        not 60.0 <= asos_poll_sec <= 3600.0
+        or not 60.0 <= madis_poll_sec <= 900.0
+        or not 1 <= gamma_pages <= MAX_GAMMA_PAGES
         or not 60.0 <= refresh_sec <= 3600.0
         or not 10.0 <= retry_sec <= refresh_sec
     ):

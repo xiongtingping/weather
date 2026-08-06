@@ -236,6 +236,7 @@ def _trajectory_packet(
             "observation_id": event_id,
             "station_id": root.station_id,
             "event_date_local": root.event_date,
+            "settlement_timezone": root.settlement_timezone,
             "reported_temperature_c": temperature_c,
             "valid_at_utc": decision_at_utc,
             "canonical_committed_at_utc": decision_at_utc,
@@ -1037,9 +1038,10 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     )
     assert facts["observation"] == {
         "observation_id": "obs-1",
-        "station_id": p1.station_id,
-        "event_date": p1.event_date,
-        "source_lane": "AWC",
+            "station_id": p1.station_id,
+            "event_date": p1.event_date,
+            "settlement_timezone": p1.settlement_timezone,
+            "source_lane": "AWC",
         "report_type": "METAR",
         "raw_sha256": "a" * 64,
         "canonical_committed_at": "2026-07-23T05:30:00.000000Z",

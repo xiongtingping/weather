@@ -78,10 +78,11 @@ def _observation(
     supersedes: str | None = None,
 ) -> CanonicalObservationEvent:
     return CanonicalObservationEvent.from_mapping({
-        "schema": "bayes_basket_canonical_observation_event_v1",
+        "schema": "bayes_basket_canonical_observation_event_v2",
         "observation_id": observation_id,
         "station_id": "EDDM",
         "event_date": "2026-07-26",
+        "settlement_timezone": "Europe/Berlin",
         "source_lane": "awc",
         "report_type": "METAR",
         "sequence": sequence,
@@ -173,6 +174,31 @@ def test_canonical_correction_is_review_only_and_linear() -> None:
     )
     assert validate_canonical_observation_sequence([first, correction]) == (first, correction)
     assert correction.qc_state == "REVIEW_REQUIRED"
+
+
+def test_canonical_observation_timezone_is_required_identity() -> None:
+    row = _observation(
+        "metar-timezone", sequence=1,
+        received_at="2026-07-26T10:01:00Z",
+    )
+    missing = row.to_dict()
+    missing.pop("settlement_timezone")
+    with pytest.raises(ContractError, match="settlement_timezone_missing"):
+        CanonicalObservationEvent.from_mapping(missing)
+    legacy = row.to_dict()
+    legacy["schema"] = "bayes_basket_canonical_observation_event_v1"
+    with pytest.raises(ContractError, match="schema_invalid"):
+        CanonicalObservationEvent.from_mapping(legacy)
+    conflict = row.to_dict()
+    conflict.update({
+        "observation_id": "metar-timezone-2",
+        "sequence": 2,
+        "settlement_timezone": "UTC",
+    })
+    with pytest.raises(ContractError, match="scope_mixed"):
+        validate_canonical_observation_sequence(
+            [row, CanonicalObservationEvent.from_mapping(conflict)]
+        )
 
 
 def test_stage_probability_bias_has_one_probability_only_direction_and_replays() -> None:

@@ -1,0 +1,34 @@
+{
+  "calls_order_gateway": false,
+  "confirmation_required": false,
+  "content_sha256": "db57b280fa74258685a68b7b3dfb5f8ead6dabb45ebb168b5f74d68869517d94",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 4270546944,
+  "database_shm_bytes": 0,
+  "database_wal_bytes": 0,
+  "fact_type_counts": {
+    "ensemble_member": 87840,
+    "model": 12600,
+    "republisher_cross_selection": 2,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596
+  },
+  "free_bytes": 20592414720,
+  "required_free_bytes": 12811640832,
+  "requires_writer_quiescence": false,
+  "row_count": 103887,
+  "rows_content_sha256": "5035c94d4d1fca294d8c9e122b74ff612f4df592836a9e4b7ed779c67031b3b6",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v9_migration_receipt_v1",
+  "schema_after_if_applied": "V9",
+  "schema_before": "V9",
+  "source_footprint_bytes": 4270546944,
+  "state": "PREVIEW_ALREADY_V9",
+  "trigger_names": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writes_database": false,
+  "writes_orders": false
+}

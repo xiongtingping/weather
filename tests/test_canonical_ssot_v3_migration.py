@@ -230,7 +230,7 @@ def test_production_schema_apply_rejects_v2_before_any_other_ddl(
         )
         with pytest.raises(
             RuntimeError,
-            match="canonical_contract_schema_v6_migration_required",
+            match="canonical_contract_schema_v11_migration_required",
         ):
             apply_production_ssot_schema(conn)
         assert conn.execute("PRAGMA schema_version").fetchone()[0] == before_schema_version
@@ -251,7 +251,7 @@ def test_one_shot_schema_entry_reports_migration_required(tmp_path: Path) -> Non
     assert preview["canonical_contract_schema_ok"] is False
     with pytest.raises(
         RuntimeError,
-        match="canonical_contract_schema_v6_migration_required",
+        match="canonical_contract_schema_v10_migration_required",
     ):
         apply_contract_schema(path, apply=True)
 

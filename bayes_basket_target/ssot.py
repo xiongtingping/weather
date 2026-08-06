@@ -11,7 +11,10 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from .canonical_ssot_schema import inspect_canonical_ssot_schema
+from .canonical_ssot_schema import (
+    canonical_state_at_least,
+    inspect_canonical_ssot_schema,
+)
 from .contracts import content_sha256
 from .probability_evidence_store import (
     DDL as PROBABILITY_EVIDENCE_DDL,
@@ -35,9 +38,13 @@ def _execute_sql_script_transactional(conn: sqlite3.Connection, script: str) -> 
         raise RuntimeError("sqlite_script_incomplete_statement")
 
 
-SCHEMA_VERSION = (
-    "bayes_basket_target_ssot_v8_canonical_calibration_timezone_identity"
-)
+SCHEMA_VERSION = "bayes_basket_target_ssot_v14_canonical_p0_chain"
+
+# A valid physical schema is intentionally weaker than a release decision.
+# PR04 owns the only current-pointer publication; neither this installer nor
+# its read-only status is authority to start a service, consume a basket, or
+# promote a V14 P0 chain to formal/live.
+CANONICAL_V14_RELEASE_STATE = "MATERIALIZED_UNPUBLISHED"
 
 CANONICAL_FACT_GUARD_DDL = """
 CREATE TRIGGER IF NOT EXISTS canonical_ssot_fact_no_update
@@ -61,7 +68,7 @@ PRAGMA foreign_keys = ON;
 -- retain the exact JSON/hash/lineage that was validated there.
 CREATE TABLE IF NOT EXISTS canonical_ssot_fact (
   fact_id TEXT PRIMARY KEY,
-  fact_type TEXT NOT NULL CHECK(fact_type IN ('model','truth','residual','activation','activation_supersession','ensemble_member','native_arrival','ensemble_member_arrival_binding','ensemble_member_receipt_manifest')),
+  fact_type TEXT NOT NULL CHECK(fact_type IN ('model','truth','residual','activation','activation_supersession','ensemble_member','native_arrival','ensemble_member_arrival_binding','ensemble_member_receipt_manifest','republisher_oos_artifact','republisher_cross_selection','republisher_no_live_activation','forward_applicability','probability_distribution_artifact','p0_snapshot','market_bucket_bridge','truth_observation_revision','truth_observation_day_bounds','model_oos_event','model_oos_cohort','p0_model_family_selection','p0_calibrated_distribution','p0_activation_root','p0_forecast_snapshot')),
   scope_key TEXT NOT NULL,
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
   fact_json TEXT NOT NULL,
@@ -1688,8 +1695,12 @@ CREATE TABLE IF NOT EXISTS basket_target_observation_facts (
   settlement_timezone TEXT NOT NULL,
   source_lane TEXT NOT NULL CHECK(source_lane IN ('AMSC','AWC')),
   report_type TEXT NOT NULL CHECK(report_type IN ('METAR','SPECI')),
+  observed_at_utc TEXT,
   raw_sha256 TEXT NOT NULL CHECK(length(raw_sha256)=64),
+  awc_source_receipt_sha256 TEXT,
   canonical_committed_at TEXT NOT NULL,
+  truth_observation_revision_content_sha256 TEXT
+    CHECK(length(truth_observation_revision_content_sha256)=64),
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
   created_at TEXT NOT NULL
 );
@@ -1703,6 +1714,8 @@ CREATE TABLE IF NOT EXISTS basket_target_bound_facts (
   bound_generation INTEGER NOT NULL CHECK(bound_generation>=0),
   hard_lower_bound INTEGER,
   bound_json TEXT NOT NULL,
+  truth_observation_revision_content_sha256 TEXT
+    CHECK(length(truth_observation_revision_content_sha256)=64),
   content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
   created_at TEXT NOT NULL,
   FOREIGN KEY(observation_id) REFERENCES basket_target_observation_facts(observation_id)
@@ -1979,10 +1992,18 @@ CREATE TRIGGER IF NOT EXISTS basket_target_observation_no_update
 BEFORE UPDATE ON basket_target_observation_facts BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS basket_target_observation_no_delete
 BEFORE DELETE ON basket_target_observation_facts BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS basket_target_observation_canonical_insert_only
+BEFORE INSERT ON basket_target_observation_facts
+WHEN target_canonical_projection_ingress_authorized()<>1
+BEGIN SELECT RAISE(ABORT,'canonical_projection_ingress_required'); END;
 CREATE TRIGGER IF NOT EXISTS basket_target_bound_no_update
 BEFORE UPDATE ON basket_target_bound_facts BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS basket_target_bound_no_delete
 BEFORE DELETE ON basket_target_bound_facts BEGIN SELECT RAISE(ABORT,'append_only'); END;
+CREATE TRIGGER IF NOT EXISTS basket_target_bound_canonical_insert_only
+BEFORE INSERT ON basket_target_bound_facts
+WHEN target_canonical_projection_ingress_authorized()<>1
+BEGIN SELECT RAISE(ABORT,'canonical_projection_ingress_required'); END;
 CREATE TRIGGER IF NOT EXISTS auto_trade_decisions_no_update
 BEFORE UPDATE ON auto_trade_decisions BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS auto_trade_decisions_no_delete
@@ -4097,7 +4118,7 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
 
     canonical_preflight = inspect_canonical_ssot_schema(conn)
     canonical_empty_upgrade: dict[str, object] = {"state": "not_required"}
-    if canonical_preflight["state"] in {"V3", "V4", "V5"}:
+    if canonical_preflight["state"] in {"V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13"}:
         row_count = int(
             conn.execute("SELECT COUNT(*) FROM canonical_ssot_fact").fetchone()[0]
         )
@@ -4106,23 +4127,31 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
                 "V3": "v4",
                 "V4": "v5",
                 "V5": "v6",
+                "V6": "v7",
+                "V7": "v8",
+                "V8": "v9",
+                "V9": "v10",
+                "V10": "v11",
+                "V11": "v12",
+                "V12": "v13",
+                "V13": "v14",
             }[str(canonical_preflight["state"])]
             raise RuntimeError(
                 f"canonical_contract_schema_{required}_migration_required"
             )
         # Some controlled installers create the canonical table before this
         # full production schema pass.  An empty historical table has no fact
-        # identity to preserve, so replace only that empty shell with V6 DDL.
+        # identity to preserve, so replace only that empty shell with V14 DDL.
         # Any non-empty store must use the separately receipted migration.
         for trigger_name in canonical_preflight.get("trigger_names", ()):
             conn.execute(f"DROP TRIGGER {trigger_name}")
         conn.execute("DROP TABLE canonical_ssot_fact")
         canonical_empty_upgrade = {
-            "state": f"empty_{str(canonical_preflight['state']).lower()}_replaced_with_v6",
+            "state": f"empty_{str(canonical_preflight['state']).lower()}_replaced_with_v14",
             "rows_preserved": 0,
         }
-    elif canonical_preflight["state"] not in {"ABSENT", "V7"}:
-        raise RuntimeError("canonical_contract_schema_v6_migration_required")
+    elif canonical_preflight["state"] not in {"ABSENT", "V14"}:
+        raise RuntimeError("canonical_contract_schema_v14_migration_required")
 
     _assert_target_decision_table_compatible(conn)
     execution_vector_upgrade = upgrade_execution_vector_contract(conn)
@@ -4195,7 +4224,9 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
     canonical_inspection = inspect_canonical_ssot_schema(conn)
     canonical_contract_schema_ok = (
         canonical_inspection["ok"] is True
-        and canonical_inspection["state"] == "V7"
+        # V14 is the minimum this consumer needs, not the exact version it
+        # runs on.  Later canonical versions are supersets and stay valid.
+        and canonical_state_at_least(canonical_inspection["state"], "V14")
     )
     return {
         "schema": SCHEMA_VERSION,
@@ -4222,6 +4253,11 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
             historical_taf_truth_label_migration
         ),
         "strict_delta_candidate_upgrade": strict_delta_candidate_upgrade,
+        "canonical_release_state": CANONICAL_V14_RELEASE_STATE,
+        "current_pointer_switched": False,
+        "service_start_authorized": False,
+        "basket_consumption_authorized": False,
+        "formal_live_authorized": False,
         "live_order_authorized": False,
         "writes_orders": False,
         "writes_production_db": True,
@@ -4426,7 +4462,9 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
     canonical_inspection = inspect_canonical_ssot_schema(conn)
     canonical_contract_schema_ok = (
         canonical_inspection["ok"] is True
-        and canonical_inspection["state"] == "V7"
+        # V14 is the minimum this consumer needs, not the exact version it
+        # runs on.  Later canonical versions are supersets and stay valid.
+        and canonical_state_at_least(canonical_inspection["state"], "V14")
     )
     probability_evidence_status = probability_evidence_schema_status(conn)
     probability_evidence_schema_ok = (
@@ -4645,6 +4683,11 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
         "missing_tables": missing,
         "canonical_contract_schema_ok": canonical_contract_schema_ok,
         "canonical_contract_schema_errors": canonical_inspection["errors"],
+        "canonical_release_state": CANONICAL_V14_RELEASE_STATE,
+        "current_pointer_switched": False,
+        "service_start_authorized": False,
+        "basket_consumption_authorized": False,
+        "formal_live_authorized": False,
         "probability_evidence_schema": probability_evidence_status,
         "target_tables_present": not (set(PRODUCTION_TARGET_TABLES) - rows),
         "probability_stage_contract_ok": probability_stage_contract_ok,

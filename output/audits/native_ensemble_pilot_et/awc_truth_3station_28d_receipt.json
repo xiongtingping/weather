@@ -1,0 +1,775 @@
+{
+  "as_of_utc": "2026-08-05T06:30:00Z",
+  "content_sha256": "4b15b6fb58bf2ca1e87fee634821ad411a68326e118812001ca9237034b2dbe6",
+  "contract_content_sha256": "85d322e909fdd59c289af904b6310276c77eea9d1502e3290d4061a1b748ed04",
+  "end_date": "2026-07-29",
+  "new_revision_count": 84,
+  "replayed_revision_count": 0,
+  "revision_ledger": [
+    {
+      "event_date": "2026-07-02",
+      "predecessor_truth_fact_content_sha256": "7d89f36aea28081294d437b8c788f75d211f9345be4e26f3781e3acbbb8a38b5",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "bc0ea19edf86a70a68eac82577c5800e4f447c550fe868f039301bc73cbda98c",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-03",
+      "predecessor_truth_fact_content_sha256": "8e5a454e231fddb287904a7176ada425716101b983264968ea865df7b93c758f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "968da41e9f6c83ffc500ecf563d6daa5587a358b0b96a6a91a3670e56a1891e2",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-04",
+      "predecessor_truth_fact_content_sha256": "3294a534c90f707d02ee2c6611423862a2133bca36114b4d33352a373a11fea0",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "83b853ad4c44fc2d27bc336d0174dc25ee7addfca69289cf741063183bcef9d9",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-05",
+      "predecessor_truth_fact_content_sha256": "6bc41bd1ee8efeac9e10318fec30b93809fd89bac4e0431e8685ca728d3395b3",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "772c18e520044594fa06fa2d244dfe17599a48755ebeb2f4c8f5cf1d6ee9f128",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-06",
+      "predecessor_truth_fact_content_sha256": "684b2116cc75bdbf267708977632dea3c48a816017aff1d6f120706d0782d218",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "17138fda2c3e8a321b6232c355f7f0cb1e871dcd1238daea1860c9cf47e8087a",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-07",
+      "predecessor_truth_fact_content_sha256": "86a2802c6b07c5a290546e6f3d7cf801ee6e97da0109a7e646de41e22b42c473",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "ac998a32a6d689ee886e5197eab8efe3946b827a94ddf38e8f9236750252b247",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-08",
+      "predecessor_truth_fact_content_sha256": "6dd1fdb764b68410bf575dc825171c3b15faef7cd310fa7bbff0041385ac62c5",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "a88127e73947e42245caf8a9699733ff895db20e8a57dfd4216815fd8160afd9",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-09",
+      "predecessor_truth_fact_content_sha256": "500fe83e805e955ea1cc517e05db301be63f2605daa3316658de6a796c0b9379",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "c1008be7e9506dd7307c58272f7d4ae0c21ceaea3f68ad74e749c61cf8e5a277",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-10",
+      "predecessor_truth_fact_content_sha256": "3f822104a46f5201b3a2cf8bf9d67ea49c655b7c0eb9e7e6ecd103a8c1e0687d",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "f4e9b371486f2211768d0970e93f1908f8f66052ab2554ab9c0a269565a5882e",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-11",
+      "predecessor_truth_fact_content_sha256": "c6bb4957b7ae45cc7c99b99fb87cf14384dabff368d9fdce278f4eea1ebe90be",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "8b65d719a301d434f5e96b977bf265bd7ec5425b405cf5b722e24f951183def2",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-12",
+      "predecessor_truth_fact_content_sha256": "527a54a2c7d37400cc01160483fe0d4a04237a171ea2c3daeaffe096122f5476",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "6cd7e7a88e6ba9eca33bce9a141a3f8d7c7928663555add6d31e979ce23766bf",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-13",
+      "predecessor_truth_fact_content_sha256": "b2f29deabed21ad95992933850e91be44fff7c1872eba2e2d7112d16f588156e",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "1be0659fad4303159896d5ca8065239262e7a4c61cbde7444ba650c0d5bd81d6",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-14",
+      "predecessor_truth_fact_content_sha256": "373e429c4b7fa2f70e49f2e972e14456441e4008b1bc56a3b7e9b3a2e169544a",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "96cd1ba26b104359bc1e4ec7ad1cea880e07809ec341e2435c10320760a25ce8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-15",
+      "predecessor_truth_fact_content_sha256": "d764009e7d2bb88d2f8f5ede79780b3218418e72dc55b0712226d7da562bc16d",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "4eb582e0f18c212c55abc3444e87d7e0c8eecb9f0c8c9c096da71f867c17a80b",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-16",
+      "predecessor_truth_fact_content_sha256": "b304465384d1af5fe9c2eb00d42dc04b75b237eed94603950c02e269fa2a45eb",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "8c5a8bdaf4f2701292aaa6100166a731cb1ba8c53fd780884996a440bce1bd98",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-17",
+      "predecessor_truth_fact_content_sha256": "901c92563cf20282c665587d334bc9b474484b6a7e2c8319c9320caaadabe878",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "c5a8b67cb8523487ae25911868b2b6352d551d39e234bf114e413e51480e9001",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-18",
+      "predecessor_truth_fact_content_sha256": "bbae43061c967b4a3480a192160fb801bc206598dbd38331b3f944632959a657",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "b5e8fd28968aa03c98fa2f12992d625c2da3bee39447e48f7368b08380eb3f4b",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-19",
+      "predecessor_truth_fact_content_sha256": "680aae2d151310ad502086b507c7ad86fc4c1205b0185d0e05ee4a8f03ba2680",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "361df5b36c179f5ca94b1edee1f0de9d5fbb1f8e270fb5dc87009427332e6458",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-20",
+      "predecessor_truth_fact_content_sha256": "642c2be8366ebf0ae8d3db71bc5e39e5bd0562c4f0ea777837e23cd3fb968b32",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "0418c9bd8883d78f8f32c09ed955208ecf210b1f6f8e9b8638857c0e3b32bf1e",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-21",
+      "predecessor_truth_fact_content_sha256": "e3a00704d7aab650e478b6e57d8090c473855d7ac765b9d2fdcb382e0787f8a6",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "76d4cb649eaa5c3adfe33c81c6a919847344a0f8e2c119fec8f56aefc86eae10",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-22",
+      "predecessor_truth_fact_content_sha256": "1f6d2e6bedc8c6d9696b7462d431eb54c486e1e8b5b9b61124017cd316b9c94f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "c3ab2722feed24b6316ea372cb04610087b6796aca11df42e713c10f0edb5fd5",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-23",
+      "predecessor_truth_fact_content_sha256": "88801cd9378cd3b4ba9cb6c6046a261fae6e1b2db0522ef981e669fe14af7f85",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "6dba9beaac357560b8ba5c289dfb2d13d3f4a610600ead6157bc37f3be347271",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-24",
+      "predecessor_truth_fact_content_sha256": "9dc590aed7d32240822f6a3d3e203d3f1da5b85f4f8f1f794740ce9ff56bbb21",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "345484900d8440d68cf114775d8e536377143d1c3842d9ff2bb097feb5fc31fd",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-25",
+      "predecessor_truth_fact_content_sha256": "73557a01cac2d44d97202c7121b1f244e239a5c9fea996a41f6d3eb0e7a297ae",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "5434e9bd484bc4efacc7a950702f7c5ee20b710a0b6c0c9a6980559be0d09735",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-26",
+      "predecessor_truth_fact_content_sha256": "8c1ac496e647b27ff1ecc4dab0478a8e95e7ae95fba24ce634a15fbe04932f3b",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "27cff0614bbea8a913c663682de896ebc70b7a982ad0542b8319680d80e06050",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-27",
+      "predecessor_truth_fact_content_sha256": "2e11b0685fcd939be395bf59900fd36eeae293f094ba678d2d2859b407aa7082",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "a2dbde270e47805c85fbd10a60b7545e59c366e2b5f427ff673e8d648012f086",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-28",
+      "predecessor_truth_fact_content_sha256": "831e93f105219692d05cd72814846871c96a3851c97ba9282dcbd80ef8286a30",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "aa89d0812cc2c7c824788977ef1612a41fbbb01b10239b466058ed94db036a8a",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-29",
+      "predecessor_truth_fact_content_sha256": "2bbf9d20e22464e2490ee3fa5693476209de7412c7de456991af4e7a1036df1b",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "CYYZ",
+      "truth_fact_content_sha256": "144f034509536ff971ca66b040317449ede38f4438eeec88a7d5c85c3622e434",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-02",
+      "predecessor_truth_fact_content_sha256": null,
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "577064ed740fab422b29181e766d7e53a94b3fc4c946ea889e7998bcc4064a5c",
+      "truth_revision_no": 0
+    },
+    {
+      "event_date": "2026-07-03",
+      "predecessor_truth_fact_content_sha256": "d07926f8f4f791b642f294ab17e386e6076326654538328b7cd8d175bb1573e9",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "54c0358571946693d7c1b9988e967e5c94b8defd55d7edd856f1c38aff3ff566",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-04",
+      "predecessor_truth_fact_content_sha256": "760839999b15789321263506b56623831e83379d592c3ab7aa1ca700539864cb",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "6a2fd8015ff9634e3b2bd9f11702650723f25bfc3fc6fe0a7bb2e6d9388c3854",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-05",
+      "predecessor_truth_fact_content_sha256": "4756f5e6e77d7712ea96f31584b33b90856a2fcc198724990824dff07e2b666a",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "bba99ddaab06d602715935c1dd0121ead853666307c045dcc1ccfd615d336d17",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-06",
+      "predecessor_truth_fact_content_sha256": "995607cd3c4bee94dd6dde6307c58fc55cb987db0b4aa094c050f3ad88580ebc",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "56574e5db45b2f6dfa0f0467624e466aedea0ab626f97bf39e4f2c6d00a05907",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-07",
+      "predecessor_truth_fact_content_sha256": "c49fa8b5a8d40c5a077ad856a4e4e78401f2136f27f24068309c4427d214cc63",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "0e853de0eb473ed88677b09e4c0b2da276abb5cacc1a2933e6638cb83d864e80",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-08",
+      "predecessor_truth_fact_content_sha256": "b1c7cf6d7164569fc21d929b59b554c3a4da88088832828d56bcdc715e2fa5d0",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "228b6138fc98e22b6188c39fcec8e69363fc08900e78dd6737ea1b3bf5310c89",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-09",
+      "predecessor_truth_fact_content_sha256": "69db96466a9c2ddf1def665ce1365d73d9a28caec4f8492a57747b8fb92bcc22",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "920806fa7f297ff37ec565a648312e7c986d37e632cf790b6d42e3720679f1db",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-10",
+      "predecessor_truth_fact_content_sha256": "df2b786d0dc644fe423ca86f9cb5b03d809aebe8da4b393672f4f4ec1cd37234",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "65479a2037c5a8504bbb6a16d30c78eb023e9dd58817cac66f29c3ac3b1b583b",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-11",
+      "predecessor_truth_fact_content_sha256": "bc14d5e5818257e5c69123d43de2630796942983e616ba97bbd4b0ffe6818279",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "4377840182cfe6ae2504ecd48c1aa8fba330f417a13c4450ae3475425852dd4c",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-12",
+      "predecessor_truth_fact_content_sha256": "a3af1737d5b973d14e98706f6f21e8a297a55fb93aadbacbdc01233ccb8cf435",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "a020300bf1f6b1785c9cc6676bd95ccf3e6aa08c6128fa638bdb6137008f2e56",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-13",
+      "predecessor_truth_fact_content_sha256": "128a6d1b7af61d6196407c72f48c53c85c63eb6d65983f1b7d579cb163429d73",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "ef4f6e7130bc57f219b700009dd90efecac214627a6990f35c15c3af4e9386c8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-14",
+      "predecessor_truth_fact_content_sha256": "d9b923929c1bf90b11cb1dd58a7556282b268b2089508de2ef8f7ca86cfa6fe7",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "5c1abb941ef28680a36ccd580512742fedaa8aae901fa5600be7aa6f64dda604",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-15",
+      "predecessor_truth_fact_content_sha256": "e09425474b9bac7e412837499944769cad9f5e36fb5e3e2bc2f15962a1e281e3",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "4b7eaa4ef9c2b8210b463a7c27841b424fcad7d1d6ddd2d5b2e69eda74275280",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-16",
+      "predecessor_truth_fact_content_sha256": "6844afb27fd7ea1b5d3ba8e95dc509c070cbdb382f3da25f0324a19675814f6d",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "736609a78cb2e3f4444630ec4d51bf21da9c20dd48b17d4ce69ae9689052f064",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-17",
+      "predecessor_truth_fact_content_sha256": "f3309d085cd653f40d6ad5401e0fed87b2222c5216575ada09d42b00b077f929",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "ecf11d288b8af0bd4d0149406b82434fc31cd3e78ca302092f2ca835eb808007",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-18",
+      "predecessor_truth_fact_content_sha256": "dcd89bfe6d1ade7d51aeadeabf15a5c22cdece1728c3ba6ea626dc300a233b75",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "6025a93afcb674ece4a05d0a81fe3e6a645ac06f9713cbfdd54df1ea5bd2fdd1",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-19",
+      "predecessor_truth_fact_content_sha256": "65eda94661caa501bfc405d0d3893ac0694e30b57c2cacbe60a08eb00ec0e687",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "a1b0edc7309a6aaaea0f99bbbb8972b5bc5cfb3be758d6934193db922a15aff8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-20",
+      "predecessor_truth_fact_content_sha256": "8ab07f82a6ceeca4d346876af89cba7f8226433547db7e9019569880ee7bd9d4",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "51d58fc26a60df581041358c65416b6014fd653cbf63b5e5a48c4eed5c116856",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-21",
+      "predecessor_truth_fact_content_sha256": "3b41c7553a208c7119daa4b4f3cb36a8815b55e123aaaa443c2baecccecb47da",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "8ac6c0b341047243c8c5f4ac254e438c42e5bd0e6f8f3a09281c5093144688ce",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-22",
+      "predecessor_truth_fact_content_sha256": "75564152bbc3564371df8f265be609a58f6880e3df61b048492ab235899425b2",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "b882943b84f890fbc753ec227784de3bb1735633873f9e9338f84158659c8f31",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-23",
+      "predecessor_truth_fact_content_sha256": "2c5def8199ce790b8509faef59588e2dd0dbd22e9d89ed24ac8006d486697b96",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "425fbbf13180c63f68c696a1d689233680d9c36ceca1dbc249f3902aa49c01ed",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-24",
+      "predecessor_truth_fact_content_sha256": "7cd320ef9c591eea274d86ef4d7fee470b8cdfe89b0f63e660ac7cf1a70eaf6f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "9e03b8ee901baf3e7802679a3c6c75c3f19b15c12fa70c6fcaa916695fb19f87",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-25",
+      "predecessor_truth_fact_content_sha256": "7831bbe8e0415b1bf51d08f691f90cfcaf3ce241dfc2d994533336f7c1e50ede",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "62baa971612c1482957f6302d02e495e6a35caba1a24828e07f8278457e8ae02",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-26",
+      "predecessor_truth_fact_content_sha256": "74e3ee807096a901d35dd261b36ff9e7faf7e23a553de4e4ae23ac454b34fe1a",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "9789757a077d1921b512b44b2ca5e99796fa691134e60696a2f5e1978aa9b196",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-27",
+      "predecessor_truth_fact_content_sha256": "dc427c6b398b5a8e7005f6215023aac0e462417e6321d37e3d06332591c565ff",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "3558b9f662ce7d11650c7a7ab7fe8e1c30746f29d35b54548d54642e621da47b",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-28",
+      "predecessor_truth_fact_content_sha256": "231359c7f098834f272a5af4f4ed33fa21aa20816212a4c71a2fc6e237f13ca8",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "37f1e505367b4483b8009a9856d19571af0294e4593d82dc9a469e9c0fc74003",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-29",
+      "predecessor_truth_fact_content_sha256": "229b2073d5d0339b425e1705cc58b86058bcfc91e34c460849ca977c1bb0525f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RJTT",
+      "truth_fact_content_sha256": "917f84a329a07c07be3987fd8ad78a2f2194532e33d2c5af29be4ca5089d3c6a",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-02",
+      "predecessor_truth_fact_content_sha256": null,
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "efd688986cad20bd7848f78ab024a194edc36c82bb625b155d5c5a35243c33f3",
+      "truth_revision_no": 0
+    },
+    {
+      "event_date": "2026-07-03",
+      "predecessor_truth_fact_content_sha256": "7476b1bfb179ddb690e079887d758a9cdc00f1365bd2b90bfa907ab1677b8454",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "2518c6c8fb8a2b4cd74e73adddaca9305bf8df60d3862da199276c7554280dc8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-04",
+      "predecessor_truth_fact_content_sha256": "9b940b7428a048caa6dacb63b5f7e333422f1748cb0501f67cecd9f27c794f38",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "aee8ddd1013cb97e9e21ef71474bd3bde98ce2963f42b6224899a2458f4a1359",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-05",
+      "predecessor_truth_fact_content_sha256": "49fa680e354b8f2b4cb30af934906341004c767a433b8fe1f0693730c979f115",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "a0cabd6a1b4f01bb98bd5b2fae1fc7cd7c6c066e62b6816c780687e21153af8a",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-06",
+      "predecessor_truth_fact_content_sha256": "1243e8b805e761cacc448ce1620ebdd7a0f421ec547564c4f7e1c78ac8312c63",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "09ffeae1ab025cf4463f378d43b66b4c3bc0a5d77f416dce548d93c507ae49df",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-07",
+      "predecessor_truth_fact_content_sha256": "3fbb43b080961c46d0a776835f891bd95e4146050fa44c7e2956625d0930d4e0",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "8c2be7d8ebebfab50e20be387990254f27671b3a4d6365849190656d886ceddd",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-08",
+      "predecessor_truth_fact_content_sha256": "1b861fa3f9f45a29910f27042c0ae83a2010746f8e6c8905cdaa22e63b4a61b7",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "396075b6ee9b3a42956a0f28a6198987e7779fee495e02cfaa3396fb4df17d74",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-09",
+      "predecessor_truth_fact_content_sha256": "05285c55869f8924f8b5807618c337aaf1c41e5524190fe60977745bc6320a46",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "3a871bcc3ff5b3e5cf2f96d005a0e959290d770ed5172c074ef333facefb4079",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-10",
+      "predecessor_truth_fact_content_sha256": "027d0cb31807b7174aac7a501ea369c39aeb19a1e6113c0d7a79e6b5a15c6ac1",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "98b4bd0c8e04feec0d5ed559fa2e62cfc6d9268f306b35341899ff0f1b9395c8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-11",
+      "predecessor_truth_fact_content_sha256": "882650a95876459b90d6d455a1d33ed2f02113533e934eca92599dbb3df4f7c6",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "47507e9c69fd37072167361f14383b48f1df37cbb8770036721735a83652cdf5",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-12",
+      "predecessor_truth_fact_content_sha256": "b6bb08501191c29853b4e7de48d6ad356de3f7947710848d3c836a004fdb68f5",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "49ae6c72a909b709d90bf04dd2f2cc928efb97ea48edc1ef920de585196a29fd",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-13",
+      "predecessor_truth_fact_content_sha256": "1382c7d502cd4e8974667c93fb9c2fb194369c78786bfb44a4a9d910c5a68469",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "d807be04ac244be1872193d14defaf77b87fd507abcc726423a6158809fe84dc",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-14",
+      "predecessor_truth_fact_content_sha256": "f338a8bbea97770e636b9ce470ba0117880b3784a2c964500d0214aeab13ae2f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "8d50e2a80eeb4779c6a0af8afa49b1d82ac354d193a60c4d14f8ad5f24a5b12b",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-15",
+      "predecessor_truth_fact_content_sha256": "6d4dc39d9bd97827e877d57105ee960e39900882a3b9d198f8369a729b24a465",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "9baed61099d74492e1c58ce38dd1fd7aedc584afd517bc5933eed1493239e5a8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-16",
+      "predecessor_truth_fact_content_sha256": "264f0590c9526236ba6db320002111600e741cba114c663982eea908957f7ccb",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "8f86e45a128a8bcb8709084a714822d4eee4e220e178d98a4982fecc4b603883",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-17",
+      "predecessor_truth_fact_content_sha256": "340e27725bd291c118f9b7dc9765ddcda64857e878271043986bbd0ecbef22a4",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "022676ddf329e8a773000ec821ff719a29ad9441b3012282fe9bf1f3b8d9bfac",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-18",
+      "predecessor_truth_fact_content_sha256": "34261cc741db071b8bd9c85c914cfea11972006d33350157eb1226a45b397f7f",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "222151510b480fe1697c86334cb4d93bfb6b685af213a35c6cdb493eae0ff8ee",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-19",
+      "predecessor_truth_fact_content_sha256": "202a0b1af1d8da1175c3d3b0783367f64eba18f79408a7a11a825d6437d3099a",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "a0ba251ceee1dcc5026778a84dd08421ef198c55432a2b0a6e49a15b9c798e42",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-20",
+      "predecessor_truth_fact_content_sha256": "99b7da09c43c2addc9c24151a5515524fb811b538c42959851c548da74e01ad3",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "faa7ff799b8a0abfa37ba347f3547f229c1fb29d8e3143621686f7c58a2fe740",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-21",
+      "predecessor_truth_fact_content_sha256": "a3f3d1783b3504f7f9633cbcc982d6d501c9cb8ab1187584714f4b0b2186a1f6",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "86ebba8b8185b4d36d63b912af4a5e69dd27ceee262ecc86fd28abe3f333b19d",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-22",
+      "predecessor_truth_fact_content_sha256": "33bb60099a3bde2c75ecca15d3f00eb98c499f853d6d8e64a10ff92f3fc9bf34",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "c5d7f1b0a78ccc8f50eced3750344b3c96dce7da192c49f7fcfaffb24dbaa54f",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-23",
+      "predecessor_truth_fact_content_sha256": "97bbcaed3c8d5ca5a8884f7216ccd093629987305f83f4e2a692651c0a6d2231",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "8fabe3625e285b7cc568aa00745193ec5f7080343706f9e559f79e1022957905",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-24",
+      "predecessor_truth_fact_content_sha256": "5bf2cf735c773c38114b5035b9f2152d3a6e212c68b968365018c60422aa9b48",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "f9e0dd563e4ab0c8af71cbf9494aaf27a978b6d300921bb8b96a56313f65edd0",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-25",
+      "predecessor_truth_fact_content_sha256": "05bbbee344593a05074b14e3913c10ec5e51d5ea805d648bf65427ce8e8daa60",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "e3e3cb522e2a705f322aec252cfadfe875b50341a3e3d2ae045be187e3a9174f",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-26",
+      "predecessor_truth_fact_content_sha256": "46374ce87d7722ee44cedd982cc3ce77e3ff2cacfe071bd4e8776b2a942adebe",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "bb190d6c752623a4753a1c5824e356c7b198758a1f8b082e22d1ad873c5a1c7f",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-27",
+      "predecessor_truth_fact_content_sha256": "baebbc34b5475a72f31db26f60cc459d8ce8d339b00c6d75beb7c0a109813f69",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "8c633dcdee5f3c38bc80408ccf4e36de47cdd409b573ebae14821e0ea607ecb8",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-28",
+      "predecessor_truth_fact_content_sha256": "4af3ad6420d0c7ec70819c34fdb37fd4ab9e7a6fb8ca9a9f1b0aa284e9d70f5d",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "e6f607610eed557dbcb7d6a7009e05119a79c31bd3e82b142303541153e9a44d",
+      "truth_revision_no": 1
+    },
+    {
+      "event_date": "2026-07-29",
+      "predecessor_truth_fact_content_sha256": "68fd5a5a213cf1d59838a68bb6885e63f24e769e0b313ce1a0101ec612030657",
+      "settlement_timezone": "America/New_York",
+      "state": "MATERIALIZED_NEW_ET_REVISION",
+      "station_id": "RKSI",
+      "truth_fact_content_sha256": "bbc103df81b8c6cc568c0746f69039662f6737242ad98cb6cbefb8385f49f992",
+      "truth_revision_no": 1
+    }
+  ],
+  "schema": "native_ensemble_pilot_awc_et_truth_revision_receipt_v1",
+  "settlement_timezone": "America/New_York",
+  "start_date": "2026-07-02",
+  "station_ids": [
+    "CYYZ",
+    "RJTT",
+    "RKSI"
+  ],
+  "truth_fact_count": 84
+}

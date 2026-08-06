@@ -37,7 +37,7 @@ from bayes_basket_target.contracts import (  # noqa: E402
 )
 from bayes_basket_target.resource_bounds import load_bounded_json  # noqa: E402
 SCHEMA = "bayes_basket_station_calibration_dataset_v1"
-INPUT_SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v2"
+INPUT_SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v4"
 MAX_INPUT_FILES = 64
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_OBSERVATIONS = 100_000
@@ -114,7 +114,7 @@ def _verify_historical_awc_evidence(
         or payload.get("authority_scope") != NO_LIVE_REPLAY
         or not isinstance(boundary, Mapping)
         or not isinstance(checks, Mapping)
-        or checks.get("station_day_metar_envelope_explicit") is not True
+        or checks.get("station_day_awc_report_hour_coverage_explicit") is not True
         or any(
             boundary.get(key) is not False
             for key in (

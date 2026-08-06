@@ -130,11 +130,6 @@ from .native_ensemble_authority import (
 )
 from .native_ensemble_store import ingest_forward_packet
 from .native_ensemble_training_facts import ingest_forward_taf_inbox
-from .republisher_fallback_activation import (
-    RepublisherFallbackActivation,
-    load_republisher_fallback_activation,
-    preflight_republisher_fallback_activation,
-)
 from .p0_preselection import (
     commit_p0_preselection,
     compile_p0_preselection,
@@ -700,19 +695,14 @@ def _compile_native_p0_with_republisher_fallback(
     republisher_packet: Mapping[str, Any] | None,
     decision_at_utc: str,
     native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
-    republisher_fallback_activation: RepublisherFallbackActivation
-    | Mapping[str, Any]
-    | None = None,
+    republisher_fallback_activation: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], str]:
-    """Compile official P0 first, then retry the same scope via republisher.
+    """Compile only the official-native P0 candidate for one scope.
 
-    Packet presence is not the same as native availability: an official
-    packet can be incomplete, stale, or fail its exact activation/transport
-    checks.  In that case a separately captured Open-Meteo packet is a valid
-    *candidate* for the compiler, but only ``compile_native_ensemble_p0`` can
-    admit it after the historical strict-OOS and lineage gates.  Keeping the
-    retry here (rather than weakening ``_preferred_forward_packets_for_p0``)
-    preserves official precedence while closing the unavailable-native gap.
+    Republisher cross-selection is historical no-live evidence, not a native
+    forward packet or P0 authority.  The retired fallback argument remains a
+    typed no-op only until all historical callers are deleted; it can never
+    route Open-Meteo data into the native compiler.
     """
 
     # Prefer the separately indexed official packet rather than trusting the
@@ -729,12 +719,7 @@ def _compile_native_p0_with_republisher_fallback(
         and preferred_schema == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
     ):
         official_candidate = preferred_packet
-    republisher_candidate = republisher_packet
-    if (
-        republisher_candidate is None
-        and preferred_schema == OPEN_METEO_FORWARD_PACKET_SCHEMA
-    ):
-        republisher_candidate = preferred_packet
+    del republisher_packet, republisher_fallback_activation
 
     candidates: list[tuple[str, Mapping[str, Any]]] = []
 
@@ -750,46 +735,21 @@ def _compile_native_p0_with_republisher_fallback(
         candidates.append((source_class, packet))
 
     append_candidate("official_native", official_candidate)
-    append_candidate("aggregator_republisher", republisher_candidate)
     if not candidates:
-        # Keep malformed/legacy callers fail-closed through the compiler,
-        # while preserving truthful source labeling in the failure receipt.
-        append_candidate(
-            (
+        return None, [{
+            "station_id": scope[0],
+            "event_date": scope[1],
+            "source_class": (
                 "aggregator_republisher"
                 if preferred_schema == OPEN_METEO_FORWARD_PACKET_SCHEMA
                 else "official_native"
             ),
-            preferred_packet,
-        )
+            "schema": preferred_schema,
+            "reason": "republisher_no_live_selection_not_forward_p0_authority",
+        }], ""
 
     failures: list[dict[str, Any]] = []
     for source_class, packet in candidates:
-        fallback_receipt: Mapping[str, Any] | None = None
-        if (
-            source_class == "aggregator_republisher"
-            and republisher_fallback_activation is not None
-        ):
-            # The official attempt above is the native-availability probe.
-            # A republisher packet is never sent to the native compiler until
-            # the independent pointer/cross-activation linkage has passed.
-            try:
-                fallback_receipt = preflight_republisher_fallback_activation(
-                    conn,
-                    activation=republisher_fallback_activation,
-                    packet=packet,
-                    decision_at_utc=decision_at_utc,
-                    native_unavailable=True,
-                )
-            except Exception as exc:
-                failures.append({
-                    "station_id": scope[0],
-                    "event_date": scope[1],
-                    "source_class": source_class,
-                    "schema": str(packet.get("schema") or ""),
-                    "reason": f"{type(exc).__name__}:{exc}",
-                })
-                continue
         try:
             compiled = _compile_native_ensemble_p0_runtime(
                 conn,
@@ -803,13 +763,6 @@ def _compile_native_p0_with_republisher_fallback(
                 != "calibrated_native_cross_ensemble_p0_packet_v1"
             ):
                 raise ContractError("native_p0_compiler_result_invalid")
-            if fallback_receipt is not None:
-                # Keep the proof beside the compiled handoff without
-                # mutating the compiler's content-addressed P0 packet.
-                compiled = dict(compiled)
-                compiled["republisher_fallback_activation"] = dict(
-                    fallback_receipt
-                )
             return dict(compiled), failures, source_class
         except Exception as exc:
             failures.append({
@@ -1255,10 +1208,6 @@ class TargetProductionWorker:
         ).expanduser()
         self.native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None
         self.native_oos_snapshot_error: str | None = None
-        self.republisher_fallback_activation: (
-            RepublisherFallbackActivation | Mapping[str, Any] | None
-        ) = None
-        self.republisher_fallback_activation_error: str | None = None
         writer_requested = str(
             os.environ.get("PM_TARGET_PRODUCTION_WRITER", "") or ""
         ).strip().lower() in {"1", "true", "yes", "on"}
@@ -1282,26 +1231,6 @@ class TargetProductionWorker:
                 self.native_oos_snapshot = {
                     "schema": "invalid_native_oos_snapshot",
                     "load_error": self.native_oos_snapshot_error,
-                }
-            try:
-                self.republisher_fallback_activation = (
-                    load_republisher_fallback_activation(
-                        os.environ.get(
-                            "PM_TARGET_REPUBLISHER_FALLBACK_BINDING"
-                        )
-                        or None
-                    )
-                )
-            except Exception as exc:
-                # An invalid/missing fallback pointer must only disable the
-                # Open-Meteo retry.  Official native packets remain eligible
-                # and are attempted exactly as before.
-                self.republisher_fallback_activation_error = (
-                    f"{type(exc).__name__}:{exc}"
-                )
-                self.republisher_fallback_activation = {
-                    "schema": "invalid_republisher_fallback_activation",
-                    "load_error": self.republisher_fallback_activation_error,
                 }
         self.conn: sqlite3.Connection | None = None
         self.open_error: str | None = None
@@ -1922,32 +1851,16 @@ class TargetProductionWorker:
                 inbox_wrote = False
             native_p0_compile: dict[str, Any]
             try:
-                republisher_fallback_activation = getattr(
-                    self,
-                    "republisher_fallback_activation",
-                    None,
-                )
-                if republisher_fallback_activation is not None:
-                    fallback_receipt = preflight_republisher_fallback_activation(
-                        read_conn,
-                        activation=republisher_fallback_activation,
-                        packet=native_packet,
-                        decision_at_utc=as_of_utc,
-                        native_unavailable=True,
+                if native_packet.get("schema") != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA:
+                    raise ContractError(
+                        "republisher_no_live_selection_not_forward_p0_authority"
                     )
-                else:
-                    fallback_receipt = None
                 native_p0_compile = _compile_native_ensemble_p0_runtime(
                     read_conn,
                     forward_packet=native_packet,
                     decision_at_utc=as_of_utc,
                     native_oos_snapshot=self.native_oos_snapshot,
                 )
-                if fallback_receipt is not None:
-                    native_p0_compile = dict(native_p0_compile)
-                    native_p0_compile[
-                        "republisher_fallback_activation"
-                    ] = dict(fallback_receipt)
             except Exception as exc:
                 native_p0_compile = {
                     "state": "FAIL_CLOSED_NO_P0",
@@ -2602,7 +2515,10 @@ class TargetProductionWorker:
                 self.commit_conn,
                 compiled_plan=candidate,
                 market_snapshot=market_snapshot,
-                observation=facts["observation"],
+                awc_observation_contract=facts["awc_observation_contract"],
+                truth_observation_revision_content_sha256=facts[
+                    "truth_observation_revision_content_sha256"
+                ],
                 bound=facts["bound"],
                 created_at_utc=created_at_utc,
                 supersede_prepared_cycle_id=(
@@ -6581,13 +6497,6 @@ class TargetProductionWorker:
                             ),
                             decision_at_utc=now,
                             native_oos_snapshot=self.native_oos_snapshot,
-                            republisher_fallback_activation=(
-                                getattr(
-                                    self,
-                                    "republisher_fallback_activation",
-                                    None,
-                                )
-                            ),
                         )
                     )
                     if compiled is None:
@@ -6765,31 +6674,9 @@ class TargetProductionWorker:
                             )[:MAX_RESIDENT_NWP_SCOPES_PER_CYCLE]
                             for replay_packet in replay_packets:
                                 try:
-                                    fallback_receipt = None
-                                    if (
-                                        replay_packet.get("schema")
-                                        == OPEN_METEO_FORWARD_PACKET_SCHEMA
-                                        and getattr(
-                                            self,
-                                            "republisher_fallback_activation",
-                                            None,
-                                        )
-                                        is not None
-                                    ):
-                                        fallback_receipt = (
-                                            preflight_republisher_fallback_activation(
-                                                self.commit_conn,
-                                                activation=(
-                                                    getattr(
-                                                        self,
-                                                        "republisher_fallback_activation",
-                                                        None,
-                                                    )
-                                                ),
-                                                packet=replay_packet,
-                                                decision_at_utc=now,
-                                                native_unavailable=True,
-                                            )
+                                    if replay_packet.get("schema") != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA:
+                                        raise ContractError(
+                                            "republisher_no_live_selection_not_forward_p0_authority"
                                         )
                                     compiled = (
                                         _compile_native_ensemble_p0_runtime(
@@ -6799,11 +6686,6 @@ class TargetProductionWorker:
                                             native_oos_snapshot=self.native_oos_snapshot,
                                         )
                                     )
-                                    if fallback_receipt is not None:
-                                        compiled = dict(compiled)
-                                        compiled[
-                                            "republisher_fallback_activation"
-                                        ] = dict(fallback_receipt)
                                 except Exception as exc:
                                     activation_replay_failures.append({
                                         "station_id": oos_station,

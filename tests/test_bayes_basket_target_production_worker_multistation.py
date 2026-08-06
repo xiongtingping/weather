@@ -379,7 +379,7 @@ def test_resident_open_event_date_inference_rejects_mixed_dates(
     assert production_worker_module._resident_open_event_dates(manifest) == ()
 
 
-def test_forward_p0_retries_republisher_when_official_compile_is_unavailable(
+def test_forward_p0_never_retries_republisher_when_official_compile_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     scope = ("RKPK", "2026-08-02")
@@ -422,12 +422,9 @@ def test_forward_p0_retries_republisher_when_official_compile_is_unavailable(
         )
     )
 
-    assert calls == [
-        production_worker_module.OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA,
-        production_worker_module.OPEN_METEO_FORWARD_PACKET_SCHEMA,
-    ]
-    assert compiled is not None
-    assert source_class == "aggregator_republisher"
+    assert calls == [production_worker_module.OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA]
+    assert compiled is None
+    assert source_class == ""
     assert failures[0]["source_class"] == "official_native"
 
 
@@ -489,10 +486,10 @@ def test_forward_p0_routes_fresh_official_before_republisher_even_if_preselected
     assert compiled["packet"]["marker"] == "official-fresh"
 
 
-def test_forward_p0_routes_stale_official_to_fresh_republisher(
+def test_forward_p0_stale_official_does_not_grant_republisher_p0_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An expired native capture must not suppress the eligible OM retry."""
+    """Historical republisher selection cannot enter the native compiler."""
 
     scope = ("RKPK", "2026-08-02")
     official = {
@@ -540,10 +537,9 @@ def test_forward_p0_routes_stale_official_to_fresh_republisher(
         )
     )
 
-    assert calls == ["official-stale", "republisher-fresh"]
-    assert source_class == "aggregator_republisher"
-    assert compiled is not None
-    assert compiled["packet"]["marker"] == "republisher-fresh"
+    assert calls == ["official-stale"]
+    assert source_class == ""
+    assert compiled is None
     assert failures == [{
         "station_id": scope[0],
         "event_date": scope[1],
@@ -594,13 +590,10 @@ def test_forward_p0_fails_closed_when_official_and_republisher_are_stale(
         )
     )
 
-    assert calls == ["official-stale", "republisher-stale"]
+    assert calls == ["official-stale"]
     assert compiled is None
     assert source_class == ""
-    assert [failure["source_class"] for failure in failures] == [
-        "official_native",
-        "aggregator_republisher",
-    ]
+    assert [failure["source_class"] for failure in failures] == ["official_native"]
     assert all(
         failure["reason"]
         == "ContractError:FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale"

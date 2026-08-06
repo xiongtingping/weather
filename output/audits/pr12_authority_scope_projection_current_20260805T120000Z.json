@@ -1,0 +1,531 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00.000Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "builder_id": "pr12.authority_scope_projection.v1",
+  "consumable": false,
+  "content_sha256": "7988a08f6ef3f035ced7ed9f326926c44b1df68f72fc1ebbfd827c37217a1e5b",
+  "doctrine_receipt_set_sha256": "7557748d7127aa72b997b19d7691c8944d01d4c53c144843a53f6a0dd29d4f38",
+  "doctrine_receipts": [
+    {
+      "document_name": "global_station_executable_basket_formula_v1.md",
+      "raw_sha256": "e96633224256ffb25d688943774687d359a70caa68afe37edb332c8ab90264a9"
+    },
+    {
+      "document_name": "station_basket_policy_hierarchy_v1.md",
+      "raw_sha256": "2a13ddec9bbbfdd61e754519c74a4bbe746a5f88eef37ea73049780de5b92d07"
+    },
+    {
+      "document_name": "station_model_calibration_ssot_v1.md",
+      "raw_sha256": "2ab20b3072e1d55f42eef3685bb033dd442d2818968eed1ece3019a84a2aa0a2"
+    },
+    {
+      "document_name": "weather_basket_trading_operating_system_v1.md",
+      "raw_sha256": "7cdee3e467d678836e3fec39dde537e9df61a067261bc89db2f00850e7d72feb"
+    }
+  ],
+  "rows": [
+    {
+      "content_sha256": "725fc4c193e8cda56f6a29a409352bec358a0b339798515ed9dfae60f75226a7",
+      "legacy_station_registry_content_sha256": "baf72c6c0f06ef1a019d1953d5b30386e6ab331a65c69a67bf68697e9776a196",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "fe0399bcd7ac6faf25508d9f4df5b010aab632c96e42b83cccc0aa4fd99bda3c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "CYYZ"
+    },
+    {
+      "content_sha256": "a4244d4264932262a5c97932c9e997a219ffceaf3aae76a59fc107643885c7bf",
+      "legacy_station_registry_content_sha256": "a44ec1858bd7e81061e814fc9973aa2f6a46ce895e5bfba2d2333746cb98dd8b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "950d8e3caa22fac75109028f654579fbad64538b7e27aa65bcc44cf95c75d255",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EDDM"
+    },
+    {
+      "content_sha256": "7ff51fa88d257954aba1134c3759676ec6a8d1b52d448fed5c4f1edd7ef72146",
+      "legacy_station_registry_content_sha256": "7144530e01d2a184bcc761daab0b35139138577c3f9d30afc408d97e7f5e10b9",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "009cf1f3f4d679d18ebf42b215d0984108d76bcc8c366e35de84cb9dc3d0045f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EFHK"
+    },
+    {
+      "content_sha256": "0ec6a345f1619c4755327926f774508a56ed23a99b5e46d9492037df4eea9d07",
+      "legacy_station_registry_content_sha256": "78c140c4e46aec4caa1bca20a073ed2c82c4a8ce26d2fc3a4dbbcbc4fef4d08d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "61fc74ddc5703cc223407dd74d797cb0024dad81e7eab310a7d792ed713c57fb",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EGLC"
+    },
+    {
+      "content_sha256": "b842e24f5c67dffb684d14ff748c3cb74455e32ab1da0b0ee6c600a9d5a5243a",
+      "legacy_station_registry_content_sha256": "3c621577be21e4812f73777a76f5e5dbffb48e034810b216a8ac8e5171db1d34",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "ef3a9408639d7c7c5311840fe7577fa59e9cfa49992325b856c35294da13b275",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EHAM"
+    },
+    {
+      "content_sha256": "2d74b6573f9c133216cc42c650976a58b2c1e034d693f8a6627e8fa1604aa179",
+      "legacy_station_registry_content_sha256": "b8886dca0ecdace63cb9ed938619bce3db0075c40c109255d80289390287d27b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "9f366f9346a0fafa1c94a34b965a5d66a6feb4831a886185bb2562d9b1ff921f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EPWA"
+    },
+    {
+      "content_sha256": "b17b6a9a20e0ddf801f1f2f9025ec50f217b0607dc792142c3a77ba7de66e6ed",
+      "legacy_station_registry_content_sha256": "361df5c3c12a7fbe0434fe22a7e4fc34cc73dd7e61747e0d8b933a2b5b922e43",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "25b2485a61c2c924987ea2694f5e6c7ace5970822fcf032a546b62564546d464",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "FACT"
+    },
+    {
+      "content_sha256": "5ba58f7c54117ed3ec0240376c65a101f02980811fe818ff8de5f032a2ae03cb",
+      "legacy_station_registry_content_sha256": "d0e2ecd6b52fd7c4d61e5b4480fdf1f31a87073f3f967bed14e632bc1608e179",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "71f956bb2fd0e9f8e96131ed1df9be392dfc95e8549ab54a538ed3172bdaac0c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KATL"
+    },
+    {
+      "content_sha256": "8ecddc55914d607cb6c2cbb25e82f488785ace448a55552d76ac5a60b3e1deca",
+      "legacy_station_registry_content_sha256": "5511b670ddbe0a74cda889eb54e3342ec2810843fff0a8e3a3b0f0c14722d6f3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "6229185a858daa46b6624f1b8fde3536fe0cb1a0c83e781ad0e1fc9712dd947f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KAUS"
+    },
+    {
+      "content_sha256": "be6513f81ed4328b26612e2496c53b15efadf36ff23aeae6c2846fc42f75e40f",
+      "legacy_station_registry_content_sha256": "ac0b4bf06d52262ffb1950e7c67f88dae8f99c90aafd5d463eab4097fa1257db",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "7e9fcd44678a7ca0aae5e17e3fffeafe7283da0ae0dc9109d1d618ea8a5561e7",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KBKF"
+    },
+    {
+      "content_sha256": "7bf9ddd872fe0e233a8df60c6441aef5374e298f8e2966bb892fb69c06102adb",
+      "legacy_station_registry_content_sha256": "63a7e0980bd05a94529a665670a3be70e77c4c16d1266217405239f9ec1c67b2",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "85655da212b7d697c29758e5f907eb813e4f1312adeb86e7703c835b2132cf42",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KDAL"
+    },
+    {
+      "content_sha256": "392ce15262d7f4ac3a1ad4a0cd2868857bf030ced3fdfa4c242cbb5450a37047",
+      "legacy_station_registry_content_sha256": "246dc5e2fa0346c2909624c4ec54ebca2f500f4c95a1d78276c8d0184e008fdd",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "09df2d4d32f4a2e6314f3a01810955aefc24ffdf304c8e59401b2181b3254d50",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KHOU"
+    },
+    {
+      "content_sha256": "028138c90427072da9abdb822bace8d8fca5502f0fd86d1c48b8470a348cb0c1",
+      "legacy_station_registry_content_sha256": "4185772300f855cfe4ae1b0ad31819016509350e6f8c09fb9882bd33c78b3f1d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "68138d2d8d837d9bd9821dfa0918754966bb945745b5d4211713d31c5104620c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KLAX"
+    },
+    {
+      "content_sha256": "671d24503d70787b49e5b57f79534a7802f402c5a7bb6abbfd01f8762766a876",
+      "legacy_station_registry_content_sha256": "06923d2013cbb84cfabb8fdc1eb3a6374ccaee671258f50128dd5072ac59a4a6",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "911c805b3c0539cdcf9a9196da7083c38b66f527b196207a78f827e3b57a7d64",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KLGA"
+    },
+    {
+      "content_sha256": "a7ad78ec93ca3611582c03e28b9961490ac98b1f657ffbfac4d67786993f0fae",
+      "legacy_station_registry_content_sha256": "bbbd9a68b0e9f51b1e7cbefda47fa4754bace3c90e1013c42a9be2ca928748d6",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "72ee084e7d61f51696a5639a00978570d31f33d1a99871cf250966f599742791",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KMIA"
+    },
+    {
+      "content_sha256": "0f64610b91be4d1334110acbb4c1662e68baa8b8d033e17c47f865c7d8d357c8",
+      "legacy_station_registry_content_sha256": "103637133b2b285384a17b257714c0f6140566efe6855e7a4a6f561d13750637",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "6580b142c27489576bf3a6d7a0a9ba2a6499993e32732b482807d896dca11613",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KORD"
+    },
+    {
+      "content_sha256": "e5c3454614e6e20dd28e41551f95a19a7b0da635065f25ea7efb1f590e0ee451",
+      "legacy_station_registry_content_sha256": "78a2404ed693848ad3d10197164016dec5f377815f4ea459e98102639746654f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "26f3012a248480198c6fe32d2aed0a71a6064cd48510fdc47e56fcf04e14a530",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KSEA"
+    },
+    {
+      "content_sha256": "febde3b4b612c4e27cae9e1791c845d91c1fe7cc84716fd975db77ca95443571",
+      "legacy_station_registry_content_sha256": "6728ea52d8294c3d39953402ab49ba478bd705eb38f7266a49568459330a317f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "34f4618ae147c97b526eb81611f378e9bb4c5c064b658a47eb9863ac8c9f6da8",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KSFO"
+    },
+    {
+      "content_sha256": "b7ea82dddc9f22072e317e4825885b9f2e0f59d6ba3cbece393f550d18abd75a",
+      "legacy_station_registry_content_sha256": "0be4e3c9285e9414741cd5cce22cb216d43c02f83498b19078717bcbf2ceb195",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "4794a44456a29e4157d19be8b6aaae7eb7331a519c90982479ea55a087745824",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LEMD"
+    },
+    {
+      "content_sha256": "d121ad5a413e36f83a21904fb9d13e136eaa1030bda297914905212ea39e0b21",
+      "legacy_station_registry_content_sha256": "f35d330f38e6a498000df20d56088a09c6c1b4beccffe0558c082745a0751be7",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "9f6b480bd19b3705fbf730f6ed69421cd3b47648b18810acb594afcfed731152",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LFPB"
+    },
+    {
+      "content_sha256": "9b61f3ee96c27931c9a922dfbbc0a7f46e78f8141baa7fc820f2ed48fbf13d3e",
+      "legacy_station_registry_content_sha256": "5cdcfe10de7dbb2cd6dda75b37b65e237db4fa543526fe5963259153d3943528",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "f2f7251110bdc2445b90eb7a21037150ae04ec3bec088aeed4f448762541df9c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LIMC"
+    },
+    {
+      "content_sha256": "5bb188963ef9dd1f0c7be8a8aa665669aa7ec2f6234706efb72be67791a4c9e6",
+      "legacy_station_registry_content_sha256": "81349cab636b1c7e6fb9dac32be6dd6af303e9813ffefae13dc64ebbda99395b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "af32946701700ee9447e61a11f5040f73edc2fc1abb8bfcf4d6b33f1a11f1d56",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LTAC"
+    },
+    {
+      "content_sha256": "b683d19e7ee51ffeb0e367411132e548ee5765307e72e1cc44da8dc753f6e403",
+      "legacy_station_registry_content_sha256": "5bb04ee6c78ff27782cf1bc78a7ec7476056f2697a89e7467264c331912fe9e7",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "b47913146124c67cf99712b338538e0be0b74fd30299fe1fee82b1dadaea3cfe",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "MMMX"
+    },
+    {
+      "content_sha256": "1db9edccb8468f261bc29ecad3f881da995ddc5986030e6235f44c62971e471a",
+      "legacy_station_registry_content_sha256": "e5e789622e3608ad1b98e331da2ba13d93974d8924fa4e0c96a1b8929ec394d3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "05cfdfbe60509f8dbdc66c1b7e64f33bec1f5ec7eb4707890914d9dcf178cbb8",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "MPMG"
+    },
+    {
+      "content_sha256": "6085c554afb16765b8660a7b4973ca0e8a3242e900f6e6ffe02a977285b5f19a",
+      "legacy_station_registry_content_sha256": "01f6dd1710cffbd142c408e53e10996e477b560391a59b01f1fd414443ef630c",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "41b8382ae00c93bc6e9ec0348ec73b6bcd6e075c7b44dc28fcc2916c9cc8bdcd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "NZWN"
+    },
+    {
+      "content_sha256": "4f5a55d385f331b889b9b29e475168b2bfd88ff4ba0edc00c985c96cc5d7cde1",
+      "legacy_station_registry_content_sha256": "446799d0a22fac5e5697fb9dd278794ffac1c4116a51cca5e2d0c07848d32ae5",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "31d2b32be0106572b05b02e33c394dd096c7de936eb4f01fee5f9025cbc665c3",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "OEJN"
+    },
+    {
+      "content_sha256": "6a79ba3e7bd856daa3be27366b19995a50ee8700b9d46461b4382309053523c6",
+      "legacy_station_registry_content_sha256": "5e211f9895548e35caca9b20b4c88508ede42703c0422dc9e89c9a73f5a0a849",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "f512cc5964a58c97a548d9a05105f99650ee066fd224329ea6910c1872fe1bb9",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "OPKC"
+    },
+    {
+      "content_sha256": "cb4c83b9cc827e50a8d70fecbe2998fd7bda98b2631158fb14d45d42e270c55d",
+      "legacy_station_registry_content_sha256": "b71d07f77b51899888e2fb920f78c0246d9d10e149b187e2004581c3c0f861bf",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "7614290fb107e1af4b8b0e97755858cf2c63c5c1e1a698cb04e2929b191b5623",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RCSS"
+    },
+    {
+      "content_sha256": "f074eb463e8b5be40a052991ddfd4caca09db9ce0212f71336ac67d78e01660f",
+      "legacy_station_registry_content_sha256": "05e6605a1c206ccbf35fecad921495995231329f6cd92b48b4ef280a4f70693c",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "3379a4b55e41d637677ece3ae75a1174faabd4d0dbd8e3be1d13d710bd6484ea",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RJTT"
+    },
+    {
+      "content_sha256": "5803497ed13bd76ac15deab3a11c2d23a27cdf890828056f43beba17f3b37276",
+      "legacy_station_registry_content_sha256": "468bdd2a4d5912e74d781bb487342160da7d7998b2263c50c7834b0e81587da3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "4a6da9646fc9c3fd6ef4a0674e7d022d42da89dc0754b070c8a24d3d50b2a7e0",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RKPK"
+    },
+    {
+      "content_sha256": "256441c1488d186c669ece817a553807b6e71ae7c0f7de7d641fd139cd34712f",
+      "legacy_station_registry_content_sha256": "81d6da4e7da27086d2f22fbdda4e40a5d0535aaa4f3d7035f732913c6ffddf66",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "aa1a8f87195be44a4fe061e955d91d83a9944e40fc6aec57683563a8706032d9",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RKSI"
+    },
+    {
+      "content_sha256": "8b4890a9ce5f50f7830b8e47ef1c05fb78c8b02664017d6e1d76d455d57715c7",
+      "legacy_station_registry_content_sha256": "e527dfff1d6e6b8c9027ba86e7caf043cd34ffe5742d84813cc020189ceb4f43",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "d96b14eb6eabeb7cf29519ee2940f9b1cb6ad7324bb40da668ec03830e92083f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RPLL"
+    },
+    {
+      "content_sha256": "f98ff65fb36a46cfd2ad8ba2a97eb87acdcd7b4eada8af62d1a2e5c7a3f3778a",
+      "legacy_station_registry_content_sha256": "9d9184281dd5ef17cc6a8639179f5453aabc20a4d1f0d15aea634aa01a7a9dc3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "634e3f858b344c90f73d66f5c464b6283eafa717cea6161d1d25c22c087dd9dd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "SAEZ"
+    },
+    {
+      "content_sha256": "08138713feaf55f4c7dde6c6de5d8b7fd85a13108dee47a5335d004f51f3810c",
+      "legacy_station_registry_content_sha256": "5c2a3ef427432e25ffa986a38ff685d644ac2cf65e5ad1978cdf5863eaf7aace",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "5933d9c6b0c0a5adc3ce5f51b48ff4c3e44eb96717745b0a8069d987d3be128c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "SBGR"
+    },
+    {
+      "content_sha256": "643007334eb9db89fc05bc91f785b5669e53d9a0477283bcb7ad41426332a144",
+      "legacy_station_registry_content_sha256": "a16554edaea25963f3fd8a6db08251f153419cbc96e64d15142fa0eab16bedbe",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "f10657bf1858dcc2d3bccc4aea16fc893d6f82e1aadb2fe38630d172a59d62ff",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "VILK"
+    },
+    {
+      "content_sha256": "3b15e8855c2e7074d3ec747262596d589dbd93d1ce87b47f1f197345f63465a7",
+      "legacy_station_registry_content_sha256": "8fc9711eb9fe3a5fb77942f0af38bafd48eee2c7203857b6f0864e2e9d446920",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "521072d566f4decd5a95987ace87ee3628f7360fa84b56ad9d58811706ae426e",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "WMKK"
+    },
+    {
+      "content_sha256": "8702ae886c68231b4c302867c4644d9a61502ad3067fa3ce3b64518372698876",
+      "legacy_station_registry_content_sha256": "179284deb54cf3072365d4e70ace2ac1de4123a64900d1a1edb5702d37e4c9aa",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "8a2f51f67ff88d155fa561170ca520a53dd5b70751061089f626bf26d15c48cd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "WSSS"
+    },
+    {
+      "content_sha256": "a02b41b2feaa57996582248b934e50f81b29f95ec7da24781189bebb2b3c6781",
+      "legacy_station_registry_content_sha256": "aca56ad8ca9e87a70021ebcfc3cbad91f7fb2b04c264b0932e3023228fb03df5",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "05ef434f7e7f606b2807eb79415c9a1dda10fb4d58882d7a1d2befe3a5f84125",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZBAA"
+    },
+    {
+      "content_sha256": "da836e89cadb11c002c2d43d89017a93e26fe3c66c2509affe44c533c2c4688b",
+      "legacy_station_registry_content_sha256": "126f5d25cbff1ee6f5e4270eb6c737253bb5e4d1daf14326da39fcb275be3816",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "73e0db72aed7b1425af63490c3d28e27bed52ff7d7c90e061a2bf8d6e6280ce0",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZGGG"
+    },
+    {
+      "content_sha256": "11bd8c827d196951ed50c139bd47412b4a910c76141af06bd8dbd701116ac06d",
+      "legacy_station_registry_content_sha256": "afbf5a23d92680be3e27110785df7d2b550028b7e5929217c6bdd8e9929f50c1",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "f907f5427fbfc12c07b72be10238a17698679e8b32584f4ed88bddcb9fcb6338",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZGSZ"
+    },
+    {
+      "content_sha256": "38919623ec7d443a8677e2369318edd40c9c7aa8398863afa12ba1e80748592f",
+      "legacy_station_registry_content_sha256": "55697d9bf3ca8c2d0ef7c0c90ba9e1122d382fec15161d41c92659eb7ac21492",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "bd297e894741ab211aaf0acdfeff62502f99bc3559e034231496e24f0cccb770",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZHHH"
+    },
+    {
+      "content_sha256": "536cc0acbf33f1d1fcb24ba1b41780dda7b54706874af98e8502d29143428483",
+      "legacy_station_registry_content_sha256": "e5f56d0b895ae47f3a3a4dda4d7cb80caa16e5706d03f32f3ac98ad0924cb378",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "d172be7c8fcc7935b003adeb4dcdb92679c99463b720d5276bd14a1fe4e37ec6",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZSPD"
+    },
+    {
+      "content_sha256": "35b4f50c69501a60115bea0dba94fb4367121b6166d0255c8c09fca69cf23812",
+      "legacy_station_registry_content_sha256": "f0030df7665d9a7de00fec544cf3cc6dc8a7f8c5837872c3fb0bbe2c496c08a9",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "2b6877dd21ca826c60dc1ad191784983f65f8e2627336826dd8799e9ccb083ba",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZSQD"
+    },
+    {
+      "content_sha256": "f137010bf13fac968220c6bbf1300524b2b98147e9e60244050d7fe5dae3f1d1",
+      "legacy_station_registry_content_sha256": "33882acebb189018c6b76038961e711c8644e671aed7db980df36e45ec890552",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "e3cd0f3c489eda2571c2f7e12508222b44d24a1ef47f8a6f2501d9b4eba7715f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZUCK"
+    },
+    {
+      "content_sha256": "648d242810fb34054964c23837eece3f8cc5014ec108ff48f4cbb21d6cc90f67",
+      "legacy_station_registry_content_sha256": "8cd922b5eeb61f2fa0d69ee9f617971f4848c7a9c57ff6fc7083a63b1c3098fc",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+      "source_authority_content_sha256": "c7622da9a09cf40f4002756126327fca09e4bea4b5d032171f9d848192575d79",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZUUU"
+    }
+  ],
+  "schema": "bayes_basket_target_pr12_authority_scope_projection_v1",
+  "settlement_timezone": "America/New_York",
+  "settlement_timezone_authority": "FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1",
+  "source_authority_vector_sha256": "f4e0e2fc504e1f17bb23853eb74c217293fd01b1390ada09bfbee743177774d0",
+  "state": "MATERIALIZED_UNPUBLISHED",
+  "station_authority_rowset_sha256": "6fbd4e2d63940af82cdadb9e932888ab9ada4cf3706140d0705f26a057e78835",
+  "station_count": 45,
+  "station_registry_vector_sha256": "d10e6e6de27a45db79df0121b8de714f1834964c68e08483938aafbb6cd63667"
+}

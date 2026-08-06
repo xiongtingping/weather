@@ -205,7 +205,10 @@ from .order_state_producer import build_no_live_order_state_ingress
 from .resident_market_ingress import materialize_resident_no_live_market_evidence
 from .artifact_ingress import ingest_artifact_bundle
 from .canonical_ingress import materialize_p1_from_canonical_observation
-from .canonical_fact_ingress import ingest_canonical_observation_evidence
+from .canonical_fact_ingress import (
+    ingest_canonical_observation_evidence,
+    stage_canonical_observation_evidence,
+)
 from .canonical_observation_export import export_canonical_observation_evidence
 from .production_io import (
     ProductionArtifactBundle,
@@ -348,6 +351,7 @@ __all__ = [
     "ingest_artifact_bundle",
     "materialize_p1_from_canonical_observation",
     "ingest_canonical_observation_evidence",
+    "stage_canonical_observation_evidence",
     "export_canonical_observation_evidence",
     "evaluate_cash_phase",
     "materialize_p0",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -14,6 +15,7 @@ import ctypes
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -22,6 +24,11 @@ import httpx
 
 from .contracts import ContractError, content_sha256
 from .future_temperature_curve import build_native_family_temperature_curve
+from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
+from .native_raw_object_store import (
+    find_content_addressed_message,
+    store_content_addressed_message,
+)
 from .native_ensemble_store import _insert_content_addressed
 from .open_meteo_ensemble import ENSEMBLE_SYSTEMS
 from official_nwp_https_transport import official_nwp_proxy_url
@@ -54,6 +61,8 @@ MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_FIELD_RECEIPTS = 31 * 25
 MAX_STATION_COUNT = 64
 MAX_DOWNLOAD_WORKERS = 8
+DEFAULT_RETAINED_PACKET_DIR = Path("output/audits/native_ensemble_history")
+DEFAULT_RAW_OBJECT_DIR = Path("data/runtime/official_nwp_sources/gefs/raw")
 
 
 def _get_bytes(
@@ -142,6 +151,9 @@ def _download_gefs_field(
     member_id: str,
     forecast_hour: int,
     timeout_seconds: float,
+    retained: RetainedGEFSField | None = None,
+    raw_roots: Sequence[Path] = (),
+    raw_store: Path | None = None,
 ) -> tuple[bytes, dict[str, Any], int]:
     filename = (
         f"{object_member}.t{cycle}z.pgrb2a."
@@ -151,13 +163,40 @@ def _download_gefs_field(
         f"gefs.{run_day}/{cycle}/atmos/pgrb2ap5/" + filename
     )
     url = f"{BASE_URL}/{object_key}"
-    index_raw, _index_headers = _get_bytes(
-        url + ".idx",
-        client=client,
-        timeout_seconds=timeout_seconds,
-        max_bytes=MAX_INDEX_BYTES,
-    )
-    start, end, index_line = _message_range(index_raw)
+    if retained is not None:
+        receipt = retained.receipt
+        try:
+            receipt_hour = int(receipt["forecast_hour"])
+            start = int(receipt["range_start"])
+            end = int(receipt["range_end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractError("gefs_archive_retained_range_invalid") from exc
+        index_line = str(receipt.get("index_line") or "")
+        if (
+            retained.member_id != member_id
+            or retained.forecast_hour != forecast_hour
+            or str(receipt.get("member_id") or "") != member_id
+            or receipt_hour != forecast_hour
+            or str(receipt.get("object_key") or "") != object_key
+            or end < start
+            or not index_line
+        ):
+            raise ContractError("gefs_archive_retained_scope_mismatch")
+        local = find_content_addressed_message(retained.message_sha256, raw_roots)
+        if local is not None:
+            message = local.read_bytes()
+            if len(message) != end - start + 1:
+                raise ContractError("gefs_archive_retained_range_length_mismatch")
+            return message, dict(receipt), 0
+        index_raw = b""
+    else:
+        index_raw, _index_headers = _get_bytes(
+            url + ".idx",
+            client=client,
+            timeout_seconds=timeout_seconds,
+            max_bytes=MAX_INDEX_BYTES,
+        )
+        start, end, index_line = _message_range(index_raw)
     message, headers = _get_bytes(
         url,
         client=client,
@@ -167,7 +206,7 @@ def _download_gefs_field(
     )
     if len(message) != end - start + 1:
         raise ContractError("gefs_archive_range_length_mismatch")
-    return message, {
+    new_receipt = {
         "member_id": member_id,
         "forecast_hour": forecast_hour,
         "object_key": object_key,
@@ -177,7 +216,40 @@ def _download_gefs_field(
         "range_end": end,
         "message_sha256": hashlib.sha256(message).hexdigest(),
         "last_modified": str(headers.get("last-modified") or ""),
-    }, len(index_raw) + len(message)
+    }
+    if retained is not None:
+        if hashlib.sha256(message).hexdigest() != retained.message_sha256:
+            raise ContractError("gefs_archive_retained_message_sha_mismatch")
+        new_receipt = dict(retained.receipt)
+    if raw_store is not None:
+        store_content_addressed_message(
+            message,
+            root=raw_store,
+            expected_sha256=str(new_receipt["message_sha256"]),
+        )
+    return message, new_receipt, len(index_raw) + len(message)
+
+
+@lru_cache(maxsize=2)
+def _retained_fields() -> dict[tuple[str, str, str, int], RetainedGEFSField]:
+    directory = Path(
+        os.environ.get("GEFS_RETAINED_PACKET_DIR", str(DEFAULT_RETAINED_PACKET_DIR))
+    ).expanduser().resolve()
+    if not directory.is_dir():
+        return {}
+    return load_retained_gefs_field_index(
+        [
+            *directory.glob("GEFS_45station_*_official_d2.json"),
+            *directory.glob("NOAA_GEFS_45station_*_official_d2.json"),
+            *directory.glob("official_noaa_gefs_forward_*.json"),
+        ]
+    )
+
+
+def _gefs_raw_store() -> Path:
+    return Path(
+        os.environ.get("GEFS_RAW_OBJECT_DIR", str(DEFAULT_RAW_OBJECT_DIR))
+    ).expanduser().resolve()
 
 
 def _nearest_temperature_c(
@@ -716,6 +788,7 @@ def capture_gefs_station_days(
     query_at = datetime.fromisoformat(
         archive_query_at_utc.replace("Z", "+00:00")
     ).astimezone(timezone.utc)
+    projection_generated_at = query_at
     if (
         query_at <= run_init
         or not 1 <= len(station_scopes) <= MAX_STATION_COUNT
@@ -776,6 +849,53 @@ def capture_gefs_station_days(
     total_bytes = 0
     run_day = run_init.strftime("%Y%m%d")
     cycle = run_init.strftime("%H")
+    run_init_text = run_init.isoformat().replace("+00:00", "Z")
+    retained_fields = _retained_fields()
+    selected_retained_fields = [
+        retained_fields.get(
+            (SYSTEM_ID, run_init_text, member_id, forecast_hour)
+        )
+        for member_id, _member_role, _object_member in _member_objects()
+        for forecast_hour in union_hours
+    ]
+    retained_arrival_evidence: dict[str, Any] | None = None
+    if all(field is not None for field in selected_retained_fields):
+        complete_retained_fields = [
+            field for field in selected_retained_fields if field is not None
+        ]
+        retained_at = max(
+            datetime.fromisoformat(
+                field.retained_at_utc.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            for field in complete_retained_fields
+        )
+        if retained_at > projection_generated_at:
+            raise ContractError("gefs_archive_retained_arrival_after_projection")
+        query_at = retained_at
+        retained_arrival_evidence = {
+            "schema": "official_native_retained_arrival_projection_v1",
+            "ensemble_system_id": SYSTEM_ID,
+            "retained_at_utc": query_at.isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z"),
+            "projection_generated_at_utc": projection_generated_at.isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z"),
+            "source_packet_content_sha256s": sorted({
+                field.source_packet_content_sha256
+                for field in complete_retained_fields
+            }),
+            "source_packet_refs": sorted({
+                field.source_packet_ref for field in complete_retained_fields
+            }),
+            "field_count": len(complete_retained_fields),
+            "network_download_count": 0,
+        }
+        retained_arrival_evidence["content_sha256"] = content_sha256(
+            retained_arrival_evidence
+        )
+    raw_store = _gefs_raw_store()
+    raw_roots = (raw_store,)
     with httpx.Client(
         headers={"User-Agent": "weather-gefs-history/1"},
         proxy=official_nwp_proxy_url() or None,
@@ -815,6 +935,11 @@ def capture_gefs_station_days(
                     member_id=member_id,
                     forecast_hour=forecast_hour,
                     timeout_seconds=timeout_seconds,
+                    retained=retained_fields.get(
+                        (SYSTEM_ID, run_init_text, member_id, forecast_hour)
+                    ),
+                    raw_roots=raw_roots,
+                    raw_store=raw_store,
                 )
                 pending[future] = (member_id, forecast_hour)
                 return True
@@ -904,6 +1029,10 @@ def capture_gefs_station_days(
         "archive_query_at_utc": query_at.isoformat().replace(
             "+00:00", "Z"
         ),
+        "projection_generated_at_utc": projection_generated_at.isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z"),
+        "retained_arrival_evidence": retained_arrival_evidence,
         "single_download_per_global_field": True,
         "training_only": True,
         "holdout_eligible": False,

@@ -78,7 +78,9 @@ def _identity(raw: Mapping[str, Any]) -> dict[str, Any]:
     return {str(key): value for key, value in raw.items() if key != "content_sha256"}
 
 
-def _verified_archive(archive: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+def validate_icon_eps_training_archive(
+    archive: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Validate the archive and expose a bounded raw-lead lineage index."""
 
     if not isinstance(archive, Mapping):
@@ -384,7 +386,7 @@ def build_icon_eps_training_facts(
     """
 
     as_of = _utc("as_of", as_of_utc)
-    verified_archive, captures = _verified_archive(archive)
+    verified_archive, captures = validate_icon_eps_training_archive(archive)
     unresolved: list[dict[str, str]] = []
     closed_stations: dict[str, dict[str, Any]] = {}
     for station, capture in sorted(captures.items()):
@@ -537,5 +539,5 @@ def build_icon_eps_training_facts(
 __all__ = [
     "TRAINING_BATCH_SCHEMA",
     "TRAINING_FACT_SCHEMA",
-    "build_icon_eps_training_facts",
+    "build_icon_eps_training_facts", "validate_icon_eps_training_archive",
 ]

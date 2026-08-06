@@ -29,6 +29,7 @@ from .noaa_gefs_archive import (
 from .p0_producer import bucket_intervals_from_registry_rows
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
+from official_nwp_https_transport import official_nwp_proxy_url
 
 
 SCHEMA = "eccc_geps_official_historical_station_members_v1"
@@ -59,6 +60,8 @@ def _get_bytes(
     for attempt in range(6):
         try:
             with httpx.Client(
+                proxy=official_nwp_proxy_url() or None,
+                trust_env=False,
                 follow_redirects=False,
                 limits=httpx.Limits(
                     max_connections=1,

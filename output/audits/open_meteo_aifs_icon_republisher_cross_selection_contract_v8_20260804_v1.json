@@ -1,0 +1,306 @@
+{
+  "as_of_utc": "2026-08-04T05:16:39Z",
+  "builder_id": "republisher-cross-selection-w3b-v1",
+  "content_sha256": "7f75d3a3b464b6519b2d4d8886c8f0e21a5070f352995b95b0f72d16a733f459",
+  "schema": "bayes_basket_target_canonical_republisher_cross_selection_contract_v1",
+  "selection_facts": [
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "climatology_holdout_metrics": {
+        "mae_c": "2.462500000000",
+        "mean_error_c": "2.325000000000",
+        "rmse_c": "3.002498959200"
+      },
+      "component_artifact_refs": [
+        {
+          "artifact_content_sha256": "e5442e8407201990e9c790da0f6edf1182b02262c20608ab3e08fb188a410a80",
+          "artifact_id": "republisher-historical-oos-f6a6dc568a643f0605c67432ff29e8149935aad8",
+          "evaluation_content_sha256": "62ff8aaf648fb7ded226e49e682e8a69a53aee3a6767d3c6624d0b586a1d5454",
+          "holdout_case_set_sha256": "0c0e3b95b0307223cd56d450b68aa15006bb8692a3ed4f7537910c0ba34782da",
+          "independence_family_id": "ECMWF",
+          "republisher_product_id": "ecmwf_aifs025_single",
+          "run_cycle": null,
+          "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+          "strict_oos_cohort_sha256": "d03670140f0775bbf3523cbcb2ec09238dbdbd61b8875168c34083e0219bbb7b",
+          "train_case_set_sha256": "deccd1aeba0d57a44366e626558596e96d5096b6a29dbafb60ab6c1e6083e2f8",
+          "upstream_model_id": "AIFS"
+        },
+        {
+          "artifact_content_sha256": "0b88a7b91aa02401d548f4578ccb04dba5028a347efac40feed33e325c96a391",
+          "artifact_id": "republisher-historical-oos-71e9171d4d5b2b57c251bbe54eb83be8a459d7be",
+          "evaluation_content_sha256": "6d69e0627921aa26083d878b47a747649090f5bcca35bfd24e7691a3b27d89cf",
+          "holdout_case_set_sha256": "e6ed32bc29ee424f6062586b40ef4e141ed80cc2cbc260b3ea4ededc5371641e",
+          "independence_family_id": "DWD",
+          "republisher_product_id": "dwd_icon_global",
+          "run_cycle": null,
+          "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+          "strict_oos_cohort_sha256": "d2388278a92690246439caa12564dcc4ad692d664ea7971dcb01b8644c7c8b14",
+          "train_case_set_sha256": "eadd50cfb14230135b813a62e7dd6814d5b0cfd62342bfdbefa6011142b0a987",
+          "upstream_model_id": "ICON"
+        }
+      ],
+      "content_sha256": "91d67069c132d637d21cfa8e6b3b5f504e70588b58acef4645b4a785089c7e4b",
+      "formal_live_authority": false,
+      "future_event_count": 0,
+      "holdout_truth_ref_set_sha256": "2bf33c465d1bcbdcab279f8100707912537904f88aa59814b9c8d1a523a0d6a5",
+      "holdout_truth_refs": [
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "3fdf5d164a21ae43c9089a30d14161159780717f7d38ccd4ece9f5a77a32601e",
+          "awc_truth_id": "awc-historical-truth-3fdf5d164a21ae43c9089a30d1416115",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "1f6d2e6bedc8c6d9696b7462d431eb54c486e1e8b5b9b61124017cd316b9c94f",
+          "event_date": "2026-07-22",
+          "station_day_end_utc": "2026-07-23T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "1d8f24167ba62715a8a798e0b8f246c833a87b717fcca36316809996b9aebce2",
+          "awc_truth_id": "awc-historical-truth-1d8f24167ba62715a8a798e0b8f246c8",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "88801cd9378cd3b4ba9cb6c6046a261fae6e1b2db0522ef981e669fe14af7f85",
+          "event_date": "2026-07-23",
+          "station_day_end_utc": "2026-07-24T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "ab4adb5a52ddfad44bd2e6619e00d9be4cb9ca19d8ab48236ecea7b6866b3a2e",
+          "awc_truth_id": "awc-historical-truth-ab4adb5a52ddfad44bd2e6619e00d9be",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "9dc590aed7d32240822f6a3d3e203d3f1da5b85f4f8f1f794740ce9ff56bbb21",
+          "event_date": "2026-07-24",
+          "station_day_end_utc": "2026-07-25T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "65fed2137229a5b5cb93bef60fb8fdca57856ea8d100b312c1f157d70d7b2833",
+          "awc_truth_id": "awc-historical-truth-65fed2137229a5b5cb93bef60fb8fdca",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "73557a01cac2d44d97202c7121b1f244e239a5c9fea996a41f6d3eb0e7a297ae",
+          "event_date": "2026-07-25",
+          "station_day_end_utc": "2026-07-26T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "fd4b5f8ec0a434772fd5d3189d274458c2f5f28f3bee0e0f8923757cf3dbea2b",
+          "awc_truth_id": "awc-historical-truth-fd4b5f8ec0a434772fd5d3189d274458",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "8c1ac496e647b27ff1ecc4dab0478a8e95e7ae95fba24ce634a15fbe04932f3b",
+          "event_date": "2026-07-26",
+          "station_day_end_utc": "2026-07-27T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "6c552fdafe0d9c7e0676869bc8f6e429cbff86cab4d43aa39b99940cffa7f94f",
+          "awc_truth_id": "awc-historical-truth-6c552fdafe0d9c7e0676869bc8f6e429",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2e11b0685fcd939be395bf59900fd36eeae293f094ba678d2d2859b407aa7082",
+          "event_date": "2026-07-27",
+          "station_day_end_utc": "2026-07-28T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "ac97a65376aa6f2573e7f86b7be1f3b05b50260b867f62573d78f51e8832f2b3",
+          "awc_truth_id": "awc-historical-truth-ac97a65376aa6f2573e7f86b7be1f3b0",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "831e93f105219692d05cd72814846871c96a3851c97ba9282dcbd80ef8286a30",
+          "event_date": "2026-07-28",
+          "station_day_end_utc": "2026-07-29T04:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "3fca15d91e40736064a10f7d32d898f995113ec5a6d1a0d1a0899fc697252083",
+          "awc_truth_id": "awc-historical-truth-3fca15d91e40736064a10f7d32d898f9",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2bbf9d20e22464e2490ee3fa5693476209de7412c7de456991af4e7a1036df1b",
+          "event_date": "2026-07-29",
+          "station_day_end_utc": "2026-07-30T04:00:00Z"
+        }
+      ],
+      "lead_bucket": "d0",
+      "model_family": "cross_global_deterministic",
+      "native_arrival_indexed": false,
+      "p1_eligible": false,
+      "production_no_live_only": true,
+      "run_cycle": null,
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+      "season_bin": "JJA",
+      "selected_holdout_metrics": {
+        "mae_c": "0.343280819470",
+        "mean_error_c": "-0.177958429552",
+        "rmse_c": "0.425104250271"
+      },
+      "selected_weights": {
+        "AIFS": "0.355619265054",
+        "ICON": "0.644380734946"
+      },
+      "selection_id": "republisher-cross-selection-0d49b67eb5aa9b1a69ae94575ca227ffc73a92b6",
+      "selection_method_version": "inverse_calibrated_train_rmse_floor_v1",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Toronto",
+      "source_class": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_CROSS_SELECTION_READY",
+      "station_id": "CYYZ",
+      "train_calibrated_rmse_c": {
+        "AIFS": "1.696201638957",
+        "ICON": "0.936095614774"
+      },
+      "transport_provider_id": "OPEN_METEO",
+      "uniform_holdout_metrics": {
+        "mae_c": "0.431250000000",
+        "mean_error_c": "-0.083750000000",
+        "rmse_c": "0.509080052644"
+      },
+      "weight_rmse_floor_c": "0.100000000000"
+    },
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "climatology_holdout_metrics": {
+        "mae_c": "1.250000000000",
+        "mean_error_c": "0.500000000000",
+        "rmse_c": "1.500000000000"
+      },
+      "component_artifact_refs": [
+        {
+          "artifact_content_sha256": "0e39d31a191c6ff69169ffec9171f44a06a53df7d7f68679661629adde0643b4",
+          "artifact_id": "republisher-historical-oos-38b7c5e9dff6d244aea9a5b70b14e9486fa9b2da",
+          "evaluation_content_sha256": "70ea9fe8f45b21f992be5e42179ab8263ab92e8114717e5d1dc618bc0e2ef9e7",
+          "holdout_case_set_sha256": "098134eb3cc57f881565565e359e6add3cdb1ec41f8eb861bbbe3ebd164ebefd",
+          "independence_family_id": "ECMWF",
+          "republisher_product_id": "ecmwf_aifs025_single",
+          "run_cycle": null,
+          "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+          "strict_oos_cohort_sha256": "a867d4ad9cabb0bd971142c76f7a5ee38b4d34ac4ea90b6c2cbfa1f9d1624a6a",
+          "train_case_set_sha256": "b73b952a1eb21f1460e6a6867c0bf55597f9cd875fc5a4dfe88331de66937412",
+          "upstream_model_id": "AIFS"
+        },
+        {
+          "artifact_content_sha256": "48696d8d8601a6b81d112de83ffad6df39d20fa781a3a6ff3605fa83c3686668",
+          "artifact_id": "republisher-historical-oos-b2491ae7eb47b38c0ebcd44503e3718909f67cf9",
+          "evaluation_content_sha256": "bc01dd4bd345263ea166c57dc2e7d5984c8edefa438fad6c3596c5f7e80cdf9a",
+          "holdout_case_set_sha256": "5b167172255bcddf564470ecbe787ef375e3cf1691669a8ca082eb75dd941229",
+          "independence_family_id": "DWD",
+          "republisher_product_id": "dwd_icon_global",
+          "run_cycle": null,
+          "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+          "strict_oos_cohort_sha256": "2da2d041e78dcf8f410be71f184e277160eb4a518afb181d108dc27b0922a53a",
+          "train_case_set_sha256": "f8efeada12959c434f63adf160f2701b48aa35d7045c427fdeccd369f922c091",
+          "upstream_model_id": "ICON"
+        }
+      ],
+      "content_sha256": "ca4391b2cfcbf6e1103126696fdadf436b7397c20aca98e948f4a2c2ace3ea71",
+      "formal_live_authority": false,
+      "future_event_count": 0,
+      "holdout_truth_ref_set_sha256": "141c9ea7e3b858b6f8f1a524d4b978c7c0184515312a3a5eb886149ed1615a2a",
+      "holdout_truth_refs": [
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "c0ba180142d76a8e5a98f94181cf679130a3395ec2c6b85b36fcd9c6eb73ae59",
+          "awc_truth_id": "awc-historical-truth-c0ba180142d76a8e5a98f94181cf6791",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "974e6bbf5c40c1818defaca53ca932ea3602a782dddee08c0dcdaddf65bfe821",
+          "event_date": "2026-07-22",
+          "station_day_end_utc": "2026-07-22T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "e2e9eecbc0f423065dd9625fc76b7b697cb70b3e105b75fbc9588b6199b82c09",
+          "awc_truth_id": "awc-historical-truth-e2e9eecbc0f423065dd9625fc76b7b69",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "21acf65628740ff6101b5a63afa90ad6b15faa52b4f543a67ea9bece425cd874",
+          "event_date": "2026-07-23",
+          "station_day_end_utc": "2026-07-23T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "de2bc44b80447e0a469db005ffb2314eac3307e8086688b3813b2ed33026bb8d",
+          "awc_truth_id": "awc-historical-truth-de2bc44b80447e0a469db005ffb2314e",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "e87b439f2139407b7f867b4af0e479923c355e3c9e68aef21a97e3624e0e46e2",
+          "event_date": "2026-07-24",
+          "station_day_end_utc": "2026-07-24T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "2128e2d2323d8918ee5723ce95fd78c29eb678881eecb9ffd2ae08560d10a4a6",
+          "awc_truth_id": "awc-historical-truth-2128e2d2323d8918ee5723ce95fd78c2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "4d4e14f094e40c5166e633424973d01d0f0d2d775f77f9ea60b23638d41e889f",
+          "event_date": "2026-07-25",
+          "station_day_end_utc": "2026-07-25T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "a76a0f47084f2fb2eadfc8ba1cca993fcb56b8f2cc1e85bc48c48d0337c981e1",
+          "awc_truth_id": "awc-historical-truth-a76a0f47084f2fb2eadfc8ba1cca993f",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "a5dee3a1d68cc10f0bcd52379ca59662ac2a5fa7afea6b8bf62a027ec560cad2",
+          "event_date": "2026-07-26",
+          "station_day_end_utc": "2026-07-26T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "bca3a5e3c5e56197c658109bb198cca2b7f5f64d5eae9b34faba339a14f49878",
+          "awc_truth_id": "awc-historical-truth-bca3a5e3c5e56197c658109bb198cca2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "0b26586a67abd4e8cd35e120cbb0d99d4d52497764d3a2bb8e2516b33187ffcc",
+          "event_date": "2026-07-27",
+          "station_day_end_utc": "2026-07-27T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "746173605f59893de477e603343243bbce99a23d29ceb7bf5ed35577c05efb36",
+          "awc_truth_id": "awc-historical-truth-746173605f59893de477e603343243bb",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6a4a0355c4e0e5ad70533ccb7f2047b8c8f9183815ba96803fefbf4468acf700",
+          "event_date": "2026-07-28",
+          "station_day_end_utc": "2026-07-28T12:00:00Z"
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "e453a5f32924d6be59cae2e852f4caaace9f83d7bb217a314f50d24209aae090",
+          "awc_truth_id": "awc-historical-truth-e453a5f32924d6be59cae2e852f4caaa",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6bed8b6ff55640c4041dfdfee104faa0ac668a4d74aa3b177005288ba275b5cd",
+          "event_date": "2026-07-29",
+          "station_day_end_utc": "2026-07-29T12:00:00Z"
+        }
+      ],
+      "lead_bucket": "d0",
+      "model_family": "cross_global_deterministic",
+      "native_arrival_indexed": false,
+      "p1_eligible": false,
+      "production_no_live_only": true,
+      "run_cycle": null,
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+      "season_bin": "JJA",
+      "selected_holdout_metrics": {
+        "mae_c": "0.629741137202",
+        "mean_error_c": "-0.296009494000",
+        "rmse_c": "0.739349758551"
+      },
+      "selected_weights": {
+        "AIFS": "0.463848096005",
+        "ICON": "0.536151903995"
+      },
+      "selection_id": "republisher-cross-selection-ac8e154a52a77de12a4a3e83e141276ed9304e7a",
+      "selection_method_version": "inverse_calibrated_train_rmse_floor_v1",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Pacific/Auckland",
+      "source_class": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_CROSS_SELECTION_READY",
+      "station_id": "NZWN",
+      "train_calibrated_rmse_c": {
+        "AIFS": "0.700713921654",
+        "ICON": "0.606217782649"
+      },
+      "transport_provider_id": "OPEN_METEO",
+      "uniform_holdout_metrics": {
+        "mae_c": "0.643750000000",
+        "mean_error_c": "-0.293750000000",
+        "rmse_c": "0.754569413639"
+      },
+      "weight_rmse_floor_c": "0.100000000000"
+    }
+  ]
+}

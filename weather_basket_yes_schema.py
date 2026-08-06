@@ -20,8 +20,389 @@ REQUIRED_TABLES = frozenset({
     "reported_trajectory_station_day_bounds",
     "reported_trajectory_station_halts",
     "reported_trajectory_station_halt_reviews",
+    "reported_trajectory_asos_one_minute_observations",
+    "reported_trajectory_asos_station_day_coverage",
+    "reported_trajectory_madis_hfmetar_objects",
+    "reported_trajectory_madis_hfmetar_observations",
+    "reported_trajectory_asos_metar_match_facts",
+    "reported_trajectory_asos_p1_oos_artifacts",
+    "reported_trajectory_asos_argmax_windows",
+    "reported_trajectory_asos_argmax_fetch_state",
+    "reported_trajectory_asos_argmax_taf_references",
+    "reported_trajectory_asos_argmax_lane_state",
+    "reported_trajectory_asos_argmax_entry_facts",
+    "reported_trajectory_asos_argmax_order_intents",
+    "reported_trajectory_asos_argmax_exit_order_intents",
+    "reported_trajectory_asos_argmax_rotation_sell_intents",
+    "reported_trajectory_canonical_station_day_bounds",
     "reported_trajectory_activation_state",
 })
+
+ASOS_OBSERVATION_DDL = """
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_one_minute_observations (
+  observation_id TEXT PRIMARY KEY,
+  source_lane TEXT NOT NULL CHECK(source_lane='asos_1min'),
+  station_id TEXT NOT NULL,
+  provider_station_id TEXT NOT NULL,
+  valid_at TEXT NOT NULL,
+  temperature_c REAL NOT NULL CHECK(temperature_c BETWEEN -100.0 AND 70.0),
+  provider_temperature_f REAL NOT NULL,
+  measurement_semantics TEXT NOT NULL
+    CHECK(measurement_semantics='ASOS_5_MINUTE_TEMPERATURE_PRODUCT_PUBLISHED_EACH_MINUTE_TMPF'),
+  provider_id TEXT NOT NULL CHECK(provider_id='IEM_ASOS1MIN'),
+  source_class TEXT NOT NULL CHECK(source_class='aggregator_republisher'),
+  upstream_authority TEXT NOT NULL CHECK(upstream_authority='NOAA/NCEI ASOS'),
+  origin_url TEXT NOT NULL,
+  raw_record_sha256 TEXT NOT NULL CHECK(length(raw_record_sha256)=64),
+  source_receipt_sha256 TEXT NOT NULL CHECK(length(source_receipt_sha256)=64),
+  fetch_started_at TEXT NOT NULL,
+  fetch_completed_at TEXT NOT NULL,
+  canonical_committed_at TEXT NOT NULL,
+  UNIQUE(source_lane,station_id,valid_at,raw_record_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_one_minute_station_time
+ON reported_trajectory_asos_one_minute_observations(station_id,valid_at);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_madis_hfmetar_objects (
+  compressed_sha256 TEXT PRIMARY KEY CHECK(length(compressed_sha256)=64),
+  object_hour_utc TEXT NOT NULL,
+  object_url TEXT NOT NULL,
+  compressed_bytes INTEGER NOT NULL CHECK(compressed_bytes BETWEEN 1 AND 8388608),
+  retained_path TEXT NOT NULL,
+  source_lane TEXT NOT NULL CHECK(source_lane='MADIS_HFMETAR_ASOS'),
+  source_class TEXT NOT NULL CHECK(source_class='official_republisher'),
+  receipt_sha256 TEXT NOT NULL UNIQUE CHECK(length(receipt_sha256)=64),
+  fetch_started_at_utc TEXT NOT NULL,
+  fetch_completed_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_madis_hfmetar_observations (
+  content_sha256 TEXT PRIMARY KEY CHECK(length(content_sha256)=64),
+  compressed_sha256 TEXT NOT NULL,
+  station_id TEXT NOT NULL,
+  provider_station_id TEXT NOT NULL,
+  observed_at_utc TEXT NOT NULL,
+  temperature_c REAL NOT NULL CHECK(temperature_c BETWEEN -100.0 AND 70.0),
+  temperature_qc_summary TEXT NOT NULL,
+  temperature_sensor_status INTEGER NOT NULL,
+  station_type TEXT NOT NULL CHECK(station_type='HF-METAR'),
+  data_provider TEXT NOT NULL CHECK(data_provider='HF-METAR'),
+  measurement_semantics TEXT NOT NULL CHECK(
+    measurement_semantics='ASOS_RUNNING_5_MINUTE_AVERAGE_DISSEMINATED_EVERY_5_MINUTES'
+  ),
+  raw_message_sha256 TEXT NOT NULL CHECK(length(raw_message_sha256)=64),
+  qc_eligible INTEGER NOT NULL CHECK(qc_eligible IN (0,1)),
+  canonical_committed_at_utc TEXT NOT NULL,
+  FOREIGN KEY(compressed_sha256)
+    REFERENCES reported_trajectory_madis_hfmetar_objects(compressed_sha256),
+  UNIQUE(station_id,observed_at_utc,compressed_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_madis_hfmetar_station_time
+ON reported_trajectory_madis_hfmetar_observations(station_id,observed_at_utc);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_metar_match_facts (
+  content_sha256 TEXT PRIMARY KEY CHECK(length(content_sha256)=64),
+  station_id TEXT NOT NULL,
+  metar_observation_id TEXT NOT NULL,
+  metar_observed_at_utc TEXT NOT NULL,
+  match_state TEXT NOT NULL CHECK(match_state IN (
+    'EXACT_ONE_MINUTE_MATCH','MADIS_PRIOR_5MIN_APPROXIMATION','ASOS_MATCH_MISSING'
+  )),
+  fact_json TEXT NOT NULL,
+  canonical_committed_at_utc TEXT NOT NULL,
+  UNIQUE(station_id,metar_observation_id)
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_p1_oos_artifacts (
+  content_sha256 TEXT PRIMARY KEY CHECK(length(content_sha256)=64),
+  station_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('OOS_READY','BLOCKED')),
+  authority_scope TEXT NOT NULL CHECK(authority_scope='PRODUCTION_NO_LIVE_ONLY'),
+  train_count INTEGER NOT NULL CHECK(train_count>=0),
+  holdout_count INTEGER NOT NULL CHECK(holdout_count>=0),
+  artifact_json TEXT NOT NULL,
+  canonical_committed_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_station_day_coverage (
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  day_start_utc TEXT NOT NULL,
+  day_end_utc TEXT NOT NULL,
+  covered_through_utc TEXT NOT NULL,
+  sample_count INTEGER NOT NULL CHECK(sample_count>=0),
+  expected_minute_count INTEGER NOT NULL CHECK(expected_minute_count>=1),
+  maximum_gap_seconds INTEGER,
+  coverage_complete INTEGER NOT NULL CHECK(coverage_complete IN (0,1)),
+  reported_max_c REAL,
+  max_observation_id TEXT,
+  max_valid_at TEXT,
+  failure_code TEXT,
+  source_receipt_sha256 TEXT NOT NULL CHECK(length(source_receipt_sha256)=64),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(station_id,event_date)
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_canonical_station_day_bounds (
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  selected_source_lane TEXT NOT NULL CHECK(selected_source_lane IN ('asos_1min','madis_hfmetar','awc')),
+  source_priority INTEGER NOT NULL CHECK(source_priority IN (100,210,220)),
+  observed_max_c REAL NOT NULL,
+  max_observation_id TEXT NOT NULL,
+  max_valid_at TEXT NOT NULL,
+  selection_reason TEXT NOT NULL,
+  source_receipt_sha256 TEXT NOT NULL CHECK(length(source_receipt_sha256)=64),
+  priority_contract_version TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(station_id,event_date)
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_windows (
+  window_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  provider_id TEXT NOT NULL CHECK(provider_id='NOAA_NWS_GRIDPOINT_HOURLY'),
+  source_class TEXT NOT NULL CHECK(source_class='official_forecast_product'),
+  forecast_generated_at_utc TEXT NOT NULL,
+  fetched_at_utc TEXT NOT NULL,
+  argmax_window_start_utc TEXT NOT NULL,
+  argmax_window_end_utc TEXT NOT NULL,
+  argmax_temperature_c REAL NOT NULL CHECK(argmax_temperature_c BETWEEN -100.0 AND 70.0),
+  argmax_periods_json TEXT NOT NULL,
+  points_receipt_sha256 TEXT NOT NULL CHECK(length(points_receipt_sha256)=64),
+  forecast_receipt_sha256 TEXT NOT NULL CHECK(length(forecast_receipt_sha256)=64),
+  raw_object_ref TEXT NOT NULL,
+  coordinate_registry_sha256 TEXT NOT NULL CHECK(length(coordinate_registry_sha256)=64),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  state TEXT NOT NULL CHECK(state='FROZEN'),
+  timing_only INTEGER NOT NULL CHECK(timing_only=1),
+  provides_temperature_bucket INTEGER NOT NULL CHECK(provides_temperature_bucket=0),
+  provides_probability INTEGER NOT NULL CHECK(provides_probability=0),
+  enters_p0 INTEGER NOT NULL CHECK(enters_p0=0),
+  enters_p0m INTEGER NOT NULL CHECK(enters_p0m=0),
+  UNIQUE(station_id,event_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_argmax_scope
+ON reported_trajectory_asos_argmax_windows(station_id,event_date,argmax_window_start_utc);
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_windows_no_update
+BEFORE UPDATE ON reported_trajectory_asos_argmax_windows
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_windows_no_delete
+BEFORE DELETE ON reported_trajectory_asos_argmax_windows
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_fetch_state (
+  station_id TEXT PRIMARY KEY,
+  attempted_at_utc TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('AVAILABLE','BLOCKED')),
+  reason TEXT,
+  updated_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_taf_references (
+  reference_id TEXT PRIMARY KEY,
+  window_id TEXT NOT NULL,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  source_lane TEXT NOT NULL CHECK(source_lane='awc_taf'),
+  source_class TEXT NOT NULL CHECK(source_class='official_forward_native_receipt'),
+  evidence_role TEXT NOT NULL CHECK(evidence_role='auxiliary_timing_reference_only'),
+  forecast_revision_id TEXT NOT NULL,
+  issue_time_utc TEXT NOT NULL,
+  local_received_at_utc TEXT NOT NULL,
+  raw_taf_sha256 TEXT NOT NULL CHECK(length(raw_taf_sha256)=64),
+  tx_c REAL NOT NULL CHECK(tx_c BETWEEN -100.0 AND 70.0),
+  tx_valid_time_utc TEXT NOT NULL,
+  comparison_state TEXT NOT NULL CHECK(comparison_state IN (
+    'CONFIRMS_NWS_ARGMAX','CONFLICTS_WITH_NWS_ARGMAX'
+  )),
+  modifies_nws_window INTEGER NOT NULL CHECK(modifies_nws_window=0),
+  blocks_entry INTEGER NOT NULL CHECK(blocks_entry=0),
+  reference_json TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  created_at_utc TEXT NOT NULL,
+  UNIQUE(window_id,forecast_revision_id,tx_valid_time_utc),
+  FOREIGN KEY(window_id) REFERENCES reported_trajectory_asos_argmax_windows(window_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_argmax_taf_reference_scope
+ON reported_trajectory_asos_argmax_taf_references(station_id,event_date,local_received_at_utc);
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_taf_references_no_update
+BEFORE UPDATE ON reported_trajectory_asos_argmax_taf_references
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_taf_references_no_delete
+BEFORE DELETE ON reported_trajectory_asos_argmax_taf_references
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_lane_state (
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  source_lane TEXT NOT NULL CHECK(source_lane IN ('asos_1min','madis_hfmetar')),
+  armed_at_utc TEXT NOT NULL,
+  running_high_c REAL NOT NULL CHECK(running_high_c BETWEEN -100.0 AND 70.0),
+  last_observed_at_utc TEXT NOT NULL,
+  last_block_reason TEXT,
+  updated_at_utc TEXT NOT NULL,
+  PRIMARY KEY(station_id,event_date)
+);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_entry_facts (
+  entry_fact_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  source_lane TEXT NOT NULL CHECK(source_lane IN ('asos_1min','madis_hfmetar')),
+  observation_id TEXT NOT NULL,
+  observed_at_utc TEXT NOT NULL,
+  received_at_utc TEXT NOT NULL,
+  prior_high_c REAL NOT NULL,
+  new_high_c REAL NOT NULL CHECK(new_high_c>prior_high_c),
+  raw_sha256 TEXT NOT NULL CHECK(length(raw_sha256)=64),
+  source_receipt_sha256 TEXT NOT NULL CHECK(length(source_receipt_sha256)=64),
+  window_id TEXT NOT NULL,
+  argmax_window_start_utc TEXT NOT NULL,
+  market_slug TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  yes_token TEXT NOT NULL,
+  settlement_scalar INTEGER NOT NULL,
+  settlement_unit TEXT NOT NULL CHECK(settlement_unit IN ('C','F')),
+  reason TEXT NOT NULL CHECK(reason='ASOS_NEW_HIGH_RECEIVED_DURING_ARGMAX_PERIOD'),
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  gateway_submitted INTEGER NOT NULL CHECK(gateway_submitted=0),
+  created_at_utc TEXT NOT NULL,
+  UNIQUE(station_id,event_date,source_lane,observation_id),
+  FOREIGN KEY(window_id) REFERENCES reported_trajectory_asos_argmax_windows(window_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_entry_facts_no_update
+BEFORE UPDATE ON reported_trajectory_asos_argmax_entry_facts
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS reported_trajectory_asos_argmax_entry_facts_no_delete
+BEFORE DELETE ON reported_trajectory_asos_argmax_entry_facts
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_order_intents (
+  order_intent_id TEXT PRIMARY KEY,
+  entry_fact_id TEXT NOT NULL UNIQUE,
+  strategy_id TEXT NOT NULL CHECK(strategy_id='asos_argmax_new_high_yes_v1'),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  yes_token TEXT NOT NULL,
+  side TEXT NOT NULL CHECK(side='BUY'),
+  order_type TEXT NOT NULL CHECK(order_type='FOK'),
+  limit_price REAL NOT NULL CHECK(limit_price>0 AND limit_price<1),
+  size REAL NOT NULL CHECK(size>0),
+  requested_notional REAL NOT NULL CHECK(requested_notional>0 AND requested_notional<=2.0),
+  idempotency_key TEXT NOT NULL UNIQUE,
+  ws_snapshot_sha256 TEXT NOT NULL CHECK(length(ws_snapshot_sha256)=64),
+  guard_snapshot_sha256 TEXT NOT NULL CHECK(length(guard_snapshot_sha256)=64),
+  guard_snapshot_json TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN (
+    'PREPARED','SUBMITTING','EXCHANGE_ACCEPTED','RELEASED','RECONCILE_REQUIRED'
+  )),
+  gateway_request_json TEXT NOT NULL,
+  gateway_response_json TEXT NOT NULL,
+  exchange_order_id TEXT,
+  size_matched REAL,
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  FOREIGN KEY(entry_fact_id)
+    REFERENCES reported_trajectory_asos_argmax_entry_facts(entry_fact_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_argmax_intent_budget
+ON reported_trajectory_asos_argmax_order_intents(station_id,event_date,state);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_exit_order_intents (
+  exit_order_intent_id TEXT PRIMARY KEY,
+  buy_order_intent_id TEXT NOT NULL UNIQUE,
+  entry_fact_id TEXT NOT NULL,
+  strategy_id TEXT NOT NULL CHECK(strategy_id='asos_argmax_yes_exit_099_v1'),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  yes_token TEXT NOT NULL,
+  side TEXT NOT NULL CHECK(side='SELL'),
+  order_type TEXT NOT NULL CHECK(order_type='GTC'),
+  limit_price REAL NOT NULL CHECK(limit_price=0.99),
+  size REAL NOT NULL CHECK(size>0),
+  source_buy_size_matched REAL NOT NULL CHECK(source_buy_size_matched>0),
+  idempotency_key TEXT NOT NULL UNIQUE,
+  guard_snapshot_sha256 TEXT,
+  guard_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL CHECK(state IN (
+    'PREPARED','SUBMITTING','EXCHANGE_ACCEPTED','RELEASED','RECONCILE_REQUIRED'
+  )),
+  gateway_request_json TEXT NOT NULL DEFAULT '{}',
+  gateway_response_json TEXT NOT NULL DEFAULT '{}',
+  exchange_order_id TEXT,
+  size_matched REAL,
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  FOREIGN KEY(buy_order_intent_id)
+    REFERENCES reported_trajectory_asos_argmax_order_intents(order_intent_id),
+  FOREIGN KEY(entry_fact_id)
+    REFERENCES reported_trajectory_asos_argmax_entry_facts(entry_fact_id),
+  CHECK(size=source_buy_size_matched),
+  CHECK(guard_snapshot_sha256 IS NULL OR length(guard_snapshot_sha256)=64)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_argmax_exit_state
+ON reported_trajectory_asos_argmax_exit_order_intents(state,updated_at_utc);
+
+CREATE TABLE IF NOT EXISTS reported_trajectory_asos_argmax_rotation_sell_intents (
+  rotation_sell_intent_id TEXT PRIMARY KEY,
+  target_entry_fact_id TEXT NOT NULL,
+  source_buy_order_intent_id TEXT NOT NULL,
+  source_exit_order_intent_id TEXT,
+  strategy_id TEXT NOT NULL CHECK(strategy_id='asos_argmax_rotation_sell_fak_v1'),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  old_yes_token TEXT NOT NULL,
+  new_yes_token TEXT NOT NULL CHECK(new_yes_token<>old_yes_token),
+  side TEXT NOT NULL CHECK(side='SELL'),
+  order_type TEXT NOT NULL CHECK(order_type='FAK'),
+  limit_price REAL CHECK(limit_price IS NULL OR (limit_price>0 AND limit_price<1)),
+  size REAL CHECK(size IS NULL OR size>0),
+  ws_snapshot_sha256 TEXT,
+  guard_snapshot_sha256 TEXT,
+  state TEXT NOT NULL CHECK(state IN (
+    'PREPARED','NO_POSITION','SUBMITTING','FILLED','RELEASED','RECONCILE_REQUIRED'
+  )),
+  idempotency_key TEXT NOT NULL UNIQUE,
+  cancellation_receipt_json TEXT NOT NULL DEFAULT '{}',
+  ws_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  guard_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  gateway_request_json TEXT NOT NULL DEFAULT '{}',
+  gateway_response_json TEXT NOT NULL DEFAULT '{}',
+  exchange_order_id TEXT,
+  shares_matched REAL,
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  UNIQUE(target_entry_fact_id,source_buy_order_intent_id),
+  FOREIGN KEY(target_entry_fact_id)
+    REFERENCES reported_trajectory_asos_argmax_entry_facts(entry_fact_id),
+  FOREIGN KEY(source_buy_order_intent_id)
+    REFERENCES reported_trajectory_asos_argmax_order_intents(order_intent_id),
+  FOREIGN KEY(source_exit_order_intent_id)
+    REFERENCES reported_trajectory_asos_argmax_exit_order_intents(exit_order_intent_id),
+  CHECK(ws_snapshot_sha256 IS NULL OR length(ws_snapshot_sha256)=64),
+  CHECK(guard_snapshot_sha256 IS NULL OR length(guard_snapshot_sha256)=64)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asos_argmax_rotation_target
+ON reported_trajectory_asos_argmax_rotation_sell_intents(target_entry_fact_id,state);
+"""
 
 CORRECTION_REVIEW_DDL = """
 CREATE TABLE IF NOT EXISTS reported_trajectory_station_halt_reviews (
@@ -317,7 +698,38 @@ def weather_basket_yes_schema_status(conn: sqlite3.Connection) -> dict[str, obje
 
 
 def apply_weather_basket_yes_schema(conn: sqlite3.Connection) -> dict[str, object]:
+    entry_sql_row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' "
+        "AND name='reported_trajectory_asos_argmax_entry_facts'"
+    ).fetchone()
+    entry_sql = str(entry_sql_row[0] or "") if entry_sql_row else ""
+    if "ASOS_NEW_HIGH_RECEIVED_BEFORE_ARGMAX_WINDOW" in entry_sql:
+        entry_count = int(conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_asos_argmax_entry_facts"
+        ).fetchone()[0])
+        intent_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='reported_trajectory_asos_argmax_order_intents'"
+        ).fetchone()
+        intent_count = int(conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_asos_argmax_order_intents"
+        ).fetchone()[0]) if intent_table else 0
+        if entry_count or intent_count:
+            raise sqlite3.IntegrityError(
+                "argmax_period_contract_migration_nonempty_fail_closed"
+            )
+        # The superseded table is empty by contract. Rebuild it instead of
+        # retaining a misleading CHECK value or silently rewriting facts.
+        conn.executescript(
+            """BEGIN IMMEDIATE;
+            DROP TABLE IF EXISTS reported_trajectory_asos_argmax_order_intents;
+            DROP TRIGGER IF EXISTS reported_trajectory_asos_argmax_entry_facts_no_update;
+            DROP TRIGGER IF EXISTS reported_trajectory_asos_argmax_entry_facts_no_delete;
+            DROP TABLE reported_trajectory_asos_argmax_entry_facts;
+            COMMIT;"""
+        )
     conn.executescript(DDL)
+    conn.executescript(ASOS_OBSERVATION_DDL)
     apply_reported_trajectory_correction_review_schema(conn)
     historical_origins = {
         "amsc": {

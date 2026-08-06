@@ -299,7 +299,8 @@ def commit_production_candidate_atomic(
     *,
     compiled_plan: Mapping[str, Any],
     market_snapshot: Mapping[str, Any],
-    observation: Mapping[str, Any],
+    awc_observation_contract: Mapping[str, Any],
+    truth_observation_revision_content_sha256: str,
     bound: Mapping[str, Any],
     created_at_utc: str,
     supersede_prepared_cycle_id: str | None = None,
@@ -641,7 +642,10 @@ def commit_production_candidate_atomic(
         },
     }
     bundle = build_target_atomic_bundle(
-        observation=observation,
+        awc_observation_contract=awc_observation_contract,
+        truth_observation_revision_content_sha256=(
+            truth_observation_revision_content_sha256
+        ),
         bound=bound,
         plan=plan_payload,
         decision=decision,

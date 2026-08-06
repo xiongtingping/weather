@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
@@ -42,6 +43,11 @@ from tests.bayes_basket_target_e2e_fixtures import (
 
 
 def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object]:
+    _contract, revision_sha = awc_contract(
+        station_id="ZUUU", observation_id="obs-e2e-1",
+        event_date="2026-07-23", settlement_timezone="Asia/Shanghai",
+        observed_at_utc="2026-07-23T04:00:00Z", raw_object_sha256="a" * 64,
+    )
     prior, artifacts, activations = _policy_inputs()
     # Make the local rehearsal exercise all three legs.  This is a test-only
     # policy; it is not an activation or a production default.
@@ -66,15 +72,22 @@ def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object
         raw["lineage"] = {
             **raw["lineage"],
             "canonical_observation_event_id": "obs-e2e-1",
-            "canonical_observation_sha256": "a" * 64,
-            "canonical_observation_committed_at": DECISION,
+            "truth_observation_revision_content_sha256": revision_sha,
+            "canonical_observation_committed_at_utc": (
+                awc_contract(
+                    station_id="ZUUU", observation_id="obs-e2e-1",
+                    event_date="2026-07-23", settlement_timezone="Asia/Shanghai",
+                    observed_at_utc="2026-07-23T04:00:00Z", raw_object_sha256="a" * 64,
+                )[0]["revision_facts"][0]["canonical_committed_at_utc"]
+            ),
+            "settlement_timezone": "Asia/Shanghai",
             "hard_bound_id": "bound-e2e-1",
             "reported_high_c": "37",
             "reported_hard_lower_bound": "37",
             "reported_high_bucket": "38",
             "reported_high_ordinal": "38",
             "settlement_unit": "C",
-            "source_lane": "AMSC",
+            "source_lane": "AWC",
             "report_type": "METAR",
             "hard_excluded_buckets": "37",
             "model_envelope_lower_bucket": "37",
@@ -229,6 +242,13 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
     )
     assert eligible_count > 1
 
+    contract, _revision_sha = awc_contract(
+        station_id="ZUUU", observation_id="obs-e2e-1",
+        event_date="2026-07-23", settlement_timezone="Asia/Shanghai",
+        observed_at_utc="2026-07-23T04:00:00Z", raw_object_sha256="a" * 64,
+    )
+    compiled["awc_observation_contract"] = contract
+
     facts = target_atomic_facts_from_cycle(compiled)
     incomplete = json.loads(json.dumps(compiled))
     incomplete["order_sizing_decisions"] = incomplete[
@@ -245,12 +265,14 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
                 incomplete_conn,
                 compiled_plan=incomplete,
                 market_snapshot=market,
-                observation=facts["observation"],
+                awc_observation_contract=facts["awc_observation_contract"],
+                truth_observation_revision_content_sha256=facts["truth_observation_revision_content_sha256"],
                 bound=facts["bound"],
                 created_at_utc=DECISION,
             )
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)
+        install_canonical_v12(conn)
         apply_target_market_registry_schema(conn)
         conn.execute(
             "INSERT INTO basket_target_market_registry_snapshot "
@@ -273,7 +295,7 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
             """,
             (
                 "1" * 64, "e2e-market", "2026-07-23", "38", "chengdu",
-                "ZUUU", "Asia/Shanghai", "C", "amsc", 1, "", "",
+                "ZUUU", "Asia/Shanghai", "C", "awc", 1, "", "",
                 "3" * 64, "yes-38", "no-38", 1, 1, "{}", DECISION,
             ),
         )
@@ -354,7 +376,8 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
                 conn,
                 compiled_plan=compiled,
                 market_snapshot=market,
-                observation=facts["observation"],
+                awc_observation_contract=facts["awc_observation_contract"],
+                truth_observation_revision_content_sha256=facts["truth_observation_revision_content_sha256"],
                 bound=facts["bound"],
                 created_at_utc=DECISION,
             )
@@ -378,7 +401,8 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
             conn,
             compiled_plan=compiled,
             market_snapshot=market,
-            observation=facts["observation"],
+            awc_observation_contract=facts["awc_observation_contract"],
+            truth_observation_revision_content_sha256=facts["truth_observation_revision_content_sha256"],
             bound=facts["bound"],
             created_at_utc=DECISION,
         )
@@ -439,7 +463,8 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
             conn,
             compiled_plan=compiled,
             market_snapshot=market,
-            observation=facts["observation"],
+            awc_observation_contract=facts["awc_observation_contract"],
+            truth_observation_revision_content_sha256=facts["truth_observation_revision_content_sha256"],
             bound=facts["bound"],
             created_at_utc=DECISION,
         )
@@ -464,7 +489,8 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
             conn,
             compiled_plan=blocked,
             market_snapshot=market,
-            observation=facts["observation"],
+            awc_observation_contract=facts["awc_observation_contract"],
+            truth_observation_revision_content_sha256=facts["truth_observation_revision_content_sha256"],
             bound=facts["bound"],
             # The binding normalizer emits six fractional digits while the
             # append-only ledger retains this three-digit source spelling.

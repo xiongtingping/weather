@@ -42,7 +42,11 @@ MAX_JSON_NODES = 500_000
 # schema.  Keep a hard local bound with ample headroom; WAL and RSS remain
 # independently capped so a single transaction or process cannot approach
 # this store-level ceiling.
-MAX_TARGET_DB_BYTES = 4096 * MIB
+# The append-only canonical migration chain intentionally retains replaced
+# tables in the same isolated target database.  V10 crossed the historical
+# 4 GiB ceiling while preserving every V9/V8/V7/V6 row, so keep the guard
+# bounded but large enough for that audited history plus current facts.
+MAX_TARGET_DB_BYTES = 8192 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
@@ -108,11 +112,17 @@ def _bounded_bytes(path: Path, *, limit: int) -> bytes:
     return data
 
 
-def _check_json_shape(value: Any, *, depth: int = 0, nodes: list[int] | None = None) -> None:
+def _check_json_shape(
+    value: Any,
+    *,
+    depth: int = 0,
+    nodes: list[int] | None = None,
+    max_nodes: int = MAX_JSON_NODES,
+) -> None:
     if nodes is None:
         nodes = [0]
     nodes[0] += 1
-    if nodes[0] > MAX_JSON_NODES:
+    if nodes[0] > int(max_nodes):
         raise ResourceBoundError("target_json_nodes_exceeded")
     if depth > MAX_JSON_DEPTH:
         raise ResourceBoundError("target_json_depth_exceeded")
@@ -120,13 +130,22 @@ def _check_json_shape(value: Any, *, depth: int = 0, nodes: list[int] | None = N
         for key, child in value.items():
             if not isinstance(key, str):
                 raise ResourceBoundError("target_json_key_invalid")
-            _check_json_shape(child, depth=depth + 1, nodes=nodes)
+            _check_json_shape(
+                child, depth=depth + 1, nodes=nodes, max_nodes=max_nodes
+            )
     elif isinstance(value, list):
         for child in value:
-            _check_json_shape(child, depth=depth + 1, nodes=nodes)
+            _check_json_shape(
+                child, depth=depth + 1, nodes=nodes, max_nodes=max_nodes
+            )
 
 
-def load_bounded_json(path: Path | str, *, limit: int = MAX_JSON_INPUT_BYTES) -> Any:
+def load_bounded_json(
+    path: Path | str,
+    *,
+    limit: int = MAX_JSON_INPUT_BYTES,
+    max_nodes: int = MAX_JSON_NODES,
+) -> Any:
     """Load a JSON input only after size and structural limits pass."""
 
     try:
@@ -137,12 +156,17 @@ def load_bounded_json(path: Path | str, *, limit: int = MAX_JSON_INPUT_BYTES) ->
         raise
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
         raise ResourceBoundError("target_json_invalid") from exc
-    _check_json_shape(value)
+    _check_json_shape(value, max_nodes=max_nodes)
     assert_process_memory_budget()
     return value
 
 
-def bounded_json_bytes(value: Any, *, limit: int = MAX_JSON_OUTPUT_BYTES) -> bytes:
+def bounded_json_bytes(
+    value: Any,
+    *,
+    limit: int = MAX_JSON_OUTPUT_BYTES,
+    max_nodes: int = MAX_JSON_NODES,
+) -> bytes:
     """Serialize JSON and reject an oversized evidence/output packet."""
 
     try:
@@ -151,16 +175,22 @@ def bounded_json_bytes(value: Any, *, limit: int = MAX_JSON_OUTPUT_BYTES) -> byt
         raise ResourceBoundError("target_json_output_invalid") from exc
     if len(raw) > int(limit):
         raise ResourceBoundError("target_json_output_bytes_exceeded")
-    _check_json_shape(value)
+    _check_json_shape(value, max_nodes=max_nodes)
     assert_process_memory_budget(projected_bytes=len(raw))
     return raw
 
 
-def write_bounded_json(path: Path | str, value: Any, *, limit: int = MAX_JSON_OUTPUT_BYTES) -> None:
+def write_bounded_json(
+    path: Path | str,
+    value: Any,
+    *,
+    limit: int = MAX_JSON_OUTPUT_BYTES,
+    max_nodes: int = MAX_JSON_NODES,
+) -> None:
     """Atomically write a bounded JSON artifact without retaining duplicates."""
 
     destination = Path(path).expanduser().resolve()
-    raw = bounded_json_bytes(value, limit=limit)
+    raw = bounded_json_bytes(value, limit=limit, max_nodes=max_nodes)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.tmp.{os.getpid()}")
     try:
@@ -175,6 +205,7 @@ def write_bounded_json_if_changed(
     value: Any,
     *,
     limit: int = MAX_JSON_OUTPUT_BYTES,
+    max_nodes: int = MAX_JSON_NODES,
 ) -> bool:
     """Atomically write JSON only when its canonical bytes changed.
 
@@ -185,7 +216,7 @@ def write_bounded_json_if_changed(
     """
 
     destination = Path(path).expanduser().resolve()
-    raw = bounded_json_bytes(value, limit=limit)
+    raw = bounded_json_bytes(value, limit=limit, max_nodes=max_nodes)
     if destination.is_file():
         try:
             if int(destination.stat().st_size) == len(raw) and destination.read_bytes() == raw:

@@ -27,9 +27,15 @@ from .canonical_contract import (
     CanonicalTypedScopeEnvelope,
     CanonicalTypedScopeFact,
     CanonicalTruthFact,
+    TYPED_SCOPE_NATURAL_KEY_FIELDS,
     TYPED_SCOPE_TYPES,
 )
 from .contracts import ContractError, content_sha256
+from .canonical_contract_snapshot import (
+    MAX_CANONICAL_CONTRACT_SNAPSHOT_BYTES,
+    MAX_CANONICAL_CONTRACT_SNAPSHOT_NODES,
+)
+from .canonical_typed_scope_builder import RECEIPT_SCHEMA as TYPED_SCOPE_BUILD_RECEIPT_SCHEMA
 from .resource_bounds import (
     MAX_JSON_INPUT_BYTES,
     bounded_json_bytes,
@@ -62,13 +68,23 @@ LINEAGE_MISMATCH = "LINEAGE_MISMATCH"
 DATA_MISSING = "DATA_MISSING"
 OOS_SAMPLE_SHORT = "OOS_SAMPLE_SHORT"
 TYPED_SCOPE_BLOCKED = "TYPED_SCOPE_BLOCKED"
+EXPECTED_SCOPE_MANIFEST_MISSING = "EXPECTED_SCOPE_MANIFEST_MISSING"
+EXPECTED_SCOPE_MISMATCH = "EXPECTED_SCOPE_MISMATCH"
+EXPECTED_SCOPE_UNRESOLVED = "EXPECTED_SCOPE_UNRESOLVED"
+EXPECTED_SCOPE_MANIFEST_SCHEMA = (
+    "bayes_basket_target_canonical_expected_scope_manifest_v1"
+)
 
 MODEL_OOS_SCOPE = "MODEL_OOS"
 REQUIRED_SCOPE_TYPES = (
     MODEL_OOS_SCOPE,
+    "P0_ACTIVATION",
+    "P0_SNAPSHOT",
+    "TRUTH_OBSERVATION",
     "TRUTH_DAY",
     "TAF_P0M",
     "TRAJECTORY_P1",
+    "STRATEGY_POLICY",
     "STRATEGY_UTILITY",
     "MARKET_WS",
     "RUNTIME",
@@ -113,6 +129,386 @@ def _hashed(identity: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _scope_key_token(*, scope_kind: str, natural_key: Mapping[str, Any]) -> str:
+    return json.dumps(
+        {"scope_kind": scope_kind, "natural_key": dict(natural_key)},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _scope_key_mapping(token: str) -> dict[str, Any]:
+    value = json.loads(token)
+    if not isinstance(value, dict):  # pragma: no cover - internal canonical token
+        raise CanonicalActivationReleaseError("expected_scope_key_token_invalid")
+    return value
+
+
+def _key_set_sha(tokens: Sequence[str] | set[str]) -> str:
+    return content_sha256([_scope_key_mapping(item) for item in sorted(tokens)])
+
+
+def load_expected_scope_manifest(
+    path: Path | str,
+    *,
+    release_as_of_utc: str,
+    canonical_station_ids: Sequence[str],
+    canonical_registry_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load an independently declared expected-key set for one release."""
+
+    source, raw, value = _stable_json(path)
+    supplied = _sha(value.get("content_sha256"), "expected_scope_manifest_sha256")
+    identity = {key: child for key, child in value.items() if key != "content_sha256"}
+    if supplied != content_sha256(identity):
+        raise CanonicalActivationReleaseError(
+            "expected_scope_manifest_content_sha256_mismatch"
+        )
+    if value.get("schema") != EXPECTED_SCOPE_MANIFEST_SCHEMA:
+        raise CanonicalActivationReleaseError("expected_scope_manifest_schema_invalid")
+    cutoff = _utc_z(release_as_of_utc, "activation_release_as_of_utc")
+    if _utc_z(value.get("as_of_utc"), "expected_scope_manifest_as_of_utc") != cutoff:
+        raise CanonicalActivationReleaseError("expected_scope_manifest_as_of_mismatch")
+    stations = [str(item).strip().upper() for item in value.get("station_ids", ())]
+    expected_stations = [str(item).strip().upper() for item in canonical_station_ids]
+    if (
+        len(expected_stations) != 45
+        or expected_stations != sorted(set(expected_stations))
+        or stations != expected_stations
+    ):
+        raise CanonicalActivationReleaseError("expected_scope_manifest_station_set_mismatch")
+    registry_sha = _sha(
+        value.get("canonical_registry_sha256"),
+        "expected_scope_manifest_registry_sha256",
+    )
+    if registry_sha != _sha(canonical_registry_sha256, "canonical_registry_sha256"):
+        raise CanonicalActivationReleaseError("expected_scope_manifest_registry_mismatch")
+    if not (
+        value.get("production_no_live") is True
+        and value.get("writes_database") is False
+        and value.get("calls_order_gateway") is False
+        and value.get("orders_submitted") == 0
+    ):
+        raise CanonicalActivationReleaseError("expected_scope_manifest_boundary_invalid")
+    raw_scopes = value.get("scope_expectations")
+    if not isinstance(raw_scopes, list):
+        raise CanonicalActivationReleaseError("expected_scope_manifest_scopes_invalid")
+    normalized: dict[str, list[dict[str, Any]]] = {}
+    normalized_metadata: dict[str, dict[str, Any]] = {}
+    station_authority = set(expected_stations)
+    for scope in raw_scopes:
+        if not isinstance(scope, Mapping):
+            raise CanonicalActivationReleaseError("expected_scope_manifest_scope_invalid")
+        scope_type = str(scope.get("scope_type") or "").strip().upper()
+        if scope_type not in REQUIRED_SCOPE_TYPES or scope_type in normalized:
+            raise CanonicalActivationReleaseError("expected_scope_manifest_scope_type_invalid")
+        raw_keys = scope.get("expected_keys")
+        if not isinstance(raw_keys, list):
+            raise CanonicalActivationReleaseError("expected_scope_manifest_keys_required")
+        raw_key_evidence = scope.get("expected_key_evidence")
+        if not isinstance(raw_key_evidence, list):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_key_evidence_invalid"
+            )
+        basis_sha = _sha(
+            scope.get("basis_content_sha256"),
+            "expected_scope_manifest_basis_content_sha256",
+        )
+        unresolved_raw = scope.get("unresolved_input_receipts")
+        if not isinstance(unresolved_raw, list):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_unresolved_receipts_invalid"
+            )
+        unresolved = [
+            _sha(item, "expected_scope_manifest_unresolved_receipt_sha256")
+            for item in unresolved_raw
+        ]
+        if unresolved != sorted(set(unresolved)):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_unresolved_receipts_invalid"
+            )
+        tokens: set[str] = set()
+        normalized_keys: list[dict[str, Any]] = []
+        for item in raw_keys:
+            if not isinstance(item, Mapping):
+                raise CanonicalActivationReleaseError("expected_scope_manifest_key_invalid")
+            scope_kind = str(item.get("scope_kind") or "").strip().upper()
+            natural_key = item.get("natural_key")
+            if not scope_kind or not isinstance(natural_key, Mapping):
+                raise CanonicalActivationReleaseError("expected_scope_manifest_key_invalid")
+            natural_key = dict(natural_key)
+            if scope_type == MODEL_OOS_SCOPE:
+                if scope_kind != "BUILDER" or set(natural_key) != {
+                    "station_id", "model_family", "lead_bucket", "run_cycle"
+                }:
+                    raise CanonicalActivationReleaseError(
+                        "expected_scope_manifest_model_key_invalid"
+                    )
+            else:
+                required = TYPED_SCOPE_NATURAL_KEY_FIELDS.get((scope_type, scope_kind))
+                if required is None or set(natural_key) != set(required):
+                    raise CanonicalActivationReleaseError(
+                        "expected_scope_manifest_typed_key_invalid"
+                    )
+            if "station_id" in natural_key:
+                station_id = str(natural_key["station_id"] or "").strip().upper()
+                if station_id not in station_authority:
+                    raise CanonicalActivationReleaseError(
+                        "expected_scope_manifest_station_invalid"
+                    )
+                natural_key["station_id"] = station_id
+            token = _scope_key_token(scope_kind=scope_kind, natural_key=natural_key)
+            if token in tokens:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_key_duplicate"
+                )
+            tokens.add(token)
+            normalized_keys.append(_scope_key_mapping(token))
+        key_evidence: dict[str, str] = {}
+        for item in raw_key_evidence:
+            if not isinstance(item, Mapping):
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_key_evidence_invalid"
+                )
+            key = item.get("expected_key")
+            if not isinstance(key, Mapping):
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_key_evidence_invalid"
+                )
+            scope_kind = str(key.get("scope_kind") or "").strip().upper()
+            natural_key = key.get("natural_key")
+            if not scope_kind or not isinstance(natural_key, Mapping):
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_key_evidence_invalid"
+                )
+            token = _scope_key_token(
+                scope_kind=scope_kind, natural_key=dict(natural_key)
+            )
+            if token not in tokens or token in key_evidence:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_key_evidence_invalid"
+                )
+            key_evidence[token] = _sha(
+                item.get("evidence_content_sha256"),
+                "expected_scope_manifest_key_evidence_sha256",
+            )
+        if scope_type == MODEL_OOS_SCOPE:
+            if set(key_evidence) != tokens:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_model_key_evidence_incomplete"
+                )
+        elif key_evidence:
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_typed_key_evidence_forbidden"
+            )
+        raw_station_counts = scope.get("station_expected_key_counts")
+        if not isinstance(raw_station_counts, list):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_station_counts_invalid"
+            )
+        if scope_type != "RUNTIME":
+            station_counts: dict[str, int] = {}
+            for row in raw_station_counts:
+                if not isinstance(row, Mapping):
+                    raise CanonicalActivationReleaseError(
+                        "expected_scope_manifest_station_counts_invalid"
+                    )
+                station_id = str(row.get("station_id") or "").strip().upper()
+                count = row.get("expected_key_count")
+                if (
+                    station_id in station_counts
+                    or station_id not in station_authority
+                    or isinstance(count, bool)
+                    or not isinstance(count, int)
+                    or count < 0
+                ):
+                    raise CanonicalActivationReleaseError(
+                        "expected_scope_manifest_station_counts_invalid"
+                    )
+                station_counts[station_id] = count
+            if list(station_counts) != expected_stations:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_station_coverage_incomplete"
+                )
+            actual_counts = {station_id: 0 for station_id in expected_stations}
+            for item in normalized_keys:
+                station_id = str(item["natural_key"].get("station_id") or "")
+                actual_counts[station_id] += 1
+            if station_counts != actual_counts:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_station_count_mismatch"
+                )
+        elif raw_station_counts != []:
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_runtime_station_counts_forbidden"
+            )
+        if scope_type == "RUNTIME":
+            labels = {
+                str(item["natural_key"].get("service_label") or "")
+                for item in normalized_keys
+            }
+            if labels != {
+                "com.weather.weather_basket_yes",
+                "com.weather.market_ws",
+                "com.weather.clob_order_service",
+            }:
+                raise CanonicalActivationReleaseError(
+                    "expected_scope_manifest_runtime_services_invalid"
+                )
+        normalized_keys.sort(
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"))
+        )
+        if scope.get("expected_key_count") != len(normalized_keys):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_key_count_mismatch"
+            )
+        if _sha(
+            scope.get("expected_key_set_sha256"),
+            "expected_scope_manifest_key_set_sha256",
+        ) != content_sha256(normalized_keys):
+            raise CanonicalActivationReleaseError(
+                "expected_scope_manifest_key_set_sha256_mismatch"
+            )
+        normalized[scope_type] = normalized_keys
+        normalized_metadata[scope_type] = {
+            "basis_content_sha256": basis_sha,
+            "unresolved_input_receipts": unresolved,
+            "expected_key_evidence": key_evidence,
+        }
+    if list(normalized) != list(REQUIRED_SCOPE_TYPES):
+        raise CanonicalActivationReleaseError("expected_scope_manifest_scope_order_invalid")
+    evidence = {
+        "source_type": "EXPECTED_SCOPE_MANIFEST",
+        "path": str(source),
+        "schema": EXPECTED_SCOPE_MANIFEST_SCHEMA,
+        "file_sha256": hashlib.sha256(raw).hexdigest(),
+        "content_sha256": supplied,
+        "as_of_utc": cutoff,
+        "canonical_registry_sha256": registry_sha,
+        "station_count": 45,
+    }
+    return {
+        **dict(value),
+        "normalized_expected_keys": normalized,
+        "normalized_scope_metadata": normalized_metadata,
+    }, evidence
+
+
+def _expected_scope_coverage(
+    *,
+    expected_scope_manifest: Mapping[str, Any] | None,
+    model_statuses: Sequence[Mapping[str, Any]],
+    typed_records: Sequence[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    observed: dict[str, set[str]] = {scope: set() for scope in REQUIRED_SCOPE_TYPES}
+    observed_model_evidence: dict[str, str] = {}
+    for status in model_statuses:
+        natural_key = {
+            key: status.get(key)
+            for key in ("station_id", "model_family", "lead_bucket", "run_cycle")
+        }
+        token = _scope_key_token(scope_kind="BUILDER", natural_key=natural_key)
+        observed[MODEL_OOS_SCOPE].add(token)
+        evidence = str(status.get("domain_basis_content_sha256") or "").strip()
+        if evidence:
+            observed_model_evidence[token] = evidence
+    for record in typed_records:
+        scope_type = str(record.get("scope_type") or "")
+        natural_key = record.get("natural_key")
+        if scope_type in observed and isinstance(natural_key, Mapping):
+            observed[scope_type].add(
+                _scope_key_token(
+                    scope_kind=str(record.get("scope_kind") or ""),
+                    natural_key=natural_key,
+                )
+            )
+    expected_mapping = (
+        expected_scope_manifest.get("normalized_expected_keys")
+        if isinstance(expected_scope_manifest, Mapping)
+        else None
+    )
+    metadata_mapping = (
+        expected_scope_manifest.get("normalized_scope_metadata")
+        if isinstance(expected_scope_manifest, Mapping)
+        else None
+    )
+    rows: list[dict[str, Any]] = []
+    complete = isinstance(expected_mapping, Mapping)
+    for scope_type in REQUIRED_SCOPE_TYPES:
+        expected_tokens = {
+            _scope_key_token(
+                scope_kind=str(item.get("scope_kind") or ""),
+                natural_key=item.get("natural_key") or {},
+            )
+            for item in (
+                expected_mapping.get(scope_type, ())
+                if isinstance(expected_mapping, Mapping)
+                else ()
+            )
+            if isinstance(item, Mapping)
+        }
+        missing = expected_tokens - observed[scope_type]
+        excess = observed[scope_type] - expected_tokens
+        metadata = (
+            metadata_mapping.get(scope_type, {})
+            if isinstance(metadata_mapping, Mapping)
+            else {}
+        )
+        unresolved = list(metadata.get("unresolved_input_receipts") or ())
+        expected_key_evidence = dict(metadata.get("expected_key_evidence") or {})
+        evidence_mismatch = []
+        if scope_type == MODEL_OOS_SCOPE:
+            evidence_mismatch = sorted(
+                token
+                for token in expected_tokens & observed[scope_type]
+                if not expected_key_evidence.get(token)
+                or observed_model_evidence.get(token)
+                != expected_key_evidence.get(token)
+            )
+        matched = (
+            expected_mapping is not None
+            and not missing
+            and not excess
+            and not unresolved
+            and not evidence_mismatch
+        )
+        complete = bool(complete and matched)
+        rows.append(
+            {
+                "scope_type": scope_type,
+                "state": "MATCHED" if matched else BLOCKED,
+                "blockers": [] if matched else [
+                    EXPECTED_SCOPE_MANIFEST_MISSING
+                    if expected_mapping is None
+                    else EXPECTED_SCOPE_UNRESOLVED
+                    if unresolved
+                    else EXPECTED_SCOPE_MISMATCH
+                ],
+                "basis_content_sha256": str(metadata.get("basis_content_sha256") or ""),
+                "unresolved_input_receipts": unresolved,
+                "expected_key_count": len(expected_tokens),
+                "observed_key_count": len(observed[scope_type]),
+                "expected_key_set_sha256": _key_set_sha(expected_tokens),
+                "observed_key_set_sha256": _key_set_sha(observed[scope_type]),
+                "missing_count": len(missing),
+                "excess_count": len(excess),
+                "evidence_mismatch_count": len(evidence_mismatch),
+                "missing": [_scope_key_mapping(item) for item in sorted(missing)],
+                "excess": [_scope_key_mapping(item) for item in sorted(excess)],
+                "evidence_mismatch": [
+                    {
+                        **_scope_key_mapping(item),
+                        "expected_evidence_content_sha256": expected_key_evidence.get(item, ""),
+                        "observed_evidence_content_sha256": observed_model_evidence.get(item, ""),
+                    }
+                    for item in evidence_mismatch
+                ],
+            }
+        )
+    return rows, bool(complete)
+
+
 def _scope(fact: CanonicalActivationFact | CanonicalModelFact) -> tuple[str, str, str, str]:
     return (fact.station_id, fact.model_family, fact.lead_bucket, fact.run_cycle)
 
@@ -121,7 +517,12 @@ def _scope_mapping(scope: tuple[str, str, str, str]) -> dict[str, str]:
     return dict(zip(("station_id", "model_family", "lead_bucket", "run_cycle"), scope))
 
 
-def _stable_json(path: Path | str) -> tuple[Path, bytes, Mapping[str, Any]]:
+def _stable_json(
+    path: Path | str,
+    *,
+    limit: int = MAX_JSON_INPUT_BYTES,
+    max_nodes: int | None = None,
+) -> tuple[Path, bytes, Mapping[str, Any]]:
     candidate = Path(path).expanduser()
     if candidate.is_symlink():
         raise CanonicalActivationReleaseError("activation_release_input_symlink_forbidden")
@@ -130,9 +531,13 @@ def _stable_json(path: Path | str) -> tuple[Path, bytes, Mapping[str, Any]]:
         before = source.stat()
     except OSError as exc:
         raise CanonicalActivationReleaseError("activation_release_input_missing") from exc
-    if not source.is_file() or before.st_size > MAX_JSON_INPUT_BYTES:
+    if not source.is_file() or before.st_size > int(limit):
         raise CanonicalActivationReleaseError("activation_release_input_invalid")
-    value = load_bounded_json(source)
+    value = load_bounded_json(
+        source,
+        limit=limit,
+        max_nodes=(max_nodes if max_nodes is not None else 500_000),
+    )
     raw = source.read_bytes()
     after = source.stat()
     if (
@@ -350,7 +755,11 @@ def load_contracts(paths: Sequence[Path | str]) -> tuple[list[CanonicalContract]
     evidence: list[dict[str, Any]] = []
     seen: set[str] = set()
     for path in paths:
-        source, raw, value = _stable_json(path)
+        source, raw, value = _stable_json(
+            path,
+            limit=MAX_CANONICAL_CONTRACT_SNAPSHOT_BYTES,
+            max_nodes=MAX_CANONICAL_CONTRACT_SNAPSHOT_NODES,
+        )
         contract = CanonicalContract.from_mapping(value)
         if contract.content_sha256 in seen:
             raise CanonicalActivationReleaseError("activation_release_contract_duplicate")
@@ -405,6 +814,67 @@ def load_typed_scope_envelopes(
         )
     return (
         sorted(envelopes, key=lambda item: item.scope_type),
+        sorted(evidence, key=lambda item: item["scope_type"]),
+    )
+
+
+def load_typed_scope_blocked_receipts(
+    paths: Sequence[Path | str],
+    *,
+    release_as_of_utc: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Load terminal missing-producer receipts without inventing natural keys."""
+
+    cutoff = _utc_z(release_as_of_utc, "typed_scope_receipt_release_as_of_utc")
+    receipts: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    seen_types: set[str] = set()
+    for path in paths:
+        source, raw, value = _stable_json(path)
+        if value.get("schema") != TYPED_SCOPE_BUILD_RECEIPT_SCHEMA:
+            raise CanonicalActivationReleaseError("typed_scope_blocked_receipt_schema_invalid")
+        supplied = _sha(value.get("content_sha256"), "typed_scope_blocked_receipt_sha256")
+        if supplied != content_sha256(
+            {key: item for key, item in value.items() if key != "content_sha256"}
+        ):
+            raise CanonicalActivationReleaseError("typed_scope_blocked_receipt_hash_mismatch")
+        scope_type = str(value.get("scope_type") or "")
+        blockers = value.get("blockers")
+        if (
+            scope_type not in TYPED_SCOPE_TYPES
+            or scope_type in seen_types
+            or value.get("state") != BLOCKED
+            or not isinstance(blockers, list)
+            or not blockers
+            or any(
+                item not in {DATA_MISSING, ACTIVATION_ROOT_MISSING, LINEAGE_MISMATCH}
+                for item in blockers
+            )
+            or int(value.get("record_count") or 0) != 0
+            or value.get("envelope_content_sha256") not in {"", None}
+            or value.get("writes_database") is not False
+            or value.get("calls_order_gateway") is not False
+            or value.get("orders_submitted") != 0
+        ):
+            raise CanonicalActivationReleaseError("typed_scope_blocked_receipt_invalid")
+        receipt_as_of = _utc_z(value.get("as_of_utc"), "typed_scope_blocked_receipt_as_of_utc")
+        if receipt_as_of > cutoff:
+            raise CanonicalActivationReleaseError("typed_scope_blocked_receipt_after_release_asof")
+        seen_types.add(scope_type)
+        receipts.append(dict(value))
+        evidence.append(
+            {
+                "path": str(source),
+                "file_sha256": hashlib.sha256(raw).hexdigest(),
+                "content_sha256": supplied,
+                "as_of_utc": receipt_as_of,
+                "builder_id": "canonical.typed_scope.blocked_receipt.v1",
+                "scope_type": scope_type,
+                "record_count": 0,
+            }
+        )
+    return (
+        sorted(receipts, key=lambda item: item["scope_type"]),
         sorted(evidence, key=lambda item: item["scope_type"]),
     )
 
@@ -540,6 +1010,14 @@ def _fact_mapping_and_hash(fact: object) -> tuple[str, Mapping[str, Any], str]:
     name = type(fact).__name__
     fact_type = {
         "CanonicalModelFact": "model",
+        "CanonicalEnsembleMemberFact": "ensemble_member",
+        "CanonicalNativeArrivalFact": "native_arrival",
+        "CanonicalEnsembleMemberReceiptManifestFact": (
+            "ensemble_member_receipt_manifest"
+        ),
+        "CanonicalEnsembleMemberArrivalBindingFact": (
+            "ensemble_member_arrival_binding"
+        ),
         "CanonicalTruthFact": "truth",
         "CanonicalResidualFact": "residual",
     }.get(name)
@@ -575,6 +1053,10 @@ def load_db_projection(
         for contract in contracts:
             for collection in (
                 contract.model_facts,
+                contract.ensemble_member_facts,
+                contract.native_arrival_facts,
+                contract.ensemble_member_receipt_manifest_facts,
+                contract.ensemble_member_arrival_binding_facts,
                 contract.truth_facts,
                 contract.residual_facts,
                 contract.activation_facts,
@@ -1156,6 +1638,7 @@ def _base_record(
 
 def _typed_scope_ledger_projection(
     envelopes: Sequence[CanonicalTypedScopeEnvelope],
+    blocked_receipts: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, Any]]]:
     records: list[dict[str, Any]] = []
     statuses: list[dict[str, Any]] = []
@@ -1173,6 +1656,7 @@ def _typed_scope_ledger_projection(
                     "scope_type": fact.scope_type,
                     "scope_kind": fact.scope_kind,
                     "natural_key": dict(fact.natural_key),
+                    "version": None if fact.version is None else dict(fact.version),
                     "as_of_utc": fact.as_of_utc,
                     "state": fact.state,
                     "blockers": list(fact.blockers),
@@ -1209,6 +1693,21 @@ def _typed_scope_ledger_projection(
             "blockers": sorted(type_blockers),
             "envelope_content_sha256": envelope.content_sha256,
         }
+    for receipt in blocked_receipts:
+        scope_type = str(receipt.get("scope_type") or "")
+        if scope_type in by_type:
+            raise CanonicalActivationReleaseError("typed_scope_release_type_duplicate")
+        blockers = sorted(set(str(item) for item in receipt.get("blockers", ())))
+        by_type[scope_type] = {
+            "scope_type": scope_type,
+            "state": BLOCKED,
+            "scope_count": 0,
+            "blockers": blockers,
+            "blocked_receipt_content_sha256": _sha(
+                receipt.get("content_sha256"),
+                "typed_scope_blocked_receipt_content_sha256",
+            ),
+        }
     return records, statuses, by_type
 
 
@@ -1226,6 +1725,9 @@ def build_release_artifacts(
     supersession_facts: Sequence[Mapping[str, Any]] = (),
     typed_scope_envelopes: Sequence[CanonicalTypedScopeEnvelope] = (),
     typed_scope_evidence: Sequence[Mapping[str, Any]] = (),
+    typed_scope_blocked_receipts: Sequence[Mapping[str, Any]] = (),
+    expected_scope_manifest: Mapping[str, Any] | None = None,
+    expected_scope_evidence: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Build ledger v2, current index v2 and their exact binding."""
 
@@ -1427,7 +1929,7 @@ def build_release_artifacts(
     if len(record_keys) != len(set(record_keys)):
         raise CanonicalActivationReleaseError("activation_release_ledger_record_duplicate")
     typed_records, typed_statuses, typed_by_type = _typed_scope_ledger_projection(
-        typed_scope_envelopes
+        typed_scope_envelopes, typed_scope_blocked_receipts
     )
     ledger_records.extend(typed_records)
     builder_statuses.extend(typed_statuses)
@@ -1475,6 +1977,14 @@ def build_release_artifacts(
             for blocker in status.get("blockers", [])
         }
     )
+    expected_scope_coverage, expected_scope_complete = _expected_scope_coverage(
+        expected_scope_manifest=expected_scope_manifest,
+        model_statuses=model_statuses,
+        typed_records=typed_records,
+    )
+    coverage_by_type = {
+        str(item["scope_type"]): item for item in expected_scope_coverage
+    }
     scope_type_statuses = [
         {
             "scope_type": MODEL_OOS_SCOPE,
@@ -1498,6 +2008,13 @@ def build_release_artifacts(
             if scope_type != MODEL_OOS_SCOPE
         ],
     ]
+    for status in scope_type_statuses:
+        coverage = coverage_by_type[str(status["scope_type"])]
+        if coverage["state"] == BLOCKED:
+            status["state"] = BLOCKED
+            status["blockers"] = sorted(
+                set(status.get("blockers", ())) | set(coverage["blockers"])
+            )
     ledger_identity = {
         "schema": LEDGER_SCHEMA,
         "as_of_utc": cutoff,
@@ -1505,12 +2022,21 @@ def build_release_artifacts(
         "source_contracts": [
             *[dict(item) for item in contract_evidence],
             *[dict(item) for item in typed_scope_evidence],
+            *(
+                [dict(expected_scope_evidence)]
+                if isinstance(expected_scope_evidence, Mapping)
+                else []
+            ),
         ],
         "required_scope_types": list(REQUIRED_SCOPE_TYPES),
         "scope_type_statuses": scope_type_statuses,
-        "typed_scope_coverage_complete": all(
-            scope_type in typed_by_type for scope_type in TYPED_SCOPE_TYPES
+        "expected_scope_manifest_content_sha256": (
+            str(expected_scope_manifest.get("content_sha256") or "")
+            if isinstance(expected_scope_manifest, Mapping)
+            else ""
         ),
+        "expected_scope_coverage": expected_scope_coverage,
+        "typed_scope_coverage_complete": expected_scope_complete,
         "summary": {
             "record_count": len(ledger_records),
             "activation_ready_count": sum(item["state"] == ACTIVATION_READY for item in ledger_records),
@@ -1579,6 +2105,9 @@ def build_truth_gap_release(
     taf_revision_complete: bool,
     typed_scope_envelopes: Sequence[CanonicalTypedScopeEnvelope] = (),
     typed_scope_evidence: Sequence[Mapping[str, Any]] = (),
+    typed_scope_blocked_receipts: Sequence[Mapping[str, Any]] = (),
+    expected_scope_manifest: Mapping[str, Any] | None = None,
+    expected_scope_evidence: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Project exact historical truth gaps onto the complete model inventory.
 
@@ -1710,7 +2239,15 @@ def build_truth_gap_release(
             else set()
         )
         index_entry = index_by_scope.get(scope)
-        if non_data_blockers:
+        record_hashes = sorted(str(item["content_sha256"]) for item in scoped_records)
+        contract_hashes = sorted({
+            str(item["canonical_contract_content_sha256"])
+            for item in scoped_records
+            if item["canonical_contract_content_sha256"]
+        })
+        if len(contract_hashes) != 1:
+            blocker = LINEAGE_MISMATCH
+        elif non_data_blockers:
             blocker = sorted(non_data_blockers)[0]
         elif len(common_dates) < expected_samples:
             blocker = OOS_SAMPLE_SHORT
@@ -1722,12 +2259,6 @@ def build_truth_gap_release(
             # Truth evidence cannot promote or bind a current activation.  The
             # full activation-contract path remains responsible for that step.
             blocker = ACTIVATION_CONTRACT_BINDING_MISSING
-        record_hashes = sorted(str(item["content_sha256"]) for item in scoped_records)
-        contract_hashes = sorted({
-            str(item["canonical_contract_content_sha256"])
-            for item in scoped_records
-            if item["canonical_contract_content_sha256"]
-        })
         status = _hashed(
             {
                 "scope_type": MODEL_OOS_SCOPE,
@@ -1762,7 +2293,7 @@ def build_truth_gap_release(
         )
 
     typed_records, typed_statuses, typed_by_type = _typed_scope_ledger_projection(
-        typed_scope_envelopes
+        typed_scope_envelopes, typed_scope_blocked_receipts
     )
     records.extend(typed_records)
     builder_statuses.extend(typed_statuses)
@@ -1794,17 +2325,35 @@ def build_truth_gap_release(
         *contract_evidence,
         dict(source_evidence),
         *[dict(item) for item in typed_scope_evidence],
+        *(
+            [dict(expected_scope_evidence)]
+            if isinstance(expected_scope_evidence, Mapping)
+            else []
+        ),
+    ]
+    model_statuses = [
+        item
+        for item in builder_statuses
+        if str(item.get("scope_type") or MODEL_OOS_SCOPE) == MODEL_OOS_SCOPE
     ]
     model_builder_blockers = sorted({
         str(blocker)
-        for status in builder_statuses
+        for status in model_statuses
         for blocker in status.get("blockers", [])
     })
+    expected_scope_coverage, expected_scope_complete = _expected_scope_coverage(
+        expected_scope_manifest=expected_scope_manifest,
+        model_statuses=model_statuses,
+        typed_records=typed_records,
+    )
+    coverage_by_type = {
+        str(item["scope_type"]): item for item in expected_scope_coverage
+    }
     scope_type_statuses = [
         {
             "scope_type": MODEL_OOS_SCOPE,
-            "state": BLOCKED if builder_statuses else "READY",
-            "scope_count": len(builder_statuses),
+            "state": BLOCKED if model_builder_blockers else "READY",
+            "scope_count": len(model_statuses),
             "blockers": model_builder_blockers,
         },
         *[
@@ -1823,6 +2372,13 @@ def build_truth_gap_release(
             if scope_type != MODEL_OOS_SCOPE
         ],
     ]
+    for status in scope_type_statuses:
+        coverage = coverage_by_type[str(status["scope_type"])]
+        if coverage["state"] == BLOCKED:
+            status["state"] = BLOCKED
+            status["blockers"] = sorted(
+                set(status.get("blockers", ())) | set(coverage["blockers"])
+            )
     ledger = _hashed(
         {
             "schema": LEDGER_SCHEMA,
@@ -1831,9 +2387,13 @@ def build_truth_gap_release(
             "source_contracts": source_contracts,
             "required_scope_types": list(REQUIRED_SCOPE_TYPES),
             "scope_type_statuses": scope_type_statuses,
-            "typed_scope_coverage_complete": all(
-                scope_type in typed_by_type for scope_type in TYPED_SCOPE_TYPES
+            "expected_scope_manifest_content_sha256": (
+                str(expected_scope_manifest.get("content_sha256") or "")
+                if isinstance(expected_scope_manifest, Mapping)
+                else ""
             ),
+            "expected_scope_coverage": expected_scope_coverage,
+            "typed_scope_coverage_complete": expected_scope_complete,
             "summary": {
                 "record_count": len(records),
                 "activation_ready_count": 0,
@@ -2056,6 +2616,7 @@ def verify_ledger_v2(value: Mapping[str, Any]) -> dict[str, Any]:
                 "scope_type": scope_type,
                 "scope_kind": record.get("scope_kind"),
                 "natural_key": record.get("natural_key"),
+                "version": record.get("version"),
                 "as_of_utc": record.get("as_of_utc"),
                 "state": record.get("state"),
                 "blockers": record.get("blockers"),
@@ -2170,14 +2731,74 @@ def verify_ledger_v2(value: Mapping[str, Any]) -> dict[str, Any]:
         status_types = [str(item.get("scope_type") or "") for item in scope_type_statuses if isinstance(item, Mapping)]
         if status_types != list(REQUIRED_SCOPE_TYPES):
             raise CanonicalActivationReleaseError("ledger_v2_scope_type_statuses_invalid")
-        non_model_covered = all(
-            isinstance(item, Mapping)
-            and item.get("scope_type") == scope_type
-            and isinstance(item.get("scope_count"), int)
-            and item.get("scope_count") > 0
-            for scope_type, item in zip(REQUIRED_SCOPE_TYPES[1:], scope_type_statuses[1:])
-        )
-        if value.get("typed_scope_coverage_complete") != non_model_covered:
+        coverage = value.get("expected_scope_coverage")
+        if not isinstance(coverage, list) or len(coverage) != len(REQUIRED_SCOPE_TYPES):
+            raise CanonicalActivationReleaseError(
+                "ledger_v2_expected_scope_coverage_invalid"
+            )
+        coverage_complete = True
+        for scope_type, row in zip(REQUIRED_SCOPE_TYPES, coverage):
+            if not isinstance(row, Mapping) or row.get("scope_type") != scope_type:
+                raise CanonicalActivationReleaseError(
+                    "ledger_v2_expected_scope_coverage_invalid"
+                )
+            for field in (
+                "expected_key_count", "observed_key_count", "missing_count",
+                "excess_count", "evidence_mismatch_count",
+            ):
+                if isinstance(row.get(field), bool) or not isinstance(row.get(field), int) or row.get(field) < 0:
+                    raise CanonicalActivationReleaseError(
+                        "ledger_v2_expected_scope_coverage_invalid"
+                    )
+            _sha(row.get("expected_key_set_sha256"), "expected_key_set_sha256")
+            _sha(row.get("observed_key_set_sha256"), "observed_key_set_sha256")
+            basis_sha = row.get("basis_content_sha256")
+            if basis_sha != "":
+                _sha(basis_sha, "expected_scope_basis_content_sha256")
+            if (
+                not isinstance(row.get("missing"), list)
+                or not isinstance(row.get("excess"), list)
+                or not isinstance(row.get("evidence_mismatch"), list)
+                or not isinstance(row.get("unresolved_input_receipts"), list)
+            ):
+                raise CanonicalActivationReleaseError(
+                    "ledger_v2_expected_scope_coverage_invalid"
+                )
+            for receipt_sha in row["unresolved_input_receipts"]:
+                _sha(receipt_sha, "expected_scope_unresolved_receipt_sha256")
+            if (
+                row.get("missing_count") != len(row["missing"])
+                or row.get("excess_count") != len(row["excess"])
+                or row.get("evidence_mismatch_count")
+                != len(row["evidence_mismatch"])
+            ):
+                raise CanonicalActivationReleaseError(
+                    "ledger_v2_expected_scope_coverage_invalid"
+                )
+            matched = (
+                row.get("state") == "MATCHED"
+                and row.get("blockers") == []
+                and row.get("missing_count") == 0
+                and row.get("excess_count") == 0
+                and row.get("evidence_mismatch_count") == 0
+                and row.get("unresolved_input_receipts") == []
+                and row.get("expected_key_count") == row.get("observed_key_count")
+                and row.get("expected_key_set_sha256") == row.get("observed_key_set_sha256")
+            )
+            if not matched:
+                coverage_complete = False
+                if row.get("state") != BLOCKED or row.get("blockers") not in (
+                    [EXPECTED_SCOPE_MANIFEST_MISSING],
+                    [EXPECTED_SCOPE_MISMATCH],
+                    [EXPECTED_SCOPE_UNRESOLVED],
+                ):
+                    raise CanonicalActivationReleaseError(
+                        "ledger_v2_expected_scope_coverage_semantics_invalid"
+                    )
+        manifest_sha = value.get("expected_scope_manifest_content_sha256")
+        if manifest_sha != "":
+            _sha(manifest_sha, "expected_scope_manifest_content_sha256")
+        if value.get("typed_scope_coverage_complete") != coverage_complete:
             raise CanonicalActivationReleaseError("ledger_v2_typed_scope_coverage_mismatch")
     return dict(value)
 
@@ -2384,6 +3005,98 @@ def verify_consumable_current_root_v2(
     return verified
 
 
+def verify_released_p0_envelope_authority(
+    pointer: Mapping[str, Any],
+    *,
+    expected_release_root: Path | str,
+    envelope: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Authorize one unpublished P0 only through the exact consumable release."""
+
+    verified = verify_consumable_current_root_v2(
+        pointer,
+        expected_release_root=expected_release_root,
+    )
+    release_dir = (
+        Path(expected_release_root).expanduser().resolve()
+        / str(verified["release_id"])
+    )
+    ledger = load_bounded_json(release_dir / "ledger.json")
+    if not isinstance(ledger, Mapping):
+        raise CanonicalActivationReleaseError("released_p0_ledger_invalid")
+    verify_ledger_v2(ledger)
+    lineage = envelope.get("lineage")
+    if (
+        envelope.get("stage") != "P0"
+        or not isinstance(lineage, Mapping)
+        or lineage.get("release_state") != "MATERIALIZED_UNPUBLISHED"
+        or lineage.get("authority_scope") != NO_LIVE_AUTHORITY
+    ):
+        raise CanonicalActivationReleaseError("released_p0_envelope_boundary_invalid")
+    envelope_sha = content_sha256(dict(envelope))
+    expected_evidence = content_sha256(
+        {
+            "p0_snapshot_content_sha256": _sha(
+                lineage.get("p0_snapshot_content_sha256"),
+                "released_p0_snapshot_sha256",
+            ),
+            "probability_envelope_content_sha256": envelope_sha,
+            "market_bucket_bridge_content_sha256": _sha(
+                lineage.get("market_bucket_bridge_content_sha256"),
+                "released_p0_bridge_sha256",
+            ),
+            "activation_content_sha256": _sha(
+                lineage.get("activation_content_sha256"),
+                "released_p0_activation_sha256",
+            ),
+            "selection_content_sha256": _sha(
+                lineage.get("selection_content_sha256"),
+                "released_p0_selection_sha256",
+            ),
+            "forward_applicability_content_sha256": _sha(
+                lineage.get("forward_applicability_content_sha256"),
+                "released_p0_forward_sha256",
+            ),
+        }
+    )
+    matches: list[Mapping[str, Any]] = []
+    for record in ledger.get("records", ()):
+        if not isinstance(record, Mapping) or record.get("scope_type") != "P0_SNAPSHOT":
+            continue
+        key = record.get("natural_key")
+        if not isinstance(key, Mapping):
+            continue
+        if (
+            record.get("state") == ACTIVATION_READY
+            and record.get("blockers") == []
+            and record.get("authority_scope") == NO_LIVE_AUTHORITY
+            and key.get("station_id") == envelope.get("station_id")
+            and key.get("event_date") == envelope.get("event_date")
+            and key.get("decision_at_utc") == envelope.get("decision_at_utc")
+            and key.get("probability_root_sha256")
+            == lineage.get("probability_root_sha256")
+            and key.get("activation_content_sha256")
+            == lineage.get("activation_content_sha256")
+            and key.get("forward_applicability_content_sha256")
+            == lineage.get("forward_applicability_content_sha256")
+            and record.get("evidence_content_sha256") == expected_evidence
+        ):
+            matches.append(record)
+    if len(matches) != 1:
+        raise CanonicalActivationReleaseError("released_p0_scope_not_unique")
+    return {
+        "release_id": verified["release_id"],
+        "current_pointer_content_sha256": verified["content_sha256"],
+        "ledger_content_sha256": ledger["content_sha256"],
+        "typed_scope_fact_content_sha256": matches[0][
+            "typed_scope_fact_content_sha256"
+        ],
+        "probability_envelope_content_sha256": envelope_sha,
+        "authority_scope": NO_LIVE_AUTHORITY,
+        "production_no_live": True,
+    }
+
+
 def publish_release(
     *,
     ledger: Mapping[str, Any],
@@ -2558,6 +3271,7 @@ __all__ = [
     "ACTIVATION_INDEX_SCHEMA",
     "BINDING_SCHEMA",
     "CanonicalActivationReleaseError",
+    "EXPECTED_SCOPE_MANIFEST_SCHEMA",
     "LEDGER_SCHEMA",
     "RELEASE_MANIFEST_SCHEMA",
     "ROOT_POINTER_SCHEMA",
@@ -2571,6 +3285,8 @@ __all__ = [
     "load_db_projection",
     "load_db_supersession_facts",
     "load_inner_snapshot",
+    "load_expected_scope_manifest",
+    "load_typed_scope_blocked_receipts",
     "load_typed_scope_envelopes",
     "publish_release",
     "verify_activation_index_v2",
@@ -2578,6 +3294,7 @@ __all__ = [
     "verify_consumable_current_root_v2",
     "verify_current_root_pointer_v2",
     "verify_ledger_v2",
+    "verify_released_p0_envelope_authority",
     "verify_projection_snapshot_consistency",
     "verify_supersession_projection_consistency",
 ]

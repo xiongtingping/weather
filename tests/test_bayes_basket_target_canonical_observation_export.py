@@ -36,6 +36,22 @@ def _init_db(path: Path) -> None:
                 correction_suspected INTEGER NOT NULL DEFAULT 0
             )"""
         )
+        conn.execute(
+            """CREATE TABLE reported_trajectory_source_polls(
+                poll_id TEXT PRIMARY KEY,
+                source_lane TEXT NOT NULL,
+                station_ids_json TEXT NOT NULL,
+                request_started_at TEXT NOT NULL,
+                response_started_at TEXT,
+                response_completed_at TEXT NOT NULL,
+                response_status INTEGER,
+                duration_ms REAL NOT NULL,
+                report_count INTEGER NOT NULL,
+                new_report_count INTEGER NOT NULL,
+                error_code TEXT,
+                poll_json TEXT NOT NULL
+            )"""
+        )
 
 
 def _insert(path: Path, *, observation_id: str, lane: str = "amsc", station: str = "ZBAA", day: str = "2026-07-01", correction: int = 0, raw_sha: str = SHA, valid_at: str | None = None, first_seen: str | None = None, canonical: str | None = None, temperature_c: int = 30) -> None:
@@ -43,6 +59,15 @@ def _insert(path: Path, *, observation_id: str, lane: str = "amsc", station: str
     first = first_seen or f"{day}T12:01:00Z"
     committed = canonical or f"{day}T12:01:01Z"
     with sqlite3.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO reported_trajectory_source_polls VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"poll-{observation_id}", lane, f'["{station}"]',
+                f"{day}T12:00:20Z", f"{day}T12:00:21Z",
+                first, 200, 10.0, 1, 1, None,
+                f'{{"poll_id":"poll-{observation_id}"}}',
+            ),
+        )
         conn.execute(
             "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -305,7 +330,7 @@ def test_official_timing_roles_fail_closed_and_preserve_speci(tmp_path: Path) ->
     assert result["accepted_truth_count"] == 1
 
 
-def test_awc_owned_station_rejects_routine_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
+def test_awc_owned_station_excludes_routine_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
     native = tmp_path / "awc-native.db"
     _init_db(native)
     _insert(
@@ -322,9 +347,13 @@ def test_awc_owned_station_rejects_routine_native_53_minute_and_rejects_amsc(tmp
         station_timezones={"KATL": "America/New_York"},
         station_lane_map={"KATL": "awc"},
     )
-    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert result["state"] == "EXPORTED"
     assert result["accepted_truth_count"] == 0
-    assert any("awc_metar_timing_invalid" in item for item in result["blockers"])
+    assert result["excluded_policy_observation_count"] == 1
+    assert result["policy_exclusion_reason_counts"] == {
+        "awc_metar_timing_invalid": 1
+    }
+    assert result["observations"][0]["qc_status"] == "EXCLUDED_POLICY"
 
     cross = tmp_path / "awc-cross.db"
     _init_db(cross)

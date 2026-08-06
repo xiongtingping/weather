@@ -91,22 +91,19 @@ def test_official_raw_becomes_explicit_historical_replay(tmp_path: Path) -> None
     assert result["boundary"]["writes_production_db"] is False
 
 
-def test_nonzero_minute_metar_is_not_truth_but_speci_is_allowed(tmp_path: Path) -> None:
+def test_nonzero_minute_metar_and_speci_are_valid_observations(tmp_path: Path) -> None:
     metar_stamp = "2026-07-01T05:52:00Z"
     metar_sha = _raw(tmp_path, raw_text="METAR ZBAA 010552Z 00000KT CAVOK 31/20 Q1000", stamp=metar_stamp)
     packet = _packet(raw_sha=metar_sha, stamp=metar_stamp)
     result = _build(tmp_path, packet)
-    assert result["observations"] == []
+    assert len(result["observations"]) == 1
     assert result["truth_blocked_dates"] == ["2026-07-01"]
-    assert result["rejection_counts"] == {
-        "historical_awc_metar_nonexact_minute": 1
-    }
+    assert result["rejection_counts"] == {}
     diagnostics = result["missing_date_diagnostics"][0]
     assert diagnostics["event_date"] == "2026-07-01"
     assert diagnostics["blockers"] == ["DATA_MISSING", "OOS_SAMPLE_SHORT"]
     assert {item["reason"] for item in diagnostics["diagnostics"]} == {
-        "historical_awc_metar_nonexact_minute",
-        "historical_awc_exact_hour_slots_missing",
+        "historical_awc_report_hour_coverage_missing",
     }
 
     speci_stamp = "2026-07-01T05:52:00Z"
@@ -143,7 +140,7 @@ def test_role_cannot_be_obtained_without_raw_object(tmp_path: Path) -> None:
     assert result["rejection_counts"] == {"historical_awc_raw_object_missing": 1}
     assert {item["reason"] for item in result["missing_date_diagnostics"][0]["diagnostics"]} == {
         "historical_awc_raw_object_missing",
-        "historical_awc_exact_hour_slots_missing",
+        "historical_awc_report_hour_coverage_missing",
     }
 
 

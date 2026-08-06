@@ -1,0 +1,4689 @@
+{
+  "as_of_utc": "2026-08-04T05:16:39Z",
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "climatology_baseline_metrics": {
+        "mae_c": 2.4624999999999995,
+        "mean_error_c": 2.3249999999999993,
+        "rmse_c": 3.0024989592004854
+      },
+      "cohort_capture_receipt_sha256s": [
+        "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+        "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+        "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26"
+      ],
+      "cohort_rows": [
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "e051dea6a6371bbf6ede08509462272b4e2e5937246f22a95b7a1322f0f1ef61",
+          "awc_truth_id": "awc-historical-truth-e051dea6a6371bbf6ede08509462272b",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "7d89f36aea28081294d437b8c788f75d211f9345be4e26f3781e3acbbb8a38b5",
+          "case_contract_sha256": "9a442e16326d87351156b756f7cc182429b3ff2bd1727e026f299d1e84677a23",
+          "event_date": "2026-07-02",
+          "forecast_daily_max_c": 33.6,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-03T04:00:00Z",
+          "truth_value_c": 34.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "1351e3d6f3a2446bd46a4bc6056015b9dc6ba07aab438fe20e1f9cbe328caac7",
+          "awc_truth_id": "awc-historical-truth-1351e3d6f3a2446bd46a4bc6056015b9",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "8e5a454e231fddb287904a7176ada425716101b983264968ea865df7b93c758f",
+          "case_contract_sha256": "7369d47539f1432c68d40dacd8ab30bf9a67374d8f13d52682a5d89b0014ef58",
+          "event_date": "2026-07-03",
+          "forecast_daily_max_c": 32.4,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-04T04:00:00Z",
+          "truth_value_c": 35.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "40fcc13121a6e6b8d0f6d36a84d3c1b4ebdd10492c98f4f7e52de6209d93f309",
+          "awc_truth_id": "awc-historical-truth-40fcc13121a6e6b8d0f6d36a84d3c1b4",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "3294a534c90f707d02ee2c6611423862a2133bca36114b4d33352a373a11fea0",
+          "case_contract_sha256": "360f0ba9b802bb03ddffef55513e98b19316158884047a54cf137686be7707f2",
+          "event_date": "2026-07-04",
+          "forecast_daily_max_c": 26.0,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-05T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "3bd0b9deda5361eb05e2e831ebe405c1cee43ae336663ac57672ed4742e5228c",
+          "awc_truth_id": "awc-historical-truth-3bd0b9deda5361eb05e2e831ebe405c1",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6bc41bd1ee8efeac9e10318fec30b93809fd89bac4e0431e8685ca728d3395b3",
+          "case_contract_sha256": "aecac456c7805c0a03af86f789c70cc284a67b493032c4ce46e098dd83b282f2",
+          "event_date": "2026-07-05",
+          "forecast_daily_max_c": 24.8,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-06T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "2e2c92c6814de5bd016a5783eb78d02402683190ac28bf6d0895c6e820c7dbbe",
+          "awc_truth_id": "awc-historical-truth-2e2c92c6814de5bd016a5783eb78d024",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "684b2116cc75bdbf267708977632dea3c48a816017aff1d6f120706d0782d218",
+          "case_contract_sha256": "c0ab273eea5674fba8385fa7c4134ad43974d116a873ca7cae3fb9f8c43c41a8",
+          "event_date": "2026-07-06",
+          "forecast_daily_max_c": 25.6,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-07T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "448de676df68962f041d25980481ecd2e249c87fb7c9addeb2290e4b78057801",
+          "awc_truth_id": "awc-historical-truth-448de676df68962f041d25980481ecd2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "86a2802c6b07c5a290546e6f3d7cf801ee6e97da0109a7e646de41e22b42c473",
+          "case_contract_sha256": "2a5f403074f6bf5f96a72a4a139b12b81eb50bd5bba36e8ef064ff77da0e4c63",
+          "event_date": "2026-07-07",
+          "forecast_daily_max_c": 25.9,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-08T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "371d841dbc038b0fb1e137e4fe4c89a0826e112194b1eb8c95947cb80b1534ec",
+          "awc_truth_id": "awc-historical-truth-371d841dbc038b0fb1e137e4fe4c89a0",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6dd1fdb764b68410bf575dc825171c3b15faef7cd310fa7bbff0041385ac62c5",
+          "case_contract_sha256": "2415f3709f4c5f785b5fc5c2d490c206aff6b6ed78f2385f5626a8a7e06765e2",
+          "event_date": "2026-07-08",
+          "forecast_daily_max_c": 29.1,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-09T04:00:00Z",
+          "truth_value_c": 29.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "7f5631b426abc1ca499c8f2af486723e50f6f2d4ca01b107de753048a9b5e1ec",
+          "awc_truth_id": "awc-historical-truth-7f5631b426abc1ca499c8f2af486723e",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "500fe83e805e955ea1cc517e05db301be63f2605daa3316658de6a796c0b9379",
+          "case_contract_sha256": "0fcf621fe38d4b21221dbdd14244d2b2e6aaf89130ebf1c17fcdec309f06584b",
+          "event_date": "2026-07-09",
+          "forecast_daily_max_c": 27.6,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-10T04:00:00Z",
+          "truth_value_c": 29.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "78d3b5d0c4ec7011a1c63b61ad4e9eb661ae96119aec3e4da5db369ac9ace152",
+          "awc_truth_id": "awc-historical-truth-78d3b5d0c4ec7011a1c63b61ad4e9eb6",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "3f822104a46f5201b3a2cf8bf9d67ea49c655b7c0eb9e7e6ecd103a8c1e0687d",
+          "case_contract_sha256": "f815d5c66128ad3d58e1140e6a723212e713af65bf6dbe2435872fdb25dc4f72",
+          "event_date": "2026-07-10",
+          "forecast_daily_max_c": 26.5,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-11T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "f2c41a12b77438563cc9c2b2490342a1d8d2f15e57e6c5df2bc20dbab4951862",
+          "awc_truth_id": "awc-historical-truth-f2c41a12b77438563cc9c2b2490342a1",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "c6bb4957b7ae45cc7c99b99fb87cf14384dabff368d9fdce278f4eea1ebe90be",
+          "case_contract_sha256": "80356b1e3fb3dc18f77777fd59b4192b1e96b512e29eba442393f6bb6c77f6f7",
+          "event_date": "2026-07-11",
+          "forecast_daily_max_c": 26.6,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-12T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "33b037a5bd96744cfb7721b05e0e86d5948229ce563b97330926b1298da79c47",
+          "awc_truth_id": "awc-historical-truth-33b037a5bd96744cfb7721b05e0e86d5",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "527a54a2c7d37400cc01160483fe0d4a04237a171ea2c3daeaffe096122f5476",
+          "case_contract_sha256": "a55aeb6053b55ca7c85d166adc3390bbeb3afb5e627f0f10387aa57186ea1897",
+          "event_date": "2026-07-12",
+          "forecast_daily_max_c": 26.9,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-13T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "8fa1c49d794dfa15cb86b69e1b2258a76f1a7b401b57d29069aa3d5e24a038e7",
+          "awc_truth_id": "awc-historical-truth-8fa1c49d794dfa15cb86b69e1b2258a7",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "b2f29deabed21ad95992933850e91be44fff7c1872eba2e2d7112d16f588156e",
+          "case_contract_sha256": "03a7a09189e01c4977da4d5ffd5c49aeac3b68d6b5aebd77187a470f423a9a1a",
+          "event_date": "2026-07-13",
+          "forecast_daily_max_c": 32.4,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-14T04:00:00Z",
+          "truth_value_c": 33.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "81850802dfb0ee8b683e1ac313e58c469caabed85a9fd3a0044e6065a6cb2950",
+          "awc_truth_id": "awc-historical-truth-81850802dfb0ee8b683e1ac313e58c46",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "373e429c4b7fa2f70e49f2e972e14456441e4008b1bc56a3b7e9b3a2e169544a",
+          "case_contract_sha256": "e99d1f2236a296a0d7f6793db3bcad0409418202e2ec24362a83fe48a65c139e",
+          "event_date": "2026-07-14",
+          "forecast_daily_max_c": 35.6,
+          "model_input_content_sha256": "e2f775d5ede6fec627c0c6ff460c06c052b9cee489295cac4e91e1848715be7d",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-15T04:00:00Z",
+          "truth_value_c": 36.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "d9f08b62cd6f8dda97da3d4d7d7ef51b4c47528702ea76e3221d3a389a315f2b",
+          "awc_truth_id": "awc-historical-truth-d9f08b62cd6f8dda97da3d4d7d7ef51b",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "d764009e7d2bb88d2f8f5ede79780b3218418e72dc55b0712226d7da562bc16d",
+          "case_contract_sha256": "42894941cbea1a95fe0c52dc367f3558d01e0928923fa6a96d07e2ddb5c74ccb",
+          "event_date": "2026-07-15",
+          "forecast_daily_max_c": 29.7,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-16T04:00:00Z",
+          "truth_value_c": 28.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "d11f440d8f757fc419396cf3cf0598fb91c277fcd523e5a033c6aba43669e366",
+          "awc_truth_id": "awc-historical-truth-d11f440d8f757fc419396cf3cf0598fb",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "b304465384d1af5fe9c2eb00d42dc04b75b237eed94603950c02e269fa2a45eb",
+          "case_contract_sha256": "7d5c6f8310c19c2f232e25f4c4ff1dcd634073143a093a07511d0e7ffff64571",
+          "event_date": "2026-07-16",
+          "forecast_daily_max_c": 29.7,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-17T04:00:00Z",
+          "truth_value_c": 30.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "dd279afcc23d0893315a6c77035360a2ac38f6bfb2a5ccf713bb0344e1766858",
+          "awc_truth_id": "awc-historical-truth-dd279afcc23d0893315a6c77035360a2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "901c92563cf20282c665587d334bc9b474484b6a7e2c8319c9320caaadabe878",
+          "case_contract_sha256": "49d86e5a51ca26d235d8771b087e0b7f10a08df93d1b5cb9a034cba91eccf9fe",
+          "event_date": "2026-07-17",
+          "forecast_daily_max_c": 24.6,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-18T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "695558824ce161d007d9d5575ea33d382a688e4487cf83a67d55a3a3c979b880",
+          "awc_truth_id": "awc-historical-truth-695558824ce161d007d9d5575ea33d38",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "bbae43061c967b4a3480a192160fb801bc206598dbd38331b3f944632959a657",
+          "case_contract_sha256": "f9d2e3bfabd2ff734d4017cdeba7969d058623ceec3ad0d8858f940fb4333398",
+          "event_date": "2026-07-18",
+          "forecast_daily_max_c": 28.8,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-19T04:00:00Z",
+          "truth_value_c": 28.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "2e48704c2da4d8db1d0b5e2e6bf0ee52af68c7c618f2a1231b8a847ac5fba1a4",
+          "awc_truth_id": "awc-historical-truth-2e48704c2da4d8db1d0b5e2e6bf0ee52",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "680aae2d151310ad502086b507c7ad86fc4c1205b0185d0e05ee4a8f03ba2680",
+          "case_contract_sha256": "43bb9d2c88dce976741e02662b4332be3309a273ca19c25457dc5307b014f07c",
+          "event_date": "2026-07-19",
+          "forecast_daily_max_c": 24.3,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-20T04:00:00Z",
+          "truth_value_c": 25.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "a173781993be8ca0289264e08b2852c56ceecf5a5fd84f66c2b07ff3443c03fe",
+          "awc_truth_id": "awc-historical-truth-a173781993be8ca0289264e08b2852c5",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "642c2be8366ebf0ae8d3db71bc5e39e5bd0562c4f0ea777837e23cd3fb968b32",
+          "case_contract_sha256": "0959723ebe56bb0f477ff58898cca00b8442ac988a52a6599ea0253b5e287b63",
+          "event_date": "2026-07-20",
+          "forecast_daily_max_c": 26.1,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-21T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "2e4d72acc03d485fc0ace1b4715dd488176e7f2c083797170798d781caa365bc",
+          "awc_truth_id": "awc-historical-truth-2e4d72acc03d485fc0ace1b4715dd488",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "e3a00704d7aab650e478b6e57d8090c473855d7ac765b9d2fdcb382e0787f8a6",
+          "case_contract_sha256": "9176f6675e465d2dfdfed805dcff0e58769c701288a89be821599f32065acfba",
+          "event_date": "2026-07-21",
+          "forecast_daily_max_c": 24.5,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-22T04:00:00Z",
+          "truth_value_c": 24.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "3fdf5d164a21ae43c9089a30d14161159780717f7d38ccd4ece9f5a77a32601e",
+          "awc_truth_id": "awc-historical-truth-3fdf5d164a21ae43c9089a30d1416115",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "1f6d2e6bedc8c6d9696b7462d431eb54c486e1e8b5b9b61124017cd316b9c94f",
+          "case_contract_sha256": "c0cdcfa59475d2ddb8a47cbd5cf70dae2027586491609234e303a2ee0045669f",
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 21.4,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-23T04:00:00Z",
+          "truth_value_c": 22.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "1d8f24167ba62715a8a798e0b8f246c833a87b717fcca36316809996b9aebce2",
+          "awc_truth_id": "awc-historical-truth-1d8f24167ba62715a8a798e0b8f246c8",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "88801cd9378cd3b4ba9cb6c6046a261fae6e1b2db0522ef981e669fe14af7f85",
+          "case_contract_sha256": "ccc8ffc915a1676f19d90da771f91ad64b12cfa311b1d655ffa3f91b36df48ab",
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 24.7,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-24T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "ab4adb5a52ddfad44bd2e6619e00d9be4cb9ca19d8ab48236ecea7b6866b3a2e",
+          "awc_truth_id": "awc-historical-truth-ab4adb5a52ddfad44bd2e6619e00d9be",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "9dc590aed7d32240822f6a3d3e203d3f1da5b85f4f8f1f794740ce9ff56bbb21",
+          "case_contract_sha256": "f7668092df968c6c667694c042fd4fea5df1c780ab2dbba307c7730c4bf7b679",
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 24.2,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-25T04:00:00Z",
+          "truth_value_c": 25.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "65fed2137229a5b5cb93bef60fb8fdca57856ea8d100b312c1f157d70d7b2833",
+          "awc_truth_id": "awc-historical-truth-65fed2137229a5b5cb93bef60fb8fdca",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "73557a01cac2d44d97202c7121b1f244e239a5c9fea996a41f6d3eb0e7a297ae",
+          "case_contract_sha256": "34abdd4df49564eb2a7895409d44f0560fd031cc4989fa9b1f2512cb2fa9a0cf",
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 25.2,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-26T04:00:00Z",
+          "truth_value_c": 26.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "fd4b5f8ec0a434772fd5d3189d274458c2f5f28f3bee0e0f8923757cf3dbea2b",
+          "awc_truth_id": "awc-historical-truth-fd4b5f8ec0a434772fd5d3189d274458",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "8c1ac496e647b27ff1ecc4dab0478a8e95e7ae95fba24ce634a15fbe04932f3b",
+          "case_contract_sha256": "f06bf501b4adc62f96f7dec09addd866f9952fe9cc14858eb85a4510e77d5be5",
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 26.4,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-27T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "6c552fdafe0d9c7e0676869bc8f6e429cbff86cab4d43aa39b99940cffa7f94f",
+          "awc_truth_id": "awc-historical-truth-6c552fdafe0d9c7e0676869bc8f6e429",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2e11b0685fcd939be395bf59900fd36eeae293f094ba678d2d2859b407aa7082",
+          "case_contract_sha256": "70ed24e66c1cffc387eea3d738d21f331a6fb565f3231e7cc7ac6023e465c0e7",
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 28.0,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-28T04:00:00Z",
+          "truth_value_c": 29.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "ac97a65376aa6f2573e7f86b7be1f3b05b50260b867f62573d78f51e8832f2b3",
+          "awc_truth_id": "awc-historical-truth-ac97a65376aa6f2573e7f86b7be1f3b0",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "831e93f105219692d05cd72814846871c96a3851c97ba9282dcbd80ef8286a30",
+          "case_contract_sha256": "15b7a9246303ad5f266293d174e6eabac27186a1ab796c525c0d3a4647afb3bb",
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 26.6,
+          "model_input_content_sha256": "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-29T04:00:00Z",
+          "truth_value_c": 27.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "3fca15d91e40736064a10f7d32d898f995113ec5a6d1a0d1a0899fc697252083",
+          "awc_truth_id": "awc-historical-truth-3fca15d91e40736064a10f7d32d898f9",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2bbf9d20e22464e2490ee3fa5693476209de7412c7de456991af4e7a1036df1b",
+          "case_contract_sha256": "5cb31235cb689e6b31e23eb8befe58fafd5775c2d0c4557183cc105d4d60b231",
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 25.9,
+          "model_input_content_sha256": "ae37b4cabe0fff26060101c7444d7c5e648a86206b29468e842178beb74724a1",
+          "partition": "holdout",
+          "source_receipt_sha256": "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+          "station_day_end_utc": "2026-07-30T04:00:00Z",
+          "truth_value_c": 27.0
+        }
+      ],
+      "content_sha256": "6d69e0627921aa26083d878b47a747649090f5bcca35bfd24e7691a3b27d89cf",
+      "forecast_extraction_version": "bayes_basket_target_historical_aggregator_rebuild_evidence_v1",
+      "formal_p0_eligible": false,
+      "future_event_count": 0,
+      "historical_oos_contract_ids": [
+        "det-om-hist-oos-77b1418206dddcd5842c709fbdfa4b728a18a63a",
+        "det-om-hist-oos-23cdd2574808ef971fb2a5ecee8d4a7a9e3a75fd",
+        "det-om-hist-oos-abf73a277c8ded3d309d69095fc150204d223c9a",
+        "det-om-hist-oos-a8bbd45a2e6cf6277e771156d116cd6fa8dd36ed",
+        "det-om-hist-oos-24a676c71b85f127ec5b0e3b9c25428934d1767a",
+        "det-om-hist-oos-477ee01a48398bee1d8d63a995571aa31290f87b",
+        "det-om-hist-oos-df2444215483969ccc8cba5a6728c2d9302ec4b4",
+        "det-om-hist-oos-267c82d1bbb94a25c7af547935bd0c14085c6f6c"
+      ],
+      "holdout_case_set_sha256": "e6ed32bc29ee424f6062586b40ef4e141ed80cc2cbc260b3ea4ededc5371641e",
+      "holdout_end_date": "2026-07-29",
+      "holdout_n": 8,
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d0",
+      "min_holdout_days": 8,
+      "min_train_days": 20,
+      "model_id": "ICON",
+      "model_metrics": {
+        "mae_c": 0.4137500000000016,
+        "mean_error_c": -0.4100000000000015,
+        "rmse_c": 0.494949492372708
+      },
+      "native_arrival_index_eligible": false,
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "p1_eligible": false,
+      "predictions": [
+        {
+          "actual_tmax_c": 22.0,
+          "calibrated_daily_max_c": 21.814999999999998,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.18500000000000227,
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 21.4,
+          "historical_oos_contract_id": "det-om-hist-oos-77b1418206dddcd5842c709fbdfa4b728a18a63a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 26.0,
+          "calibrated_daily_max_c": 25.115,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.8850000000000016,
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 24.7,
+          "historical_oos_contract_id": "det-om-hist-oos-23cdd2574808ef971fb2a5ecee8d4a7a9e3a75fd",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 25.0,
+          "calibrated_daily_max_c": 24.615,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.38500000000000156,
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 24.2,
+          "historical_oos_contract_id": "det-om-hist-oos-abf73a277c8ded3d309d69095fc150204d223c9a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 26.0,
+          "calibrated_daily_max_c": 25.615,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.38500000000000156,
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 25.2,
+          "historical_oos_contract_id": "det-om-hist-oos-a8bbd45a2e6cf6277e771156d116cd6fa8dd36ed",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 26.814999999999998,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.18500000000000227,
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 26.4,
+          "historical_oos_contract_id": "det-om-hist-oos-24a676c71b85f127ec5b0e3b9c25428934d1767a",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 29.0,
+          "calibrated_daily_max_c": 28.415,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.5850000000000009,
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 28.0,
+          "historical_oos_contract_id": "det-om-hist-oos-477ee01a48398bee1d8d63a995571aa31290f87b",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 27.015,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": 0.015000000000000568,
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 26.6,
+          "historical_oos_contract_id": "det-om-hist-oos-df2444215483969ccc8cba5a6728c2d9302ec4b4",
+          "member_run_content_shas": [
+            "065e7e8c4bf231e92e2dbc77663b090a5e90051261ce2b83508baa6c278de242"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 27.0,
+          "calibrated_daily_max_c": 26.314999999999998,
+          "decision_at_utc": "2026-08-03T07:01:59Z",
+          "error_c": -0.6850000000000023,
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 25.9,
+          "historical_oos_contract_id": "det-om-hist-oos-267c82d1bbb94a25c7af547935bd0c14085c6f6c",
+          "member_run_content_shas": [
+            "ae37b4cabe0fff26060101c7444d7c5e648a86206b29468e842178beb74724a1"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        }
+      ],
+      "provider_id": "icon_global_open_meteo",
+      "run_cycle": null,
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+      "schema": "deterministic_republisher_strict_oos_candidate_v1",
+      "season_bin": "JJA",
+      "settlement_timezone": "America/Toronto",
+      "source_role": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_OOS_PASS",
+      "station_id": "CYYZ",
+      "strict_oos_cohort_sha256": "675f317fa10355ff4c1e5193da42d91699c85575991b54a668750c57c53d8642",
+      "train_bias_c": 0.4149999999999997,
+      "train_case_set_sha256": "eadd50cfb14230135b813a62e7dd6814d5b0cfd62342bfdbefa6011142b0a987",
+      "train_climatology_tmax_c": 28.45,
+      "train_end_date": "2026-07-21",
+      "train_n": 20,
+      "train_start_date": "2026-07-02",
+      "transport_provider_id": "OPEN_METEO"
+    },
+    {
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "climatology_baseline_metrics": {
+        "mae_c": 1.25,
+        "mean_error_c": 0.5,
+        "rmse_c": 1.5
+      },
+      "cohort_capture_receipt_sha256s": [
+        "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+        "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+        "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26"
+      ],
+      "cohort_rows": [
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "31e772d60f87a1acf45a1c20076d516113b151896732bee58aed14b9ee939d34",
+          "awc_truth_id": "awc-historical-truth-31e772d60f87a1acf45a1c20076d5161",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "69faad61ec4d1fff486acebcff64ff0c95a14d83149bde32f8a23caf7b3baea3",
+          "case_contract_sha256": "f53e6da09a477def0fde91b9547ff07ba9ccb91a7a3af60eeda90a2d756667a9",
+          "event_date": "2026-07-02",
+          "forecast_daily_max_c": 11.8,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-02T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "23f9b4b3601ca4a5cead3c95911d0be0ac7bf0eb7c372639c0e3c5861afac86d",
+          "awc_truth_id": "awc-historical-truth-23f9b4b3601ca4a5cead3c95911d0be0",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "3e722d5cb3f94a18366ed8793f8908168cb0732ca090a20f5b0dfbcf214fb7ba",
+          "case_contract_sha256": "024d6289d18671b384657212532cd7c57168cb8b6c68f8148da7d4979d5f1d3e",
+          "event_date": "2026-07-03",
+          "forecast_daily_max_c": 13.4,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-03T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "5ff01d3ad14165cf2b53d0502c90b3a67d6604b9c62c3dd4bf1c132437af8405",
+          "awc_truth_id": "awc-historical-truth-5ff01d3ad14165cf2b53d0502c90b3a6",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "03aeb32013dc1642e51f121c6b0e1caab25885b4e352d4a171c99a3db25aee32",
+          "case_contract_sha256": "efa12da569701a15de3d4d322b98c1dbffd6e4b836da3ad7ab61863728aa4ac9",
+          "event_date": "2026-07-04",
+          "forecast_daily_max_c": 12.8,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-04T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "e983c81fb2301b3ddefee3352ad7f08952aa044ff16e511b779ced2432dcdc3f",
+          "awc_truth_id": "awc-historical-truth-e983c81fb2301b3ddefee3352ad7f089",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "c7a3c29151941551e64773b63c48dce88da0c79d61cb12d9a98998612061716a",
+          "case_contract_sha256": "e793cd239add08cff224207b1119d7dc49a56fcb1de03aa39b4aeebf4747500d",
+          "event_date": "2026-07-05",
+          "forecast_daily_max_c": 13.5,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-05T12:00:00Z",
+          "truth_value_c": 14.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "cbe2a0e6988f82a48d5d02a56cad0d20c57cc3eae096af2847226740daa064ee",
+          "awc_truth_id": "awc-historical-truth-cbe2a0e6988f82a48d5d02a56cad0d20",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "9fa5119c02b03dfffb8e24409d708e4b40784b43c91b8151e61be820f64f746c",
+          "case_contract_sha256": "9e1e3a0afbb164166b12dd46265120decf9a993110de24178769851a29a1a851",
+          "event_date": "2026-07-06",
+          "forecast_daily_max_c": 12.8,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-06T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "bc9b2a518848ae3d40dd2af34ce7a5ecfe1b461a843ad21a204a49e32f0a70cc",
+          "awc_truth_id": "awc-historical-truth-bc9b2a518848ae3d40dd2af34ce7a5ec",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "b980478d558b8ae37797f35ce93461ce8e13af1bf6178a8a637cac21d479f153",
+          "case_contract_sha256": "c203dfde06346eacb791aabd07c1e11360dbcc835f0b7fd1917099a076f4d9d0",
+          "event_date": "2026-07-07",
+          "forecast_daily_max_c": 13.1,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-07T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "23feea35657d47a12383fe07d9034b1fc8b9f0a3325479a3aef299b33285b107",
+          "awc_truth_id": "awc-historical-truth-23feea35657d47a12383fe07d9034b1f",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "e60745e33b69459468528019895b8397214ae368a627f91c3889094870a93556",
+          "case_contract_sha256": "39ec3fade2129d8961eaedc813b698f41a5741763f24d6dfb9f0b71b3b1cf3ab",
+          "event_date": "2026-07-08",
+          "forecast_daily_max_c": 12.3,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-08T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "410c0cc4ae95619cebef9ecaf0105ea3fed6694ebe23d13e88f54aee735ff624",
+          "awc_truth_id": "awc-historical-truth-410c0cc4ae95619cebef9ecaf0105ea3",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2faaacd16c6920cf452fe41c47e49e2439a433dcc6596681e0554b8c3d6f95db",
+          "case_contract_sha256": "9233ca68f4a43ded2fd89aca5f38968a3c2f2acad54e15b1d6b7ff9a87f601fc",
+          "event_date": "2026-07-09",
+          "forecast_daily_max_c": 10.3,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-09T12:00:00Z",
+          "truth_value_c": 11.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "9b6c8f50b327a416e4b04811bef2954d026c24f638260b8d523eef43666e2fc4",
+          "awc_truth_id": "awc-historical-truth-9b6c8f50b327a416e4b04811bef2954d",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "c34cc41d41ff3c2b6c01bac2c45cbcc48bc6edb79653b030fa9e47e28330f805",
+          "case_contract_sha256": "b1458020c06999587842ffdea13256e48679283a10cbf24bbb104ba05f7a2c53",
+          "event_date": "2026-07-10",
+          "forecast_daily_max_c": 9.3,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-10T12:00:00Z",
+          "truth_value_c": 10.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "fc9a52f17e5e222eae78e81ff3516f98676a04ce756197628475adb69642bc1d",
+          "awc_truth_id": "awc-historical-truth-fc9a52f17e5e222eae78e81ff3516f98",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "8edce9829d25960f54a631ad04f683855209adcf96a09609447a3c39dca6b62d",
+          "case_contract_sha256": "35123e48d6032ceb5455cffa9fca3856e95359d8a330ec9e30f782afeec74e3d",
+          "event_date": "2026-07-11",
+          "forecast_daily_max_c": 9.4,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-11T12:00:00Z",
+          "truth_value_c": 10.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "bc62f53c51a6891b7daba78d2cd744640bfc086b24ac664248df31e67f84db4d",
+          "awc_truth_id": "awc-historical-truth-bc62f53c51a6891b7daba78d2cd74464",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "f3c13d050bb923a446f907092dcb023893d6305b4c5bdec048f2823bce8f3f91",
+          "case_contract_sha256": "c98318e179e4be1318dc1e0c960f9f9eac840a32aa56ca9e5553034954bcc96b",
+          "event_date": "2026-07-12",
+          "forecast_daily_max_c": 10.4,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-12T12:00:00Z",
+          "truth_value_c": 11.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "4a04434d22b5528e7ee3920595afe2f8c8908184dbc74df66eac38cd49e39dee",
+          "awc_truth_id": "awc-historical-truth-4a04434d22b5528e7ee3920595afe2f8",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "29b6f2e1d3f3f78fbcd398b15f5240d0f03106d7f93d01ef2ca221bbfe9ba9f5",
+          "case_contract_sha256": "33eb339589f05743db56dd4434c181abeee170a57cca2eb53020f0c49c78214e",
+          "event_date": "2026-07-13",
+          "forecast_daily_max_c": 12.5,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-13T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "3d848e797e1a2f8b3a51f0202434484f5f04fdac0a29bd52fc17af4eff672955",
+          "awc_truth_id": "awc-historical-truth-3d848e797e1a2f8b3a51f0202434484f",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "4af0f2e711a7312e2cf1ca076c3d712b61d1f09614d1cac708869cd7b8661930",
+          "case_contract_sha256": "a5295b1071e913f000c008ab21f68403323feca6a2b8302730bae4fbb429943c",
+          "event_date": "2026-07-14",
+          "forecast_daily_max_c": 14.5,
+          "model_input_content_sha256": "dc433d5e7a7c39932da44a9171714df74fba0874c24d9a01ad04bc29e52a8593",
+          "partition": "train",
+          "source_receipt_sha256": "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+          "station_day_end_utc": "2026-07-14T12:00:00Z",
+          "truth_value_c": 15.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "40d23a87549b65d2ccd6c055ac4139d4e7d9048af8d3004c709ef0835c15bc9d",
+          "awc_truth_id": "awc-historical-truth-40d23a87549b65d2ccd6c055ac4139d4",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "a3977e5a37638c48094e3d50d0c6defba0a3c2f25cf78b0a3576deb0adbd9413",
+          "case_contract_sha256": "d4b1070c4314fcc405fe11fe54ab57b60b4651f965b75cadc9cb898eec6430e2",
+          "event_date": "2026-07-15",
+          "forecast_daily_max_c": 15.1,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-15T12:00:00Z",
+          "truth_value_c": 16.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "39410d9492208d9c3c306dfc8c103031268a37a441099c2367099bd496eb49f3",
+          "awc_truth_id": "awc-historical-truth-39410d9492208d9c3c306dfc8c103031",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "2211400f45cee8c0868b49955c0f3307a5ade108aecf94b9ffeedb8cc55d5e7a",
+          "case_contract_sha256": "ed4d17162d8dd02ca39b105fc6157bc24ca2489cbf674cc6fd9a5cf7c82b209f",
+          "event_date": "2026-07-16",
+          "forecast_daily_max_c": 16.5,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-16T12:00:00Z",
+          "truth_value_c": 16.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "c93331ca85cfaf4b258194de0a57272cb4c9fab8dd4efabe20c1cb4504d0201b",
+          "awc_truth_id": "awc-historical-truth-c93331ca85cfaf4b258194de0a57272c",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "d0d1909d858e9d1b09580095bd7bbc829e795adf5024d67181ba2049aeaa566e",
+          "case_contract_sha256": "77245d1d915f22d445ff2505afe0f3420a581de7a1a5e0b98dcf856c3c3f83ba",
+          "event_date": "2026-07-17",
+          "forecast_daily_max_c": 13.3,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-17T12:00:00Z",
+          "truth_value_c": 15.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "39963bd32cab2efb9ad9250d802f07d84806bf1bebe314e6e9d0995cfab6c24f",
+          "awc_truth_id": "awc-historical-truth-39963bd32cab2efb9ad9250d802f07d8",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "8d556f1aa6520d0d2b1d88d76d7ed1160e055b7d56c1c2cc44fbab8e73621d18",
+          "case_contract_sha256": "63a4fb3260f74a98628c43a2791932de9b752e4f07d4201eb3080bb6f58a0fa4",
+          "event_date": "2026-07-18",
+          "forecast_daily_max_c": 14.0,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-18T12:00:00Z",
+          "truth_value_c": 15.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "daea1356375948c16761d3155046ec6d4de8519d694171d656bd712ade70559d",
+          "awc_truth_id": "awc-historical-truth-daea1356375948c16761d3155046ec6d",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "7643088ad0ff7c573f7485f319f8d366ff82d1d138b2ea17d6bebcdb3a2e669e",
+          "case_contract_sha256": "a9c8266cc63f52026d48dabb864cc81c0387aa31374cd7c170a205e893afdd4e",
+          "event_date": "2026-07-19",
+          "forecast_daily_max_c": 14.0,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-19T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "108e35ea8a8e5c441bfd37bd77d8075b755c411be515bf630dc3067e3834b770",
+          "awc_truth_id": "awc-historical-truth-108e35ea8a8e5c441bfd37bd77d8075b",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "3d8c76aa706c61f48530ae0c677161e9b10ae29dda972a2295159052b22ffb29",
+          "case_contract_sha256": "3e0f43af2cf279e3951d5a2074775d8515d193171c5135b36dbaebfc00a8d925",
+          "event_date": "2026-07-20",
+          "forecast_daily_max_c": 11.1,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-20T12:00:00Z",
+          "truth_value_c": 12.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "19f6b7196f81bf46c1301db7a510f13ae33b2bfc739dcd49130c4c599eea8eca",
+          "awc_truth_id": "awc-historical-truth-19f6b7196f81bf46c1301db7a510f13a",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "c57cf0fd942e59f4181947a762147d92c489b491b3c40e5a6aa1c8b120c2cb9c",
+          "case_contract_sha256": "26d777b3e30c33152811f26365fb833b9bbdfcd1eeb0afb5c3a7950b9fc73c19",
+          "event_date": "2026-07-21",
+          "forecast_daily_max_c": 10.9,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "train",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-21T12:00:00Z",
+          "truth_value_c": 11.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "c0ba180142d76a8e5a98f94181cf679130a3395ec2c6b85b36fcd9c6eb73ae59",
+          "awc_truth_id": "awc-historical-truth-c0ba180142d76a8e5a98f94181cf6791",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "974e6bbf5c40c1818defaca53ca932ea3602a782dddee08c0dcdaddf65bfe821",
+          "case_contract_sha256": "863496685d06ef911e4620545e296b172dc109e5fd320798b61cc4807ccd23cb",
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 13.3,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-22T12:00:00Z",
+          "truth_value_c": 14.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "e2e9eecbc0f423065dd9625fc76b7b697cb70b3e105b75fbc9588b6199b82c09",
+          "awc_truth_id": "awc-historical-truth-e2e9eecbc0f423065dd9625fc76b7b69",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "21acf65628740ff6101b5a63afa90ad6b15faa52b4f543a67ea9bece425cd874",
+          "case_contract_sha256": "44a49bf992b49c317658eb516e8e38084ff584046e5e52ffc861f3b20a50cffe",
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 13.4,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-23T12:00:00Z",
+          "truth_value_c": 14.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "de2bc44b80447e0a469db005ffb2314eac3307e8086688b3813b2ed33026bb8d",
+          "awc_truth_id": "awc-historical-truth-de2bc44b80447e0a469db005ffb2314e",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "e87b439f2139407b7f867b4af0e479923c355e3c9e68aef21a97e3624e0e46e2",
+          "case_contract_sha256": "72e3f1bd0ea731360e553a72ba7b403656741534c9aae8238744b0a6a4fa189f",
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 13.4,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-24T12:00:00Z",
+          "truth_value_c": 14.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "2128e2d2323d8918ee5723ce95fd78c29eb678881eecb9ffd2ae08560d10a4a6",
+          "awc_truth_id": "awc-historical-truth-2128e2d2323d8918ee5723ce95fd78c2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "4d4e14f094e40c5166e633424973d01d0f0d2d775f77f9ea60b23638d41e889f",
+          "case_contract_sha256": "6cec46d1124c729fd46915c05875b1e59197fad58b73fe55e33276f244e3b71f",
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 11.6,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-25T12:00:00Z",
+          "truth_value_c": 12.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "a76a0f47084f2fb2eadfc8ba1cca993fcb56b8f2cc1e85bc48c48d0337c981e1",
+          "awc_truth_id": "awc-historical-truth-a76a0f47084f2fb2eadfc8ba1cca993f",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "a5dee3a1d68cc10f0bcd52379ca59662ac2a5fa7afea6b8bf62a027ec560cad2",
+          "case_contract_sha256": "cd339de2c6dc9a711112a00f412c320dc095a8fb78259bcd50eb1194d298dabe",
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 9.1,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-26T12:00:00Z",
+          "truth_value_c": 10.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "bca3a5e3c5e56197c658109bb198cca2b7f5f64d5eae9b34faba339a14f49878",
+          "awc_truth_id": "awc-historical-truth-bca3a5e3c5e56197c658109bb198cca2",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "0b26586a67abd4e8cd35e120cbb0d99d4d52497764d3a2bb8e2516b33187ffcc",
+          "case_contract_sha256": "c7eeadc3d87190f02857a2dcadbbab6403acf5a09678d5ac85880214d3b39042",
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 9.7,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-27T12:00:00Z",
+          "truth_value_c": 11.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T12:00:00Z",
+          "awc_truth_content_sha256": "746173605f59893de477e603343243bbce99a23d29ceb7bf5ed35577c05efb36",
+          "awc_truth_id": "awc-historical-truth-746173605f59893de477e603343243bb",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6a4a0355c4e0e5ad70533ccb7f2047b8c8f9183815ba96803fefbf4468acf700",
+          "case_contract_sha256": "87c868e7f456d62998a4d2c6a80a8e2706b9b4900c901ae2cccc7cf56d7e0a4a",
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 11.3,
+          "model_input_content_sha256": "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716",
+          "partition": "holdout",
+          "source_receipt_sha256": "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26",
+          "station_day_end_utc": "2026-07-28T12:00:00Z",
+          "truth_value_c": 13.0
+        },
+        {
+          "awc_truth_asof_utc": "2026-08-03T20:59:00Z",
+          "awc_truth_content_sha256": "e453a5f32924d6be59cae2e852f4caaace9f83d7bb217a314f50d24209aae090",
+          "awc_truth_id": "awc-historical-truth-e453a5f32924d6be59cae2e852f4caaa",
+          "awc_truth_revision_no": 0,
+          "canonical_truth_fact_content_sha256": "6bed8b6ff55640c4041dfdfee104faa0ac668a4d74aa3b177005288ba275b5cd",
+          "case_contract_sha256": "aa3e63e9e12246eeadbe7a89728e6c7343ee5871681f5005205c02671e9c900f",
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 12.0,
+          "model_input_content_sha256": "4b4e044e7cf8a439a103618057af30bfc543005744cbac8fb55b6f1bf1f71c9c",
+          "partition": "holdout",
+          "source_receipt_sha256": "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+          "station_day_end_utc": "2026-07-29T12:00:00Z",
+          "truth_value_c": 12.0
+        }
+      ],
+      "content_sha256": "bc01dd4bd345263ea166c57dc2e7d5984c8edefa438fad6c3596c5f7e80cdf9a",
+      "forecast_extraction_version": "bayes_basket_target_historical_aggregator_rebuild_evidence_v1",
+      "formal_p0_eligible": false,
+      "future_event_count": 0,
+      "historical_oos_contract_ids": [
+        "det-om-hist-oos-0a9c460249a3bb26bcf0a951a438f3196a8ed1f3",
+        "det-om-hist-oos-f9447ad0a38afee61c1c5a77056b37f17be6dae4",
+        "det-om-hist-oos-7777396535b4341bf7852e7bfd830e2270e59662",
+        "det-om-hist-oos-1a95f94a60e45ea18a94fef5a0b92871484124e0",
+        "det-om-hist-oos-c3a887ea67ef1bb6662da8127074f11a6bccf399",
+        "det-om-hist-oos-49fc667add9fc7359b805e2acbbf2791d9dc2088",
+        "det-om-hist-oos-d66e33fe712b9b002da7bedb52255b22f6d2a8ba",
+        "det-om-hist-oos-d22d634c2774fe1eff6a080c18117700209f9ef5"
+      ],
+      "holdout_case_set_sha256": "5b167172255bcddf564470ecbe787ef375e3cf1691669a8ca082eb75dd941229",
+      "holdout_end_date": "2026-07-29",
+      "holdout_n": 8,
+      "holdout_start_date": "2026-07-22",
+      "lead_bucket": "d0",
+      "min_holdout_days": 8,
+      "min_train_days": 20,
+      "model_id": "ICON",
+      "model_metrics": {
+        "mae_c": 0.4500000000000002,
+        "mean_error_c": -0.3250000000000006,
+        "rmse_c": 0.5916079783099619
+      },
+      "native_arrival_index_eligible": false,
+      "oos_event_temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH",
+      "p1_eligible": false,
+      "predictions": [
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.75,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.25,
+          "event_date": "2026-07-22",
+          "forecast_daily_max_c": 13.3,
+          "historical_oos_contract_id": "det-om-hist-oos-0a9c460249a3bb26bcf0a951a438f3196a8ed1f3",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.85,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.15000000000000036,
+          "event_date": "2026-07-23",
+          "forecast_daily_max_c": 13.4,
+          "historical_oos_contract_id": "det-om-hist-oos-f9447ad0a38afee61c1c5a77056b37f17be6dae4",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 14.0,
+          "calibrated_daily_max_c": 13.85,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.15000000000000036,
+          "event_date": "2026-07-24",
+          "forecast_daily_max_c": 13.4,
+          "historical_oos_contract_id": "det-om-hist-oos-7777396535b4341bf7852e7bfd830e2270e59662",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 12.0,
+          "calibrated_daily_max_c": 12.049999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": 0.049999999999998934,
+          "event_date": "2026-07-25",
+          "forecast_daily_max_c": 11.6,
+          "historical_oos_contract_id": "det-om-hist-oos-1a95f94a60e45ea18a94fef5a0b92871484124e0",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 10.0,
+          "calibrated_daily_max_c": 9.549999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.45000000000000107,
+          "event_date": "2026-07-26",
+          "forecast_daily_max_c": 9.1,
+          "historical_oos_contract_id": "det-om-hist-oos-c3a887ea67ef1bb6662da8127074f11a6bccf399",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 11.0,
+          "calibrated_daily_max_c": 10.149999999999999,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -0.8500000000000014,
+          "event_date": "2026-07-27",
+          "forecast_daily_max_c": 9.7,
+          "historical_oos_contract_id": "det-om-hist-oos-49fc667add9fc7359b805e2acbbf2791d9dc2088",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 13.0,
+          "calibrated_daily_max_c": 11.75,
+          "decision_at_utc": "2026-08-02T11:37:01Z",
+          "error_c": -1.25,
+          "event_date": "2026-07-28",
+          "forecast_daily_max_c": 11.3,
+          "historical_oos_contract_id": "det-om-hist-oos-d66e33fe712b9b002da7bedb52255b22f6d2a8ba",
+          "member_run_content_shas": [
+            "648860bb25173e946905aacc1d9bb1d840b945698825e2a82345caf90c538716"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        },
+        {
+          "actual_tmax_c": 12.0,
+          "calibrated_daily_max_c": 12.45,
+          "decision_at_utc": "2026-08-03T07:01:59Z",
+          "error_c": 0.4499999999999993,
+          "event_date": "2026-07-29",
+          "forecast_daily_max_c": 12.0,
+          "historical_oos_contract_id": "det-om-hist-oos-d22d634c2774fe1eff6a080c18117700209f9ef5",
+          "member_run_content_shas": [
+            "4b4e044e7cf8a439a103618057af30bfc543005744cbac8fb55b6f1bf1f71c9c"
+          ],
+          "receipt_class": "HISTORICAL_ASOF_REPUBLISHER_RECEIPT",
+          "schema": "deterministic_republisher_strict_oos_candidate_v1_prediction_v1",
+          "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+        }
+      ],
+      "provider_id": "icon_global_open_meteo",
+      "run_cycle": null,
+      "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+      "schema": "deterministic_republisher_strict_oos_candidate_v1",
+      "season_bin": "JJA",
+      "settlement_timezone": "Pacific/Auckland",
+      "source_role": "aggregator_republisher",
+      "state": "PRODUCTION_NO_LIVE_OOS_PASS",
+      "station_id": "NZWN",
+      "strict_oos_cohort_sha256": "f5642ef4d06547b59c65f4d6dc19517bd5ac39e47b755f3a5e536a644490d650",
+      "train_bias_c": 0.44999999999999973,
+      "train_case_set_sha256": "f8efeada12959c434f63adf160f2701b48aa35d7045c427fdeccd369f922c091",
+      "train_climatology_tmax_c": 13.0,
+      "train_end_date": "2026-07-21",
+      "train_n": 20,
+      "train_start_date": "2026-07-02",
+      "transport_provider_id": "OPEN_METEO"
+    }
+  ],
+  "capture_receipt_sha256s": [
+    "20962fe1cbb4c292365289edf1f99895e3f64e54a504a1f7a27521c28ef29d14",
+    "64471f859ab72fc899cd0f71618eace821a810c381541ccc5637bd5a37449fa5",
+    "96fa1e18a497b0a971dc87e642f998b25b9ea22e38630346f1ca85793860cd26"
+  ],
+  "content_sha256": "b81944382b5a624e0844d99e7b8622ce1569f47503d385c8816e8c1db1e9c857",
+  "curve_count": 1381,
+  "formal_p0_eligible": false,
+  "legacy_truth_projection_read": false,
+  "missing_truth_scopes": [
+    {
+      "event_date": "2026-07-01",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "CYYZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EDDM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EFHK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EGLC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EHAM"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "EPWA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "FACT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KATL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KAUS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KBKF"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KDAL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KHOU"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KLAX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KLGA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KMIA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KORD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KSEA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "KSFO"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LEMD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LFPB"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LIMC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "LTAC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-15",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-20",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-21",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-24",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-28",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "MMMX"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-25",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "MPMG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "NZWN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "OEJN"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-16",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-17",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-29",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "OPKC"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RCSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RJTT"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-22",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RKPK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RKSI"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "RPLL"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-27",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "SAEZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "SBGR"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-18",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-23",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "VILK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-26",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "WMKK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "WSSS"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZBAA"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZGGG"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZGSZ"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZHHH"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZSPD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZSQD"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZUCK"
+    },
+    {
+      "event_date": "2026-07-01",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-02",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-03",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-04",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-05",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-06",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-07",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-08",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-09",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-10",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-11",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-12",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-13",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-14",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-19",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-30",
+      "station_id": "ZUUU"
+    },
+    {
+      "event_date": "2026-07-31",
+      "station_id": "ZUUU"
+    }
+  ],
+  "model_id": "ICON",
+  "oos_policy": {
+    "calls_order_gateway": false,
+    "formal_live_authority_written": false,
+    "future_event_count": 0,
+    "min_holdout_days": 8,
+    "min_train_days": 20,
+    "native_arrival_index_written": false,
+    "orders_submitted": 0,
+    "p1_authority_written": false,
+    "production_database_written": false,
+    "temporal_scope": "CLOSED_HISTORICAL_AWC_TRUTH"
+  },
+  "provider_id": "icon_global_open_meteo",
+  "schema": "deterministic_republisher_strict_oos_v1",
+  "shortfalls": [
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EDDM"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EFHK"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EGLC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EHAM"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "EPWA"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "FACT"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KATL"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KAUS"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KBKF"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KDAL"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KHOU"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KLAX"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KLGA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KMIA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KORD"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KSEA"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "KSFO"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LEMD"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LFPB"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LIMC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "LTAC"
+    },
+    {
+      "available_closed_historical_days": 0,
+      "missing_days": 28,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "MMMX"
+    },
+    {
+      "available_closed_historical_days": 17,
+      "missing_days": 11,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "MPMG"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "OEJN"
+    },
+    {
+      "available_closed_historical_days": 21,
+      "missing_days": 7,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "OPKC"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RCSS"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RJTT"
+    },
+    {
+      "available_closed_historical_days": 25,
+      "missing_days": 3,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RKPK"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RKSI"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "RPLL"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "SAEZ"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "SBGR"
+    },
+    {
+      "available_closed_historical_days": 25,
+      "missing_days": 3,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "VILK"
+    },
+    {
+      "available_closed_historical_days": 26,
+      "missing_days": 2,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "WMKK"
+    },
+    {
+      "available_closed_historical_days": 27,
+      "missing_days": 1,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "WSSS"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZBAA"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZGGG"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZGSZ"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZHHH"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZSPD"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZSQD"
+    },
+    {
+      "available_closed_historical_days": 15,
+      "missing_days": 13,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZUCK"
+    },
+    {
+      "available_closed_historical_days": 14,
+      "missing_days": 14,
+      "required_holdout_days": 8,
+      "required_train_days": 20,
+      "station_id": "ZUUU"
+    }
+  ],
+  "source_role": "aggregator_republisher",
+  "state": "READY_CANDIDATES",
+  "station_count": 45,
+  "transport_provider_id": "OPEN_METEO",
+  "truth_count": 596,
+  "truth_source": "canonical_ssot_fact_v7"
+}

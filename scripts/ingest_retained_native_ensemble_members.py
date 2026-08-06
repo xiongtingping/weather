@@ -178,7 +178,7 @@ def ingest_retained_packets(
         if not apply:
             conn.execute("PRAGMA query_only=ON")
         schema_status = inspect_canonical_ssot_schema(conn)
-        if schema_status["state"] != "V7" or schema_status["errors"]:
+        if schema_status["state"] not in {"V8", "V9", "V10"} or schema_status["errors"]:
             raise ContractError("retained_member_canonical_ssot_v7_required")
         counts_before = _canonical_counts(conn)
         validated_quiescence: Mapping[str, Any] | None = None

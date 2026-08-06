@@ -14,7 +14,7 @@ from scripts.build_bayes_basket_target_station_calibration_dataset import build
 
 def _packet(observations, *, settlement_timezone="Asia/Shanghai"):
     identity = {
-        "schema": "bayes_basket_target_historical_awc_replay_evidence_v2",
+        "schema": "bayes_basket_target_historical_awc_replay_evidence_v4",
         "target_timezone": settlement_timezone,
         "historical_only": True,
         "canonical_ingress": True,
@@ -25,7 +25,7 @@ def _packet(observations, *, settlement_timezone="Asia/Shanghai"):
             str(row["valid_at_utc"])[0:10] for row in observations
         }),
         "truth_blocked_dates": [],
-        "checks": {"station_day_metar_envelope_explicit": True},
+        "checks": {"station_day_awc_report_hour_coverage_explicit": True},
         "observations": observations,
         "boundary": {
             "writes_production_db": False,

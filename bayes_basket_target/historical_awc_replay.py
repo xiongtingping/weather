@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError, content_sha256
 
 
-SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v2"
+SCHEMA = "bayes_basket_target_historical_awc_replay_evidence_v4"
 LEGACY_OBSERVATION_SCHEMA = "bayes_basket_target_canonical_observation_evidence_v1"
 SOURCE_ROLE = "AWC_HISTORICAL_REPLAY_INGRESS"
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
@@ -83,7 +83,7 @@ def _day_window(day_text: str, timezone_name: str) -> tuple[datetime, datetime]:
     return start, end
 
 
-def _expected_exact_hour_slots(day_text: str, timezone_name: str) -> list[str]:
+def _expected_hour_slots(day_text: str, timezone_name: str) -> list[str]:
     start, end = _day_window(day_text, timezone_name)
     cursor = start.replace(minute=0, second=0, microsecond=0)
     if cursor < start:
@@ -173,8 +173,6 @@ def _verified_observation(
         raise ContractError("historical_awc_raw_station_mismatch")
     temperature = _raw_temperature(raw_text)
     valid_at = _utc(raw.get("valid_at_utc"), "historical_awc_valid_at_utc")
-    if report_type == "METAR" and (valid_at.minute != 0 or valid_at.second != 0):
-        raise ContractError("historical_awc_metar_nonexact_minute")
     if (
         str(raw.get("station_id") or "").strip().upper() != station_id
         or str(raw.get("source_lane") or "").strip().lower() != "awc"
@@ -283,7 +281,6 @@ def build_historical_awc_replay_evidence(
                 "historical_awc_raw_station_mismatch",
                 "historical_awc_raw_temperature_missing",
                 "historical_awc_temperature_mismatch",
-                "historical_awc_metar_nonexact_minute",
             }:
                 reason = str(exc)
                 rejection_counts[reason] += 1
@@ -326,18 +323,23 @@ def build_historical_awc_replay_evidence(
     truth_blocked_dates: list[str] = []
     missing_date_diagnostics = []
     for event_date in expected_dates:
-        expected_slots = _expected_exact_hour_slots(event_date, settlement_timezone)
+        expected_slots = _expected_hour_slots(event_date, settlement_timezone)
         date_rows = observations_by_date.get(event_date, [])
-        observed_metar_slots = sorted({
-            str(row["valid_at_utc"])
+        observed_awc_report_slots = sorted({
+            _utc_text(
+                _utc(
+                    row["valid_at_utc"],
+                    "historical_awc_observation_valid_at_utc",
+                ).replace(minute=0, second=0, microsecond=0)
+            )
             for row in date_rows
-            if row["report_type"] == "METAR"
+            if row["report_type"] in {"METAR", "SPECI"}
         })
-        missing_slots = sorted(set(expected_slots) - set(observed_metar_slots))
+        missing_slots = sorted(set(expected_slots) - set(observed_awc_report_slots))
         conflict_slots = sorted(
             stamp
             for report_type, stamp in conflicted
-            if report_type == "METAR"
+            if report_type in {"METAR", "SPECI"}
             and _utc(stamp, "historical_awc_conflict_slot_utc")
             .astimezone(ZoneInfo(settlement_timezone))
             .date()
@@ -356,7 +358,7 @@ def build_historical_awc_replay_evidence(
         ]
         if missing_slots:
             diagnostics.append({
-                "reason": "historical_awc_exact_hour_slots_missing",
+                "reason": "historical_awc_report_hour_coverage_missing",
                 "candidate_count": len(missing_slots),
             })
         if conflict_slots:
@@ -375,9 +377,9 @@ def build_historical_awc_replay_evidence(
             "event_date": event_date,
             "station_day_start_utc": _utc_text(_day_window(event_date, settlement_timezone)[0]),
             "station_day_end_utc": _utc_text(_day_window(event_date, settlement_timezone)[1]),
-            "expected_exact_hour_metar_slots": expected_slots,
-            "observed_exact_hour_metar_slots": observed_metar_slots,
-            "missing_exact_hour_metar_slots": missing_slots,
+            "expected_awc_report_hour_slots": expected_slots,
+            "observed_awc_report_hour_slots": observed_awc_report_slots,
+            "missing_awc_report_hour_slots": missing_slots,
             "valid_speci_count": sum(row["report_type"] == "SPECI" for row in date_rows),
             "quarantined_metar_revision_slots": conflict_slots,
             "truth_ready": complete,
@@ -416,10 +418,10 @@ def build_historical_awc_replay_evidence(
             "raw_text_sha256_reverified": True,
             "station_timezone_exact": True,
             "closed_days_only": True,
-            "metar_exact_minute_zero_only": True,
+            "metar_any_valid_minute_allowed": True,
             "speci_allowed": True,
             "reference_only_excluded": True,
-            "station_day_metar_envelope_explicit": True,
+            "station_day_awc_report_hour_coverage_explicit": True,
         },
         "boundary": {
             "writes_production_db": False,

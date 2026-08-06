@@ -1,0 +1,19 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "7288e1d58bb18767532356b9dfc1948b89d0efcfe4310edbffbb433447deec30",
+  "event_date": "2026-08-03",
+  "hard_lower_bound_c": "32.750000000000",
+  "orders_submitted": 0,
+  "p1_base_count": 1,
+  "publishes_pr04_pointer": false,
+  "pure_yes_basket_plan_count": 1,
+  "releases_live_pause": false,
+  "reported_high_c": "32.800000000000",
+  "selected_source_lane": "AWC",
+  "starts_services": false,
+  "state": "PREVIEW_ROLLED_BACK",
+  "station_id": "KMIA",
+  "surface_observation_count": 28,
+  "winner_count": 1,
+  "writes_database": false
+}

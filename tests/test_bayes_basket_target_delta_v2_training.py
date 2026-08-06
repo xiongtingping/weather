@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 import pytest
+from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
@@ -49,6 +50,7 @@ SHA_D = "d" * 64
 def _seed() -> tuple[sqlite3.Connection, ProbabilityEnvelope]:
     conn = sqlite3.connect(":memory:")
     apply_production_ssot_schema(conn)
+    install_canonical_v12(conn)
     apply_target_market_registry_schema(conn)
     initialize_capital_pool(
         conn,
@@ -104,10 +106,14 @@ def _seed() -> tuple[sqlite3.Connection, ProbabilityEnvelope]:
                 "lead_bucket": "d0",
                 "ensemble_artifact_id": "ensemble-1",
                 "canonical_observation_event_id": "obs-1",
-                "canonical_observation_sha256": SHA_A,
-                "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": awc_contract(
+                    station_id=STATION, observation_id="obs-1",
+                    event_date=EVENT_DATE, settlement_timezone=TZ,
+                    observed_at_utc=NOW, raw_object_sha256=SHA_A,
+                )[1],
+                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": "bound-1",
-                "source_lane": "AMSC",
+                "source_lane": "AWC",
                 "report_type": "METAR",
                 "hard_excluded_buckets": "NONE",
                 "bucket_intervals_c_json": json.dumps(
@@ -295,19 +301,16 @@ def _commit(
     }
     if market_overrides:
         market_snapshot.update(market_overrides)
+    contract, revision_sha = awc_contract(
+        station_id=STATION, observation_id="obs-1", event_date=EVENT_DATE,
+        settlement_timezone=TZ, observed_at_utc=NOW, raw_object_sha256=SHA_A,
+    )
     return commit_production_candidate_atomic(
         conn,
         compiled_plan=compiled_plan or _compiled(envelope),
         market_snapshot=market_snapshot,
-        observation={
-            "observation_id": "obs-1",
-            "station_id": STATION,
-            "event_date": EVENT_DATE,
-            "source_lane": "AMSC",
-            "report_type": "METAR",
-            "raw_sha256": SHA_A,
-            "canonical_committed_at": NOW,
-        },
+        awc_observation_contract=contract,
+        truth_observation_revision_content_sha256=revision_sha,
         bound={
             "bound_id": "bound-1",
             "station_id": STATION,

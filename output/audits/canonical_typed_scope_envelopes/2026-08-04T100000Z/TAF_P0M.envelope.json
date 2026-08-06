@@ -1,0 +1,68 @@
+{
+  "as_of_utc": "2026-08-04T10:00:00Z",
+  "builder_id": "canonical.taf_p0m.source_projection.v1",
+  "content_sha256": "9933103b223c6f1bfe193b12d79d4b892e593b9fdcb265867f6dbf1d5bb78473",
+  "future_data_counts_as_oos": false,
+  "production_no_live": true,
+  "records": [
+    {
+      "as_of_utc": "2026-07-27T17:06:05Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "c1530221294f639687dd7059b3754c9ea71a54e65d5f7ab1e1665d277c2ea6d7",
+      "evidence_content_sha256": "45b01652c57da43b120d5ff03ba071a66ec6aeca1ef9c8b93dd02b146c9ff28c",
+      "natural_key": {
+        "decision_at_utc": "2026-07-27T17:06:05Z",
+        "event_date": "2026-07-28",
+        "p0_root_sha256": "a8223b92a167cd99382e9c5683081d15683c525cc8f54e13b00762fa0da029b9",
+        "station_id": "RKPK",
+        "taf_revision_id": "taf-revision-138acfb61c7f8ce8b519dfb12eaf4548"
+      },
+      "scope_kind": "EVENT",
+      "scope_type": "TAF_P0M",
+      "state": "CANDIDATE_ONLY"
+    },
+    {
+      "as_of_utc": "2026-07-29T08:34:34Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "4823b058502b1b9929180c5e054ae67bc7cf37cbd10fa9b1eabe9d8f585e4654",
+      "evidence_content_sha256": "e5047f61f3d3599e05ea68161500a223bc98bb8153118be6eaa39d729e410b75",
+      "natural_key": {
+        "decision_at_utc": "2026-07-29T08:34:34Z",
+        "event_date": "2026-07-29",
+        "p0_root_sha256": "8e4550905dc9a5d9463fc37d1d56faed2b8486694acaae81ee39f5bd7b5d3f0d",
+        "station_id": "RKPK",
+        "taf_revision_id": "taf-revision-48beb7f75fb71fe76bd4d7881d242ec0"
+      },
+      "scope_kind": "EVENT",
+      "scope_type": "TAF_P0M",
+      "state": "CANDIDATE_ONLY"
+    },
+    {
+      "as_of_utc": "2026-07-29T17:06:58Z",
+      "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+      "blockers": [
+        "ACTIVATION_ROOT_MISSING"
+      ],
+      "content_sha256": "fb48b43536820f84a6f052e0879cdac797832b16318b3f20b26bb095e0639ab3",
+      "evidence_content_sha256": "06e86c7bc825e4d98f3a926559f1a0f35e8fee59a37c54c07db18f57307b9e92",
+      "natural_key": {
+        "decision_at_utc": "2026-07-29T17:06:58Z",
+        "event_date": "2026-07-30",
+        "p0_root_sha256": "9bdc944a8fcfcba5928d60631d46342a4a523b4acdff45b9a3fb4ea4439438fa",
+        "station_id": "RKPK",
+        "taf_revision_id": "taf-revision-27d313a0bf828ff5ad33b36536c6e765"
+      },
+      "scope_kind": "EVENT",
+      "scope_type": "TAF_P0M",
+      "state": "CANDIDATE_ONLY"
+    }
+  ],
+  "schema": "bayes_basket_target_canonical_typed_scope_envelope_v1",
+  "scope_type": "TAF_P0M"
+}

@@ -776,6 +776,9 @@ def materialize_p1(
             "canonical_observation_committed_at": (
                 last_observation.canonical_committed_at_utc
             ),
+            "settlement_timezone": (
+                last_observation.event.settlement_timezone
+            ),
             "source_lane": last_observation.event.source_lane.upper(),
             "report_type": last_observation.event.report_type,
             "canonical_observation_sequence_sha256": (
@@ -839,6 +842,7 @@ def materialize_p1(
             "canonical_observation_event_id",
             "canonical_observation_sha256",
             "canonical_observation_committed_at",
+            "settlement_timezone",
             "source_lane",
             "report_type",
             "hard_bound_id",
@@ -889,6 +893,19 @@ def insert_probability_envelope(
     assert_connection_target_capacity(conn)
     if state not in {"COMMITTED", "QUARANTINED"}:
         raise ContractError("probability_state_invalid")
+    if (
+        envelope.stage == "P0"
+        and envelope.lineage.get("probability_pathway")
+        == "REPUBLISHER_NO_LIVE_P0_V1"
+    ):
+        try:
+            authorized = int(
+                conn.execute("SELECT canonical_p0_projection_authorized()").fetchone()[0]
+            )
+        except sqlite3.Error as exc:
+            raise ContractError("republisher_p0_direct_envelope_writer_forbidden") from exc
+        if authorized != 1:
+            raise ContractError("republisher_p0_direct_envelope_writer_forbidden")
     settlement_day_window(envelope.event_date, envelope.settlement_timezone)
     created = _timestamp("created_at_utc", created_at_utc)
     if envelope.stage == "P1":

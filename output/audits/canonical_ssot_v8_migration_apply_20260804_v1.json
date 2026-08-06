@@ -1,0 +1,46 @@
+{
+  "calls_order_gateway": false,
+  "content_sha256": "e8220d8dcb3040e350abf32db89b3d6f19212ffed51ca47e39270048d5c3cb7c",
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "database_bytes": 3795308544,
+  "database_shm_bytes": 32768,
+  "database_wal_bytes": 0,
+  "fact_type_counts_after": {
+    "ensemble_member": 87840,
+    "model": 12600,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596
+  },
+  "fact_type_counts_before": {
+    "ensemble_member": 87840,
+    "model": 12600,
+    "republisher_oos_artifact": 4,
+    "residual": 2845,
+    "truth": 596
+  },
+  "free_bytes": 25854197760,
+  "required_free_bytes": 11386023936,
+  "row_count_after": 103885,
+  "row_count_before": 103885,
+  "rows_content_sha256_after": "d89ba84d7fbab08d0ab6e12452140547ecb6fca4c4fa0cf85fda96f15dd592e6",
+  "rows_content_sha256_before": "d89ba84d7fbab08d0ab6e12452140547ecb6fca4c4fa0cf85fda96f15dd592e6",
+  "schema": "bayes_basket_target_canonical_ssot_fact_v8_migration_receipt_v1",
+  "schema_after": "V8",
+  "schema_before": "V7",
+  "source_footprint_bytes": 3795341312,
+  "state": "APPLIED_V8",
+  "trigger_names_after": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "trigger_names_before": [
+    "canonical_ssot_fact_ingress_only",
+    "canonical_ssot_fact_no_delete",
+    "canonical_ssot_fact_no_update"
+  ],
+  "writer_quiescence_receipt_sha256": "f9bd1917809fb210c4ccee71a021e3ec5f9ebdf867ac2903fdc25467e05d4f12",
+  "writes_database": true,
+  "writes_orders": false
+}

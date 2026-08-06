@@ -23,6 +23,15 @@ from bayes_basket_target.atomic_ledger import (
 )
 from bayes_basket_target.production import commit_production_candidate_atomic
 from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.awc_observation_contract import (
+    AUTHORITY_SCOPE,
+    CONTRACT_SCHEMA,
+    RAW_OBJECT_KIND,
+)
+from bayes_basket_target.canonical_ssot_v12_migration import (
+    TARGET_TABLE_DDL as V12_TABLE_DDL,
+    TARGET_TRIGGER_DDL as V12_TRIGGER_DDL,
+)
 from bayes_basket_target.execution_reconciliation import (
     ExecutionCasError,
     ReconciliationError,
@@ -45,6 +54,44 @@ NOW = "2026-07-23T04:00:00Z"
 SETTLEMENT_TIMEZONE = "America/New_York"
 SHA_A = "a" * 64
 SHA_B = "b" * 64
+
+
+def _seal(value: dict[str, object]) -> dict[str, object]:
+    return {**value, "content_sha256": content_sha256(value)}
+
+
+def _awc_contract(index: int = 0) -> tuple[dict[str, object], str]:
+    revision = _seal({
+        "station_id": "ZUUU", "observation_id": f"obs-{index}",
+        "revision_no": 1, "event_date": "2026-07-23",
+        "settlement_timezone": SETTLEMENT_TIMEZONE, "source_lane": "AWC",
+        "authority_scope": AUTHORITY_SCOPE, "report_type": "METAR",
+        "sequence": 1, "observed_at_utc": "2026-07-23T04:00:00.000Z",
+        "received_at_utc": "2026-07-23T04:00:00.000Z",
+        "first_seen_at_utc": "2026-07-23T04:00:00.000Z",
+        "parsed_at_utc": "2026-07-23T04:00:00.000Z",
+        "fetch_started_at_utc": "2026-07-23T04:00:00.000Z",
+        "fetch_completed_at_utc": "2026-07-23T04:00:00.000Z",
+        "origin_committed_at_utc": "2026-07-23T04:00:00.000Z",
+        "source_observation_committed_at_utc": "2026-07-23T04:00:00.000Z",
+        "canonical_committed_at_utc": "2026-07-23T04:00:00.000Z",
+        "reported_temperature_c": 38.0, "raw_object_kind": RAW_OBJECT_KIND,
+        "raw_object_sha256": SHA_A, "awc_source_receipt_sha256": SHA_B,
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_authority": "NOAA/NWS Aviation Weather Center worldwide relay",
+        "origin_url": "https://aviationweather.gov/data/api/",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "origin_registry_sha256": "c" * 64, "origin_record_sha256": "d" * 64,
+        "correction_kind": "NONE", "correction_state": "NO_CORRECTION",
+        "supersedes_observation_fact_sha256": None, "qc_state": "ACCEPTED",
+        "review_receipt_sha256": None, "halt_state": "CLEAR",
+    })
+    contract = _seal({
+        "schema": CONTRACT_SCHEMA, "as_of_utc": NOW,
+        "builder_id": "atomic-test.pr12.v1", "revision_facts": [revision],
+        "day_bounds_facts": [],
+    })
+    return contract, str(revision["content_sha256"])
 
 
 def _complete_execution_vector(index: int = 0) -> dict[str, str]:
@@ -77,16 +124,7 @@ def _bundle(
 ):
     station = "ZUUU"
     event_date = "2026-07-23"
-    observation = {
-        "observation_id": f"obs-{index}",
-        "station_id": station,
-        "event_date": event_date,
-        "settlement_timezone": SETTLEMENT_TIMEZONE,
-        "source_lane": source_lane,
-        "report_type": "METAR",
-        "raw_sha256": SHA_A,
-        "canonical_committed_at": NOW,
-    }
+    contract, revision_sha = _awc_contract(index)
     bound = {
         "bound_id": f"bound-{index}",
         "station_id": station,
@@ -104,8 +142,8 @@ def _bundle(
             "probability_stage": "P1",
             "settlement_timezone": SETTLEMENT_TIMEZONE,
             "canonical_observation_event_id": f"obs-{index}",
-            "canonical_observation_sha256": SHA_A,
-            "canonical_observation_committed_at": NOW,
+            "truth_observation_revision_content_sha256": revision_sha,
+            "canonical_observation_committed_at_utc": "2026-07-23T04:00:00.000Z",
             "hard_bound_id": f"bound-{index}",
             "source_lane": source_lane,
             "report_type": "METAR",
@@ -134,7 +172,8 @@ def _bundle(
         "details": {"candidate_will_order": not blocked, "no_live": True},
     }
     return build_target_atomic_bundle(
-        observation=observation,
+        awc_observation_contract=contract,
+        truth_observation_revision_content_sha256=revision_sha,
         bound=bound,
         plan=plan,
         decision=decision,
@@ -156,6 +195,9 @@ def _db(
     conn = sqlite3.connect(":memory:" if path is None else path, timeout=10.0)
     conn.execute("PRAGMA busy_timeout=10000")
     apply_target_ledger_schema(conn)
+    conn.execute(V12_TABLE_DDL)
+    for ddl in V12_TRIGGER_DDL:
+        conn.execute(ddl)
     if with_training_fact:
         apply_target_ssot_schema(conn)
     initialize_capital_pool(
@@ -399,7 +441,13 @@ def test_target_writer_lock_wait_telemetry_is_bounded_and_records_atomic_write()
         assert conn.execute("SELECT COUNT(*) FROM basket_target_writer_lock_wait_telemetry").fetchone()[0] == 1
 
 
-@pytest.mark.parametrize("fault_after", ["observation", "bounds", "cycle", "decision", "intent", "reserve"])
+@pytest.mark.parametrize(
+    "fault_after",
+    [
+        "canonical_stage", "projection", "bound_projection", "cycle",
+        "decision", "intent", "reserve",
+    ],
+)
 def test_every_atomic_write_point_is_all_or_zero(fault_after: str) -> None:
     with _db() as conn:
         with pytest.raises(InjectedAtomicFault, match=fault_after):
@@ -413,6 +461,9 @@ def test_every_atomic_write_point_is_all_or_zero(fault_after: str) -> None:
             "basket_target_capital_reservations": 0,
         }
         assert conn.execute("SELECT reserved_usdc FROM basket_target_capital_pool").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM canonical_ssot_fact"
+        ).fetchone()[0] == 0
 
 
 def test_atomic_commit_writes_five_facts_and_never_submits() -> None:
@@ -425,6 +476,10 @@ def test_atomic_commit_writes_five_facts_and_never_submits() -> None:
         assert receipt["calls_order_gateway"] is False
         counts = _counts(conn)
         assert all(value == 1 for value in counts.values())
+        assert conn.execute(
+            "SELECT COUNT(*) FROM canonical_ssot_fact "
+            "WHERE fact_type='truth_observation_revision'"
+        ).fetchone()[0] == 1
         decision = conn.execute(
             "SELECT will_order,decided_state,reason_codes_json FROM auto_trade_decisions"
         ).fetchone()
@@ -450,8 +505,8 @@ def test_atomic_commit_writes_five_facts_and_never_submits() -> None:
     ("field", "replacement"),
     [
         ("canonical_observation_event_id", "other-observation"),
-        ("canonical_observation_sha256", SHA_B),
-        ("canonical_observation_committed_at", "2026-07-23T03:59:59Z"),
+        ("truth_observation_revision_content_sha256", SHA_B),
+        ("canonical_observation_committed_at_utc", "2026-07-23T03:59:59Z"),
         ("hard_bound_id", "other-bound"),
         ("report_type", "SPECI"),
     ],
@@ -461,19 +516,6 @@ def test_atomic_bundle_rejects_p1_lineage_observation_bound_mismatch(
     replacement: str,
 ) -> None:
     source = _bundle(index=610)
-    observation = {
-        key: source["observation"][key]
-        for key in (
-            "observation_id",
-            "station_id",
-            "event_date",
-            "settlement_timezone",
-            "source_lane",
-            "report_type",
-            "raw_sha256",
-            "canonical_committed_at",
-        )
-    }
     bound = {
         key: source["bound"][key]
         for key in (
@@ -493,7 +535,10 @@ def test_atomic_bundle_rejects_p1_lineage_observation_bound_mismatch(
         match=rf"plan_lineage_{field}_mismatch",
     ):
         build_target_atomic_bundle(
-            observation=observation,
+            awc_observation_contract=source["awc_observation_contract"],
+            truth_observation_revision_content_sha256=source[
+                "observation"
+            ]["truth_observation_revision_content_sha256"],
             bound=bound,
             plan=plan,
             decision={
@@ -535,7 +580,7 @@ def test_atomic_observation_timezone_is_content_addressed_and_replays() -> None:
 def test_atomic_bundle_rejects_non_awc_source_lane(source_lane: str) -> None:
     with pytest.raises(
         AtomicLedgerError,
-        match="observation_source_lane_must_be_awc",
+        match="plan_lineage_source_lane_must_be_awc",
     ):
         _bundle(index=615, source_lane=source_lane)
 
@@ -595,7 +640,7 @@ def test_atomic_observation_timezone_missing_or_conflicting_fails_closed(
             if key not in {"observation_fact_id", "content_sha256"}
         }
         observation["content_sha256"] = content_sha256({
-            "schema": "basket_target_observation_fact_v1",
+                "schema": "basket_target_observation_projection_v2",
             **observation_identity,
         })
         observation["observation_fact_id"] = (
@@ -618,38 +663,27 @@ def test_atomic_observation_timezone_missing_or_conflicting_fails_closed(
         ).fetchone()[0] == 0
 
 
-def test_atomic_rejects_existing_observation_timezone_drift_without_new_facts() -> None:
+def test_atomic_rejects_projection_insert_bypass_without_new_facts() -> None:
     bundle = _bundle(index=614)
     observation = bundle["observation"]
     with _db() as conn:
-        conn.execute(
-            "INSERT INTO basket_target_observation_facts("
-            "observation_fact_id,observation_id,station_id,event_date,"
-            "settlement_timezone,source_lane,report_type,raw_sha256,"
-            "canonical_committed_at,content_sha256,created_at) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                observation["observation_fact_id"],
-                observation["observation_id"],
-                observation["station_id"],
-                observation["event_date"],
-                "Asia/Seoul",
-                observation["source_lane"],
-                observation["report_type"],
-                observation["raw_sha256"],
-                observation["canonical_committed_at"],
-                observation["content_sha256"],
-                NOW,
-            ),
-        )
-
-        with pytest.raises(
-            AtomicLedgerError,
-            match="basket_target_observation_facts_content_address_drift",
-        ):
-            commit_target_atomic_bundle(conn, bundle=bundle)
+        with pytest.raises(sqlite3.IntegrityError, match="canonical_projection_ingress_required"):
+            conn.execute(
+                "INSERT INTO basket_target_observation_facts("
+                "observation_fact_id,observation_id,station_id,event_date,"
+                "settlement_timezone,source_lane,report_type,raw_sha256,"
+                "canonical_committed_at,content_sha256,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    observation["observation_fact_id"], observation["observation_id"],
+                    observation["station_id"], observation["event_date"], "Asia/Seoul",
+                    observation["source_lane"], observation["report_type"],
+                    observation["raw_sha256"], observation["canonical_committed_at"],
+                    observation["content_sha256"], NOW,
+                ),
+            )
         assert _counts(conn) == {
-            "basket_target_observation_facts": 1,
+            "basket_target_observation_facts": 0,
             "basket_target_bound_facts": 0,
             "basket_target_execution_cycles": 0,
             "auto_trade_decisions": 0,
@@ -659,6 +693,24 @@ def test_atomic_rejects_existing_observation_timezone_drift_without_new_facts() 
         assert conn.execute(
             "SELECT reserved_usdc FROM basket_target_capital_pool"
         ).fetchone()[0] == 0
+
+
+def test_atomic_rejects_bound_projection_insert_bypass() -> None:
+    with _db() as conn:
+        with pytest.raises(
+            sqlite3.IntegrityError,
+            match="canonical_projection_ingress_required",
+        ):
+            conn.execute(
+                "INSERT INTO basket_target_bound_facts("
+                "bound_fact_id,bound_id,observation_id,station_id,event_date,"
+                "bound_generation,hard_lower_bound,bound_json,content_sha256,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "boundfact-bypass", "bound-bypass", "obs-bypass", "ZUUU",
+                    "2026-07-23", 0, 38, "{}", SHA_A, NOW,
+                ),
+            )
 
 
 @pytest.mark.parametrize(
@@ -1629,8 +1681,8 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
                 "probability_stage": "P1",
                 "settlement_timezone": SETTLEMENT_TIMEZONE,
                 "canonical_observation_event_id": "obs-10",
-                "canonical_observation_sha256": SHA_A,
-                "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": bundle["observation"]["truth_observation_revision_content_sha256"],
+                "canonical_observation_committed_at_utc": "2026-07-23T04:00:00.000Z",
                 "hard_bound_id": "bound-10",
                 "source_lane": "AWC",
                 "report_type": "METAR",
@@ -1666,7 +1718,8 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
                         {"bucket": "38", "token_id": "yes-token-10"}
                     ],
                 },
-                observation=bundle["observation"],
+                    awc_observation_contract=bundle["awc_observation_contract"],
+                    truth_observation_revision_content_sha256=bundle["observation"]["truth_observation_revision_content_sha256"],
                 bound=bundle["bound"],
                 created_at_utc=NOW,
             )
@@ -1699,8 +1752,8 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
                 "probability_stage": "P1",
                 "settlement_timezone": SETTLEMENT_TIMEZONE,
                 "canonical_observation_event_id": "obs-101",
-                "canonical_observation_sha256": SHA_A,
-                "canonical_observation_committed_at": NOW,
+                "truth_observation_revision_content_sha256": bundle["observation"]["truth_observation_revision_content_sha256"],
+                "canonical_observation_committed_at_utc": "2026-07-23T04:00:00.000Z",
                 "hard_bound_id": "bound-101",
                 "source_lane": "AWC",
                 "report_type": "METAR",
@@ -1725,7 +1778,8 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
                     "settlement_timezone": SETTLEMENT_TIMEZONE,
                     "buckets": [],
                 },
-                observation=bundle["observation"],
+                awc_observation_contract=bundle["awc_observation_contract"],
+                truth_observation_revision_content_sha256=bundle["observation"]["truth_observation_revision_content_sha256"],
                 bound=bundle["bound"],
                 created_at_utc=NOW,
             )
@@ -1757,7 +1811,8 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
                     "settlement_timezone": SETTLEMENT_TIMEZONE,
                     "buckets": [],
                 },
-                observation=bundle["observation"],
+                awc_observation_contract=bundle["awc_observation_contract"],
+                truth_observation_revision_content_sha256=bundle["observation"]["truth_observation_revision_content_sha256"],
                 bound=bundle["bound"],
                 created_at_utc=NOW,
             )
@@ -1765,18 +1820,11 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
 
 
 def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
+    contract, revision_sha = _awc_contract(999)
     with pytest.raises(AtomicLedgerError, match="target_atomic_bundle_requires_p1"):
         build_target_atomic_bundle(
-            observation={
-                "observation_id": "obs-p0",
-                "station_id": "ZUUU",
-                "event_date": "2026-07-23",
-                "settlement_timezone": SETTLEMENT_TIMEZONE,
-                "source_lane": "AWC",
-                "report_type": "METAR",
-                "raw_sha256": SHA_A,
-                "canonical_committed_at": NOW,
-            },
+            awc_observation_contract=contract,
+            truth_observation_revision_content_sha256=revision_sha,
             bound={
                 "bound_id": "bound-p0",
                 "station_id": "ZUUU",

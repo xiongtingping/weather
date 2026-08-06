@@ -1,0 +1,43 @@
+{
+  "blocked_scope_count": 0,
+  "blocked_scopes": [],
+  "bridge_content_sha256s": [
+    "8383a5dcbef665f48c215d77eb6239fcbb022e046981217bbdda5650b9a045f5"
+  ],
+  "bridge_count_after": 45,
+  "bridge_count_before": 45,
+  "calls_order_gateway": false,
+  "content_sha256": "849d08806ffdc702adfe7235223acb2b1693245225731c21629682700b33fcc2",
+  "contract_content_sha256": "9eedefb523f406052dd42967c369f3f472a5165dd5d4e7a02f371d1554ce0e12",
+  "coverage_terminal": true,
+  "database": "/Users/xiong/weather/data/bayes_basket_target_ssot.db",
+  "event_date": "2026-08-03",
+  "expected_scope_count": 1,
+  "ingress_receipt": {
+    "builder_id": "official_awc_market_bucket_bridge_builder_v1",
+    "calls_order_gateway": false,
+    "canonical_schema": "bayes_basket_target_canonical_market_bucket_bridge_contract_v1",
+    "contract_content_sha256": "9eedefb523f406052dd42967c369f3f472a5165dd5d4e7a02f371d1554ce0e12",
+    "inserted_count": 0,
+    "orders_submitted": 0,
+    "receipt_sha256": "1126cfec0831c9a919ce5d40492f16ed612fc82f28e99c3eacfba5875c9f0fef",
+    "replayed_count": 0,
+    "schema": "bayes_basket_target_canonical_model_ingress_v1",
+    "state": "VALIDATED_NO_WRITE",
+    "validated_counts": {
+      "market_bucket_bridge": 1
+    },
+    "writes_production_database": false,
+    "writes_target_database": false
+  },
+  "orders_submitted": 0,
+  "p0_written": false,
+  "production_no_live_only": true,
+  "ready_scope_count": 1,
+  "registry_snapshot_sha256": "638b0c4f1c8aba1265f43bf1dd79db569a56e75526bfdbdea393b8a52b3ba465",
+  "schema": "canonical_market_bucket_bridge_materialization_receipt_v1",
+  "state": "VALIDATED_NO_WRITE",
+  "station_ids": [
+    "KMIA"
+  ]
+}

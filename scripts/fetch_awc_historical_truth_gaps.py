@@ -27,7 +27,10 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 
 
 def _inventory(args: argparse.Namespace) -> int:
-    inventory = build_gap_inventory_from_receipt(args.truth_gap_receipt)
+    inventory = build_gap_inventory_from_receipt(
+        args.truth_gap_receipt,
+        expected_station_ids=[args.station_id.upper()] if args.station_id else None,
+    )
     write_bounded_json(args.output, inventory)
     print(
         json.dumps(
@@ -120,6 +123,10 @@ def main() -> int:
         "inventory", help="Freeze exact targets from one verified truth-gap receipt."
     )
     inventory_parser.add_argument("--truth-gap-receipt", type=Path, required=True)
+    inventory_parser.add_argument(
+        "--station-id",
+        help="Optional exact station pilot projection already bound by the receipt.",
+    )
     inventory_parser.add_argument("--output", type=Path, required=True)
     inventory_parser.set_defaults(handler=_inventory)
 

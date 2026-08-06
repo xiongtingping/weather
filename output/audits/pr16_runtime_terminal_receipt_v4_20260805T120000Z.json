@@ -1,0 +1,23 @@
+{
+  "as_of_utc": "2026-08-05T12:00:00Z",
+  "blockers": [
+    "RUNTIME_RELEASE_ID_MISSING"
+  ],
+  "calls_order_gateway": false,
+  "canonical_expected_basis_emitted": true,
+  "content_sha256": "3cd84b77ce0eafef9b4cadb97c30477750aba9ab073b5768ba48002d32b7a1df",
+  "current_pointer_content_sha256": "35777f0d3dc8aa8542ea039d118e55bf3f248b56efe007fb6eefcb557294e9c1",
+  "current_pointer_state": "BLOCKED",
+  "expected_basis_content_sha256": "6d8e87a05b5c00ff33fa5ef0e2e5b390852703349ecdd641b63df6c0d9931ae9",
+  "orders_submitted": 0,
+  "production_no_live": true,
+  "publishes_pr04_pointer": false,
+  "release_state": "BLOCKED",
+  "releases_live_pause": false,
+  "runtime_expected_key_count": 0,
+  "schema": "bayes_basket_target_pr16_runtime_terminal_bundle_v1",
+  "starts_services": false,
+  "state": "BLOCKED",
+  "terminal_basis_content_sha256": "3ed9c75365b2d6efb7256398a043e1d179e0bdbbcbe88d728968a82e10b0a254",
+  "unresolved_service_count": 3
+}

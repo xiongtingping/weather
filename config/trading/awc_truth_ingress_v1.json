@@ -3,6 +3,27 @@
   "strategy_id": "awc_canonical_truth_ingress_v1",
   "production_source_allowlist": ["awc"],
   "source_policy": {
+    "asos_1min": {
+      "enabled": true,
+      "production_ingest": true,
+      "priority": 220,
+      "provider_id": "IEM_ASOS1MIN",
+      "source_class": "aggregator_republisher",
+      "upstream_authority": "NOAA/NCEI ASOS",
+      "measurement_semantics": "ASOS_5_MINUTE_TEMPERATURE_PRODUCT_PUBLISHED_EACH_MINUTE_TMPF",
+      "eligible_station_rule": "ICAO_K_PREFIX_UNAMBIGUOUS",
+      "coverage_required": true,
+      "fallback_lane": "awc"
+    },
+    "madis_hfmetar": {
+      "enabled": true,
+      "production_ingest": true,
+      "priority": 210,
+      "provider_id": "NOAA_MADIS_HFMETAR",
+      "source_class": "official_republisher",
+      "measurement_semantics": "ASOS_RUNNING_5_MINUTE_AVERAGE_DISSEMINATED_EVERY_5_MINUTES",
+      "fallback_lane": "awc"
+    },
     "amsc": {
       "enabled": false,
       "production_ingest": false,
@@ -17,6 +38,8 @@
       "enabled": true,
       "production_ingest": true,
       "global_primary": true,
+      "priority": 100,
+      "role": "global_default_and_asos_fallback",
       "replaces_amsc": true,
       "exclude_station_ids": [],
       "exclude_city_slugs": [],
@@ -24,6 +47,8 @@
     }
   },
   "poll_policy": {
+    "asos_poll_interval_sec": 900,
+    "madis_hfmetar_poll_interval_sec": 300,
     "awc_relay_release_delay_sec": 30,
     "awc_release_burst_retry_sec": 0.25,
     "awc_release_burst_window_sec": 90,
@@ -88,6 +113,9 @@
     "wuhan": "Asia/Shanghai"
   },
   "guards": {
+    "canonical_observation_priority": ["asos_1min", "madis_hfmetar", "awc"],
+    "cross_source_value_mixing_forbidden": true,
+    "asos_must_not_be_labeled_metar": true,
     "official_rules_station_required": true,
     "wunderground_airport_resolution_required": true,
     "whole_degree_resolution_required": true,

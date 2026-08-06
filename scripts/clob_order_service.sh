@@ -38,6 +38,7 @@ export WEATHER_SERVICE_DOMAIN=user
 export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
 export PM_TARGET_EXECUTION_MODE=production_no_live
 export PM_CLOB_ORDER_SERVICE_READ_ONLY=1
+export PM_ASOS_ARGMAX_LIVE_ENABLED=1
 # Keep exact-token conditional balances fresh for held-YES safety checks. This
 # is read-only evidence and remains bounded by the service concurrency/queue
 # limits; it never authorizes an order.

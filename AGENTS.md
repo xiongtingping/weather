@@ -8,7 +8,7 @@
 - 数据治理总则：同一事实必须通过唯一 canonical schema 和唯一 lineage 进入 SSOT；字段或语义无法一一对应时立即 fail closed，禁止改名、猜测、默认补值或跨表兼容。
 - 生产仅保留三个同一用户域服务：`com.weather.weather_basket_yes`、`com.weather.market_ws`、`com.weather.clob_order_service`；固定运行于`gui/$(id -u)`，禁止user/system双活。旧 `com.weather.reported_trajectory_no` label 必须退役。root-owned旧LaunchDaemon只允许在一次性迁移中以不弹密码的`sudo -n`退役；迁移后安装、切换、重启和验收不得依赖sudo。
 - UI、monitor、Bayes、模型扫描、市场 REST 刷新、任务队列和行情历史 tick 写入均停用。
-- 正式实时 truth 统一为官方 AWC 全球泳道：45 站（含原中国/台湾站）均只消费 AWC 官方整点 `:00` METAR 与有效 SPECI，进入 realtime truth、P1、篮子硬事实、校准和 production_no_live OOS；禁止同站混源、跨源 fallback。AMSC 及旧 AMSC lineage 固定为 `retired_history_only`，仅可离线审计/对照，禁止进入正式 truth、P1、篮子或伪装为 AWC lineage；AWC 缺失、陈旧、重复或未复核更正一律 fail closed。
+- 正式观测层由唯一优先级合同仲裁独立lineage：可识别美国ASOS站依次选择覆盖完整且新鲜的IEM/NCEI一分钟ASOS（220）、NOAA MADIS HF-METAR五分钟ASOS（210），否则选择官方AWC整点`:00` METAR/有效SPECI（100）；非ASOS站直接选择AWC。IEM必须标记`aggregator_republisher`，MADIS必须标记`official_republisher`；二者不得冒充METAR、AWC或native。ASOS只有绑定自身20 train+8 holdout历史exact-match P1/OOS artifact后才能进入no-live P1；两源原始事实分别保存，只有`reported_trajectory_canonical_station_day_bounds`可给出唯一赢家，禁止逐值混源取最大。AMSC及旧AMSC lineage固定为`retired_history_only`。
 - Open-Meteo ICON/GEM/CMA/AIFS 等均为显式 `aggregator_republisher`：原生对象缺失、无效或未及时到达时，可作为同一站点×事件日的 no-live P0 fallback；必须保留 republisher lineage、明确 native 不可用、且绑定独立严格历史 OOS 激活。不得伪造 native publication/arrival、进入 native arrival index、进入 P1 或 formal/live authority；同模型存在官方 native 证据时始终优先 native。
 - 回应使用中文并称呼“熊先生”。
 - 默认聚焦熊先生当前明确要求；不复述历史问题作为背景噪声。
@@ -18,8 +18,8 @@
 - 熊先生已明确主线默认无需逐步授权；仅在扩大任务范围或不可逆外部变更时停下说明。
 - 默认直接实施并验证，不以 review-only/仅建议作为交付；明确退役的旧代码直接删除，不保留兼容分叉。
 - `ΔBasketScore v2` 的未来日时序观察与 `production_no_live`、RKPK 单站闭环和 45 站扩展并行；未来/forward 数据不构成 OOS、硬门或晋级依据，未完成不得阻断生产 no-live 主链。参数/权重 artifact 的 `FORMAL_PROMOTED` 与 live 晋级只接受闭日、strict-as-of 历史 OOS；P0 模型组合自身要求的离线严格 OOS artifact 同样只用历史数据。
-- 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的 AWC truth 才能形成严格 OOS。Open-Meteo 可作为显式 `aggregator_republisher` 的历史同日 calibration/OOS fallback，并在该历史激活存在时服务原生缺失的 no-live P0；仍绝不进入 native arrival、P1 或 formal/live authority。
-- 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；METAR/SPECI生成P1。禁止P0-F/P0-F^r分支。
+- 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的canonical ASOS优先/AWC后备truth才能形成严格OOS。Open-Meteo可作为显式`aggregator_republisher`的历史同日calibration/OOS fallback，并在该历史激活存在时服务原生缺失的no-live P0；仍绝不进入native arrival、P1或formal/live authority。
+- 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；canonical ASOS一分钟/AWC METAR-SPECI观测生成P1。禁止P0-F/P0-F^r分支。
 - 篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime、官方报文硬事实排除集合和官方 CLOB WS 证据，缺证据即 fail closed；不得生成 BUY NO intent。
 - 外置盘仅用于非关键、无用数据的异步冷归档；禁止作为生产数据库备份、回滚、切换、readiness 或服务启停依赖，任何外置盘异常不得影响 AWC/METAR/SPECI、SSOT 或交易。
 - 禁止把日常生产操作设计为交互sudo；用户域迁移后所有常规服务控制必须由当前登录用户完成。
@@ -28,6 +28,7 @@
 - 若本文件需要新增/修订：保持精简（≤100 行）。
 
 ## 事实与执行口径（硬规则）
+- active model-product registry只保留官方原生全球集合成员产品：`ECMWF_IFS_ENS_OPEN_PF50 / ECMWF_AIFS_ENS_GLOBAL / DWD_ICON_GLOBAL_EPS / NOAA_GEFS_05 / ECCC_GEM_GLOBAL_ENS`。正式P0的每个`station_id × lead_bucket × run_cycle` exact scope必须由其中至少两个正权重、不同`independence_family_id`系统组合生成，并分别绑定原生成员、arrival/receipt、闭日历史strict-as-of OOS和exact activation。AIFS Single及全部确定性、区域确定性、Open-Meteo republisher产品均退出active registry；历史对象只保留原lineage，不得进入P1或formal/live authority。
 - 前端不是生产消费者，不得为了展示增加热路径读写。
 - 执行阻断原因唯一来源：`auto_trade_decisions`。
 - `reported_trajectory_observations`、`station_day_bounds`、decision、intent 和资本预留必须原子提交。
@@ -38,7 +39,7 @@
 - 下单只允许本机唯一 gateway；写锁外取盘口，篮子优先使用内容寻址的 post-only GTC Maker，紧迫收口只允许在确认撤销 Maker 后使用有价格上限的单桶 FOK；每次成交后重算目标库存与利润曲线，不经 outbox 秒级轮询。
 
 ## 纯 YES Basket（当前唯一生产策略）
-- `com.weather.weather_basket_yes` 是 AWC 正式 truth 泳道的纯 YES 篮子唯一驻留服务名；旧 `com.weather.reported_trajectory_no` label 与 `reported_trajectory_no_v1` hard-NO 策略均已退役，不得加载、决策或下单，不得作为服务别名，不得启动第四个生产服务。
+- `com.weather.weather_basket_yes` 是canonical ASOS优先/AWC后备正式观测层的纯YES篮子唯一驻留服务名；旧`com.weather.reported_trajectory_no` label与`reported_trajectory_no_v1` hard-NO策略均已退役，不得加载、决策或下单，不得作为服务别名，不得启动第四个生产服务。
 - 篮子按已物化后验、方向侧覆盖价值、全情景利润曲线、集中度、预算和真实 WS 深度求唯一目标库存，不设固定桶数、4→3→2或阶段内等份。未成交 Maker 不计入已实现地板但必须计入 confirmed pending；每次成交后重算目标库存、净成本和利润曲线。默认只增不减；显式角色调仓时，仅允许卖出 S/B/L/C 桶中恢复 `M>S>A>B>F` 所需的超额份额，M/A/F 桶不得卖出、不得用卖出控制预算。卖出必须使用官方 YES bid 逐档深度并在成交后重算净成本和地板，未知成交立即 reconcile_required。边缘桶允许作为中心。
 - 篮子中心只能来自已物化 P1；P1 缺失时使用最新P0-M，TAF未到时才使用P0；regime只作方向一致性闸门，不得平移概率中心。
 - 篮子风险层固定区分 `underreach_risk` 与 `upside_breakthrough_risk`：P1 主桶 `M` 未达成时，按 bucket contract 的 `predecessor(M)`、`predecessor²(M)` 生成下方尾部；官方实况形成新高 `R` 后，才按 `successor(R)`、`successor²(R)` 生成上行突破桶。`P1=30℃、当前已报最高温=25℃` 到 `29℃/28℃` 仅是说明性示例，绝对温度、桶宽和边界不得硬编码；风险层不得修改 P1。

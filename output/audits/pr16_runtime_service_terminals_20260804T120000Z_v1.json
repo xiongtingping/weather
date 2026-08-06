@@ -1,0 +1,70 @@
+{
+  "as_of_utc": "2026-08-04T12:00:00Z",
+  "calls_order_gateway": false,
+  "content_sha256": "0e83387bcef70d1ccba406219533452b5f1865cb2fc4dde1cec6d7ce4e6207b4",
+  "current_pointer_content_sha256": "35777f0d3dc8aa8542ea039d118e55bf3f248b56efe007fb6eefcb557294e9c1",
+  "current_pointer_release_id_not_reused": true,
+  "orders_submitted": 0,
+  "release_state": "BLOCKED",
+  "schema": "bayes_basket_target_pr16_runtime_terminal_basis_v1",
+  "service_count": 3,
+  "starts_services": false,
+  "state": "BLOCKED",
+  "terminal_scopes": [
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "blockers": [
+        "RUNTIME_RELEASE_ID_MISSING"
+      ],
+      "content_sha256": "58142e26a5f5a2c2cb1945522d4202188dc8eb0ab8fef72de2febc7e42787484",
+      "current_pointer_content_sha256": "35777f0d3dc8aa8542ea039d118e55bf3f248b56efe007fb6eefcb557294e9c1",
+      "current_pointer_state": "BLOCKED",
+      "launch_domain": "gui/501",
+      "schema": "bayes_basket_target_pr16_runtime_service_terminal_v1",
+      "service_label": "com.weather.clob_order_service",
+      "service_present": false,
+      "starts_service": false,
+      "state": "BLOCKED",
+      "unproven_natural_key_fields": [
+        "runtime_release_id"
+      ]
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "blockers": [
+        "RUNTIME_RELEASE_ID_MISSING"
+      ],
+      "content_sha256": "7673a6dc0f6365b07bca8db52b1f72567646de74e89069842948dedaa242ad30",
+      "current_pointer_content_sha256": "35777f0d3dc8aa8542ea039d118e55bf3f248b56efe007fb6eefcb557294e9c1",
+      "current_pointer_state": "BLOCKED",
+      "launch_domain": "gui/501",
+      "schema": "bayes_basket_target_pr16_runtime_service_terminal_v1",
+      "service_label": "com.weather.market_ws",
+      "service_present": false,
+      "starts_service": false,
+      "state": "BLOCKED",
+      "unproven_natural_key_fields": [
+        "runtime_release_id"
+      ]
+    },
+    {
+      "as_of_utc": "2026-08-04T12:00:00Z",
+      "blockers": [
+        "RUNTIME_RELEASE_ID_MISSING"
+      ],
+      "content_sha256": "53e27015ce4255af93c146d51704ef96e9112a376435e12f01a6c12379f8143b",
+      "current_pointer_content_sha256": "35777f0d3dc8aa8542ea039d118e55bf3f248b56efe007fb6eefcb557294e9c1",
+      "current_pointer_state": "BLOCKED",
+      "launch_domain": "gui/501",
+      "schema": "bayes_basket_target_pr16_runtime_service_terminal_v1",
+      "service_label": "com.weather.weather_basket_yes",
+      "service_present": false,
+      "starts_service": false,
+      "state": "BLOCKED",
+      "unproven_natural_key_fields": [
+        "runtime_release_id"
+      ]
+    }
+  ],
+  "writes_database": false
+}

@@ -138,7 +138,7 @@ def _canonical_catalog(
     conn: sqlite3.Connection, *, compiled_at: datetime
 ) -> dict[str, Any]:
     inspection = inspect_canonical_ssot_schema(conn)
-    if inspection["state"] != "V7" or inspection["errors"]:
+    if inspection["state"] not in {"V8", "V9", "V10"} or inspection["errors"]:
         raise ContractError("native_system_artifact_canonical_ssot_v7_required")
 
     members: dict[tuple[str, str, str], list[CanonicalEnsembleMemberFact]] = defaultdict(list)

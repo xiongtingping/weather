@@ -1,0 +1,55 @@
+{
+  "captured_count": 5,
+  "content_sha256": "5ce802e1f4add0a88dca3253512615d9a00484e6d4c91879f58b876a54728185",
+  "end_date": "2026-07-29",
+  "evaluates_oos": false,
+  "orders_submitted": 0,
+  "packet_count": 5,
+  "packets": [
+    {
+      "content_sha256": "d1eff780aa22c44ed32b37f2deb0f48323e57b991c6017a49e76e934b05e24ca",
+      "event_date": "2026-07-25",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260725_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "f3dca056184c3c455e748a9008dcd6751d8315f50cd4bd4561cb40b508e4a8c8",
+      "event_date": "2026-07-26",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260726_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "975b416381b8aab704d5dd3ad983092154ffbfa76522d278cb81de288f6999a9",
+      "event_date": "2026-07-27",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260727_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "dd23560890bd8d1a71cc6a13979ef4274a28ada35cc4882bc97aa2e4e6179058",
+      "event_date": "2026-07-28",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260728_ET.json",
+      "state": "CAPTURED"
+    },
+    {
+      "content_sha256": "7108401f11a7bc31e2d4bcf43ed3ec6431a8a9deb6e4fefa243e7d4204e0eddb",
+      "event_date": "2026-07-29",
+      "path": "/Users/xiong/weather/output/audits/native_ensemble_pilot_et/ecmwf/ECMWF_PF50_20260729_ET.json",
+      "state": "CAPTURED"
+    }
+  ],
+  "provider": "ECMWF_PF50",
+  "publishes_pr04": false,
+  "releases_live_pause": false,
+  "replayed_count": 0,
+  "reserves_selection": false,
+  "schema": "official_native_ensemble_pilot_et_capture_receipt_v1",
+  "settlement_timezone": "America/New_York",
+  "start_date": "2026-07-25",
+  "starts_services": false,
+  "station_ids": [
+    "CYYZ",
+    "RJTT",
+    "RKSI"
+  ],
+  "writes_ssot": false
+}

@@ -14,6 +14,7 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .cash_phase import (
@@ -64,7 +65,9 @@ from .resource_bounds import (
     ResourceBoundError,
     assert_connection_target_capacity,
     assert_process_memory_budget,
+    load_bounded_json,
 )
+from .canonical_activation_release import verify_released_p0_envelope_authority
 
 
 STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
@@ -447,6 +450,8 @@ def load_materialized_probability_envelopes(
     evaluation_at_utc: str,
     required_probability_pathway: str | None = P0_PROBABILITY_PATHWAY,
     expected_source_lane: str | None = None,
+    canonical_current_pointer: Path | str | None = None,
+    canonical_release_root: Path | str | None = None,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -467,6 +472,13 @@ def load_materialized_probability_envelopes(
         "probabilities_json", "posterior_version", "posterior_sha256",
         "bridge_sha256", "lineage_json", "content_sha256",
     )
+    if (canonical_current_pointer is None) != (canonical_release_root is None):
+        raise ContractError("probability_release_authority_paths_incomplete")
+    current_pointer = None
+    if canonical_current_pointer is not None:
+        current_pointer = load_bounded_json(canonical_current_pointer)
+        if not isinstance(current_pointer, Mapping):
+            raise ContractError("probability_release_current_pointer_invalid")
     validated: list[ProbabilityEnvelope] = []
     for row in conn.execute(
         "SELECT " + ",".join(columns) +
@@ -491,6 +503,14 @@ def load_materialized_probability_envelopes(
             raise ContractError("probability_envelope_storage_identity_mismatch")
         if supplied_sha != envelope.content_sha256:
             raise ContractError("probability_envelope_content_sha_mismatch")
+        if envelope.lineage.get("release_state") == "MATERIALIZED_UNPUBLISHED":
+            if current_pointer is None or canonical_release_root is None:
+                continue
+            verify_released_p0_envelope_authority(
+                current_pointer,
+                expected_release_root=canonical_release_root,
+                envelope=envelope.to_dict(),
+            )
         if timestamp_lte(envelope.decision_at_utc, evaluation_at_utc):
             validated.append(envelope)
     expected_lane = (
@@ -1083,7 +1103,7 @@ def assert_formal_probability_model_authority(
     return root
 
 
-def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[str, Any]:
     """Derive the M5 fact identities from the selected P1 lineage only.
 
     The basket lane is not allowed to reopen METAR/SPECI rows or the hard-NO
@@ -1103,8 +1123,9 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
         raise ContractError("target_atomic_lineage_missing")
     required = (
         "canonical_observation_event_id",
-        "canonical_observation_sha256",
-        "canonical_observation_committed_at",
+        "truth_observation_revision_content_sha256",
+        "canonical_observation_committed_at_utc",
+        "settlement_timezone",
         "hard_bound_id",
         "source_lane",
         "report_type",
@@ -1113,17 +1134,14 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
         raise ContractError("target_atomic_lineage_incomplete")
     source_lane = str(lineage["source_lane"]).strip().upper()
     report_type = str(lineage["report_type"]).strip().upper()
-    if source_lane not in {"AMSC", "AWC"} or report_type not in {"METAR", "SPECI"}:
+    if source_lane != "AWC" or report_type not in {"METAR", "SPECI"}:
         raise ContractError("target_atomic_lineage_source_invalid")
-    observation = {
-        "observation_id": str(lineage["canonical_observation_event_id"]).strip(),
-        "station_id": station_id,
-        "event_date": event_date,
-        "source_lane": source_lane,
-        "report_type": report_type,
-        "raw_sha256": str(lineage["canonical_observation_sha256"]).strip().lower(),
-        "canonical_committed_at": str(lineage["canonical_observation_committed_at"]).strip(),
-    }
+    settlement_timezone = str(lineage["settlement_timezone"]).strip()
+    if settlement_timezone != str(envelope.get("settlement_timezone") or "").strip():
+        raise ContractError("target_atomic_lineage_settlement_timezone_mismatch")
+    awc_contract = compiled_cycle.get("awc_observation_contract")
+    if not isinstance(awc_contract, Mapping):
+        raise ContractError("target_atomic_awc_observation_contract_missing")
     bound = {
         "bound_id": str(lineage["hard_bound_id"]).strip(),
         "station_id": station_id,
@@ -1137,7 +1155,13 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
             "probability_envelope_sha256": str(envelope.get("content_sha256") or ""),
         },
     }
-    return {"observation": observation, "bound": bound}
+    return {
+        "awc_observation_contract": dict(awc_contract),
+        "truth_observation_revision_content_sha256": str(
+            lineage["truth_observation_revision_content_sha256"]
+        ).strip().lower(),
+        "bound": bound,
+    }
 
 
 def target_stage_zero_execution_anchor_from_cycle(
@@ -1194,6 +1218,7 @@ def target_stage_zero_execution_anchor_from_cycle(
     )
     p1_canonical_fact_keys = (
         *canonical_fact_keys,
+        "settlement_timezone",
         "source_lane",
         "report_type",
     )

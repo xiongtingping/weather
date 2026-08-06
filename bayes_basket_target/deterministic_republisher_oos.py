@@ -23,14 +23,17 @@ import sqlite3
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .canonical_contract import CanonicalTruthFact
+from .awc_observation_contract import (
+    CanonicalAWCObservationDayBoundsFact,
+    CanonicalAWCObservationRevisionFact,
+)
 from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import ContractError, content_sha256
 from .settlement_time import settlement_day_window
 
 
-SCHEMA = "deterministic_republisher_strict_oos_v1"
-CANDIDATE_SCHEMA = "deterministic_republisher_strict_oos_candidate_v1"
+SCHEMA = "deterministic_republisher_strict_oos_v2"
+CANDIDATE_SCHEMA = "deterministic_republisher_strict_oos_candidate_v2"
 HISTORICAL_RECEIPT_CLASS = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
 TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 SOURCE_ROLE = "aggregator_republisher"
@@ -149,8 +152,231 @@ def _verify_capture(capture: Mapping[str, Any]) -> tuple[str, dict[str, str], li
             "reconstructed_at_utc": str(capture.get("reconstructed_at_utc") or ""),
             "provider_id": provider,
             "model_id": model,
+            "model_run_initialization_utc": str(
+                raw.get("model_run_initialization_utc") or ""
+            ),
+            "run_initialization_provenance": str(
+                raw.get("run_initialization_provenance")
+                or "aggregator_replay_bucket_not_native_cycle"
+            ),
+            "temperature_point_count": int(
+                raw.get("temperature_point_count") or 0
+            ),
+            "valid_time_start_utc": str(raw.get("valid_time_start_utc") or ""),
+            "valid_time_end_utc": str(raw.get("valid_time_end_utc") or ""),
+            # This retained capture is explicitly retrospective.  It proves
+            # payload identity, not that the model value was available before
+            # the historical decision/day close.
+            "strict_asof_model_availability_proven": False,
+            "model_available_at_utc": None,
+            "forecast_decision_at_utc": None,
         })
     return provider, timezones, normalized
+
+
+def _load_v12_truth_catalog(
+    database: sqlite3.Connection,
+    *,
+    scopes: Iterable[tuple[str, str]],
+    as_of: datetime,
+    timezones: Mapping[str, str],
+) -> tuple[
+    dict[tuple[str, str], dict[str, Any]],
+    dict[tuple[str, str], set[str]],
+]:
+    normalized = sorted(set(scopes))
+    if not normalized:
+        raise ContractError("deterministic_republisher_truth_scope_empty")
+    inspection = inspect_canonical_ssot_schema(database)
+    if inspection.get("state") not in {"V12", "V13", "V14"} or inspection.get("errors"):
+        raise ContractError("deterministic_republisher_canonical_ssot_v12_required")
+    requested = set(normalized)
+    revision_rows = database.execute(
+        "SELECT scope_key,content_sha256,fact_json,lineage_json "
+        "FROM canonical_ssot_fact WHERE fact_type='truth_observation_revision' "
+        "ORDER BY scope_key"
+    ).fetchall()
+    revisions_by_day: dict[
+        tuple[str, str, str], list[CanonicalAWCObservationRevisionFact]
+    ] = defaultdict(list)
+    revisions_by_hash: dict[str, CanonicalAWCObservationRevisionFact] = {}
+    for row in revision_rows:
+        try:
+            fact_raw = json.loads(str(row[2]))
+            lineage = json.loads(str(row[3]))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ContractError(
+                "deterministic_republisher_v12_revision_json_invalid"
+            ) from exc
+        if not isinstance(fact_raw, Mapping) or not isinstance(lineage, Mapping):
+            raise ContractError(
+                "deterministic_republisher_v12_revision_mapping_required"
+            )
+        fact = CanonicalAWCObservationRevisionFact.from_mapping(fact_raw)
+        if str(row[0]) != fact.scope_key or str(row[1]) != fact.content_sha256:
+            raise ContractError(
+                "deterministic_republisher_v12_revision_row_mismatch"
+            )
+        expected_lineage = {
+            "source_lane": "AWC",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "raw_object_kind": fact.raw["raw_object_kind"],
+            "raw_object_sha256": fact.raw["raw_object_sha256"],
+            "awc_source_receipt_sha256": fact.raw["awc_source_receipt_sha256"],
+            "origin_source_id": fact.raw["origin_source_id"],
+            "origin_url": fact.raw["origin_url"],
+            "origin_transport": fact.raw["origin_transport"],
+            "origin_registry_sha256": fact.raw["origin_registry_sha256"],
+            "origin_record_sha256": fact.raw["origin_record_sha256"],
+            "production_no_live_only": True,
+            "formal_live_authority": False,
+            "p1_eligible": True,
+        }
+        if dict(lineage) != expected_lineage:
+            raise ContractError(
+                "deterministic_republisher_v12_revision_lineage_mismatch"
+            )
+        key = (
+            str(fact.raw["station_id"]),
+            str(fact.raw["event_date"]),
+            str(fact.raw["settlement_timezone"]),
+        )
+        revisions_by_day[key].append(fact)
+        revisions_by_hash[fact.content_sha256] = fact
+
+    rows = database.execute(
+        "SELECT scope_key,content_sha256,fact_json,lineage_json "
+        "FROM canonical_ssot_fact WHERE fact_type='truth_observation_day_bounds' "
+        "ORDER BY scope_key"
+    ).fetchall()
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    scope_timezones: dict[tuple[str, str], set[str]] = defaultdict(set)
+    selected_versions: dict[tuple[str, str], int] = {}
+    for row in rows:
+        try:
+            fact_raw = json.loads(str(row[2]))
+            lineage = json.loads(str(row[3]))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ContractError(
+                "deterministic_republisher_v12_day_bounds_json_invalid"
+            ) from exc
+        if not isinstance(fact_raw, Mapping) or not isinstance(lineage, Mapping):
+            raise ContractError(
+                "deterministic_republisher_v12_day_bounds_mapping_required"
+            )
+        fact = CanonicalAWCObservationDayBoundsFact.from_mapping(fact_raw)
+        if str(row[0]) != fact.scope_key or str(row[1]) != fact.content_sha256:
+            raise ContractError(
+                "deterministic_republisher_v12_day_bounds_row_mismatch"
+            )
+        expected_lineage = {
+            "source_lane": "AWC",
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "observation_revision_vector_sha256": fact.raw[
+                "observation_revision_vector_sha256"
+            ],
+            "coverage_receipt_sha256": fact.raw["coverage_receipt_sha256"],
+            "production_no_live_only": True,
+            "formal_live_authority": False,
+            "p1_eligible": True,
+        }
+        if dict(lineage) != expected_lineage:
+            raise ContractError(
+                "deterministic_republisher_v12_day_bounds_lineage_mismatch"
+            )
+        key = (str(fact.raw["station_id"]), str(fact.raw["event_date"]))
+        if key not in requested:
+            continue
+        timezone_name = str(fact.raw["settlement_timezone"])
+        scope_timezones[key].add(timezone_name)
+        committed = _utc(
+            "truth_committed", fact.raw["canonical_committed_at_utc"]
+        )
+        if committed > as_of:
+            continue
+        expected_timezone = str(timezones.get(key[0]) or "")
+        if not expected_timezone:
+            raise ContractError("deterministic_republisher_truth_timezone_missing")
+        if timezone_name != expected_timezone:
+            continue
+        closed_at = _utc("station_day_end", fact.raw["day_end_utc"])
+        expected_day_end = _utc(
+            "expected_station_day_end",
+            settlement_day_window(key[1], timezone_name)["target_day_end_utc"],
+        )
+        if closed_at != expected_day_end:
+            raise ContractError("deterministic_republisher_truth_day_end_mismatch")
+        if closed_at > as_of:
+            continue
+        bounds_version = int(fact.raw["bounds_version"])
+        if bounds_version <= selected_versions.get(key, -1):
+            continue
+        day_revisions = sorted(
+            (
+                item
+                for item in revisions_by_day.get(
+                    (key[0], key[1], timezone_name), ()
+                )
+                if _utc(
+                    "revision_committed", item.raw["canonical_committed_at_utc"]
+                )
+                <= committed
+            ),
+            key=lambda item: int(item.raw["sequence"]),
+        )
+        if not day_revisions or [int(item.raw["sequence"]) for item in day_revisions] != list(
+            range(1, len(day_revisions) + 1)
+        ):
+            raise ContractError(
+                "deterministic_republisher_v12_revision_vector_incomplete"
+            )
+        revision_vector_sha = content_sha256(
+            [item.content_sha256 for item in day_revisions]
+        )
+        if revision_vector_sha != fact.raw["observation_revision_vector_sha256"]:
+            raise ContractError(
+                "deterministic_republisher_v12_revision_vector_mismatch"
+            )
+        maximum_value = max(
+            float(item.raw["reported_temperature_c"]) for item in day_revisions
+        )
+        ties = sorted(
+            (
+                item
+                for item in day_revisions
+                if float(item.raw["reported_temperature_c"]) == maximum_value
+            ),
+            key=lambda item: (int(item.raw["sequence"]), item.content_sha256),
+        )
+        if content_sha256(sorted(item.content_sha256 for item in ties)) != fact.raw[
+            "max_tie_vector_sha256"
+        ]:
+            raise ContractError(
+                "deterministic_republisher_v12_max_tie_vector_mismatch"
+            )
+        maximum = revisions_by_hash.get(str(fact.raw["max_observation_fact_sha256"]))
+        if (
+            maximum is None
+            or maximum.content_sha256 != ties[0].content_sha256
+            or float(fact.raw["running_max_c"]) != maximum_value
+        ):
+            raise ContractError(
+                "deterministic_republisher_v12_max_reference_mismatch"
+            )
+        selected_versions[key] = bounds_version
+        result[key] = {
+            "station_id": key[0],
+            "event_date": key[1],
+            "official_tmax_c": _finite("truth_tmax", fact.raw["running_max_c"]),
+            "bounds_version": bounds_version,
+            "canonical_committed_at_utc": _stamp(committed),
+            "content_sha256": fact.content_sha256,
+            "observation_revision_vector_sha256": revision_vector_sha,
+            "max_observation_fact_sha256": maximum.content_sha256,
+            "coverage_receipt_sha256": str(fact.raw["coverage_receipt_sha256"]),
+            "station_day_end_utc": _stamp(closed_at),
+        }
+    return result, scope_timezones
 
 
 def _truth_index(
@@ -160,82 +386,9 @@ def _truth_index(
     as_of: datetime,
     timezones: Mapping[str, str],
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    normalized = sorted(set(scopes))
-    if not normalized:
-        raise ContractError("deterministic_republisher_truth_scope_empty")
-    inspection = inspect_canonical_ssot_schema(database)
-    if inspection.get("state") != "V7" or inspection.get("errors"):
-        raise ContractError("deterministic_republisher_canonical_ssot_v7_required")
-    requested = set(normalized)
-    rows = database.execute(
-        "SELECT scope_key,content_sha256,fact_json,lineage_json "
-        "FROM canonical_ssot_fact WHERE fact_type='truth' ORDER BY scope_key"
-    ).fetchall()
-    result: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in rows:
-        try:
-            fact_raw = json.loads(str(row[2]))
-            lineage = json.loads(str(row[3]))
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ContractError(
-                "deterministic_republisher_canonical_truth_json_invalid"
-            ) from exc
-        if not isinstance(fact_raw, Mapping) or not isinstance(lineage, Mapping):
-            raise ContractError(
-                "deterministic_republisher_canonical_truth_mapping_required"
-            )
-        fact = CanonicalTruthFact.from_mapping(fact_raw)
-        if str(row[0]) != fact.scope_key or str(row[1]) != fact.content_sha256:
-            raise ContractError(
-                "deterministic_republisher_canonical_truth_row_mismatch"
-            )
-        if (
-            lineage.get("truth_content_sha256") != fact.truth_content_sha256
-            or lineage.get("source_role") != fact.source_role
-            or lineage.get("authority_scope") != fact.authority_scope
-        ):
-            raise ContractError(
-                "deterministic_republisher_canonical_truth_lineage_mismatch"
-            )
-        key = (fact.station_id, fact.event_date)
-        if key not in requested:
-            continue
-        if (
-            fact.source_lane != "AWC"
-            or fact.closed_day is not True
-            or fact.authority_scope
-            not in {"FORMAL_NATIVE_ELIGIBLE", "PRODUCTION_NO_LIVE_ONLY"}
-        ):
-            continue
-        committed = _utc("truth_committed", fact.canonical_committed_at_utc)
-        if committed > as_of:
-            continue
-        timezone_name = str(timezones.get(fact.station_id) or "")
-        if not timezone_name or timezone_name != fact.settlement_timezone:
-            raise ContractError("deterministic_republisher_truth_timezone_missing")
-        closed_at = _utc("station_day_end", fact.station_day_end_utc)
-        expected_day_end = _utc(
-            "expected_station_day_end",
-            settlement_day_window(fact.event_date, timezone_name)["target_day_end_utc"],
-        )
-        if closed_at != expected_day_end:
-            raise ContractError("deterministic_republisher_truth_day_end_mismatch")
-        if closed_at > as_of:
-            continue
-        existing = result.get(key)
-        if existing is not None and int(existing["revision_no"]) >= fact.truth_revision_no:
-            continue
-        result[key] = {
-            "truth_id": fact.truth_id,
-            "station_id": fact.station_id,
-            "event_date": fact.event_date,
-            "official_tmax_c": _finite("truth_tmax", fact.truth_value),
-            "revision_no": fact.truth_revision_no,
-            "canonical_committed_at_utc": _stamp(committed),
-            "content_sha256": fact.content_sha256,
-            "truth_content_sha256": fact.truth_content_sha256,
-            "station_day_end_utc": _stamp(closed_at),
-        }
+    result, _ = _load_v12_truth_catalog(
+        database, scopes=scopes, as_of=as_of, timezones=timezones
+    )
     return result
 
 
@@ -259,6 +412,10 @@ def build_deterministic_republisher_oos(
     """Build one no-live candidate per station from closed historical curves."""
 
     as_of = _utc("as_of", as_of_utc)
+    canonical_schema = inspect_canonical_ssot_schema(database)
+    canonical_state = str(canonical_schema.get("state") or "")
+    if canonical_state not in {"V12", "V13", "V14"} or canonical_schema.get("errors"):
+        raise ContractError("deterministic_republisher_canonical_ssot_v12_required")
     if min_train_days != MIN_TRAIN_DAYS or min_holdout_days != MIN_HOLDOUT_DAYS:
         raise ContractError("deterministic_republisher_oos_thresholds_fixed")
     all_curves: list[dict[str, Any]] = []
@@ -293,18 +450,44 @@ def build_deterministic_republisher_oos(
         if reconstructed <= event_end:
             raise ContractError("deterministic_republisher_capture_not_retrospective")
         by_scope[key] = curve
-    truth = _truth_index(
+    truth, truth_scope_timezones = _load_v12_truth_catalog(
         database,
         scopes=by_scope,
         as_of=as_of,
         timezones=timezones,
     )
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    missing_truth: list[dict[str, str]] = []
+    missing_truth: list[dict[str, Any]] = []
+    model_lineage_gaps: list[dict[str, Any]] = []
     for key, curve in sorted(by_scope.items()):
         actual = truth.get(key)
         if actual is None:
-            missing_truth.append({"station_id": key[0], "event_date": key[1]})
+            available_timezones = sorted(truth_scope_timezones.get(key, ()))
+            failure_code = (
+                "TIMEZONE_MISMATCH"
+                if available_timezones
+                and curve["target_timezone"] not in available_timezones
+                else "DATA_MISSING"
+            )
+            missing_truth.append({
+                "station_id": key[0],
+                "event_date": key[1],
+                "settlement_timezone": curve["target_timezone"],
+                "available_truth_timezones": available_timezones,
+                "failure_code": failure_code,
+            })
+        if curve["strict_asof_model_availability_proven"] is not True:
+            model_lineage_gaps.append({
+                "station_id": key[0],
+                "event_date": key[1],
+                "settlement_timezone": curve["target_timezone"],
+                "model_id": curve["model_id"],
+                "provider_id": curve["provider_id"],
+                "failure_code": "LINEAGE_MISMATCH",
+                "detail": "historical_model_available_at_and_decision_at_unproven",
+            })
+            continue
+        if actual is None:
             continue
         grouped[key[0]].append({**curve, "truth": actual})
     candidates: list[dict[str, Any]] = []
@@ -315,12 +498,46 @@ def build_deterministic_republisher_oos(
         # 28 closed days so later backfills cannot silently change a cohort.
         rows = sorted(rows, key=lambda item: item["event_date"])
         if len(rows) < MIN_TRAIN_DAYS + MIN_HOLDOUT_DAYS:
+            station_missing = [
+                item for item in missing_truth if item["station_id"] == station
+            ]
+            mismatch_count = sum(
+                item["failure_code"] == "TIMEZONE_MISMATCH"
+                for item in station_missing
+            )
+            model_lineage_gap_count = sum(
+                item["station_id"] == station for item in model_lineage_gaps
+            )
+            failure_code = (
+                "LINEAGE_MISMATCH"
+                if not rows and model_lineage_gap_count
+                else
+                "TIMEZONE_MISMATCH"
+                if not rows and mismatch_count
+                else "OOS_SAMPLE_SHORT"
+            )
             shortfalls.append({
                 "station_id": station,
+                "model_id": next(iter(models)),
+                "provider_id": next(iter(provider_ids)),
+                "source_class": SOURCE_ROLE,
+                "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+                "settlement_timezone": timezones[station],
+                "lead_bucket": "d0",
+                "run_cycle": None,
+                "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
+                "state": "BLOCKED",
+                "failure_code": failure_code,
                 "available_closed_historical_days": len(rows),
                 "required_train_days": MIN_TRAIN_DAYS,
                 "required_holdout_days": MIN_HOLDOUT_DAYS,
                 "missing_days": MIN_TRAIN_DAYS + MIN_HOLDOUT_DAYS - len(rows),
+                "timezone_mismatch_scope_count": mismatch_count,
+                "data_missing_scope_count": sum(
+                    item["failure_code"] == "DATA_MISSING"
+                    for item in station_missing
+                ),
+                "model_lineage_gap_scope_count": model_lineage_gap_count,
             })
             continue
         cohort = rows[: MIN_TRAIN_DAYS + MIN_HOLDOUT_DAYS]
@@ -334,11 +551,20 @@ def build_deterministic_republisher_oos(
                 "truth_value_c": item["truth"]["official_tmax_c"],
                 "model_input_content_sha256": item["raw_message_sha256"],
                 "source_receipt_sha256": item["receipt_sha256"],
-                "canonical_truth_fact_content_sha256": item["truth"]["content_sha256"],
-                "awc_truth_id": item["truth"]["truth_id"],
-                "awc_truth_content_sha256": item["truth"]["truth_content_sha256"],
-                "awc_truth_revision_no": item["truth"]["revision_no"],
-                "awc_truth_asof_utc": item["truth"]["canonical_committed_at_utc"],
+                "truth_day_bounds_content_sha256": item["truth"]["content_sha256"],
+                "truth_bounds_version": item["truth"]["bounds_version"],
+                "truth_observation_revision_vector_sha256": item["truth"][
+                    "observation_revision_vector_sha256"
+                ],
+                "truth_max_observation_fact_sha256": item["truth"][
+                    "max_observation_fact_sha256"
+                ],
+                "truth_coverage_receipt_sha256": item["truth"][
+                    "coverage_receipt_sha256"
+                ],
+                "truth_canonical_committed_at_utc": item["truth"][
+                    "canonical_committed_at_utc"
+                ],
                 "station_day_end_utc": item["truth"]["station_day_end_utc"],
             }
             cohort_rows.append(
@@ -361,8 +587,11 @@ def build_deterministic_republisher_oos(
             "source_role": SOURCE_ROLE,
             "settlement_timezone": cohort[0]["target_timezone"],
             "lead_bucket": "d0",
-            "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
-            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_SCOPE",
+            # Open-Meteo's historical daily archive does not expose the
+            # upstream native run cycle.  Preserve that absence as null;
+            # never manufacture a native-looking cycle label.
+            "run_cycle": None,
+            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
             "season_bin": _season(cohort[0]["event_date"]),
             "cohort_rows": cohort_rows,
         }
@@ -383,7 +612,7 @@ def build_deterministic_republisher_oos(
             model_errors.append(model_error)
             climate_errors.append(climate_error)
             contract_identity = {
-                "contract_version": "deterministic_open_meteo_historical_oos_v1",
+                "contract_version": "deterministic_open_meteo_historical_oos_v2",
                 "station_id": station,
                 "event_date": item["event_date"],
                 "target_timezone": item["target_timezone"],
@@ -392,12 +621,21 @@ def build_deterministic_republisher_oos(
                 "source_role": SOURCE_ROLE,
                 "source_raw_sha256": item["raw_message_sha256"],
                 "source_receipt_sha256": item["receipt_sha256"],
-                "awc_truth_id": item["truth"]["truth_id"],
-                "awc_truth_revision_no": item["truth"]["revision_no"],
-                "awc_truth_content_sha256": item["truth"]["truth_content_sha256"],
-                "canonical_truth_fact_content_sha256": item["truth"]["content_sha256"],
+                "truth_day_bounds_content_sha256": item["truth"]["content_sha256"],
+                "truth_bounds_version": item["truth"]["bounds_version"],
+                "truth_observation_revision_vector_sha256": item["truth"][
+                    "observation_revision_vector_sha256"
+                ],
+                "truth_max_observation_fact_sha256": item["truth"][
+                    "max_observation_fact_sha256"
+                ],
+                "truth_coverage_receipt_sha256": item["truth"][
+                    "coverage_receipt_sha256"
+                ],
+                "truth_canonical_committed_at_utc": item["truth"][
+                    "canonical_committed_at_utc"
+                ],
                 "station_day_end_utc": item["truth"]["station_day_end_utc"],
-                "awc_truth_asof_utc": item["truth"]["canonical_committed_at_utc"],
                 "receipt_class": HISTORICAL_RECEIPT_CLASS,
                 "temporal_scope": TEMPORAL_SCOPE,
                 "future_event_count": 0,
@@ -435,8 +673,8 @@ def build_deterministic_republisher_oos(
             "season_bin": _season(cohort[0]["event_date"]),
             "settlement_timezone": cohort[0]["target_timezone"],
             "lead_bucket": "d0",
-            "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
-            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_SCOPE",
+            "run_cycle": None,
+            "run_cycle_scope": "REPUBLISHER_HISTORICAL_DAY_NO_NATIVE_CYCLE",
             "min_train_days": MIN_TRAIN_DAYS,
             "min_holdout_days": MIN_HOLDOUT_DAYS,
             "train_start_date": train[0]["event_date"],
@@ -482,12 +720,13 @@ def build_deterministic_republisher_oos(
         "station_count": len(timezones),
         "curve_count": len(by_scope),
         "truth_count": len(truth),
-        "truth_source": "canonical_ssot_fact_v7",
+        "truth_source": "canonical_ssot_fact_v12_awc_observation_contract_v1",
         "legacy_truth_projection_read": False,
         "candidate_count": len(candidates),
         "candidates": candidates,
         "shortfalls": shortfalls,
         "missing_truth_scopes": missing_truth,
+        "model_lineage_gaps": model_lineage_gaps,
         "oos_policy": {
             "temporal_scope": TEMPORAL_SCOPE,
             "future_event_count": 0,
