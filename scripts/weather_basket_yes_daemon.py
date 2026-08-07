@@ -151,6 +151,10 @@ TARGET_WAL_REOPEN_REASONS = (
 )
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
+# Scopes advanced per poll.  The full sweep must finish inside the P0 freshness
+# TTL (~6h) or scopes expire faster than the rotation can refresh them; with 77
+# scopes and a 10-minute poll, three per poll brings the sweep to ~4.3h.
+TARGET_NWP_SCOPES_PER_POLL = 3
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
 MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
 # Warning headroom sits well above the fail-closed floor above.  The floor is
@@ -487,16 +491,34 @@ def run_target_forecast_refresh_cycle(
         )
         try:
             refresh = getattr(worker, "refresh_resident_nwp", None)
-            nwp_state = (
-                refresh(as_of_utc=utc_now())
-                if callable(refresh)
-                else {
+            if callable(refresh):
+                # One call advances the rotation by exactly one scope.  At one
+                # scope per poll the sweep took `scope_count * poll_interval`
+                # -- 77 scopes x 10min = 12.8h against a P0 freshness TTL of
+                # ~6h, so every scope's probability expired before its turn
+                # came round again and the mainline fail-closed on
+                # `resident_target_ws_actionable_scope_missing`.  Advancing
+                # several scopes per poll shortens the sweep without raising
+                # the poll frequency, which keeps the request cadence against
+                # the external archives unchanged.
+                advanced: list[dict[str, Any]] = []
+                for _ in range(TARGET_NWP_SCOPES_PER_POLL):
+                    advanced.append(refresh(as_of_utc=utc_now()))
+                    # Stop early on a fail-closed scope rather than burning the
+                    # remaining budget on the same blocker.
+                    if str(advanced[-1].get("state") or "").startswith(
+                        "blocked"
+                    ):
+                        break
+                nwp_state = advanced[-1]
+                nwp_state["scopes_advanced_this_poll"] = len(advanced)
+            else:
+                nwp_state = {
                     "state": "not_configured",
                     "reason": "resident_nwp_refresh_missing",
                     "calls_order_gateway": False,
                     "places_orders": False,
                 }
-            )
         except Exception as exc:
             nwp_state = {
                 "state": "blocked_fail_closed",

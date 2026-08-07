@@ -328,7 +328,7 @@ def test_archive_storage_guard_fails_closed_on_wal_or_free_space(
     ]
 
 
-def test_forecast_cycle_refreshes_nwp_once_without_running_consumer() -> None:
+def test_forecast_cycle_advances_rotation_without_running_consumer() -> None:
     class Worker:
         def __init__(self) -> None:
             self.refresh_calls = 0
@@ -361,10 +361,17 @@ def test_forecast_cycle_refreshes_nwp_once_without_running_consumer() -> None:
     first = daemon.run_target_forecast_refresh_cycle(worker)
     second = daemon.run_target_forecast_refresh_cycle(worker)
 
-    assert worker.refresh_calls == 1
+    # One call advances the rotation by one scope; a poll advances several so
+    # the sweep finishes inside the P0 freshness TTL.
+    assert worker.refresh_calls == daemon.TARGET_NWP_SCOPES_PER_POLL
+    assert worker.call_order == ["refresh"] * daemon.TARGET_NWP_SCOPES_PER_POLL
+    # The invariants this test exists for: refreshing never runs the consumer,
+    # and a second cycle inside the same poll window stays not-due.
     assert worker.run_calls == 0
-    assert worker.call_order == ["refresh"]
     assert first["resident_nwp_capture"]["state"] == "unchanged_zero_write"
+    assert first["resident_nwp_capture"]["scopes_advanced_this_poll"] == (
+        daemon.TARGET_NWP_SCOPES_PER_POLL
+    )
     assert second["resident_nwp_capture"]["state"] == "not_due"
     assert "resident_p0_ingress" not in first
 

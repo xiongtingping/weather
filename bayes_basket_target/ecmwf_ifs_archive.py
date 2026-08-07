@@ -89,7 +89,10 @@ DEFAULT_RAW_SEARCH_ROOTS = (
 # ``503 Slow Down``.  Historical recovery is deliberately conservative: one
 # process with three bounded workers avoids both the repeated eight-way retry
 # storms and the reproducible four-worker ``503 Slow Down`` failure.
-MAX_DOWNLOAD_WORKERS = 3
+# ECMWF has 51 members against GEFS's 31, so it dominates a capture: ~816
+# latency-bound requests.  At 3 workers that alone took ~11 minutes and was
+# the single largest reason captures never completed.
+MAX_DOWNLOAD_WORKERS = 24
 MAX_GCS_DOWNLOAD_WORKERS = 16
 EXPECTED_MEMBER_COUNT = 50
 # A failed GET may be retried only for an explicitly transient network

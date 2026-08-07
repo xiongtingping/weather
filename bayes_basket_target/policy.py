@@ -455,6 +455,7 @@ class ResolvedStationBasketPolicy:
             "edge_min_probability", "peripheral_model_reliability_min",
             "peripheral_min_coverage_value",
             "max_disagreement_expansion_layers",
+            "maximum_support_buckets",
             "dispersion_c_per_expansion_layer", "clip_min_notional_usdc",
             "clip_max_notional_usdc", "price_tick_size", "maximum_limit_price",
             "minimum_expected_edge_per_share", "minimum_expected_pnl_after_usdc", "fee_rate",

@@ -64,6 +64,7 @@ _DEFAULT_POLICY = {
     "peripheral_model_reliability_min": 0.15,
     "peripheral_min_coverage_value": 0.01,
     "max_disagreement_expansion_layers": 2,
+    "maximum_support_buckets": 4,
     "dispersion_c_per_expansion_layer": 1.0,
     "clip_min_notional_usdc": 1.0,
     "price_tick_size": 0.01,
@@ -192,6 +193,14 @@ def snapshot_from_probability_envelope(
             or model_envelope_lower_ordinal > model_envelope_upper_ordinal
         ):
             raise ContractError("probability_model_envelope_boundary_invalid")
+    # The stage anchor.  Absent for stages that do not publish one, in which
+    # case support selection falls back to its own center resolution.
+    raw_center_bucket = str(envelope.lineage.get("model_center_bucket") or "")
+    model_center_ordinal: int | None = None
+    if raw_center_bucket:
+        if raw_center_bucket not in envelope.bucket_ordinals:
+            raise ContractError("probability_model_center_bucket_unknown")
+        model_center_ordinal = int(envelope.bucket_ordinals[raw_center_bucket])
     formal_members_json = envelope.lineage.get("formal_model_members_json")
     raw_formal_lower = envelope.lineage.get(
         "formal_model_anchor_lower_ordinal"
@@ -271,11 +280,16 @@ def snapshot_from_probability_envelope(
     reported_high_observation_id: str | None = None
     hard_bound_id: str | None = None
     reported_high_advanced: bool | None = None
+    # Only fields that exist *because* an official report advanced the
+    # station-day high belong here.  ``settlement_timezone`` deliberately does
+    # not: every envelope carries it at every stage, so including it made the
+    # P0 branch below reject every P0 envelope that was ever built -- the
+    # forbidden-key check fires on *any* present key, and that one is always
+    # present.  The P1 branch never reads it either.
     risk_lineage_keys = {
         "reported_high_bucket",
         "reported_high_ordinal",
         "canonical_observation_event_id",
-        "settlement_timezone",
         "hard_bound_id",
     }
     present_risk_keys = {
@@ -383,6 +397,7 @@ def snapshot_from_probability_envelope(
             "forecast_dispersion_c": model_envelope_span_c,
             "model_envelope_lower_ordinal": model_envelope_lower_ordinal,
             "model_envelope_upper_ordinal": model_envelope_upper_ordinal,
+            "model_center_ordinal": model_center_ordinal,
             "formal_model_members_json": formal_members_json,
             "formal_model_anchor_lower_ordinal": formal_lower_ordinal,
             "formal_model_anchor_upper_ordinal": formal_upper_ordinal,

@@ -876,6 +876,8 @@ class MetarTrajectoryUpdateProof:
     degradation_reasons: tuple[str, ...]
     posterior_probabilities: Mapping[str, float]
     center_bucket: str
+    model_center_bucket: str
+    model_center_c: float
     direction_skew: float
     direction: str
     positive_core_buckets: tuple[str, ...]
@@ -898,7 +900,8 @@ class MetarTrajectoryUpdateProof:
             "likelihood_ratio_by_bucket", "applied_strength",
             "inferred_missing_intervals", "long_interval_count",
             "degradation_reasons", "posterior_probabilities",
-            "center_bucket", "direction_skew", "direction",
+            "center_bucket", "model_center_bucket", "model_center_c",
+            "direction_skew", "direction",
             "positive_core_buckets", "content_sha256",
             "conditional_path_state_sha256",
         }
@@ -1054,6 +1057,13 @@ class MetarTrajectoryUpdateProof:
             center_bucket=_text(
                 "metar_trajectory_center_bucket", raw.get("center_bucket")
             ),
+            model_center_bucket=_text(
+                "metar_trajectory_model_center_bucket",
+                raw.get("model_center_bucket"),
+            ),
+            model_center_c=_finite(
+                "metar_trajectory_model_center_c", raw.get("model_center_c")
+            ),
             direction_skew=_range(
                 "metar_trajectory_direction_skew",
                 raw.get("direction_skew"),
@@ -1144,6 +1154,8 @@ class MetarTrajectoryUpdateProof:
             "degradation_reasons": list(self.degradation_reasons),
             "posterior_probabilities": dict(self.posterior_probabilities),
             "center_bucket": self.center_bucket,
+            "model_center_bucket": self.model_center_bucket,
+            "model_center_c": self.model_center_c,
             "direction_skew": self.direction_skew,
             "direction": self.direction,
             "positive_core_buckets": list(self.positive_core_buckets),
@@ -1489,6 +1501,45 @@ def compile_metar_trajectory_update_proof(
         ),
     )
     center_ordinal = root.bucket_ordinals[center]
+    # Basket anchor for this stage: where the observed path actually points.
+    # The posterior argmax above still drives skew/direction, but it is the
+    # wrong anchor for the basket -- an open-ended edge bucket spans an
+    # unbounded interval and absorbs the whole upper tail, so it can win the
+    # argmax over 1°C buckets without the path pointing anywhere near it.
+    # P1's own point estimate is the running high plus the expected remaining
+    # warming, which is exactly "the reported path plus what is still to come".
+    remaining_mass = sum(
+        float(value) for value in governed_remaining_distribution.values()
+    )
+    expected_remaining_c = (
+        sum(
+            float(increment) * float(value)
+            for increment, value in governed_remaining_distribution.items()
+        )
+        / remaining_mass
+        if remaining_mass > 0.0
+        else 0.0
+    )
+    model_center_c = running_high + max(0.0, expected_remaining_c)
+    model_center_bucket = next(
+        (
+            bucket
+            for bucket in ordered_buckets
+            if model_center_c < upper_bounds[bucket]
+        ),
+        ordered_buckets[-1],
+    )
+    # A hard-excluded bucket is one the observed high has already ruled out; it
+    # can never be the anchor even if the expected path rounds into it.
+    if model_center_bucket in excluded:
+        model_center_bucket = next(
+            (
+                bucket
+                for bucket in ordered_buckets
+                if bucket not in excluded
+            ),
+            center,
+        )
     skew = (
         sum(
             posterior[bucket] for bucket in ordered_buckets
@@ -1530,6 +1581,8 @@ def compile_metar_trajectory_update_proof(
         "degradation_reasons": reasons,
         "posterior_probabilities": posterior,
         "center_bucket": center,
+        "model_center_bucket": model_center_bucket,
+        "model_center_c": model_center_c,
         "direction_skew": skew,
         "direction": direction,
         "positive_core_buckets": [

@@ -72,6 +72,48 @@ _NATIVE_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 _MIXED_NATIVE_CYCLES = "MIXED_NATIVE_CYCLES"
 
 
+def _anchor_bucket_for_temperature(
+    value: float,
+    *,
+    root_lineage: Mapping[str, Any],
+    bucket_ordinals: Mapping[str, int],
+) -> str | None:
+    """Map a stage's point estimate onto its bucket, or None if ungeometried.
+
+    Returns None rather than guessing when the root carries no bucket geometry
+    (non-native roots do not publish intervals).  Support selection then falls
+    back to its own center resolution, which is the pre-existing behaviour.
+    """
+
+    raw = root_lineage.get("bucket_intervals_c_json")
+    if not raw:
+        return None
+    try:
+        intervals = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(intervals, Mapping) or set(intervals) != set(bucket_ordinals):
+        return None
+    try:
+        target = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(target):
+        return None
+    matches = [
+        str(bucket)
+        for bucket, bounds in intervals.items()
+        if (
+            isinstance(bounds, Sequence)
+            and not isinstance(bounds, (str, bytes, bytearray))
+            and len(bounds) == 2
+            and (bounds[0] is None or target >= float(bounds[0]))
+            and (bounds[1] is None or target < float(bounds[1]))
+        )
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _text(name: str, value: Any) -> str:
     result = str(value or "").strip()
     if not result:
@@ -390,6 +432,9 @@ def _lineage(
         "model_envelope_upper_bucket",
         "model_envelope_lower_ordinal",
         "model_envelope_upper_ordinal",
+        "model_center_bucket",
+        "model_center_c",
+        "model_center_ordinal",
         "peripheral_model_reliability_by_bucket_json",
         "bucket_intervals_c_json",
         "bucket_centers_c_json",
@@ -577,6 +622,23 @@ def materialize_p0m(
     values["revision_mode"] = (
         "root_replacement" if revision else "first_taf_confirmation"
     )
+    # Stage anchor, published under the same key P0 and P1 use.  P0-M's own
+    # point estimate is the TAF TX center after calibration and the cloud /
+    # precipitation / wind physical confirmation -- that is precisely "where
+    # this stage's data points".  Anchoring on the posterior argmax instead
+    # would inherit P0's edge-bucket defect: an open-ended bucket spans an
+    # unbounded interval and can win an argmax without the forecast pointing
+    # anywhere near it.
+    anchor_bucket = _anchor_bucket_for_temperature(
+        proof.physically_confirmed_center_c,
+        root_lineage=root.lineage,
+        bucket_ordinals=root.bucket_ordinals,
+    )
+    if anchor_bucket is not None:
+        values["model_center_bucket"] = anchor_bucket
+        values["model_center_c"] = (
+            f"{proof.physically_confirmed_center_c:.12g}"
+        )
     _sha("forecast_source_object_sha256", values["forecast_source_object_sha256"])
     return _posterior(
         root,
@@ -823,6 +885,10 @@ def materialize_p1(
                 "DIAGNOSTIC_ONLY_BASKET_RECOMPUTES_POLICY_DIRECTION"
             ),
             "metar_trajectory_center_bucket": proof.center_bucket,
+            # Stage anchor, read by the basket under the same key P0 uses.  The
+            # trajectory's own argmax above stays diagnostic.
+            "model_center_bucket": proof.model_center_bucket,
+            "model_center_c": f"{proof.model_center_c:.12g}",
             "metar_trajectory_positive_core_buckets": ",".join(
                 proof.positive_core_buckets
             ),

@@ -17,10 +17,14 @@ import math
 import os
 import re
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -43,6 +47,7 @@ from .event_contracts import ForecastRevision, validate_forecast_revision_chain
 from .database import (
     DEFAULT_TARGET_DB,
     DEFAULT_TARGET_WS_MANIFEST,
+    ROOT,
     resolve_target_database,
     resolve_target_ws_manifest,
 )
@@ -315,6 +320,41 @@ DEFAULT_TARGET_ACTIVATION = (
 )
 DEFAULT_TARGET_MARKET_MANIFEST = DEFAULT_TARGET_WS_MANIFEST
 DEFAULT_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST = DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST
+OFFICIAL_NATIVE_FORWARD_INBOX_SCHEMA = "native_ensemble_forward_inbox_v1"
+# One rotation step captures one scope.  A station whose cycle simply has not
+# published yet must not re-download on every cycle, and the retained archives
+# are shared and reused within their own TTL, so a modest retry floor is enough
+# to keep the whole 45-station rotation moving within an event day.
+OFFICIAL_NATIVE_CAPTURE_RETRY_SEC = 1800.0
+# Bounded by the capture command's own MIN/MAX_TIMEOUT_SECONDS contract.
+OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC = 45.0
+# A capture downloads whole GEFS/ECMWF archives and takes minutes, while the
+# rotation must sweep ~77 scopes well inside the P0 freshness TTL (~6h) or every
+# scope goes stale and the mainline fail-closes on
+# `resident_target_ws_actionable_scope_missing`.  Capturing on every rotation
+# step did exactly that: it monopolised the single forecast worker and the
+# cursor advanced roughly one scope per six hours.  A global floor keeps the
+# fast republisher path sweeping and lets native coverage accrue in the gaps.
+#
+# Deliberately not a multiple of the NWP poll interval: at exactly one poll
+# period the floor expires on the way into every poll, so each poll paid the
+# capture deadline again.  A prime-ish offset lets most polls run pure
+# republisher and spreads captures across different scopes over time.
+# Captures run off the rotation thread, so the limit that matters is how
+# many archive fetches may be in flight at once -- not how rarely one may
+# start.  Official coverage is what gates P0, so this is sized to grow it
+# quickly while staying bounded against the external archives.
+OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY = 4
+# Hard wall-clock ceiling on one capture, enforced by killing the child.  The
+# command's own ``--timeout-seconds`` bounds individual archive requests only;
+# total runtime is unbounded.
+#
+# A capture is latency-bound: ~1300 bounded range requests at a measured 2.4-4.6s
+# round trip.  With the archive download pools at 24 workers that lands near
+# ~140s, so this leaves roughly a 1.7x margin.  It sits on the background capture
+# pool and no longer blocks the rotation, which is what makes a ceiling this
+# large safe; a wedged child still gets killed and frees its slot.
+OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 240.0
 CANONICAL_TARGET_STATIONS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
@@ -1125,7 +1165,132 @@ def _manifest_content_sha_matches(value: Mapping[str, Any]) -> bool:
     })
 
 
-def _resident_open_event_dates(path: Path) -> tuple[str, ...]:
+def _active_forward_scopes(path: Path, *, horizon: date) -> set[tuple[str, str]]:
+    """Return the still-open (station, event_date) scopes held in one inbox."""
+
+    if not path.is_file():
+        return set()
+    try:
+        root = load_bounded_json(path)
+    except Exception:
+        return set()
+    if not isinstance(root, Mapping) or not isinstance(root.get("packets"), list):
+        return set()
+    scopes: set[tuple[str, str]] = set()
+    for packet in root["packets"]:
+        if not isinstance(packet, Mapping):
+            continue
+        event_date = str(packet.get("event_date") or "").strip()
+        parsed = _event_date_or_none(event_date)
+        if parsed is not None and parsed < horizon:
+            continue
+        station_id = str(packet.get("station_id") or "").strip().upper()
+        if station_id and event_date:
+            scopes.add((station_id, event_date))
+    return scopes
+
+
+def _merge_official_native_inbox(
+    inbox_path: Path,
+    *,
+    staging_path: Path,
+    as_of_utc: str,
+    allowed_scopes: set[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Merge a freshly captured packet into the shared official-native inbox.
+
+    The capture command emits an inbox holding only the scope it fetched.  This
+    replaces the matching ``(station_id, event_date)`` entry and keeps every
+    other packet, so rotating through stations accumulates coverage instead of
+    overwriting it.  Packets whose event day is certainly over everywhere are
+    dropped, which bounds the file without needing a separate retention job.
+    """
+
+    staged = load_bounded_json(staging_path)
+    if not isinstance(staged, Mapping):
+        raise ContractError("official_native_staging_inbox_invalid")
+    staged_packets = staged.get("packets")
+    if not isinstance(staged_packets, list) or not staged_packets:
+        raise ContractError("official_native_staging_packets_missing")
+
+    existing_packets: list[Any] = []
+    if inbox_path.is_file():
+        existing = load_bounded_json(inbox_path)
+        if isinstance(existing, Mapping) and isinstance(existing.get("packets"), list):
+            existing_packets = list(existing["packets"])
+
+    horizon = _utc_date(as_of_utc) - timedelta(days=1)
+
+    def _scope_of(packet: Any) -> tuple[str, str] | None:
+        if not isinstance(packet, Mapping):
+            return None
+        return (
+            str(packet.get("station_id") or "").strip().upper(),
+            str(packet.get("event_date") or "").strip(),
+        )
+
+    replaced = {scope for scope in map(_scope_of, staged_packets) if scope}
+    merged: list[Any] = []
+    pruned = 0
+    for packet in existing_packets:
+        scope = _scope_of(packet)
+        if scope is None or scope in replaced:
+            continue
+        event_day = _event_date_or_none(scope[1])
+        if event_day is not None and event_day < horizon:
+            pruned += 1
+            continue
+        merged.append(packet)
+    merged.extend(staged_packets)
+    if allowed_scopes is not None:
+        # An official packet upgrades an already-active scope from republisher
+        # to native evidence; it must not widen the scope set.  P0 compilation
+        # caps the union of both inboxes at MAX_FORWARD_P0_STATIONS
+        # (station-day pairs, not stations), so accumulating official scopes
+        # the republisher never had silently pushes that union over the bound
+        # and fail-closes the whole mainline.
+        merged = [
+            packet
+            for packet in merged
+            if not isinstance(packet, Mapping)
+            or _scope_of(packet) is None
+            or _scope_of(packet) in allowed_scopes
+        ]
+    merged.sort(
+        key=lambda packet: (
+            str((packet or {}).get("event_date") or ""),
+            str((packet or {}).get("station_id") or ""),
+        )
+        if isinstance(packet, Mapping)
+        else ("", "")
+    )
+
+    identity = {"schema": OFFICIAL_NATIVE_FORWARD_INBOX_SCHEMA, "packets": merged}
+    write_bounded_json(
+        inbox_path,
+        {**identity, "content_sha256": content_sha256(identity)},
+    )
+    return {"packet_count": len(merged), "pruned": pruned}
+
+
+def _utc_date(value: str) -> date:
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
+        timezone.utc
+    ).date()
+
+
+def _event_date_or_none(value: str) -> date | None:
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _resident_open_event_dates(
+    path: Path,
+    *,
+    as_of_utc: str | None = None,
+) -> tuple[str, ...]:
     """Return the current open station-day dates from the resident WS handoff.
 
     The forward NWP inbox is intentionally append-only and may retain several
@@ -1134,6 +1299,16 @@ def _resident_open_event_dates(path: Path) -> tuple[str, ...]:
     be present in that inbox.  This helper is deliberately conservative: a
     missing, malformed, or multi-date open handoff yields no inferred scope and
     lets the normal downstream fail-closed gates report the actual blocker.
+
+    ``event_day_state`` inside the handoff is frozen at write time, so a stale
+    manifest keeps advertising a day that closed long ago.  That is not a
+    harmless staleness: the inferred date becomes the NWP capture event-date
+    allowlist, every registry scope is filtered out, capture fail-closes, and
+    without new model data there is no new P0, no new envelope, and no new
+    manifest -- the handoff can never refresh itself.  Dates that are already
+    closed in every timezone on earth are therefore dropped here regardless of
+    what the snapshot claims, which lets the scope fall back to live registry
+    discovery instead of deadlocking on a frozen date.
     """
 
     if not path.is_file():
@@ -1163,6 +1338,18 @@ def _resident_open_event_dates(path: Path) -> tuple[str, ...]:
         event_date = str(root.get("target_local_date") or "").strip()
         if event_date and str(root.get("event_day_state") or "open").strip() == "open":
             dates.add(event_date)
+    # UTC offsets span UTC-12..UTC+14, so an event day is certainly over once
+    # the clock is more than one day past it.  This needs no per-station
+    # timezone -- which the handoff summaries do not carry anyway -- and only
+    # ever discards dates, never invents one.
+    reference = _utc_date(as_of_utc) if as_of_utc else datetime.now(timezone.utc).date()
+    horizon = reference - timedelta(days=1)
+    dates = {
+        event_date
+        for event_date in dates
+        if _event_date_or_none(event_date) is None
+        or _event_date_or_none(event_date) >= horizon
+    }
     # Mixing open station-days would turn the 45-station cap into a
     # station-day cap.  Require the coordinator to pass an explicit scope in
     # that case instead of guessing.
@@ -1459,6 +1646,215 @@ class TargetProductionWorker:
             self.commit_conn = None
             raise
 
+    def _capture_official_native_packet(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        as_of_utc: str,
+        inbox_path: Path,
+    ) -> dict[str, Any]:
+        """Start a background capture for one scope; never block the caller.
+
+        Official-native coverage is what actually gates P0: a republisher packet
+        is filtered out of the P0 inbox by design, so a scope without an
+        official packet yields no envelope at all.  Coverage therefore has to
+        grow fast, but one capture takes minutes.
+
+        Running it inline on the forecast worker was the wrong trade in both
+        directions: uncapped it stalled the rotation at roughly one scope per
+        six hours, and once throttled hard enough to protect the rotation, the
+        coverage crawled.  Captures now run on their own small pool, so several
+        scopes fetch concurrently while the rotation keeps sweeping at full
+        speed.  The work is subprocess-bound, so these threads are almost
+        entirely idle wait.
+
+        This returns immediately with the scope's admission state.  The packet
+        lands in the shared inbox when its capture finishes, and the rotation
+        picks it up on a later pass.
+        """
+
+        throttle: dict[tuple[str, str], float] = getattr(
+            self, "_official_native_capture_attempts", None
+        ) or {}
+        self._official_native_capture_attempts = throttle
+        inflight: dict[tuple[str, str], Any] = getattr(
+            self, "_official_native_capture_inflight", None
+        )
+        if inflight is None:
+            inflight = {}
+            self._official_native_capture_inflight = inflight
+        if getattr(self, "_official_native_capture_pool", None) is None:
+            # Small, bounded, and lazily created so a worker that never
+            # captures (tests, --once paths) starts no threads at all.  The
+            # work is subprocess-bound, so these threads sit in wait.
+            self._official_native_capture_pool = ThreadPoolExecutor(
+                max_workers=OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY,
+                thread_name_prefix="official-native-capture",
+            )
+            self._official_native_capture_merge_lock = threading.Lock()
+        scope_key = (station_id, event_date)
+        now_mono = time.monotonic()
+
+        # Reap finished captures so their scopes free a concurrency slot, and
+        # keep the newest outcome visible for the status receipt.
+        for key in [key for key, fut in inflight.items() if fut.done()]:
+            finished = inflight.pop(key, None)
+            try:
+                outcome = finished.result()
+            except Exception as exc:
+                outcome = {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            self._official_native_capture_last_result = {
+                "station_id": key[0],
+                "event_date": key[1],
+                **outcome,
+            }
+
+        if scope_key in inflight:
+            return {
+                "state": "IN_FLIGHT",
+                "station_id": station_id,
+                "event_date": event_date,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        if len(inflight) >= OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY:
+            return {
+                "state": "DEFERRED_CAPTURE_SLOTS_BUSY",
+                "station_id": station_id,
+                "event_date": event_date,
+                "in_flight": len(inflight),
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        last_attempt = throttle.get(scope_key)
+        if (
+            last_attempt is not None
+            and now_mono - last_attempt < OFFICIAL_NATIVE_CAPTURE_RETRY_SEC
+        ):
+            return {
+                "state": "THROTTLED",
+                "station_id": station_id,
+                "event_date": event_date,
+                "retry_after_sec": round(
+                    OFFICIAL_NATIVE_CAPTURE_RETRY_SEC - (now_mono - last_attempt), 1
+                ),
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        throttle[scope_key] = now_mono
+
+        registry_path = self.nwp_runtime_root / "market_registry_forward.json"
+        if not registry_path.is_file():
+            return {
+                "state": "SKIPPED",
+                "reason": "forward_market_registry_missing",
+                "station_id": station_id,
+                "event_date": event_date,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        capture_root = self.nwp_runtime_root / "official_native_capture"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        staging_inbox = capture_root / f"{station_id}_{event_date}_inbox.json"
+        # The capture runs as a child process, not in-process.  Its per-request
+        # timeouts do not bound total wall time -- several archive reads plus an
+        # inbox build ran well past two minutes in production -- and only a
+        # child can be killed outright when it overruns; a thread cannot.
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / "capture_official_native_ensemble_forward.py"),
+            "--event-date", event_date,
+            "--market-registry", str(registry_path),
+            # Retained archives are shared across scopes and reused within
+            # their TTL, so a second station on the same day costs no extra
+            # download.
+            "--gefs-output", str(capture_root / f"gefs_{event_date}.json"),
+            "--ecmwf-output", str(capture_root / f"ecmwf_{event_date}.json"),
+            "--inbox-output", str(staging_inbox),
+            "--station-id", station_id,
+            "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
+        ]
+        horizon = _utc_date(as_of_utc) - timedelta(days=1)
+        republisher_inbox = (
+            self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
+        )
+
+        def _run_capture() -> dict[str, Any]:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
+                )
+                if completed.returncode != 0:
+                    return {
+                        "state": "FAILED",
+                        "reason": (
+                            f"capture_exit_{completed.returncode}:"
+                            f"{(completed.stderr or '').strip()[:200]}"
+                        ),
+                    }
+            except subprocess.TimeoutExpired:
+                # Overrunning is an ordinary outcome, not an error: the scope is
+                # skipped and retried after its own floor.
+                return {
+                    "state": "DEADLINE_EXCEEDED",
+                    "reason": (
+                        "capture_exceeded_"
+                        f"{OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC:.0f}s"
+                    ),
+                }
+            except Exception as exc:
+                return {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            # Captures finish concurrently and all merge into one shared file,
+            # so serialise the read-modify-write.
+            try:
+                with self._official_native_capture_merge_lock:
+                    merged = _merge_official_native_inbox(
+                        inbox_path,
+                        staging_path=staging_inbox,
+                        as_of_utc=as_of_utc,
+                        allowed_scopes=_active_forward_scopes(
+                            republisher_inbox,
+                            horizon=horizon,
+                        ),
+                    )
+            except Exception as exc:
+                return {
+                    "state": "MERGE_FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            return {
+                "state": "CAPTURED",
+                "inbox_packet_count": merged["packet_count"],
+                "pruned_packet_count": merged["pruned"],
+            }
+
+        future = self._official_native_capture_pool.submit(_run_capture)
+        inflight[scope_key] = future
+        return {
+            "state": "SUBMITTED",
+            "station_id": station_id,
+            "event_date": event_date,
+            "in_flight": len(inflight),
+            "last_completed": dict(
+                getattr(self, "_official_native_capture_last_result", {}) or {}
+            ),
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+
     def refresh_resident_nwp(self, *, as_of_utc: str) -> dict[str, Any]:
         """Capture official models and refresh the bounded P0 inbox.
 
@@ -1690,12 +2086,63 @@ class TargetProductionWorker:
                     "official_native_packet_unavailable:"
                     f"{type(exc).__name__}:{exc}"
                 )
+        official_capture: dict[str, Any] | None = None
+        if official_packet is None:
+            # The official-native inbox used to be filled only by an operator
+            # command, so it went stale and every scope silently degraded to the
+            # Open-Meteo republisher -- which can never be forward P0 authority.
+            # Capture the one scope this rotation step owns, then re-probe.  The
+            # bounded per-scope throttle below keeps a station that genuinely has
+            # no published cycle from re-downloading on every cycle.
+            official_capture = self._capture_official_native_packet(
+                station_id=native_station,
+                event_date=native_event_date,
+                as_of_utc=as_of_utc,
+                inbox_path=official_inbox_path,
+            )
+            if official_capture.get("state") == "CAPTURED":
+                try:
+                    for candidate in _load_native_forward_inbox(
+                        official_inbox_path,
+                        error_code="official_native_forward_inbox_invalid",
+                    ):
+                        if (
+                            str(candidate.get("schema") or "")
+                            == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+                            and str(candidate.get("station_id") or "")
+                            .strip()
+                            .upper()
+                            == native_station
+                            and str(candidate.get("event_date") or "")
+                            == native_event_date
+                        ):
+                            official_packet = candidate
+                            official_probe_reason = (
+                                "official_native_packet_captured"
+                            )
+                            break
+                except Exception as exc:
+                    official_probe_reason = (
+                        "official_native_packet_unavailable:"
+                        f"{type(exc).__name__}:{exc}"
+                    )
+        # A capture performed inside this cycle finishes *after* the cycle's
+        # ``as_of_utc`` was taken, and the compiler rejects a packet captured
+        # later than the decision instant (`native_ensemble_p0_future_capture_
+        # forbidden`).  Re-read the clock so the decision instant genuinely
+        # follows the capture; every other consumer keeps the cycle's as-of.
+        native_decision_at_utc = (
+            utc_now()
+            if official_capture is not None
+            and official_capture.get("state") == "CAPTURED"
+            else as_of_utc
+        )
         if official_packet is not None:
             try:
                 compiled_official = _compile_native_ensemble_p0_runtime(
                     read_conn,
                     forward_packet=official_packet,
-                    decision_at_utc=as_of_utc,
+                    decision_at_utc=native_decision_at_utc,
                     native_oos_snapshot=self.native_oos_snapshot,
                 )
                 if (
@@ -1732,6 +2179,7 @@ class TargetProductionWorker:
                         "official_packet_reused": True,
                         "republisher_fallback_used": False,
                         "official_probe_reason": official_probe_reason,
+                        "official_native_capture": official_capture,
                         "native_p0_compile": compiled_official,
                         "p0_inbox_path": str(self.p0_inbox_path),
                         "p0_inbox_wrote": bool(p0_inbox_merge.get("wrote")),
@@ -1929,6 +2377,7 @@ class TargetProductionWorker:
                 "official_packet_reused": False,
                 "republisher_fallback_used": True,
                 "official_probe_reason": official_probe_reason,
+                "official_native_capture": official_capture,
                 "unavailable_product_count": len(
                     native_packet.get("unavailable_products") or []
                 ),
@@ -7352,6 +7801,13 @@ class TargetProductionWorker:
             return payload
 
     def close(self) -> None:
+        pool = getattr(self, "_official_native_capture_pool", None)
+        if pool is not None:
+            # Let in-flight captures finish: each is already hard-bounded by
+            # its own subprocess deadline, and a half-written staging file
+            # would otherwise be merged on the next start.
+            pool.shutdown(wait=True, cancel_futures=True)
+            self._official_native_capture_pool = None
         if self.conn is not None:
             self.conn.close()
             self.conn = None

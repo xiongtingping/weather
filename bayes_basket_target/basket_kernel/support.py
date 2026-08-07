@@ -152,7 +152,149 @@ def probability_center_diagnostics(
     return center_bucket, runner_up, lead, stable
 
 
-def _center(buckets: tuple[BucketObservation, ...]) -> BucketObservation:
+def _breakthrough_is_upper(direction: Direction) -> bool | None:
+    """Return which end carries the breakthrough hedge, or None if undirected."""
+
+    if direction is Direction.UP:
+        return True
+    if direction is Direction.DOWN:
+        return False
+    return None
+
+
+def _converge_contiguous_support(
+    admitted: set[str],
+    *,
+    center_bucket: str,
+    ordinal_by_bucket: Mapping[str, int],
+    probability_by_bucket: Mapping[str, float],
+    maximum_buckets: int,
+    hedge_value_by_bucket: Mapping[str, float] | None = None,
+    breakthrough_is_upper: bool | None = None,
+) -> set[str]:
+    """Return a contiguous, bounded support anchored on the stable center.
+
+    Peripheral risk buckets are admitted by evidence/Maker/probability/price
+    gates that say nothing about adjacency, so ``base | bias | edge`` could
+    contain holes -- a real basket once selected ordinals {0, 2, 3, 5}, quietly
+    skipping two buckets inside its own span.  A basket with a hole is not a
+    temperature range: settlement in a skipped bucket pays nothing while the
+    basket was priced as if that outcome were covered.
+
+    Convergence never fills a hole with a bucket that failed its gates.  It
+    instead keeps the longest admitted run containing the center, then trims
+    that run to ``maximum_buckets``, dropping the lower-probability end first.
+    Both operations only ever remove buckets, so every surviving bucket still
+    carries its original admission evidence.
+
+    The result narrows on its own as probability concentrates: a sharp P1
+    leaves fewer admitted neighbours, so the run -- and the basket -- shrinks
+    without any separate schedule.  Open-ended edge buckets ("31°C or below",
+    "41°C or higher") are ordinary members here; when the distribution has a
+    real tail they stay adjacent to the core and act as its tail hedge, and
+    when they are cut off from the core they are dropped rather than bridged.
+
+    A hedge bucket need not touch the core.  With a core at 32/33 and a hedge
+    at 35, 34 is pulled in to keep the range whole, giving 32/33/34/35 -- a
+    contiguous four-bucket basket whose far end carries the breakthrough cover.
+    Trimming therefore ranks ends by hedge value rather than probability, so
+    that far end is not the first thing discarded; see ``_discard_key``.
+    """
+
+    if center_bucket not in admitted:
+        raise ContractError("support_center_not_admitted")
+    if maximum_buckets < 1:
+        raise ContractError("support_maximum_buckets_invalid")
+    missing = [bucket for bucket in admitted if bucket not in ordinal_by_bucket]
+    if missing:
+        raise ContractError("support_bucket_ordinal_missing")
+
+    center_ordinal = ordinal_by_bucket[center_bucket]
+    by_ordinal = {ordinal_by_bucket[bucket]: bucket for bucket in admitted}
+    if len(by_ordinal) != len(admitted):
+        raise ContractError("support_duplicate_ordinal")
+
+    lower = center_ordinal
+    while lower - 1 in by_ordinal:
+        lower -= 1
+    upper = center_ordinal
+    while upper + 1 in by_ordinal:
+        upper += 1
+
+    # Trim the run to the cap by repeatedly discarding one end.  The center is
+    # an interior anchor and is never a discard candidate, so it survives by
+    # construction.
+    #
+    # Ranking ends by raw probability would systematically delete the hedge.
+    # The far end on the breakthrough side is held precisely because it is
+    # unlikely: it pays when the distribution is wrong, which is when the core
+    # pays nothing.  Comparing it against a near-core bucket on probability
+    # alone always loses, so a 5-bucket run would converge to the four dullest
+    # buckets and drop the tail cover.
+    #
+    # ``hedge_value_by_bucket`` already prices that cover as coverage value
+    # times distance, so it is the correct discard key when the caller supplies
+    # it.  ``direction`` then breaks ties toward the breakthrough side: with an
+    # UP move the upper end is the hedge, with DOWN the lower end is.
+    def _discard_key(ordinal: int) -> tuple[float, float]:
+        bucket = by_ordinal[ordinal]
+        hedge = float((hedge_value_by_bucket or {}).get(bucket, 0.0))
+        return (hedge, float(probability_by_bucket.get(bucket, 0.0)))
+
+    while (upper - lower + 1) > maximum_buckets:
+        if lower == center_ordinal:
+            upper -= 1
+            continue
+        if upper == center_ordinal:
+            lower += 1
+            continue
+        lower_key = _discard_key(lower)
+        upper_key = _discard_key(upper)
+        if lower_key < upper_key:
+            lower += 1
+        elif upper_key < lower_key:
+            upper -= 1
+        elif breakthrough_is_upper is True:
+            lower += 1
+        elif breakthrough_is_upper is False:
+            upper -= 1
+        else:
+            # No directional evidence and an exact tie: keep the deterministic
+            # low-side trim so the result stays reproducible.
+            lower += 1
+
+    return {by_ordinal[ordinal] for ordinal in range(lower, upper + 1)}
+
+
+def _center(
+    buckets: tuple[BucketObservation, ...],
+    *,
+    model_center_ordinal: int | None = None,
+) -> BucketObservation:
+    """Anchor the basket where the stage's data points.
+
+    Highest probability is the wrong anchor when an open-ended edge bucket is
+    in play.  "35°C or higher" spans an unbounded interval, so it collects the
+    whole upper tail of every ensemble member and is not commensurable with the
+    1°C buckets it is ranked against.  ZUUU showed this exactly: system centers
+    of 30.87°C and 34.39°C, a model envelope of 31°C..34°C, and yet the edge
+    bucket won the argmax at 0.3344 and anchored the basket outside the
+    envelope.
+
+    ``model_center_ordinal`` is the bucket containing this stage's own point
+    estimate -- for P0 the weight-averaged calibrated system centers.  An edge
+    bucket remains a legitimate anchor whenever that estimate genuinely falls
+    inside it (centers of 36/37 do).  The probability argmax stays as the
+    fallback for stages that publish no anchor.
+    """
+
+    if model_center_ordinal is not None:
+        anchored = [
+            item for item in buckets if item.ordinal == model_center_ordinal
+        ]
+        if anchored:
+            return anchored[0]
+        raise ContractError("support_model_center_bucket_absent")
     return min(
         buckets,
         key=lambda item: (-item.probability, item.ordinal, item.bucket),
@@ -246,7 +388,10 @@ def _choose_support(
     buckets = tuple(
         sorted(snapshot.buckets, key=lambda item: (item.ordinal, item.bucket))
     )
-    center = _center(buckets)
+    center = _center(
+        buckets,
+        model_center_ordinal=snapshot.evidence.model_center_ordinal,
+    )
     direction = _direction(
         buckets,
         center,
@@ -434,7 +579,27 @@ def _choose_support(
             )
         }
         edge = selected_risk - bias
-        desired = base | bias | edge
+        desired = _converge_contiguous_support(
+            base | bias | edge,
+            center_bucket=center.bucket,
+            ordinal_by_bucket={
+                item.bucket: item.ordinal for item in buckets
+            },
+            probability_by_bucket={
+                item.bucket: item.probability for item in buckets
+            },
+            maximum_buckets=policy.maximum_support_buckets,
+            # This branch has no coverage-value scores, so the direction alone
+            # protects the breakthrough end from being trimmed first.
+            breakthrough_is_upper=_breakthrough_is_upper(direction),
+        )
+        # Risk families only ever classify what survived convergence.  A
+        # peripheral bucket that convergence dropped must not keep a bias/edge
+        # role, or the score vector would reference a bucket outside support.
+        base &= desired
+        bias &= desired
+        edge &= desired
+        selected_risk &= desired
         scores: dict[str, tuple[float, float, float]] = {}
         for item in buckets:
             base_score = item.probability if item.bucket in base else 0.0
@@ -647,10 +812,28 @@ def _choose_support(
         )
     edge = set(edge_scores)
 
-    # Final support may be sparse. Historical holdings remain inventory facts,
-    # but neither they nor two selected endpoints force an internal gap into
-    # the new target support.
-    desired = set(base) | set(bias) | set(edge)
+    # Final support is a contiguous temperature range, never a sparse set.
+    # Historical holdings remain inventory facts, but neither they nor two
+    # selected endpoints may leave an internal gap in the new target support:
+    # settlement inside a skipped bucket pays nothing while the basket was
+    # priced as if that outcome were covered.  Convergence only removes
+    # buckets, so every survivor keeps the admission evidence it already had.
+    desired = _converge_contiguous_support(
+        set(base) | set(bias) | set(edge),
+        center_bucket=center.bucket,
+        ordinal_by_bucket=ordinal_by_bucket,
+        probability_by_bucket={
+            item.bucket: item.probability for item in buckets
+        },
+        maximum_buckets=policy.maximum_support_buckets,
+        # Coverage value times distance is exactly what the far breakthrough
+        # bucket is bought for, so rank ends by it instead of raw probability.
+        hedge_value_by_bucket=edge_scores,
+        breakthrough_is_upper=_breakthrough_is_upper(direction),
+    )
+    base = set(base) & desired
+    bias = set(bias) & desired
+    edge = set(edge) & desired
     if any(
         not candidate_lower <= ordinal_by_bucket[bucket] <= candidate_upper
         for bucket in desired

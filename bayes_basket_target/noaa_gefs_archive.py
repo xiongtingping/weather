@@ -60,7 +60,12 @@ MAX_MULTISTATION_TOTAL_RESPONSE_BYTES = 128 * 1024 * 1024
 MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_FIELD_RECEIPTS = 31 * 25
 MAX_STATION_COUNT = 64
-MAX_DOWNLOAD_WORKERS = 8
+# Sized against measured request latency, not bandwidth.  One capture issues
+# ~500 bounded index/range requests here and each costs 2.4-4.6s round trip,
+# so throughput is latency-bound: at 8 workers a capture could not finish
+# inside any sane deadline.  Payloads are small (see MAX_MESSAGE_BYTES), so
+# the projected RSS stays far under the process budget.
+MAX_DOWNLOAD_WORKERS = 24
 DEFAULT_RETAINED_PACKET_DIR = Path("output/audits/native_ensemble_history")
 DEFAULT_RAW_OBJECT_DIR = Path("data/runtime/official_nwp_sources/gefs/raw")
 

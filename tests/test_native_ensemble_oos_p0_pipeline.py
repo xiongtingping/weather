@@ -766,6 +766,10 @@ def _insert_fixture(
         truth_identity = {
             "station_id": "TEST",
             "local_date": day_text,
+            # Column order must match the table: settlement_timezone sits
+            # directly after local_date, and these values are splatted
+            # positionally.
+            "settlement_timezone": "UTC",
             "official_tmax_c": actual,
             "source_lane": "AWC",
             "settlement_definition": "official_daily_tmax_c",
@@ -791,7 +795,7 @@ def _insert_fixture(
         truth_sha = content_sha256(truth_identity)
         conn.execute(
             "INSERT INTO calibration_station_daily_high_truth "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 "truth-" + truth_sha[:24],
                 *truth_identity.values(),

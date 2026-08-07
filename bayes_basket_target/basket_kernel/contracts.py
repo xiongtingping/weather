@@ -202,6 +202,11 @@ class MaterializedEvidence:
     forecast_dispersion_c: float = 0.0
     model_envelope_lower_ordinal: int | None = None
     model_envelope_upper_ordinal: int | None = None
+    # Where this stage's data actually points, as a bucket ordinal.  P0 derives
+    # it from the weight-averaged calibrated system centers; it is the basket
+    # anchor, and is deliberately independent of which bucket holds the most
+    # probability mass.
+    model_center_ordinal: int | None = None
     formal_model_members_json: str | None = None
     formal_model_anchor_lower_ordinal: int | None = None
     formal_model_anchor_upper_ordinal: int | None = None
@@ -220,6 +225,7 @@ class MaterializedEvidence:
             "forecast_dispersion_c",
             "model_envelope_lower_ordinal",
             "model_envelope_upper_ordinal",
+            "model_center_ordinal",
             "formal_model_members_json",
             "formal_model_anchor_lower_ordinal",
             "formal_model_anchor_upper_ordinal",
@@ -511,6 +517,12 @@ class TargetBasketPolicy:
     peripheral_model_reliability_min: float = 0.15
     peripheral_min_coverage_value: float = 0.01
     max_disagreement_expansion_layers: int = 2
+    # Hard cap on how many contiguous buckets one basket may hold.  Coverage
+    # targets alone let a flat distribution spread across six or more buckets,
+    # which dilutes the per-bucket clip and buys tails the center never
+    # implied.  Support convergence trims to this cap from the
+    # lower-probability end, so the basket narrows on its own as P1 sharpens.
+    maximum_support_buckets: int = 4
     dispersion_c_per_expansion_layer: float = 1.0
     clip_min_notional_usdc: float = 1.0
     # There is deliberately no legacy source-wallet clip fallback.  The
@@ -612,6 +624,12 @@ class TargetBasketPolicy:
                 raw.get(
                     "max_disagreement_expansion_layers",
                     cls.max_disagreement_expansion_layers,
+                )
+            ),
+            maximum_support_buckets=int(
+                raw.get(
+                    "maximum_support_buckets",
+                    cls.maximum_support_buckets,
                 )
             ),
             dispersion_c_per_expansion_layer=_positive(
@@ -747,6 +765,10 @@ class TargetBasketPolicy:
             raise ContractError("clip_max_notional_usdc_required")
         if self.maximum_coverage + EPS < self.base_coverage:
             raise ContractError("maximum_coverage_below_base_coverage")
+        # One bucket is a degenerate basket and anything past five stops being
+        # a temperature view; both are policy errors rather than clamp cases.
+        if not 2 <= self.maximum_support_buckets <= 5:
+            raise ContractError("maximum_support_buckets_out_of_range")
         if not 0 <= self.max_disagreement_expansion_layers <= 2:
             raise ContractError("disagreement_expansion_cap_out_of_range")
         if self.clip_max_notional_usdc + EPS < self.clip_min_notional_usdc:

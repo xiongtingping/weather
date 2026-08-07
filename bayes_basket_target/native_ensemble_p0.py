@@ -1257,6 +1257,21 @@ def compile_native_ensemble_p0(
         for bucket, value in probability.items()
     }
     ordered = _ordered_buckets(intervals_raw)
+    # The basket anchor is where the models actually point, not whichever
+    # bucket holds the most mass.  An open-ended edge bucket ("35°C or higher")
+    # covers an unbounded interval, so it accumulates the entire upper tail of
+    # every system: with ZUUU's 3.5°C system disagreement (ECMWF 30.87 vs GEFS
+    # 34.39) that bucket carried 0.3344 and won an argmax over 1°C buckets --
+    # outside the model envelope of 31°C..34°C, which the two centers define.
+    # Weighting the calibrated centers by the same system weights used for the
+    # probability mixture gives one temperature, and the bucket containing it
+    # is the anchor.  An edge bucket is still eligible; it simply has to be
+    # where the models point (centers of 36/37 land there legitimately).
+    model_center_c = sum(
+        system_weights[system] * calibrated_system_centers_c[system]
+        for system in system_ids
+    )
+    model_center_bucket = _bucket_for_value(model_center_c, intervals_raw)
     lower_center_c = min(calibrated_system_centers_c.values())
     upper_center_c = max(calibrated_system_centers_c.values())
     model_envelope_lower_bucket = _bucket_for_value(
@@ -1617,6 +1632,8 @@ def compile_native_ensemble_p0(
         "model_envelope_span_c": (
             f"{upper_center_c - lower_center_c:.12g}"
         ),
+        "model_center_bucket": model_center_bucket,
+        "model_center_c": f"{model_center_c:.12g}",
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
