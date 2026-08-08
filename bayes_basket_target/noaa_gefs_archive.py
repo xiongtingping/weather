@@ -44,8 +44,26 @@ MULTISTATION_SCHEMA = (
 SYSTEM_ID = "NOAA_GEFS_05"
 RUN_CYCLE = "18Z"
 GRID = "0p50"
-ARCHIVE_LEAD_BUCKET = "d2"
-EXTRACTION_VERSION = "noaa_gefs_pds_0p50_18z_d2_station_tmax_v2"
+# P0 follows the freshest run, so this collector is asked for a shorter lead as
+# the event day approaches.  The default keeps existing d2 callers unchanged.
+SUPPORTED_LEAD_DAYS = (0, 1, 2)
+DEFAULT_LEAD_DAYS = 2
+ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+
+
+def extraction_version_for_lead(lead_days: int) -> str:
+    """Extraction identity is lead-specific.
+
+    A d1 row read the same way as a d2 row is still different evidence, drawn
+    from a different run with different skill.  One shared version string would
+    let the OOS scope check accept it against d2's contract and train both
+    together.
+    """
+
+    return f"noaa_gefs_pds_0p50_18z_d{int(lead_days)}_station_tmax_v2"
+
+
+EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS)
 BASE_URL = "https://noaa-gefs-pds.s3.amazonaws.com"
 ECCODES_GRIB_GET = Path("/opt/homebrew/bin/grib_get")
 ECCODES_LIBRARY = Path("/opt/homebrew/lib/libeccodes.dylib")
@@ -781,12 +799,16 @@ def capture_gefs_station_days(
     station_scopes: Sequence[Mapping[str, Any]],
     archive_query_at_utc: str,
     timeout_seconds: float = 30.0,
+    lead_days: int = DEFAULT_LEAD_DAYS,
 ) -> dict[str, Any]:
     """Download each global GEFS field once and decode every scoped station."""
 
+    if lead_days not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("noaa_gefs_archive_lead_days_invalid")
+    lead_bucket = f"d{lead_days}"
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
-        target - timedelta(days=2),
+        target - timedelta(days=lead_days),
         time(hour=18),
         tzinfo=timezone.utc,
     )

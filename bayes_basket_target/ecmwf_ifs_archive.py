@@ -43,10 +43,29 @@ MULTISTATION_SCHEMA = (
 )
 SYSTEM_ID = "ECMWF_IFS_ENS_OPEN_PF50"
 RUN_CYCLE = "18Z"
-ARCHIVE_LEAD_BUCKET = "d2"
-EXTRACTION_VERSION = (
-    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d2_v1"
-)
+# P0 follows the freshest run, so the same collector is asked for a different
+# lead as the event day approaches: d2 two days out, d1 the day before, d0 on
+# the day.  ``ARCHIVE_LEAD_BUCKET`` remains the default for callers that do not
+# ask, so existing d2 behaviour is unchanged.
+SUPPORTED_LEAD_DAYS = (0, 1, 2)
+DEFAULT_LEAD_DAYS = 2
+ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+def extraction_version_for_lead(lead_days: int) -> str:
+    """Extraction identity is lead-specific.
+
+    A d1 row read the same way as a d2 row is still different evidence: it
+    comes from a different run and carries different skill.  Sharing one
+    version string across leads would let the OOS scope check accept a d1 row
+    against d2's contract and train the two together.
+    """
+
+    return (
+        "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_"
+        f"d{int(lead_days)}_v1"
+    )
+
+
+EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS)
 # Same official ``ecmwf-forecasts`` S3 bucket through two AWS endpoints.
 # Direct regional transport is measurably faster; the global endpoint remains
 # a same-object fallback if AWS throttles or rejects the regional request.
@@ -89,11 +108,21 @@ DEFAULT_RAW_SEARCH_ROOTS = (
 # ``503 Slow Down``.  Historical recovery is deliberately conservative: one
 # process with three bounded workers avoids both the repeated eight-way retry
 # storms and the reproducible four-worker ``503 Slow Down`` failure.
-# ECMWF has 51 members against GEFS's 31, so it dominates a capture: ~816
-# latency-bound requests.  At 3 workers that alone took ~11 minutes and was
-# the single largest reason captures never completed.
-MAX_DOWNLOAD_WORKERS = 24
-MAX_GCS_DOWNLOAD_WORKERS = 16
+#
+# Raising this to 24 to shorten capture wall time reproduced exactly that
+# failure -- ``503 Slow Down`` on the enfo index roughly 90s into a capture --
+# so the limit is empirical, not cautionary.  ECMWF dominates a capture (51
+# members, ~816 latency-bound requests) and is therefore slow at three workers;
+# the answer is the GCS replica below, which is not rate-limited the same way,
+# not more parallelism against S3.
+MAX_DOWNLOAD_WORKERS = 3
+# Measured against the replica with real GRIB range requests (~649 KiB each):
+# 3 workers sustain 0.23 MB/s, 16 sustain 0.80, 24 sustain 0.93, and no level up
+# to 32 returned a single 503 -- the limit is the local proxy's round trip, not
+# the endpoint.  Small-object probes did show throughput rolling off past 24, so
+# this ceiling is above the measured optimum on purpose: it is a cap, and
+# ``ECMWF_ARCHIVE_MAX_WORKERS`` can dial it back without a code change.
+MAX_GCS_DOWNLOAD_WORKERS = 32
 EXPECTED_MEMBER_COUNT = 50
 # A failed GET may be retried only for an explicitly transient network
 # failure.  The cap applies independently to each official S3 endpoint; with
@@ -507,6 +536,17 @@ def _retained_index_rows(
     return rows
 
 
+def _lead_bucket_for_run(*, event_date: str, run_init: datetime) -> str:
+    """Lead implied by the gap between the run day and the target day."""
+
+    delta = (
+        date.fromisoformat(event_date) - run_init.astimezone(timezone.utc).date()
+    ).days
+    if delta not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("ecmwf_archive_lead_days_invalid")
+    return f"d{delta}"
+
+
 def _build_station_capture(
     *,
     station: str,
@@ -600,7 +640,12 @@ def _build_station_capture(
         "longitude": float(scope["longitude"]),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": RUN_CYCLE,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        # Derived from the run actually used rather than from the module
+        # default, so a capture can never advertise a lead its run does not
+        # carry.
+        "archive_lead_bucket": _lead_bucket_for_run(
+            event_date=event_date, run_init=run_init
+        ),
         "forecast_steps": steps,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "ECMWF",
@@ -656,12 +701,16 @@ def capture_ecmwf_station_days(
     station_scopes: Sequence[Mapping[str, Any]],
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
+    lead_days: int = DEFAULT_LEAD_DAYS,
 ) -> dict[str, Any]:
     if BASE_URL not in ALLOWED_TRANSPORT_BASE_URLS:
         raise ContractError("ecmwf_archive_transport_base_url_invalid")
+    if lead_days not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("ecmwf_archive_lead_days_invalid")
+    lead_bucket = f"d{lead_days}"
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
-        target - timedelta(days=2),
+        target - timedelta(days=lead_days),
         time(hour=18),
         tzinfo=timezone.utc,
     )
@@ -676,17 +725,27 @@ def capture_ecmwf_station_days(
         < MIN_FREE_BYTES
     ):
         raise ContractError("ecmwf_archive_scope_invalid")
-    try:
-        requested_workers = int(
-            os.environ.get("ECMWF_ARCHIVE_MAX_WORKERS", str(MAX_DOWNLOAD_WORKERS))
-        )
-    except ValueError as exc:
-        raise ContractError("ecmwf_archive_worker_count_invalid") from exc
     worker_cap = (
         MAX_GCS_DOWNLOAD_WORKERS
         if BASE_URL == GCS_OFFICIAL_REPLICA_BASE_URL
         else MAX_DOWNLOAD_WORKERS
     )
+    # Default to the cap of whichever endpoint is actually in use.  Defaulting
+    # to the conservative ECMWF figure meant ``min(16, 3)`` still yielded three
+    # workers on the replica: the higher ceiling existed but nothing ever
+    # requested it.  Measured against the replica with real GRIB range requests
+    # (~649 KiB each), three workers sustain 0.23 MB/s and sixteen sustain
+    # 0.80 MB/s with no 503 at any level up to twenty-four -- the wall is the
+    # local proxy's round trip, not the endpoint.
+    #
+    # The three-worker figure remains right for ``data.ecmwf.int``, where four
+    # workers reproducibly returned `503 Slow Down`.
+    try:
+        requested_workers = int(
+            os.environ.get("ECMWF_ARCHIVE_MAX_WORKERS", str(worker_cap))
+        )
+    except ValueError as exc:
+        raise ContractError("ecmwf_archive_worker_count_invalid") from exc
     workers = max(1, min(worker_cap, requested_workers))
     scopes: dict[str, dict[str, Any]] = {}
     for raw in station_scopes:
@@ -915,7 +974,7 @@ def capture_ecmwf_station_days(
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": RUN_CYCLE,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": lead_bucket,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "ECMWF",
         "member_count": EXPECTED_MEMBER_COUNT,
@@ -1019,6 +1078,16 @@ def ingest_ecmwf_station_day(
     ):
         raise ContractError("ecmwf_archive_capture_invalid")
     provider_id, _family = _ensure_system(conn)
+    # The capture states its own lead; the module constant is only a fallback
+    # for archives written before leads other than d2 existed.  Reading the
+    # constant here would relabel a d1 capture as d2 at the moment it lands,
+    # which is exactly where the mislabelling would become permanent.
+    capture_lead_bucket = str(
+        capture.get("archive_lead_bucket") or ARCHIVE_LEAD_BUCKET
+    )
+    capture_extraction_version = extraction_version_for_lead(
+        int(capture_lead_bucket.lstrip("d") or DEFAULT_LEAD_DAYS)
+    )
     station = str(capture["station_id"])
     event_date = str(capture["event_date"])
     existing = conn.execute(
@@ -1031,9 +1100,9 @@ def ingest_ecmwf_station_day(
             SYSTEM_ID,
             station,
             event_date,
-            ARCHIVE_LEAD_BUCKET,
+            capture_lead_bucket,
             RUN_CYCLE,
-            EXTRACTION_VERSION,
+            capture_extraction_version,
         ),
     ).fetchall()
     expected = sorted(
@@ -1065,13 +1134,13 @@ def ingest_ecmwf_station_day(
             "ensemble_system_id": SYSTEM_ID,
             "station_id": station,
             "target_local_date": event_date,
-            "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+            "archive_lead_bucket": capture_lead_bucket,
             "run_cycle": RUN_CYCLE,
             "member_id": str(row["member_id"]),
             "member_role": "PERTURBED",
             "raw_tmax_c": float(row["raw_tmax_c"]),
             "settlement_definition": "official_daily_tmax_c",
-            "extraction_version": EXTRACTION_VERSION,
+            "extraction_version": capture_extraction_version,
             "provider_id": provider_id,
             "transport_provider_id": "ECMWF_OPEN_DATA_S3",
             "native_run_init_utc": str(capture["run_init_utc"]),
@@ -1108,7 +1177,7 @@ def ingest_ecmwf_station_day(
         "ensemble_system_id": SYSTEM_ID,
         "station_id": station,
         "target_local_date": event_date,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": capture_lead_bucket,
         "archive_query_at_utc": str(capture["archive_query_at_utc"]),
         "member_set_sha256": str(capture["member_set_sha256"]),
         "member_count": EXPECTED_MEMBER_COUNT,

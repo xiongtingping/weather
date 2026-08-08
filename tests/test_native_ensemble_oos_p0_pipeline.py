@@ -27,6 +27,10 @@ from bayes_basket_target.native_ensemble_oos import (
     NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS,
     NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS,
     NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE,
+    OFFICIAL_ARCHIVE_SCOPE_CONTRACTS,
+    OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS,
+    _OFFICIAL_TRANSPORT_SQL_LIST,
+    _scope_contract_variants,
     _historical_transport_scope_allowed,
     _load_cases,
     _select_exact_shared_holdout_cohort,
@@ -118,49 +122,108 @@ def _aggregator_source_authority() -> dict[str, object]:
     }
 
 
+def _scope_contracts(system_id: str) -> list[dict[str, str]]:
+    """Every (lead, cycle, extraction) a system is registered at.
+
+    A system may be registered at one lead or at several; both shapes are
+    normalised the same way production does, so this test exercises whatever
+    is actually configured rather than assuming a single lead.
+    """
+
+    entry = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[system_id]
+    return [
+        {key: str(value) for key, value in variant.items()}
+        for variant in _scope_contract_variants(entry)
+    ]
+
+
+def _scope_contract(system_id: str) -> dict[str, str]:
+    return _scope_contracts(system_id)[0]
+
+
 def test_official_oos_transport_cycle_lead_contract_is_exact() -> None:
-    assert _historical_transport_scope_allowed(
-        system_id="NOAA_GEFS_05",
-        transport_provider_id="NOAA_GEFS_PDS_S3",
-        lead_bucket="d2",
-        run_cycle="18Z",
-    )
-    assert not _historical_transport_scope_allowed(
-        system_id="NOAA_GEFS_05",
-        transport_provider_id="OPEN_METEO",
-        lead_bucket="d2",
-        run_cycle="18Z",
-    )
-    assert _historical_transport_scope_allowed(
-        system_id="ECMWF_IFS_ENS_OPEN_PF50",
-        transport_provider_id="ECMWF_OPEN_DATA_S3",
-        lead_bucket="d2",
-        run_cycle="18Z",
-    )
-    assert not _historical_transport_scope_allowed(
-        system_id="ECMWF_IFS_ENS_OPEN_PF50",
-        transport_provider_id="ECMWF_OPEN_DATA_S3",
-        lead_bucket="d2",
-        run_cycle="00Z",
-    )
-    assert _historical_transport_scope_allowed(
-        system_id="ECCC_GEM_GLOBAL_ENS",
-        transport_provider_id="ECCC_DD_WEATHER",
-        lead_bucket="d2",
-        run_cycle="00Z",
-    )
-    assert not _historical_transport_scope_allowed(
-        system_id="ECCC_GEM_GLOBAL_ENS",
-        transport_provider_id="ECCC_DD_WEATHER",
-        lead_bucket="d2",
-        run_cycle="18Z",
-    )
+    for system_id in (
+        "NOAA_GEFS_05",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "ECCC_GEM_GLOBAL_ENS",
+        "DWD_ICON_GLOBAL_EPS",
+    ):
+      for contract in _scope_contracts(system_id):
+          assert _historical_transport_scope_allowed(
+              system_id=system_id,
+              transport_provider_id=contract["transport_provider_id"],
+              lead_bucket=contract["lead_bucket"],
+              run_cycle=contract["run_cycle"],
+              extraction_version=contract["extraction_version"],
+          )
+          # Each dimension is load-bearing on its own.
+          assert not _historical_transport_scope_allowed(
+              system_id=system_id,
+              transport_provider_id="OPEN_METEO",
+              lead_bucket=contract["lead_bucket"],
+              run_cycle=contract["run_cycle"],
+              extraction_version=contract["extraction_version"],
+          )
+          assert not _historical_transport_scope_allowed(
+              system_id=system_id,
+              transport_provider_id=contract["transport_provider_id"],
+              lead_bucket="d0",
+              run_cycle=contract["run_cycle"],
+              extraction_version=contract["extraction_version"],
+          )
+          wrong_cycle = "00Z" if contract["run_cycle"] != "00Z" else "18Z"
+          assert not _historical_transport_scope_allowed(
+              system_id=system_id,
+              transport_provider_id=contract["transport_provider_id"],
+              lead_bucket=contract["lead_bucket"],
+              run_cycle=wrong_cycle,
+              extraction_version=contract["extraction_version"],
+          )
+
     assert _historical_transport_scope_allowed(
         system_id="ECMWF_AIFS_025",
         transport_provider_id="OPEN_METEO",
         lead_bucket="d0",
         run_cycle="AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+        extraction_version="open_meteo_archived_daily_tmax_member_v1",
     )
+
+
+def test_superseded_extraction_version_is_refused() -> None:
+    """A change in how values are read must invalidate what came before it.
+
+    ICON's sampling moved from a 6-hour to a 3-hour grid because the 6-hour grid
+    injected per-station noise no bias correction can remove.  Rows from the old
+    grid still name the same system, transport, lead and cycle, so without the
+    extraction version in the scope they would train alongside the new ones and
+    calibration would fit the average of two incompatible conventions.
+    """
+
+    contract = _scope_contract("DWD_ICON_GLOBAL_EPS")
+    assert not _historical_transport_scope_allowed(
+        system_id="DWD_ICON_GLOBAL_EPS",
+        transport_provider_id=contract["transport_provider_id"],
+        lead_bucket=contract["lead_bucket"],
+        run_cycle=contract["run_cycle"],
+        extraction_version="dwd_icon_global_eps_18z_d2_station_tmax_v1",
+    )
+
+
+def test_registered_official_transports_cover_every_scope_contract() -> None:
+    """The SQL prefilter must not fall behind the contract table.
+
+    ICON was registered as an official scope while both hand-written transport
+    whitelists still listed only three providers, so every official ICON row was
+    discarded before the scope check ever saw it -- the system looked like it
+    merely lacked history when in fact nothing could ever reach the selector.
+    """
+
+    assert OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS == {
+        str(contract["transport_provider_id"])
+        for contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values()
+    }
+    for provider in OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS:
+        assert f"'{provider}'" in _OFFICIAL_TRANSPORT_SQL_LIST
 
 
 def test_cross_oos_uses_largest_exact_shared_holdout_cohort() -> None:

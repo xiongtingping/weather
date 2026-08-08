@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import sqlite3
 
+import pytest
+
 import asos_argmax_execution as execution
 from weather_basket_yes_schema import apply_weather_basket_yes_schema
 
@@ -59,7 +61,13 @@ def _rotation_fixture(*, new_token: str = "222222") -> sqlite3.Connection:
     return conn
 
 
-def _conn() -> sqlite3.Connection:
+# An intent that really was cleared to submit.  This is the default so that a
+# gateway which cannot account for it keeps its budget reserved -- the order may
+# be resting on the exchange.
+AUTHORISED_GUARD = '{"authorizes_order":true,"evidence_only":false}'
+
+
+def _conn(guard_snapshot_json: str = AUTHORISED_GUARD) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
         """CREATE TABLE reported_trajectory_asos_argmax_order_intents(
@@ -68,6 +76,7 @@ def _conn() -> sqlite3.Connection:
              idempotency_key TEXT NOT NULL,
              size REAL NOT NULL,
              state TEXT NOT NULL,
+             guard_snapshot_json TEXT NOT NULL,
              gateway_response_json TEXT NOT NULL,
              exchange_order_id TEXT,
              size_matched REAL,
@@ -76,8 +85,9 @@ def _conn() -> sqlite3.Connection:
     )
     conn.execute(
         """INSERT INTO reported_trajectory_asos_argmax_order_intents
-             VALUES('intent','entry','idem',4,'RECONCILE_REQUIRED','{}',NULL,NULL,
-                    '2026-08-05T00:00:00Z')"""
+             VALUES('intent','entry','idem',4,'RECONCILE_REQUIRED',?,'{}',NULL,
+                    NULL,'2026-08-05T00:00:00Z')""",
+        (guard_snapshot_json,),
     )
     return conn
 
@@ -163,6 +173,83 @@ def test_reconcile_keeps_budget_reserved_when_identity_is_unknown(monkeypatch) -
         execution, "_post_json",
         lambda *_args, **_kwargs: {"ok": False, "found": False, "pending": False},
     )
+
+    execution._reconcile_pending_argmax_orders(conn)
+
+    assert conn.execute(
+        "SELECT state FROM reported_trajectory_asos_argmax_order_intents"
+    ).fetchone()[0] == "RECONCILE_REQUIRED"
+
+
+def test_reconcile_releases_order_the_gateway_refused_before_the_exchange(
+    monkeypatch,
+) -> None:
+    """A refusal that never reached the exchange must free its budget.
+
+    Geoblocking answers this way: HTTP 403 before the order is even signed.
+    ``RECONCILE_REQUIRED`` counts against the per-station allowance and no other
+    terminal branch matches, so three stations lost their entire allowance to
+    orders that provably never left the machine.
+    """
+
+    conn = _conn()
+    response = {
+        "ok": False, "found": True, "pending": False,
+        "error_class": "clob_order_geoblocked", "http_status": 403,
+        "geoblocked": True, "fatal": True, "retryable": False,
+        "exchange_post_started": False, "signed_order_prepared": False,
+    }
+    monkeypatch.setattr(execution, "_post_json", lambda *_a, **_k: response)
+
+    result = execution._reconcile_pending_argmax_orders(conn)
+
+    assert conn.execute(
+        "SELECT state FROM reported_trajectory_asos_argmax_order_intents"
+    ).fetchone()[0] == "RELEASED"
+    assert result[0]["state"] == "RELEASED"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        # Unknown key: the gateway may have lost a record of an order that did
+        # go out, so this stays reserved.
+        {"ok": False, "found": False, "pending": False},
+        # The exchange call started -- an order may be resting.
+        {"found": True, "fatal": True, "exchange_post_started": True},
+        # Retryable, so not yet terminal.
+        {
+            "found": True, "fatal": True,
+            "exchange_post_started": False, "retryable": True,
+        },
+        # Not declared fatal.
+        {"found": True, "fatal": False, "exchange_post_started": False},
+        # Carries an exchange identifier.
+        {
+            "found": True, "fatal": True,
+            "exchange_post_started": False, "orderID": "exchange-order",
+        },
+        # Still working.
+        {
+            "found": True, "pending": True, "fatal": True,
+            "exchange_post_started": False,
+        },
+        # Silence is not a refusal.
+        {},
+    ],
+)
+def test_reconcile_holds_budget_unless_gateway_asserts_no_exchange_call(
+    monkeypatch, response,
+) -> None:
+    """Only the gateway's own terminal denial releases budget.
+
+    Each clause is load-bearing: absent any one of them the order may still be
+    live on the exchange, and releasing its budget would let a second order be
+    placed against the same allowance.
+    """
+
+    conn = _conn()
+    monkeypatch.setattr(execution, "_post_json", lambda *_a, **_k: response)
 
     execution._reconcile_pending_argmax_orders(conn)
 

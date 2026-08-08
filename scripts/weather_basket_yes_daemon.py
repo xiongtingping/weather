@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import signal
 import sqlite3
@@ -155,6 +156,54 @@ TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 # TTL (~6h) or scopes expire faster than the rotation can refresh them; with 77
 # scopes and a 10-minute poll, three per poll brings the sweep to ~4.3h.
 TARGET_NWP_SCOPES_PER_POLL = 3
+# The catalog is not a fixed size: it grows with the number of open event days,
+# and a registry that has recovered its future dates can carry 90+ scopes where
+# the constant above assumed 77.  A fixed three per poll then stretches the
+# sweep past the TTL and every scope expires before its turn comes round again.
+#
+# Raising it without a ceiling is equally wrong, but for the opposite reason.
+# The rotation itself no longer blocks on capture -- that was the original
+# stall, fixed by moving capture to a subprocess pool -- yet the pool is still
+# bounded at OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY.  Advancing the cursor
+# faster than the pool drains just skips scopes into their 30-minute retry
+# floor, which makes coverage slower rather than faster.
+# A sweep costs far less than the scope count suggests.  Retained archives are
+# shared per (event date, model) and reused within their TTL, so a 90-scope
+# catalog spanning three event days needs about twelve real downloads -- the
+# other ~78 scopes resolve from cache in seconds.  Budgeting four hours made
+# every one of those cached scopes wait a full 10-minute poll for nothing.
+#
+# The ceiling still exists because the first scope of each event date does pay
+# for the whole download, and those go through a pool bounded at
+# OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY.  Overshooting it does not stall the
+# rotation -- capture runs off-thread -- but it pushes unserved scopes into
+# their 30-minute retry floor, so coverage gets slower, not faster.
+TARGET_NWP_SWEEP_BUDGET_SEC = 1.0 * 3600.0
+TARGET_NWP_MAX_SCOPES_PER_POLL = 20
+
+
+def _nwp_scopes_per_poll(catalog_scope_count: int) -> int:
+    """Scopes to advance this poll, sized to finish a sweep inside the budget.
+
+    Bounded below by the historical constant so a small or unknown catalog
+    behaves exactly as before, and above by what the bounded capture pool can
+    actually drain in one poll interval.
+    """
+
+    try:
+        scopes = int(catalog_scope_count)
+    except (TypeError, ValueError):
+        return TARGET_NWP_SCOPES_PER_POLL
+    if scopes <= 0:
+        return TARGET_NWP_SCOPES_PER_POLL
+    polls_in_budget = max(
+        1.0, TARGET_NWP_SWEEP_BUDGET_SEC / TARGET_NWP_POLL_INTERVAL_SEC
+    )
+    needed = math.ceil(scopes / polls_in_budget)
+    return max(
+        TARGET_NWP_SCOPES_PER_POLL,
+        min(TARGET_NWP_MAX_SCOPES_PER_POLL, needed),
+    )
 MAX_ARCHIVE_WAL_BYTES = 512 * 1024 * 1024
 MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
 # Warning headroom sits well above the fail-closed floor above.  The floor is
@@ -502,7 +551,11 @@ def run_target_forecast_refresh_cycle(
                 # the poll frequency, which keeps the request cadence against
                 # the external archives unchanged.
                 advanced: list[dict[str, Any]] = []
-                for _ in range(TARGET_NWP_SCOPES_PER_POLL):
+                rotation = getattr(worker, "_nwp_rotation_state", None) or {}
+                scopes_this_poll = _nwp_scopes_per_poll(
+                    len(rotation.get("catalog_scope_keys") or ())
+                )
+                for _ in range(scopes_this_poll):
                     advanced.append(refresh(as_of_utc=utc_now()))
                     # Stop early on a fail-closed scope rather than burning the
                     # remaining budget on the same blocker.
@@ -512,6 +565,7 @@ def run_target_forecast_refresh_cycle(
                         break
                 nwp_state = advanced[-1]
                 nwp_state["scopes_advanced_this_poll"] = len(advanced)
+                nwp_state["scopes_per_poll_target"] = scopes_this_poll
             else:
                 nwp_state = {
                     "state": "not_configured",

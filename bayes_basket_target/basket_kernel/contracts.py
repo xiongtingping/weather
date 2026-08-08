@@ -252,6 +252,13 @@ class MaterializedEvidence:
             or lower > upper
         ):
             raise ContractError("model_envelope_boundary_invalid")
+        raw_center = raw.get("model_center_ordinal")
+        try:
+            model_center = None if raw_center is None else int(raw_center)
+        except (TypeError, ValueError) as exc:
+            raise ContractError("model_center_ordinal_invalid") from exc
+        if isinstance(raw_center, bool):
+            raise ContractError("model_center_ordinal_invalid")
         formal_members = raw.get("formal_model_members_json")
         raw_formal_lower = raw.get("formal_model_anchor_lower_ordinal")
         raw_formal_upper = raw.get("formal_model_anchor_upper_ordinal")
@@ -301,6 +308,7 @@ class MaterializedEvidence:
             forecast_dispersion_c=_nonnegative("forecast_dispersion_c", raw.get("forecast_dispersion_c", 0.0)),
             model_envelope_lower_ordinal=lower,
             model_envelope_upper_ordinal=upper,
+            model_center_ordinal=model_center,
             formal_model_members_json=(
                 None if formal_members in (None, "") else str(formal_members)
             ),

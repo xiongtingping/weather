@@ -366,7 +366,7 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
   archive_lead_bucket TEXT NOT NULL CHECK(
-    archive_lead_bucket IN ('d0','d2')
+    archive_lead_bucket IN ('d0','d1','d2')
   ),
   run_cycle TEXT NOT NULL CHECK(
     run_cycle IN (
@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   transport_provider_id TEXT NOT NULL CHECK(
     transport_provider_id IN (
       'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-      'ECCC_DD_WEATHER'
+      'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
     )
   ),
   native_run_init_utc TEXT,
@@ -401,7 +401,7 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
     OR (
       transport_provider_id IN (
         'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-        'ECCC_DD_WEATHER'
+        'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
       )
       AND native_run_init_utc IS NOT NULL
       AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
@@ -420,7 +420,7 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_bucket 
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
   archive_lead_bucket TEXT NOT NULL CHECK(
-    archive_lead_bucket IN ('d0','d2')
+    archive_lead_bucket IN ('d0','d1','d2')
   ),
   archive_query_at_utc TEXT NOT NULL,
   member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
@@ -2059,7 +2059,13 @@ CREATE TABLE IF NOT EXISTS calibration_republisher_historical_oos_contract (
     REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
-  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  -- d2 as well as d0.  UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS have no
+  -- official native archive at all, so this republisher is their only route to
+  -- a d2 member set, and d2 is the lead the cross-ensemble selector scores on.
+  -- Admitting the lead here does not admit the evidence: eligibility still
+  -- requires a separately versioned historical OOS contract.
+  archive_lead_bucket TEXT NOT NULL
+    CHECK(archive_lead_bucket IN ('d0','d1','d2')),
   run_cycle TEXT NOT NULL CHECK(run_cycle='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'),
   station_day_closed INTEGER NOT NULL CHECK(station_day_closed=1),
   station_day_end_utc TEXT NOT NULL,
@@ -2189,7 +2195,13 @@ CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_historical_member_ru
     REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
-  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  -- d2 as well as d0.  UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS have no
+  -- official native archive at all, so this republisher is their only route to
+  -- a d2 member set, and d2 is the lead the cross-ensemble selector scores on.
+  -- Admitting the lead here does not admit the evidence: eligibility still
+  -- requires a separately versioned historical OOS contract.
+  archive_lead_bucket TEXT NOT NULL
+    CHECK(archive_lead_bucket IN ('d0','d1','d2')),
   run_cycle TEXT NOT NULL CHECK(run_cycle='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'),
   member_id TEXT NOT NULL,
   member_role TEXT NOT NULL CHECK(member_role IN ('CONTROL','PERTURBED')),
@@ -2228,7 +2240,13 @@ CREATE TABLE IF NOT EXISTS calibration_republisher_ensemble_historical_member_bu
     REFERENCES calibration_republisher_ensemble_product(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
-  archive_lead_bucket TEXT NOT NULL CHECK(archive_lead_bucket='d0'),
+  -- d2 as well as d0.  UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS have no
+  -- official native archive at all, so this republisher is their only route to
+  -- a d2 member set, and d2 is the lead the cross-ensemble selector scores on.
+  -- Admitting the lead here does not admit the evidence: eligibility still
+  -- requires a separately versioned historical OOS contract.
+  archive_lead_bucket TEXT NOT NULL
+    CHECK(archive_lead_bucket IN ('d0','d1','d2')),
   archive_query_at_utc TEXT NOT NULL,
   member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),
   member_count INTEGER NOT NULL CHECK(member_count>=2),
@@ -2683,6 +2701,157 @@ def _migrate_republisher_historical_oos_contract(
     }
 
 
+_D1_LEAD_TABLES = (
+    "calibration_native_ensemble_historical_member_run",
+    "calibration_native_ensemble_historical_member_bucket",
+    "calibration_republisher_historical_oos_contract",
+    "calibration_republisher_ensemble_historical_member_run",
+    "calibration_republisher_ensemble_historical_member_bucket",
+)
+
+
+def _migrate_historical_d1_lead(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Admit d1 alongside d0 and d2 in the historical member tables.
+
+    P0 follows the freshest run available, so its lead shortens from d2 to d1
+    to d0 as the event day approaches.  The tables were built when only the two
+    endpoints existed, and their CHECK rejects every d1 row outright -- which
+    silently removes the middle of that progression: the day before the event,
+    when a fresher run exists but the event has not yet started.
+
+    Rows are copied verbatim.  This widens what may be stored, not what may be
+    trusted: a d1 row still needs weights trained at d1, and P0 compilation
+    fails closed on a lead whose OOS binding does not match rather than
+    borrowing d2's.
+    """
+
+    rebuilt: list[str] = []
+    for table in _D1_LEAD_TABLES:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if row is None or "'d1'" in str(row[0] or ""):
+            continue
+        for kind in ("trigger", "index"):
+            for name, in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type=? AND tbl_name=? "
+                "AND sql IS NOT NULL",
+                (kind, table),
+            ).fetchall():
+                conn.execute(f"DROP {kind.upper()} IF EXISTS {name}")
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_pre_d1")
+        rebuilt.append(table)
+
+    if not rebuilt:
+        return {"rebuilt_tables": [], "copied_rows": {}}
+
+    # Both scripts are CREATE ... IF NOT EXISTS, so replaying them only
+    # recreates what the rename above removed.
+    _execute_sql_script_transactional(conn, DDL)
+    _execute_sql_script_transactional(conn, REPUBLISHER_ENSEMBLE_DDL)
+
+    copied: dict[str, int] = {}
+    for table in rebuilt:
+        columns = [
+            str(item[1])
+            for item in conn.execute(f"PRAGMA table_info({table})")
+        ]
+        legacy = {
+            str(item[1])
+            for item in conn.execute(f"PRAGMA table_info({table}_pre_d1)")
+        }
+        shared = [name for name in columns if name in legacy]
+        joined = ",".join(shared)
+        conn.execute(
+            f"INSERT INTO {table}({joined}) "
+            f"SELECT {joined} FROM {table}_pre_d1"
+        )
+        copied[table] = int(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        )
+        conn.execute(f"DROP TABLE {table}_pre_d1")
+    return {"rebuilt_tables": rebuilt, "copied_rows": copied}
+
+
+_REPUBLISHER_D2_TABLES = (
+    "calibration_republisher_historical_oos_contract",
+    "calibration_republisher_ensemble_historical_member_run",
+    "calibration_republisher_ensemble_historical_member_bucket",
+)
+
+
+def _migrate_republisher_historical_d2_lead(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Let the republisher history tables hold d2 as well as d0.
+
+    UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS publish no official native archive
+    at all, so this aggregator is the only route by which they can ever supply
+    a d2 member set -- and d2 is the lead the cross-ensemble selector scores on.
+    The tables were built when the lane carried d0 only, and their CHECK
+    constraint rejects every d2 row outright.
+
+    Existing rows are copied verbatim and keep their eligibility flags; this
+    widens what may be stored, not what may be trusted.  A d2 row still needs a
+    separately versioned historical OOS contract before it counts as evidence,
+    and the contract guard trigger is rebuilt with the table.
+    """
+
+    rebuilt: list[str] = []
+    for table in _REPUBLISHER_D2_TABLES:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if row is None or "'d2'" in str(row[0] or ""):
+            continue
+        columns = [
+            str(item[1])
+            for item in conn.execute(f"PRAGMA table_info({table})")
+        ]
+        for kind in ("trigger", "index"):
+            for name, in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type=? AND tbl_name=? "
+                "AND sql IS NOT NULL",
+                (kind, table),
+            ).fetchall():
+                conn.execute(f"DROP {kind.upper()} IF EXISTS {name}")
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_pre_d2")
+        rebuilt.append(table)
+
+    if not rebuilt:
+        return {"rebuilt_tables": [], "copied_rows": {}}
+
+    # The canonical DDL now carries the widened CHECK, so recreating from it
+    # keeps migrated databases byte-identical to freshly created ones.
+    _execute_sql_script_transactional(conn, REPUBLISHER_ENSEMBLE_DDL)
+
+    copied: dict[str, int] = {}
+    for table in rebuilt:
+        columns = [
+            str(item[1])
+            for item in conn.execute(f"PRAGMA table_info({table})")
+        ]
+        legacy = {
+            str(item[1])
+            for item in conn.execute(f"PRAGMA table_info({table}_pre_d2)")
+        }
+        shared = [name for name in columns if name in legacy]
+        joined = ",".join(shared)
+        conn.execute(
+            f"INSERT INTO {table}({joined}) "
+            f"SELECT {joined} FROM {table}_pre_d2"
+        )
+        copied[table] = int(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        )
+        conn.execute(f"DROP TABLE {table}_pre_d2")
+    return {"rebuilt_tables": rebuilt, "copied_rows": copied}
+
+
 def _migrate_native_historical_source_contract(
     conn: sqlite3.Connection,
 ) -> None:
@@ -2700,6 +2869,11 @@ def _migrate_native_historical_source_contract(
         or "'d2'" not in member_sql
         or "ECMWF_OPEN_DATA_S3" not in member_sql
         or "ECCC_DD_WEATHER" not in member_sql
+        # DWD ICON EPS is the fourth official native transport.  Without it the
+        # CHECK constraint rejects every ICON member row, so the system can
+        # never accumulate the d2 history that admits it as an independent
+        # candidate family.
+        or "DWD_OPENDATA_ICON_EPS" not in member_sql
     ):
         had_offline_columns = "offline_oos_eligible" in member_sql
         conn.execute(
@@ -2727,7 +2901,7 @@ def _migrate_native_historical_source_contract(
                 REFERENCES calibration_station_registry(station_id),
               target_local_date TEXT NOT NULL,
               archive_lead_bucket TEXT NOT NULL
-                CHECK(archive_lead_bucket IN ('d0','d2')),
+                CHECK(archive_lead_bucket IN ('d0','d1','d2')),
               run_cycle TEXT NOT NULL CHECK(
                 run_cycle IN (
                   'AGGREGATOR_UNKNOWN_NATIVE_CYCLE',
@@ -2744,7 +2918,8 @@ def _migrate_native_historical_source_contract(
               transport_provider_id TEXT NOT NULL CHECK(
                 transport_provider_id IN (
                   'OPEN_METEO','NOAA_GEFS_PDS_S3',
-                  'ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER'
+                  'ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER',
+                  'DWD_OPENDATA_ICON_EPS'
                 )
               ),
               native_run_init_utc TEXT,
@@ -2767,7 +2942,7 @@ def _migrate_native_historical_source_contract(
                 OR (
                   transport_provider_id IN (
                     'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-                    'ECCC_DD_WEATHER'
+                    'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
                   )
                   AND native_run_init_utc IS NOT NULL
                   AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
@@ -2851,7 +3026,7 @@ def _migrate_native_historical_source_contract(
                 REFERENCES calibration_station_registry(station_id),
               target_local_date TEXT NOT NULL,
               archive_lead_bucket TEXT NOT NULL
-                CHECK(archive_lead_bucket IN ('d0','d2')),
+                CHECK(archive_lead_bucket IN ('d0','d1','d2')),
               archive_query_at_utc TEXT NOT NULL,
               member_set_sha256 TEXT NOT NULL
                 CHECK(length(member_set_sha256)=64),

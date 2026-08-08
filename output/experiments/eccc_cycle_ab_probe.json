@@ -1,0 +1,225 @@
+{
+  "calls_order_gateway": false,
+  "orders_submitted": 0,
+  "results": [
+    {
+      "challenger": {
+        "bias_c": -1.4783,
+        "mae_c": 2.2569,
+        "n": 45,
+        "rmse_c": 2.9085
+      },
+      "event_date": "2026-07-20",
+      "incumbent": {
+        "bias_c": -1.4112,
+        "mae_c": 2.2728,
+        "n": 45,
+        "rmse_c": 2.9096
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -3.2255,
+          "incumbent_error_c": -2.8236
+        },
+        "EDDM": {
+          "challenger_error_c": -0.5186,
+          "incumbent_error_c": -0.8527
+        },
+        "EFHK": {
+          "challenger_error_c": -2.4637,
+          "incumbent_error_c": -2.7699
+        },
+        "EGLC": {
+          "challenger_error_c": -2.3974,
+          "incumbent_error_c": -1.5717
+        },
+        "EHAM": {
+          "challenger_error_c": -0.3729,
+          "incumbent_error_c": 0.0128
+        },
+        "EPWA": {
+          "challenger_error_c": 0.1976,
+          "incumbent_error_c": 0.5598
+        },
+        "FACT": {
+          "challenger_error_c": -1.5637,
+          "incumbent_error_c": -1.1675
+        },
+        "KATL": {
+          "challenger_error_c": -0.9277,
+          "incumbent_error_c": -1.7822
+        },
+        "KAUS": {
+          "challenger_error_c": 1.9862,
+          "incumbent_error_c": 1.6416
+        },
+        "KBKF": {
+          "challenger_error_c": -5.3448,
+          "incumbent_error_c": -5.2156
+        },
+        "KDAL": {
+          "challenger_error_c": -0.8281,
+          "incumbent_error_c": -1.187
+        },
+        "KHOU": {
+          "challenger_error_c": 3.2786,
+          "incumbent_error_c": 3.125
+        },
+        "KLAX": {
+          "challenger_error_c": -1.1354,
+          "incumbent_error_c": -0.8383
+        },
+        "KLGA": {
+          "challenger_error_c": -1.99,
+          "incumbent_error_c": -2.0783
+        },
+        "KMIA": {
+          "challenger_error_c": 1.126,
+          "incumbent_error_c": 1.3684
+        },
+        "KORD": {
+          "challenger_error_c": 3.7015,
+          "incumbent_error_c": 4.1443
+        },
+        "KSEA": {
+          "challenger_error_c": -3.4521,
+          "incumbent_error_c": -2.9478
+        },
+        "KSFO": {
+          "challenger_error_c": -4.3801,
+          "incumbent_error_c": -4.433
+        },
+        "LEMD": {
+          "challenger_error_c": -1.9281,
+          "incumbent_error_c": -1.8741
+        },
+        "LFPB": {
+          "challenger_error_c": -0.8583,
+          "incumbent_error_c": -0.1642
+        },
+        "LIMC": {
+          "challenger_error_c": -5.5287,
+          "incumbent_error_c": -6.005
+        },
+        "LTAC": {
+          "challenger_error_c": -0.6863,
+          "incumbent_error_c": -0.8856
+        },
+        "MMMX": {
+          "challenger_error_c": -0.3915,
+          "incumbent_error_c": -0.9605
+        },
+        "MPMG": {
+          "challenger_error_c": -1.8094,
+          "incumbent_error_c": -1.5348
+        },
+        "NZWN": {
+          "challenger_error_c": -1.7874,
+          "incumbent_error_c": -1.7709
+        },
+        "OEJN": {
+          "challenger_error_c": -7.6045,
+          "incumbent_error_c": -7.5864
+        },
+        "OPKC": {
+          "challenger_error_c": -1.0277,
+          "incumbent_error_c": -0.897
+        },
+        "RCSS": {
+          "challenger_error_c": -4.0219,
+          "incumbent_error_c": -3.58
+        },
+        "RJTT": {
+          "challenger_error_c": -3.9131,
+          "incumbent_error_c": -4.2109
+        },
+        "RKPK": {
+          "challenger_error_c": -6.0665,
+          "incumbent_error_c": -5.7702
+        },
+        "RKSI": {
+          "challenger_error_c": -2.4376,
+          "incumbent_error_c": -2.5699
+        },
+        "RPLL": {
+          "challenger_error_c": -0.4878,
+          "incumbent_error_c": -0.4254
+        },
+        "SAEZ": {
+          "challenger_error_c": -3.3732,
+          "incumbent_error_c": -4.6666
+        },
+        "SBGR": {
+          "challenger_error_c": 0.7053,
+          "incumbent_error_c": 0.8227
+        },
+        "VILK": {
+          "challenger_error_c": 0.838,
+          "incumbent_error_c": 1.8726
+        },
+        "WMKK": {
+          "challenger_error_c": 0.3456,
+          "incumbent_error_c": 0.5936
+        },
+        "WSSS": {
+          "challenger_error_c": -0.3556,
+          "incumbent_error_c": -0.2401
+        },
+        "ZBAA": {
+          "challenger_error_c": 2.6842,
+          "incumbent_error_c": 0.9284
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.4038,
+          "incumbent_error_c": -2.1265
+        },
+        "ZGSZ": {
+          "challenger_error_c": 0.2138,
+          "incumbent_error_c": 0.5596
+        },
+        "ZHHH": {
+          "challenger_error_c": -4.1434,
+          "incumbent_error_c": -3.4005
+        },
+        "ZSPD": {
+          "challenger_error_c": -6.1228,
+          "incumbent_error_c": -6.0026
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.556,
+          "incumbent_error_c": 2.5772
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.493,
+          "incumbent_error_c": -0.5519
+        },
+        "ZUUU": {
+          "challenger_error_c": 0.8848,
+          "incumbent_error_c": 1.179
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-18T12:00:00Z",
+      "station_count": 45
+    }
+  ],
+  "schema": "eccc_geps_run_cycle_ab_experiment_v1",
+  "summary": {
+    "challenger": {
+      "bias_c": -1.4783,
+      "mae_c": 2.2569,
+      "rmse_c": 2.9085
+    },
+    "challenger_wins_mae": true,
+    "dates_attempted": 1,
+    "dates_paired": 1,
+    "incumbent": {
+      "bias_c": -1.4112,
+      "mae_c": 2.2728,
+      "rmse_c": 2.9096
+    }
+  },
+  "system_id": "ECCC_GEM_GLOBAL_ENS",
+  "writes_ssot": false
+}

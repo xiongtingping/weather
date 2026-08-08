@@ -269,6 +269,7 @@ def export_shared_live_registry(
     decision_clock = as_of_utc or datetime.now(timezone.utc)
     classified_rows: list[tuple[dict[str, Any], str]] = []
     first_future_date_by_station: dict[str, str] = {}
+    unclassifiable_rows: list[dict[str, str]] = []
     for row in source_rows:
         try:
             state = str(settlement_day_state(
@@ -279,7 +280,25 @@ def export_shared_live_registry(
                 ),
             )["state"])
         except Exception as exc:
-            raise ContractError("market_registry_event_date_invalid") from exc
+            # A row that cannot be placed on a settlement day cannot enter
+            # target scope anyway -- most often a market discovered before its
+            # station timezone binding caught up.  Aborting the whole export on
+            # it froze the published catalog for two days behind 44 such rows,
+            # so every downstream capture scope inherited a stale station set
+            # while the discovery pipeline was in fact working.
+            #
+            # Dropping the row is narrower than dropping the catalog, and the
+            # count is reported so the binding gap stays visible.
+            unclassifiable_rows.append({
+                "slug": str(row.get("slug") or ""),
+                "event_date": str(row.get("event_date") or ""),
+                "station_id": str(row.get("station_id") or ""),
+                "settlement_timezone": str(
+                    row.get("settlement_timezone") or ""
+                ),
+                "reason": f"{type(exc).__name__}",
+            })
+            continue
         classified_rows.append((row, state))
         if state == "not_started":
             station_scope = str(
@@ -345,6 +364,7 @@ def export_shared_live_registry(
                 "source_row_count": len(source_rows),
                 "current_catalog_only": bool(current_catalog_only),
                 "excluded_future_row_count": excluded_future_rows,
+                "unclassifiable_row_count": len(unclassifiable_rows),
                 "excluded_closed_row_count": excluded_closed_row_count,
                 "excluded_additional_future_scope_row_count": (
                     excluded_additional_future_scope_row_count
@@ -377,6 +397,7 @@ def export_shared_live_registry(
             "event_date": event_date,
             "as_of_utc": normalized_clock,
             "excluded_future_row_count": excluded_future_rows,
+            "unclassifiable_row_count": len(unclassifiable_rows),
             "include_not_started_for_p0": bool(include_not_started_for_p0),
             "current_catalog_only": bool(current_catalog_only),
             "excluded_closed_row_count": excluded_closed_row_count,
@@ -401,6 +422,7 @@ def export_shared_live_registry(
         "source_row_count": len(source_rows),
         "current_catalog_only": bool(current_catalog_only),
         "excluded_future_row_count": excluded_future_rows,
+        "unclassifiable_row_count": len(unclassifiable_rows),
         "excluded_closed_row_count": excluded_closed_row_count,
         "excluded_additional_future_scope_row_count": (
             excluded_additional_future_scope_row_count

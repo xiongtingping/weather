@@ -43,26 +43,108 @@ NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE = (
 HISTORICAL_REPUBLISHER_RECEIPT = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
 HISTORICAL_OOS_TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 DEFAULT_VALID_DAYS = 30
-DEFAULT_FAMILY_WEIGHT_CAPS = {
-    "ECMWF": 0.45,
-}
+# Family weights come from measured skill: each family's share is its summed
+# system score over the total, and a cap only ever binds when that share would
+# otherwise exceed it.  The cap therefore exists to preserve ensemble diversity
+# -- no single family may dominate -- which is a property of the *combination*,
+# not of any particular provider.
+#
+# ECMWF previously carried a hardcoded 0.45 here while every other family used
+# the 0.75 default.  ECMWF's measured share exceeded 0.45 at ZUUU, so it was
+# clipped to exactly the cap and the remainder fell to GEFS: the resulting
+# 0.45/0.55 split described the cap, not the two systems' relative skill.  With
+# only two candidate systems available that asymmetry silently set the weights
+# outright.  Leaving this empty restores the symmetric 0.75 diversity bound and
+# lets skill decide.
+DEFAULT_FAMILY_WEIGHT_CAPS: dict[str, float] = {}
 OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     "NOAA_GEFS_05": {
         "transport_provider_id": "NOAA_GEFS_PDS_S3",
         "lead_bucket": "d2",
         "run_cycle": "18Z",
+        "extraction_version": "noaa_gefs_pds_0p50_18z_d2_station_tmax_v2",
     },
+    # Registered at all three leads, because P0 follows the freshest run: d2
+    # two days out, d1 the day before, d0 on the event day.  Each lead keeps
+    # its own extraction version so the OOS scope check cannot accept one lead
+    # against another's contract, and training stays split by
+    # (season_bin, lead_bucket).
+    #
+    # Only ECMWF is registered this way so far.  The other three collectors
+    # still write ARCHIVE_LEAD_BUCKET as a constant at ingest, so a d1 capture
+    # would land labelled d2 -- registering their shorter leads before that is
+    # fixed would feed mislabelled rows straight into d2's training set.
     "ECMWF_IFS_ENS_OPEN_PF50": {
         "transport_provider_id": "ECMWF_OPEN_DATA_S3",
-        "lead_bucket": "d2",
-        "run_cycle": "18Z",
+        "leads": {
+            "d0": {
+                "run_cycle": "18Z",
+                "extraction_version": (
+                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d0_v1"
+                ),
+            },
+            "d1": {
+                "run_cycle": "18Z",
+                "extraction_version": (
+                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d1_v1"
+                ),
+            },
+            "d2": {
+                "run_cycle": "18Z",
+                "extraction_version": (
+                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d2_v1"
+                ),
+            },
+        },
     },
+    # 00Z rather than the 12Z ECCC also publishes.  ECCC is the only family
+    # without an 18Z run, so its cycle is a real choice, and the obvious
+    # reasoning -- later run, fresher observations, smaller deficit against the
+    # others' 18Z -- turned out to be wrong.  Re-capturing 18 event dates at 12Z
+    # and scoring both against settled truth put 12Z *behind* 00Z by 0.043C MAE
+    # over the 13 fully-covered days (t=+2.09, 12Z winning only 4 of 13).  At a
+    # d2 lead the six hours of extra freshness are worth less than whatever 00Z
+    # gains as a primary assimilation cycle.
     "ECCC_GEM_GLOBAL_ENS": {
         "transport_provider_id": "ECCC_DD_WEATHER",
         "lead_bucket": "d2",
         "run_cycle": "00Z",
+        "extraction_version": "eccc_geps_0p5_00z_d2_station_tmax_v1",
+    },
+    # 12Z, because DWD publishes t_2m hourly only on its primary assimilation
+    # cycles (00Z/12Z) and 6-hourly on the secondary ones (06Z/18Z).  The 18Z
+    # this used to name cost the hourly grid for six hours of freshness that the
+    # ECCC cycle experiment measured at ~0.04C -- see dwd_icon_eps_archive.
+    #
+    # DWD retains only the newest run per cycle, so ICON's d2 history cannot be
+    # backfilled at all: the run captured today qualifies two days later, and a
+    # run not taken before it is overwritten is gone permanently.  Registering
+    # the scope now means the accumulating archive is admitted as soon as it
+    # covers a holdout cohort, rather than needing a second change then.
+    "DWD_ICON_GLOBAL_EPS": {
+        "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+        "lead_bucket": "d2",
+        "run_cycle": "12Z",
+        "extraction_version": (
+            "dwd_icon_global_eps_12z_d2_station_tmax_3h_v3"
+        ),
     },
 }
+# Derived rather than restated, because the two SQL filters that used to spell
+# this set out by hand had silently fallen behind: ICON was registered above but
+# missing from both, so every official ICON row was discarded before it reached
+# the scope check.  Deriving it means registering a system is a single edit.
+OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS = frozenset(
+    str(contract["transport_provider_id"])
+    for contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values()
+)
+# Inlined into SQL rather than bound as parameters because the set is a
+# compile-time constant of this module, never caller input.  Values are
+# identifiers from the contract above, so there is nothing to escape.
+_OFFICIAL_TRANSPORT_SQL_LIST = ",".join(
+    f"'{provider}'"
+    for provider in sorted(OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS)
+)
 # The forward packet still requires the two globally available anchor feeds
 # (ECMWF PF50 + NOAA GEFS), but the strict-OOS selector must not hard-pin the
 # calibrated P0 system set to that pair.  ECCC GEPS (and any future registered
@@ -486,21 +568,84 @@ def _load_systems(
     return systems
 
 
+def _scope_contract_variants(
+    official: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    """Normalise a scope entry into one contract per lead.
+
+    An entry is either a single contract (the historical shape, one lead) or a
+    ``leads`` mapping from lead bucket to its own cycle and extraction.  Both
+    are accepted so registering a second lead for a system never requires
+    rewriting the ones already in production.
+    """
+
+    leads = official.get("leads")
+    if not isinstance(leads, Mapping):
+        return (official,)
+    variants: list[Mapping[str, Any]] = []
+    for lead_bucket, contract in sorted(leads.items()):
+        if not isinstance(contract, Mapping):
+            continue
+        variants.append({
+            "transport_provider_id": official["transport_provider_id"],
+            "lead_bucket": str(lead_bucket),
+            **contract,
+        })
+    return tuple(variants)
+
+
 def _historical_transport_scope_allowed(
     *,
     system_id: str,
     transport_provider_id: str,
     lead_bucket: str,
     run_cycle: str,
+    extraction_version: str,
 ) -> bool:
+    """Admit only rows produced the way this system is read *today*.
+
+    ``extraction_version`` is part of the scope because a change in how values
+    are pulled from a run silently invalidates everything captured before it.
+    ICON is the worked example: sampling moved from a 6-hour to a 3-hour grid
+    after the 6-hour grid was measured to inject 0.32C of per-station noise that
+    no bias correction can remove.  Rows from both grids describe the same model
+    and pass every other check, so without this the training set would mix two
+    incompatible measurement conventions and calibration would fit the average
+    of them.
+
+    Rows are dropped rather than migrated: the archive is append-only by
+    trigger, and a superseded extraction cannot be recomputed from what was
+    stored.  A convention change therefore costs the accumulated history, which
+    is the honest price and the reason to make such changes early.
+    """
+
     official = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.get(system_id)
     if official is not None:
-        return (
-            transport_provider_id
-            == official["transport_provider_id"]
-            and lead_bucket == official["lead_bucket"]
-            and run_cycle == official["run_cycle"]
-        )
+        # A system may be registered at several leads.  P0 follows the freshest
+        # run available, so the same system supplies d2 two days out and d1 or
+        # d0 nearer the event, each with its own cycle and extraction.  Matching
+        # a single lead admitted only the longest one and discarded every later
+        # model update.
+        #
+        # Admitting more leads does not blur them: each lead keeps a separate
+        # contract, and OOS trains per (season_bin, lead_bucket), so weights are
+        # never shared across leads.
+        for contract in _scope_contract_variants(official):
+            expected_extraction = str(
+                contract.get("extraction_version") or ""
+            )
+            if (
+                transport_provider_id
+                == contract["transport_provider_id"]
+                and lead_bucket == contract["lead_bucket"]
+                and run_cycle == contract["run_cycle"]
+                and (
+                    not expected_extraction
+                    or extraction_version == expected_extraction
+                )
+            ):
+                return True
+        return False
     return transport_provider_id == "OPEN_METEO"
 
 
@@ -766,13 +911,12 @@ def _load_cases(
             "archive_lead_bucket,run_cycle,archive_query_at_utc,"
             "member_id,raw_tmax_c,content_sha256,"
             "transport_provider_id,native_run_init_utc,"
-            "offline_oos_eligible "
+            "offline_oos_eligible,extraction_version "
             "FROM calibration_native_ensemble_historical_member_run "
             "WHERE station_id=? AND qc_status='ACCEPTED' "
             "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
             "AND holdout_eligible=0 "
-            "AND transport_provider_id IN "
-            "('NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER') "
+            f"AND transport_provider_id IN ({_OFFICIAL_TRANSPORT_SQL_LIST}) "
             "AND archive_lead_bucket='d2' "
             "ORDER BY target_local_date,archive_query_at_utc,member_id",
             (station,),
@@ -787,16 +931,12 @@ def _load_cases(
                 transport_provider_id=str(row[8]),
                 lead_bucket=str(row[2]),
                 run_cycle=run_cycle,
+                extraction_version=str(row[11] or ""),
             ):
                 continue
             offline_oos_eligible = (
                 int(row[10]) == 1
-                and str(row[8])
-                in {
-                    "NOAA_GEFS_PDS_S3",
-                    "ECMWF_OPEN_DATA_S3",
-                    "ECCC_DD_WEATHER",
-                }
+                and str(row[8]) in OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS
                 and bool(str(row[9] or "").strip())
             )
             decision_at = (

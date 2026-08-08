@@ -317,11 +317,26 @@ def materialize_settled_station_truth(
         }
         previous = hourly_by_valid_at.get(item["valid_at_utc"])
         if previous is not None:
+            # The settled fact is the temperature: `official_tmax_c` below is
+            # `max(reported_temperature_c)`, and `raw_sha256` only ever reaches
+            # the audit payload.  Two reports for one valid time that agree on
+            # temperature therefore state the same fact and cannot change the
+            # truth, whichever is kept.
+            #
+            # Requiring the raw bytes to match as well treated ordinary METAR
+            # behaviour as a contradiction: a COR revision, a transmission
+            # truncation ("BKN20" for "BKN200") and the clean report all carry
+            # the same 15/13 temperature group but hash differently.  That
+            # rejected 292 scopes on raw bytes alone and 80 more on METAR vs
+            # SPECI, fail-closing settled-truth ingest for every station -- the
+            # 46-to-4 station collapse -- while exactly one scope disagreed on
+            # temperature.
+            #
+            # A genuine disagreement still fails closed: the truth is not
+            # guessable when two reports claim different temperatures.
             if (
-                previous["raw_sha256"] == item["raw_sha256"]
-                and previous["reported_temperature_c"]
+                previous["reported_temperature_c"]
                 == item["reported_temperature_c"]
-                and previous["report_type"] == item["report_type"]
             ):
                 continue
             raise ContractError(

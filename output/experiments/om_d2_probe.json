@@ -1,0 +1,1853 @@
+{
+  "archive_lead_bucket": "d2",
+  "authority_scope": "CALIBRATION_TRAIN_ONLY",
+  "calls_order_gateway": false,
+  "capture_count": 9,
+  "captured_at_utc": "2026-08-08T02:25:08.356Z",
+  "captures": [
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "expected_member_count": 64,
+      "independence_family_id": "GOOGLE_WEATHERNEXT",
+      "member_count": 64,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 30.5
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.3
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.2
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.1
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.4
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.4
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.6
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.3
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.4
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.1
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.7
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.5
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.4
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.9
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.6
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.3
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.8
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.3
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.2
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member31",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member32",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member33",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member34",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member35",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.5
+        },
+        {
+          "member_id": "member36",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.7
+        },
+        {
+          "member_id": "member37",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member38",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.5
+        },
+        {
+          "member_id": "member39",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member40",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.6
+        },
+        {
+          "member_id": "member41",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.1
+        },
+        {
+          "member_id": "member42",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.6
+        },
+        {
+          "member_id": "member43",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.4
+        },
+        {
+          "member_id": "member44",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.6
+        },
+        {
+          "member_id": "member45",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.4
+        },
+        {
+          "member_id": "member46",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.2
+        },
+        {
+          "member_id": "member47",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member48",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        },
+        {
+          "member_id": "member49",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        },
+        {
+          "member_id": "member50",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.5
+        },
+        {
+          "member_id": "member51",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member52",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member53",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.8
+        },
+        {
+          "member_id": "member54",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.7
+        },
+        {
+          "member_id": "member55",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.0
+        },
+        {
+          "member_id": "member56",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.9
+        },
+        {
+          "member_id": "member57",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member58",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member59",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member60",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member61",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.6
+        },
+        {
+          "member_id": "member62",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.7
+        },
+        {
+          "member_id": "member63",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        }
+      ],
+      "open_meteo_model": "google_weathernext2_ensemble",
+      "raw_object_ref": "open_meteo_response_sha256:7b26a018dcd4981e640268a3b579ceba68845bad0e87bdc7f2e1b1e584060ff7",
+      "settlement_timezone": "America/New_York",
+      "source_object_sha256": "7b26a018dcd4981e640268a3b579ceba68845bad0e87bdc7f2e1b1e584060ff7",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.7794&longitude=-73.8803&daily=temperature_2m_max&models=google_weathernext2_ensemble&forecast_days=3&timezone=America%2FNew_York",
+      "station_id": "KLGA",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "expected_member_count": 31,
+      "independence_family_id": "NOAA_AIGEFS",
+      "member_count": 31,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.9
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.3
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.4
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.0
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.0
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.9
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.7
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.8
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.2
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.0
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.7
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.1
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.0
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.9
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.0
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.6
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.6
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.0
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.7
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.2
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.4
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.5
+        }
+      ],
+      "open_meteo_model": "ncep_aigefs025",
+      "raw_object_ref": "open_meteo_response_sha256:fc19dfc61b1792aea8009d086bec94589a3556622d7c0d65cc9c2b46077e8c5f",
+      "settlement_timezone": "America/New_York",
+      "source_object_sha256": "fc19dfc61b1792aea8009d086bec94589a3556622d7c0d65cc9c2b46077e8c5f",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.7794&longitude=-73.8803&daily=temperature_2m_max&models=ncep_aigefs025&forecast_days=3&timezone=America%2FNew_York",
+      "station_id": "KLGA",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "expected_member_count": 18,
+      "independence_family_id": "UKMO",
+      "member_count": 18,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 32.8
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.6
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.2
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.7
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.7
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.0
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.3
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.8
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.3
+        }
+      ],
+      "open_meteo_model": "ukmo_global_ensemble_20km",
+      "raw_object_ref": "open_meteo_response_sha256:4ebb0c47fb152344c3fcf7441e484d6483b9133354366bfdfa2a8d7815867b13",
+      "settlement_timezone": "America/New_York",
+      "source_object_sha256": "4ebb0c47fb152344c3fcf7441e484d6483b9133354366bfdfa2a8d7815867b13",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=40.7794&longitude=-73.8803&daily=temperature_2m_max&models=ukmo_global_ensemble_20km&forecast_days=3&timezone=America%2FNew_York",
+      "station_id": "KLGA",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "expected_member_count": 64,
+      "independence_family_id": "GOOGLE_WEATHERNEXT",
+      "member_count": 64,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 28.4
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.9
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.2
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.1
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.1
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 21.6
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.1
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.0
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.6
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.0
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.6
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.6
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.0
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.2
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.6
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.2
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.8
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.7
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.2
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.6
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.8
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.0
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.6
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.5
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.7
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.4
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.1
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.1
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 29.9
+        },
+        {
+          "member_id": "member31",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.2
+        },
+        {
+          "member_id": "member32",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.8
+        },
+        {
+          "member_id": "member33",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.8
+        },
+        {
+          "member_id": "member34",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.1
+        },
+        {
+          "member_id": "member35",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.3
+        },
+        {
+          "member_id": "member36",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.5
+        },
+        {
+          "member_id": "member37",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.8
+        },
+        {
+          "member_id": "member38",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.8
+        },
+        {
+          "member_id": "member39",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.8
+        },
+        {
+          "member_id": "member40",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.0
+        },
+        {
+          "member_id": "member41",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.3
+        },
+        {
+          "member_id": "member42",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.7
+        },
+        {
+          "member_id": "member43",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.1
+        },
+        {
+          "member_id": "member44",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.6
+        },
+        {
+          "member_id": "member45",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.3
+        },
+        {
+          "member_id": "member46",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.5
+        },
+        {
+          "member_id": "member47",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.9
+        },
+        {
+          "member_id": "member48",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.8
+        },
+        {
+          "member_id": "member49",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member50",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.5
+        },
+        {
+          "member_id": "member51",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.3
+        },
+        {
+          "member_id": "member52",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.3
+        },
+        {
+          "member_id": "member53",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.2
+        },
+        {
+          "member_id": "member54",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.9
+        },
+        {
+          "member_id": "member55",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.0
+        },
+        {
+          "member_id": "member56",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.3
+        },
+        {
+          "member_id": "member57",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.1
+        },
+        {
+          "member_id": "member58",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.6
+        },
+        {
+          "member_id": "member59",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.8
+        },
+        {
+          "member_id": "member60",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.9
+        },
+        {
+          "member_id": "member61",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.0
+        },
+        {
+          "member_id": "member62",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.7
+        },
+        {
+          "member_id": "member63",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.2
+        }
+      ],
+      "open_meteo_model": "google_weathernext2_ensemble",
+      "raw_object_ref": "open_meteo_response_sha256:d016dfa0d3c3c382f3de81dcbccc4568964213eab2ae43902cfbf7477d9f0f49",
+      "settlement_timezone": "America/Los_Angeles",
+      "source_object_sha256": "d016dfa0d3c3c382f3de81dcbccc4568964213eab2ae43902cfbf7477d9f0f49",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=37.6196&longitude=-122.3656&daily=temperature_2m_max&models=google_weathernext2_ensemble&forecast_days=3&timezone=America%2FLos_Angeles",
+      "station_id": "KSFO",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "expected_member_count": 31,
+      "independence_family_id": "NOAA_AIGEFS",
+      "member_count": 31,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 28.9
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.4
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.6
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.8
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.4
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.5
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.0
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.6
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.2
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.0
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.9
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.3
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.6
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.8
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.7
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.9
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.2
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.0
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.0
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.1
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.2
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.7
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.7
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.6
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.5
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 28.9
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 27.0
+        }
+      ],
+      "open_meteo_model": "ncep_aigefs025",
+      "raw_object_ref": "open_meteo_response_sha256:51c7501179bc543e1e5d67d707c6169b3cebb8865ed08f7258c30bd97ff61964",
+      "settlement_timezone": "America/Los_Angeles",
+      "source_object_sha256": "51c7501179bc543e1e5d67d707c6169b3cebb8865ed08f7258c30bd97ff61964",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=37.6196&longitude=-122.3656&daily=temperature_2m_max&models=ncep_aigefs025&forecast_days=3&timezone=America%2FLos_Angeles",
+      "station_id": "KSFO",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "expected_member_count": 18,
+      "independence_family_id": "UKMO",
+      "member_count": 18,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 24.7
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 19.2
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.9
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.8
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.6
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.4
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.9
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 26.0
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.8
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.2
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 25.0
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.1
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.3
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 22.2
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.9
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 24.4
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.3
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 23.3
+        }
+      ],
+      "open_meteo_model": "ukmo_global_ensemble_20km",
+      "raw_object_ref": "open_meteo_response_sha256:b687ac2b395133276ced49ca4d955b7114a941a9d34811cad3c96f5ea539597b",
+      "settlement_timezone": "America/Los_Angeles",
+      "source_object_sha256": "b687ac2b395133276ced49ca4d955b7114a941a9d34811cad3c96f5ea539597b",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=37.6196&longitude=-122.3656&daily=temperature_2m_max&models=ukmo_global_ensemble_20km&forecast_days=3&timezone=America%2FLos_Angeles",
+      "station_id": "KSFO",
+      "target_local_date": "2026-08-09"
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "expected_member_count": 64,
+      "independence_family_id": "GOOGLE_WEATHERNEXT",
+      "member_count": 64,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.2
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.6
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.2
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.6
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.3
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.8
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.1
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.7
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.1
+        },
+        {
+          "member_id": "member31",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member32",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member33",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 36.6
+        },
+        {
+          "member_id": "member34",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.7
+        },
+        {
+          "member_id": "member35",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member36",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.1
+        },
+        {
+          "member_id": "member37",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member38",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member39",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.9
+        },
+        {
+          "member_id": "member40",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.9
+        },
+        {
+          "member_id": "member41",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.4
+        },
+        {
+          "member_id": "member42",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.2
+        },
+        {
+          "member_id": "member43",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member44",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member45",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member46",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.8
+        },
+        {
+          "member_id": "member47",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 35.2
+        },
+        {
+          "member_id": "member48",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member49",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.6
+        },
+        {
+          "member_id": "member50",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member51",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.1
+        },
+        {
+          "member_id": "member52",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.0
+        },
+        {
+          "member_id": "member53",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.8
+        },
+        {
+          "member_id": "member54",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.6
+        },
+        {
+          "member_id": "member55",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member56",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.2
+        },
+        {
+          "member_id": "member57",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member58",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.7
+        },
+        {
+          "member_id": "member59",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member60",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        },
+        {
+          "member_id": "member61",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.2
+        },
+        {
+          "member_id": "member62",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member63",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.5
+        }
+      ],
+      "open_meteo_model": "google_weathernext2_ensemble",
+      "raw_object_ref": "open_meteo_response_sha256:f36a7312f23574b1ea83a4f11fba018e8ea2ded7999e2535854da30e6f392e90",
+      "settlement_timezone": "Asia/Shanghai",
+      "source_object_sha256": "f36a7312f23574b1ea83a4f11fba018e8ea2ded7999e2535854da30e6f392e90",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.5760&longitude=103.9500&daily=temperature_2m_max&models=google_weathernext2_ensemble&forecast_days=3&timezone=Asia%2FShanghai",
+      "station_id": "ZUUU",
+      "target_local_date": "2026-08-10"
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "expected_member_count": 31,
+      "independence_family_id": "NOAA_AIGEFS",
+      "member_count": 31,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 33.7
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.1
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.3
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 30.6
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 35.0
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.4
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.0
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.8
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.1
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.6
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 35.3
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.3
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.6
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 36.0
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.8
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.7
+        },
+        {
+          "member_id": "member18",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.5
+        },
+        {
+          "member_id": "member19",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member20",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.8
+        },
+        {
+          "member_id": "member21",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 36.1
+        },
+        {
+          "member_id": "member22",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.3
+        },
+        {
+          "member_id": "member23",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 35.4
+        },
+        {
+          "member_id": "member24",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.6
+        },
+        {
+          "member_id": "member25",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.9
+        },
+        {
+          "member_id": "member26",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.9
+        },
+        {
+          "member_id": "member27",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.2
+        },
+        {
+          "member_id": "member28",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.9
+        },
+        {
+          "member_id": "member29",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.4
+        },
+        {
+          "member_id": "member30",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 31.5
+        }
+      ],
+      "open_meteo_model": "ncep_aigefs025",
+      "raw_object_ref": "open_meteo_response_sha256:00f993b60a1ea91a4c306f05eff4a3ae2baa0bbaf8c507b5ff7af3161a137264",
+      "settlement_timezone": "Asia/Shanghai",
+      "source_object_sha256": "00f993b60a1ea91a4c306f05eff4a3ae2baa0bbaf8c507b5ff7af3161a137264",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.5760&longitude=103.9500&daily=temperature_2m_max&models=ncep_aigefs025&forecast_days=3&timezone=Asia%2FShanghai",
+      "station_id": "ZUUU",
+      "target_local_date": "2026-08-10"
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "expected_member_count": 18,
+      "independence_family_id": "UKMO",
+      "member_count": 18,
+      "members": [
+        {
+          "member_id": "control",
+          "member_role": "CONTROL",
+          "raw_tmax_c": 34.2
+        },
+        {
+          "member_id": "member01",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.3
+        },
+        {
+          "member_id": "member02",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.6
+        },
+        {
+          "member_id": "member03",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.4
+        },
+        {
+          "member_id": "member04",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.9
+        },
+        {
+          "member_id": "member05",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.7
+        },
+        {
+          "member_id": "member06",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.3
+        },
+        {
+          "member_id": "member07",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.0
+        },
+        {
+          "member_id": "member08",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.5
+        },
+        {
+          "member_id": "member09",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.1
+        },
+        {
+          "member_id": "member10",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 32.9
+        },
+        {
+          "member_id": "member11",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.6
+        },
+        {
+          "member_id": "member12",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.4
+        },
+        {
+          "member_id": "member13",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.2
+        },
+        {
+          "member_id": "member14",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.5
+        },
+        {
+          "member_id": "member15",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 34.2
+        },
+        {
+          "member_id": "member16",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.7
+        },
+        {
+          "member_id": "member17",
+          "member_role": "PERTURBED",
+          "raw_tmax_c": 33.5
+        }
+      ],
+      "open_meteo_model": "ukmo_global_ensemble_20km",
+      "raw_object_ref": "open_meteo_response_sha256:60c249f2228e81892d0c7fd6dcb17c0b0359721bf2b143d0758b2634f74ac1ec",
+      "settlement_timezone": "Asia/Shanghai",
+      "source_object_sha256": "60c249f2228e81892d0c7fd6dcb17c0b0359721bf2b143d0758b2634f74ac1ec",
+      "source_url": "https://ensemble-api.open-meteo.com/v1/ensemble?latitude=30.5760&longitude=103.9500&daily=temperature_2m_max&models=ukmo_global_ensemble_20km&forecast_days=3&timezone=Asia%2FShanghai",
+      "station_id": "ZUUU",
+      "target_local_date": "2026-08-10"
+    }
+  ],
+  "content_sha256": "3ddf2965c482162bb863c0ba37f53f21e7cdc1faa7b7739bf5d33e5216d2ed83",
+  "extraction_version": "open_meteo_forward_d2_daily_tmax_member_v1",
+  "failure_count": 0,
+  "failures": [],
+  "holdout_eligible": false,
+  "model_count": 3,
+  "official_native": false,
+  "orders_submitted": 0,
+  "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
+  "schema": "open_meteo_forward_d2_ensemble_members_v1",
+  "source_role": "aggregator_republisher",
+  "station_count": 3,
+  "target_local_date": "2026-08-10",
+  "transport_provider_id": "OPEN_METEO"
+}

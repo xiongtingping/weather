@@ -1,0 +1,67 @@
+{
+  "admissible": [],
+  "admissible_count": 0,
+  "audited_at_utc": "2026-08-08T03:38:13.735Z",
+  "blocked": [
+    {
+      "admissible": false,
+      "blockers": [
+        "coordinate_registry_missing"
+      ],
+      "checks": {
+        "awc_stationinfo": {
+          "country": "CN",
+          "latitude": 34.52,
+          "longitude": 113.834,
+          "site": "Zhengzhou/Xinzheng Arpt"
+        },
+        "coordinate_registered": false,
+        "metar_reports_12h": 12,
+        "taf_reports": 1
+      },
+      "city_slug": "zhengzhou",
+      "first_event_date": "2026-08-07",
+      "last_event_date": "2026-08-08",
+      "listing_count": 22,
+      "proposed_coordinates": {
+        "latitude": 34.52,
+        "longitude": 113.834
+      },
+      "station_id": "ZHCC"
+    },
+    {
+      "admissible": false,
+      "blockers": [
+        "coordinate_registry_missing",
+        "metar_insufficient"
+      ],
+      "checks": {
+        "awc_stationinfo": {
+          "country": "CN",
+          "latitude": 36.856,
+          "longitude": 117.206,
+          "site": "Jinan Yaoqiang Intl"
+        },
+        "coordinate_registered": false,
+        "metar_reports_12h": 0,
+        "taf_reports": 1
+      },
+      "city_slug": "jinan",
+      "first_event_date": "2026-08-07",
+      "last_event_date": "2026-08-08",
+      "listing_count": 22,
+      "proposed_coordinates": {
+        "latitude": 36.856,
+        "longitude": 117.206
+      },
+      "station_id": "ZSJN"
+    }
+  ],
+  "blocked_count": 2,
+  "calls_order_gateway": false,
+  "candidate_count": 2,
+  "orders_submitted": 0,
+  "registered_station_count": 45,
+  "schema": "new_market_station_admission_audit_v1",
+  "writes_registry": false
+}

@@ -221,6 +221,25 @@ def _reconcile_pending_argmax_orders(conn: sqlite3.Connection) -> list[dict[str,
                 and response.get("error") == "exchange_order_not_filled"
             ):
                 state = "RELEASED"
+            elif (
+                # The gateway remembers this key and states that it refused the
+                # order before any exchange call: nothing can be resting, so the
+                # budget is free.  Geoblocking (HTTP 403) arrives this way, and
+                # without this branch three stations' entire allowance is held
+                # by orders that provably never left the machine.
+                #
+                # This reads only the gateway's own assertions.  `found` must be
+                # true -- an unknown key is ambiguous, because the gateway may
+                # have lost a record of an order that did go out, and that case
+                # must keep its budget reserved.
+                response.get("found") is True
+                and response.get("pending") is not True
+                and response.get("exchange_post_started") is False
+                and response.get("fatal") is True
+                and response.get("retryable") is not True
+                and not response.get("orderID")
+            ):
+                state = "RELEASED"
             else:
                 state = "RECONCILE_REQUIRED"
             conn.execute(

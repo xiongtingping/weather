@@ -32,6 +32,12 @@ from bayes_basket_target.market_registry import (  # noqa: E402
 from bayes_basket_target.noaa_gefs_archive import (  # noqa: E402
     capture_gefs_station_days,
 )
+from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
+    capture_geps_station_days,
+)
+from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
+    capture_icon_eps_station_days,
+)
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_process_memory_budget,
     load_bounded_json,
@@ -271,6 +277,8 @@ def capture_official_native_forward(
     station_ids: Sequence[str] | None = None,
     eccc_geps_archive: Path | None = None,
     eccc_station_ids: Sequence[str] | None = None,
+    eccc_output: Path | None = None,
+    icon_output: Path | None = None,
 ) -> dict[str, Any]:
     """Capture and materialize a formally admissible official-native inbox."""
 
@@ -298,8 +306,40 @@ def capture_official_native_forward(
         as_of_utc=capture_at,
         max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
     )
+    # ECCC and ICON are captured actively here, not merely reused.  Leaving
+    # them to a "supply an archive if you happen to have one" parameter meant
+    # their history never grew: ECCC stalled at 2026-07-30 and ICON had none at
+    # all, so neither could ever satisfy the exact holdout cohort that admits a
+    # system to the cross-ensemble candidate set.  With only ECMWF and GEFS
+    # qualifying, per-station model selection had nothing to choose between.
+    eccc = None
+    if eccc_output is not None:
+        eccc = _load_retained_archive(
+            eccc_output.expanduser().resolve(),
+            event_date=event_date,
+            station_ids=requested_station_ids,
+            expected_schema=(
+                "eccc_geps_official_historical_multistation_members_v1"
+            ),
+            as_of_utc=capture_at,
+            max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+        )
+    icon = None
+    if icon_output is not None:
+        icon = _load_retained_archive(
+            icon_output.expanduser().resolve(),
+            event_date=event_date,
+            station_ids=requested_station_ids,
+            expected_schema=(
+                "dwd_icon_eps_official_historical_multistation_members_v1"
+            ),
+            as_of_utc=capture_at,
+            max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+        )
     reused_gefs = gefs is not None
     reused_ecmwf = ecmwf is not None
+    reused_eccc = eccc is not None
+    reused_icon = icon is not None
     if gefs is None:
         assert_process_memory_budget()
         gefs = capture_gefs_station_days(
@@ -316,10 +356,40 @@ def capture_official_native_forward(
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
         )
+    if eccc_output is not None and eccc is None:
+        assert_process_memory_budget()
+        eccc = capture_geps_station_days(
+            event_date=event_date,
+            station_scopes=scopes,
+            archive_query_at_utc=capture_at,
+            timeout_seconds=float(timeout_seconds),
+        )
+    if icon_output is not None and icon is None:
+        assert_process_memory_budget()
+        icon = capture_icon_eps_station_days(
+            event_date=event_date,
+            station_scopes=scopes,
+            archive_query_at_utc=capture_at,
+            timeout_seconds=float(timeout_seconds),
+        )
     assert_process_memory_budget()
     inbox_path = inbox_output.expanduser().resolve()
     wrote_gefs = write_bounded_json_if_changed(gefs_path, gefs)
     wrote_ecmwf = write_bounded_json_if_changed(ecmwf_path, ecmwf)
+    wrote_eccc = (
+        write_bounded_json_if_changed(
+            eccc_output.expanduser().resolve(), eccc
+        )
+        if eccc_output is not None and eccc is not None
+        else False
+    )
+    wrote_icon = (
+        write_bounded_json_if_changed(
+            icon_output.expanduser().resolve(), icon
+        )
+        if icon_output is not None and icon is not None
+        else False
+    )
     command = [
         sys.executable,
         str(ROOT / "scripts" / "build_official_native_forward_inbox.py"),
@@ -328,15 +398,23 @@ def capture_official_native_forward(
         "--market-registry", str(registry_path.expanduser().resolve()),
         "--output", str(inbox_path),
     ]
-    if eccc_geps_archive is not None:
-        # Reuse the existing bounded official ECCC capture.  This path adds
-        # no network call and preserves the GEPS native 00Z lineage.
-        command.extend([
-            "--eccc-geps-archive",
-            str(eccc_geps_archive.expanduser().resolve(strict=True)),
-        ])
+    # An actively captured ECCC archive is preferred over a supplied one; both
+    # carry the same GEPS native 00Z lineage, so the builder treats them alike.
+    resolved_eccc = (
+        eccc_output.expanduser().resolve()
+        if eccc_output is not None and eccc is not None
+        else (
+            eccc_geps_archive.expanduser().resolve(strict=True)
+            if eccc_geps_archive is not None
+            else None
+        )
+    )
+    if resolved_eccc is not None:
+        command.extend(["--eccc-geps-archive", str(resolved_eccc)])
         for station_id in eccc_station_ids or ():
             command.extend(["--eccc-station-id", str(station_id)])
+    if icon_output is not None and icon is not None:
+        command.extend(["--archive", str(icon_output.expanduser().resolve())])
     completed = subprocess.run(
         command,
         check=True,
@@ -393,6 +471,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--gefs-output", type=Path, default=DEFAULT_GEFS_OUTPUT)
     parser.add_argument("--ecmwf-output", type=Path, default=DEFAULT_ECMWF_OUTPUT)
     parser.add_argument("--inbox-output", type=Path, default=DEFAULT_INBOX_OUTPUT)
+    parser.add_argument(
+        "--eccc-output",
+        type=Path,
+        help=(
+            "Actively capture official ECCC GEPS into this path instead of "
+            "only reusing a supplied archive."
+        ),
+    )
+    parser.add_argument(
+        "--icon-output",
+        type=Path,
+        help=(
+            "Actively capture official DWD ICON Global EPS into this path. "
+            "DWD retains only the newest run, so this is forward-only: the "
+            "run captured today becomes a d2 candidate two days later."
+        ),
+    )
     parser.add_argument("--station-id", action="append", default=[])
     parser.add_argument("--timeout-seconds", type=float, default=45.0)
     parser.add_argument(
@@ -423,6 +518,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=float(args.timeout_seconds),
             station_ids=args.station_id or None,
             eccc_geps_archive=args.eccc_geps_archive,
+            eccc_output=args.eccc_output,
+            icon_output=args.icon_output,
             eccc_station_ids=args.eccc_station_id,
         )
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:

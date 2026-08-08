@@ -33,15 +33,87 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 )
 
 
+def _snapshot_registry_rows(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str,
+    snapshot_sha256: str,
+) -> list[dict[str, object]]:
+    """Read one atomic registry snapshot, mirroring the canonical row shape."""
+
+    rows = conn.execute(
+        "SELECT slug,event_date,station_id,settlement_timezone,settlement_unit,"
+        "outcome,yes_token,registry_json,source_lane "
+        "FROM basket_target_market_registry "
+        "WHERE event_date=? AND snapshot_sha256=? AND source_eligible=1 "
+        "ORDER BY station_id,event_date,slug,outcome",
+        (event_date, snapshot_sha256),
+    ).fetchall()
+    result: list[dict[str, object]] = []
+    for row in rows:
+        registry_json = str(row[7] or "{}")
+        raw = json.loads(registry_json)
+        if not isinstance(raw, dict):
+            raise RuntimeError("eccc_geps_archive_registry_json_invalid")
+        item = {
+            "slug": str(row[0]),
+            "event_date": str(row[1]),
+            "station_id": str(row[2] or ""),
+            "settlement_timezone": str(row[3] or ""),
+            "settlement_unit": str(row[4] or ""),
+            "outcome": str(row[5] or ""),
+            "yes_token": str(row[6] or ""),
+            "registry_json": registry_json,
+            "source_lane": str(row[8] or "").strip().lower(),
+            "market_id": str(raw.get("market_id") or ""),
+            "lower": raw.get("lower"),
+            "upper": raw.get("upper"),
+        }
+        if (
+            not item["station_id"]
+            or not item["outcome"]
+            or item["source_lane"] not in {"amsc", "awc"}
+        ):
+            raise RuntimeError("eccc_geps_archive_registry_identity_missing")
+        result.append(item)
+    return result
+
+
 def _station_scopes(
     conn: sqlite3.Connection,
     *,
     event_date: str,
 ) -> list[dict[str, object]]:
-    """Freeze scopes to one historical market date, never today's registry."""
+    """Freeze scopes to one historical market date, never today's registry.
 
+    The scope must come from the snapshot that actually covered the 45-station
+    market on that date.  `load_active_registry_rows` resolves the *latest*
+    snapshot for the date, which for a settled day is the one taken as its
+    markets were closing: 2026-07-31's newest snapshot holds 3 stations, while
+    earlier snapshots that day hold all 45.  Selecting by recency therefore made
+    every historical backfill fail the 45-station requirement, which is exactly
+    the data an out-of-sample holdout needs.
+
+    Choosing the widest snapshot keeps the scope internally consistent -- all
+    rows still come from one atomic registry snapshot -- while restoring the
+    coverage the date genuinely had.
+    """
+
+    snapshot = conn.execute(
+        "SELECT snapshot_sha256,COUNT(DISTINCT station_id) AS covered "
+        "FROM basket_target_market_registry "
+        "WHERE event_date=? AND source_eligible=1 "
+        "GROUP BY snapshot_sha256 "
+        "ORDER BY covered DESC,snapshot_sha256 "
+        "LIMIT 1",
+        (event_date,),
+    ).fetchone()
+    if snapshot is None:
+        raise RuntimeError("eccc_geps_archive_registry_snapshot_missing")
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in load_active_registry_rows(conn, event_date=event_date):
+    for row in _snapshot_registry_rows(
+        conn, event_date=event_date, snapshot_sha256=str(snapshot[0])
+    ):
         station = str(row.get("station_id") or "").strip().upper()
         grouped[station].append(row)
     scopes = []

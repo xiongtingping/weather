@@ -1,0 +1,3178 @@
+{
+  "calls_order_gateway": false,
+  "orders_submitted": 0,
+  "results": [
+    {
+      "event_date": "2026-07-12",
+      "failed": "RuntimeError:eccc_geps_archive_registry_snapshot_missing"
+    },
+    {
+      "event_date": "2026-07-13",
+      "failed": "RuntimeError:eccc_geps_archive_registry_snapshot_missing"
+    },
+    {
+      "event_date": "2026-07-14",
+      "failed": "RuntimeError:eccc_geps_archive_registry_snapshot_missing"
+    },
+    {
+      "event_date": "2026-07-15",
+      "failed": "RuntimeError:eccc_geps_archive_registry_snapshot_missing"
+    },
+    {
+      "challenger": {
+        "bias_c": -1.6847,
+        "mae_c": 2.4368,
+        "n": 45,
+        "rmse_c": 3.1349
+      },
+      "event_date": "2026-07-16",
+      "incumbent": {
+        "bias_c": -1.6401,
+        "mae_c": 2.2731,
+        "n": 45,
+        "rmse_c": 3.0424
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -3.3028,
+          "incumbent_error_c": -2.8967
+        },
+        "EDDM": {
+          "challenger_error_c": -3.7391,
+          "incumbent_error_c": -4.3902
+        },
+        "EFHK": {
+          "challenger_error_c": 0.8697,
+          "incumbent_error_c": 1.6067
+        },
+        "EGLC": {
+          "challenger_error_c": 0.6605,
+          "incumbent_error_c": 0.3961
+        },
+        "EHAM": {
+          "challenger_error_c": 2.367,
+          "incumbent_error_c": 2.2553
+        },
+        "EPWA": {
+          "challenger_error_c": -2.419,
+          "incumbent_error_c": -2.7516
+        },
+        "FACT": {
+          "challenger_error_c": -2.167,
+          "incumbent_error_c": -2.28
+        },
+        "KATL": {
+          "challenger_error_c": -3.2099,
+          "incumbent_error_c": -3.2081
+        },
+        "KAUS": {
+          "challenger_error_c": -2.2521,
+          "incumbent_error_c": -1.1596
+        },
+        "KBKF": {
+          "challenger_error_c": -3.6953,
+          "incumbent_error_c": -3.8635
+        },
+        "KDAL": {
+          "challenger_error_c": -1.0541,
+          "incumbent_error_c": -1.3622
+        },
+        "KHOU": {
+          "challenger_error_c": -0.0043,
+          "incumbent_error_c": 0.0793
+        },
+        "KLAX": {
+          "challenger_error_c": -0.6593,
+          "incumbent_error_c": -0.7012
+        },
+        "KLGA": {
+          "challenger_error_c": 0.85,
+          "incumbent_error_c": 1.2928
+        },
+        "KMIA": {
+          "challenger_error_c": -0.1826,
+          "incumbent_error_c": -0.3433
+        },
+        "KORD": {
+          "challenger_error_c": 1.8955,
+          "incumbent_error_c": 1.7348
+        },
+        "KSEA": {
+          "challenger_error_c": 5.1527,
+          "incumbent_error_c": 4.8788
+        },
+        "KSFO": {
+          "challenger_error_c": -5.0672,
+          "incumbent_error_c": -5.3021
+        },
+        "LEMD": {
+          "challenger_error_c": -1.5354,
+          "incumbent_error_c": -1.6049
+        },
+        "LFPB": {
+          "challenger_error_c": -1.9678,
+          "incumbent_error_c": -1.2925
+        },
+        "LIMC": {
+          "challenger_error_c": 0.4051,
+          "incumbent_error_c": -0.6939
+        },
+        "LTAC": {
+          "challenger_error_c": -1.6213,
+          "incumbent_error_c": -1.8979
+        },
+        "MMMX": {
+          "challenger_error_c": -0.9445,
+          "incumbent_error_c": -0.5809
+        },
+        "MPMG": {
+          "challenger_error_c": -2.0225,
+          "incumbent_error_c": -2.0499
+        },
+        "NZWN": {
+          "challenger_error_c": -2.356,
+          "incumbent_error_c": -2.3877
+        },
+        "OEJN": {
+          "challenger_error_c": -7.2379,
+          "incumbent_error_c": -7.0402
+        },
+        "OPKC": {
+          "challenger_error_c": -0.9808,
+          "incumbent_error_c": -0.8576
+        },
+        "RCSS": {
+          "challenger_error_c": -5.7931,
+          "incumbent_error_c": -5.6053
+        },
+        "RJTT": {
+          "challenger_error_c": -1.875,
+          "incumbent_error_c": -1.074
+        },
+        "RKPK": {
+          "challenger_error_c": -8.7027,
+          "incumbent_error_c": -8.7678
+        },
+        "RKSI": {
+          "challenger_error_c": -2.9428,
+          "incumbent_error_c": -2.8568
+        },
+        "RPLL": {
+          "challenger_error_c": -0.1674,
+          "incumbent_error_c": -0.3263
+        },
+        "SAEZ": {
+          "challenger_error_c": -1.9929,
+          "incumbent_error_c": -2.5341
+        },
+        "SBGR": {
+          "challenger_error_c": -1.4821,
+          "incumbent_error_c": -1.3539
+        },
+        "VILK": {
+          "challenger_error_c": 2.0202,
+          "incumbent_error_c": 0.0773
+        },
+        "WMKK": {
+          "challenger_error_c": -3.2708,
+          "incumbent_error_c": -3.1804
+        },
+        "WSSS": {
+          "challenger_error_c": 0.5093,
+          "incumbent_error_c": 0.5674
+        },
+        "ZBAA": {
+          "challenger_error_c": -1.6324,
+          "incumbent_error_c": -0.829
+        },
+        "ZGGG": {
+          "challenger_error_c": -3.2359,
+          "incumbent_error_c": -2.5716
+        },
+        "ZGSZ": {
+          "challenger_error_c": 0.8406,
+          "incumbent_error_c": 1.0711
+        },
+        "ZHHH": {
+          "challenger_error_c": -2.9758,
+          "incumbent_error_c": -3.242
+        },
+        "ZSPD": {
+          "challenger_error_c": -7.9147,
+          "incumbent_error_c": -7.4868
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.3525,
+          "incumbent_error_c": -0.051
+        },
+        "ZUCK": {
+          "challenger_error_c": -1.5746,
+          "incumbent_error_c": 0.2833
+        },
+        "ZUUU": {
+          "challenger_error_c": -2.7535,
+          "incumbent_error_c": -1.5031
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-14T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.5936,
+        "mae_c": 2.4336,
+        "n": 45,
+        "rmse_c": 3.1543
+      },
+      "event_date": "2026-07-17",
+      "incumbent": {
+        "bias_c": -1.4634,
+        "mae_c": 2.3386,
+        "n": 45,
+        "rmse_c": 3.0598
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -2.5632,
+          "incumbent_error_c": -2.5938
+        },
+        "EDDM": {
+          "challenger_error_c": -4.7531,
+          "incumbent_error_c": -3.6756
+        },
+        "EFHK": {
+          "challenger_error_c": 0.1562,
+          "incumbent_error_c": 0.1814
+        },
+        "EGLC": {
+          "challenger_error_c": 0.0298,
+          "incumbent_error_c": -0.3528
+        },
+        "EHAM": {
+          "challenger_error_c": 2.6944,
+          "incumbent_error_c": 2.4138
+        },
+        "EPWA": {
+          "challenger_error_c": -0.1988,
+          "incumbent_error_c": -1.7965
+        },
+        "FACT": {
+          "challenger_error_c": -2.4525,
+          "incumbent_error_c": -2.4548
+        },
+        "KATL": {
+          "challenger_error_c": 0.665,
+          "incumbent_error_c": 0.7435
+        },
+        "KAUS": {
+          "challenger_error_c": -1.1017,
+          "incumbent_error_c": -0.5494
+        },
+        "KBKF": {
+          "challenger_error_c": -4.0494,
+          "incumbent_error_c": -4.0351
+        },
+        "KDAL": {
+          "challenger_error_c": -1.6614,
+          "incumbent_error_c": -1.48
+        },
+        "KHOU": {
+          "challenger_error_c": 1.208,
+          "incumbent_error_c": 1.3653
+        },
+        "KLAX": {
+          "challenger_error_c": -4.2905,
+          "incumbent_error_c": -4.5136
+        },
+        "KLGA": {
+          "challenger_error_c": -0.4826,
+          "incumbent_error_c": -0.1498
+        },
+        "KMIA": {
+          "challenger_error_c": 2.0629,
+          "incumbent_error_c": 2.0569
+        },
+        "KORD": {
+          "challenger_error_c": -1.3903,
+          "incumbent_error_c": -0.8478
+        },
+        "KSEA": {
+          "challenger_error_c": 1.1163,
+          "incumbent_error_c": 1.2792
+        },
+        "KSFO": {
+          "challenger_error_c": -4.8751,
+          "incumbent_error_c": -4.9167
+        },
+        "LEMD": {
+          "challenger_error_c": -1.3488,
+          "incumbent_error_c": -0.8065
+        },
+        "LFPB": {
+          "challenger_error_c": 0.6131,
+          "incumbent_error_c": 1.1534
+        },
+        "LIMC": {
+          "challenger_error_c": -3.4533,
+          "incumbent_error_c": -1.1389
+        },
+        "LTAC": {
+          "challenger_error_c": -2.8547,
+          "incumbent_error_c": -3.0151
+        },
+        "MMMX": {
+          "challenger_error_c": -0.2405,
+          "incumbent_error_c": -0.5347
+        },
+        "MPMG": {
+          "challenger_error_c": -1.4196,
+          "incumbent_error_c": -1.7842
+        },
+        "NZWN": {
+          "challenger_error_c": -2.1227,
+          "incumbent_error_c": -2.1918
+        },
+        "OEJN": {
+          "challenger_error_c": -6.7749,
+          "incumbent_error_c": -6.7694
+        },
+        "OPKC": {
+          "challenger_error_c": -1.8466,
+          "incumbent_error_c": -1.5602
+        },
+        "RCSS": {
+          "challenger_error_c": -5.6541,
+          "incumbent_error_c": -5.8007
+        },
+        "RJTT": {
+          "challenger_error_c": -3.7551,
+          "incumbent_error_c": -4.1821
+        },
+        "RKPK": {
+          "challenger_error_c": -5.1059,
+          "incumbent_error_c": -5.3379
+        },
+        "RKSI": {
+          "challenger_error_c": -5.5492,
+          "incumbent_error_c": -4.9161
+        },
+        "RPLL": {
+          "challenger_error_c": 0.7233,
+          "incumbent_error_c": 0.079
+        },
+        "SAEZ": {
+          "challenger_error_c": -0.3714,
+          "incumbent_error_c": 0.042
+        },
+        "SBGR": {
+          "challenger_error_c": 0.9253,
+          "incumbent_error_c": 0.9387
+        },
+        "VILK": {
+          "challenger_error_c": -2.2828,
+          "incumbent_error_c": -2.2843
+        },
+        "WMKK": {
+          "challenger_error_c": -3.475,
+          "incumbent_error_c": -3.4281
+        },
+        "WSSS": {
+          "challenger_error_c": 2.2181,
+          "incumbent_error_c": 2.531
+        },
+        "ZBAA": {
+          "challenger_error_c": 2.0582,
+          "incumbent_error_c": 1.5949
+        },
+        "ZGGG": {
+          "challenger_error_c": -4.5477,
+          "incumbent_error_c": -4.2535
+        },
+        "ZGSZ": {
+          "challenger_error_c": -1.4275,
+          "incumbent_error_c": -1.0712
+        },
+        "ZHHH": {
+          "challenger_error_c": -0.0646,
+          "incumbent_error_c": 0.2911
+        },
+        "ZSPD": {
+          "challenger_error_c": -9.5168,
+          "incumbent_error_c": -9.1055
+        },
+        "ZSQD": {
+          "challenger_error_c": 2.2134,
+          "incumbent_error_c": 1.7086
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.9822,
+          "incumbent_error_c": 0.362
+        },
+        "ZUUU": {
+          "challenger_error_c": 2.2156,
+          "incumbent_error_c": 2.9509
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-15T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.3125,
+        "mae_c": 1.9609,
+        "n": 45,
+        "rmse_c": 2.6609
+      },
+      "event_date": "2026-07-18",
+      "incumbent": {
+        "bias_c": -1.2981,
+        "mae_c": 2.0128,
+        "n": 45,
+        "rmse_c": 2.6638
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -1.9098,
+          "incumbent_error_c": -1.9942
+        },
+        "EDDM": {
+          "challenger_error_c": -3.7555,
+          "incumbent_error_c": -3.5971
+        },
+        "EFHK": {
+          "challenger_error_c": -1.8749,
+          "incumbent_error_c": -2.1784
+        },
+        "EGLC": {
+          "challenger_error_c": 2.4706,
+          "incumbent_error_c": 2.4975
+        },
+        "EHAM": {
+          "challenger_error_c": 1.0766,
+          "incumbent_error_c": 1.1332
+        },
+        "EPWA": {
+          "challenger_error_c": -0.7919,
+          "incumbent_error_c": -1.6089
+        },
+        "FACT": {
+          "challenger_error_c": 0.2516,
+          "incumbent_error_c": 0.2612
+        },
+        "KATL": {
+          "challenger_error_c": -1.3643,
+          "incumbent_error_c": -1.378
+        },
+        "KAUS": {
+          "challenger_error_c": 1.1087,
+          "incumbent_error_c": 0.5491
+        },
+        "KBKF": {
+          "challenger_error_c": -4.2403,
+          "incumbent_error_c": -3.77
+        },
+        "KDAL": {
+          "challenger_error_c": -1.4628,
+          "incumbent_error_c": -1.9355
+        },
+        "KHOU": {
+          "challenger_error_c": 2.1295,
+          "incumbent_error_c": 2.1371
+        },
+        "KLAX": {
+          "challenger_error_c": -0.0078,
+          "incumbent_error_c": 0.0795
+        },
+        "KLGA": {
+          "challenger_error_c": 2.237,
+          "incumbent_error_c": 2.7452
+        },
+        "KMIA": {
+          "challenger_error_c": 1.3409,
+          "incumbent_error_c": 1.3143
+        },
+        "KORD": {
+          "challenger_error_c": -0.8581,
+          "incumbent_error_c": -0.9494
+        },
+        "KSEA": {
+          "challenger_error_c": 0.0302,
+          "incumbent_error_c": 0.1221
+        },
+        "KSFO": {
+          "challenger_error_c": -6.8699,
+          "incumbent_error_c": -6.9343
+        },
+        "LEMD": {
+          "challenger_error_c": -2.3364,
+          "incumbent_error_c": -2.2382
+        },
+        "LFPB": {
+          "challenger_error_c": -0.6569,
+          "incumbent_error_c": -1.5059
+        },
+        "LIMC": {
+          "challenger_error_c": -1.5587,
+          "incumbent_error_c": -2.0288
+        },
+        "LTAC": {
+          "challenger_error_c": -0.8512,
+          "incumbent_error_c": -1.077
+        },
+        "MMMX": {
+          "challenger_error_c": -0.5992,
+          "incumbent_error_c": -1.0865
+        },
+        "MPMG": {
+          "challenger_error_c": -1.4879,
+          "incumbent_error_c": -1.7522
+        },
+        "NZWN": {
+          "challenger_error_c": -2.4646,
+          "incumbent_error_c": -2.1748
+        },
+        "OEJN": {
+          "challenger_error_c": -7.758,
+          "incumbent_error_c": -7.5548
+        },
+        "OPKC": {
+          "challenger_error_c": -1.0092,
+          "incumbent_error_c": -0.5572
+        },
+        "RCSS": {
+          "challenger_error_c": -4.8188,
+          "incumbent_error_c": -4.8866
+        },
+        "RJTT": {
+          "challenger_error_c": -0.739,
+          "incumbent_error_c": -0.9655
+        },
+        "RKPK": {
+          "challenger_error_c": -3.9619,
+          "incumbent_error_c": -4.3349
+        },
+        "RKSI": {
+          "challenger_error_c": -1.6337,
+          "incumbent_error_c": -0.9552
+        },
+        "RPLL": {
+          "challenger_error_c": 0.7088,
+          "incumbent_error_c": 0.2652
+        },
+        "SAEZ": {
+          "challenger_error_c": -2.0381,
+          "incumbent_error_c": -2.185
+        },
+        "SBGR": {
+          "challenger_error_c": 2.2632,
+          "incumbent_error_c": 2.0106
+        },
+        "VILK": {
+          "challenger_error_c": -1.1737,
+          "incumbent_error_c": 0.6467
+        },
+        "WMKK": {
+          "challenger_error_c": -2.6494,
+          "incumbent_error_c": -2.5626
+        },
+        "WSSS": {
+          "challenger_error_c": 0.09,
+          "incumbent_error_c": -0.2436
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.5986,
+          "incumbent_error_c": 0.3179
+        },
+        "ZGGG": {
+          "challenger_error_c": -0.1765,
+          "incumbent_error_c": -0.5605
+        },
+        "ZGSZ": {
+          "challenger_error_c": 0.8808,
+          "incumbent_error_c": 0.2631
+        },
+        "ZHHH": {
+          "challenger_error_c": -3.3099,
+          "incumbent_error_c": -2.5592
+        },
+        "ZSPD": {
+          "challenger_error_c": -6.9335,
+          "incumbent_error_c": -6.7756
+        },
+        "ZSQD": {
+          "challenger_error_c": -1.189,
+          "incumbent_error_c": -2.6031
+        },
+        "ZUCK": {
+          "challenger_error_c": -2.4663,
+          "incumbent_error_c": -1.5408
+        },
+        "ZUUU": {
+          "challenger_error_c": -0.1053,
+          "incumbent_error_c": 1.7374
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-16T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.2919,
+        "mae_c": 1.9392,
+        "n": 45,
+        "rmse_c": 2.4445
+      },
+      "event_date": "2026-07-19",
+      "incumbent": {
+        "bias_c": -1.1302,
+        "mae_c": 1.9238,
+        "n": 45,
+        "rmse_c": 2.3697
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -2.5073,
+          "incumbent_error_c": -2.216
+        },
+        "EDDM": {
+          "challenger_error_c": -2.3153,
+          "incumbent_error_c": -1.8215
+        },
+        "EFHK": {
+          "challenger_error_c": -1.0053,
+          "incumbent_error_c": -1.096
+        },
+        "EGLC": {
+          "challenger_error_c": 0.644,
+          "incumbent_error_c": 1.3333
+        },
+        "EHAM": {
+          "challenger_error_c": -1.6037,
+          "incumbent_error_c": -1.7877
+        },
+        "EPWA": {
+          "challenger_error_c": -0.134,
+          "incumbent_error_c": -0.4102
+        },
+        "FACT": {
+          "challenger_error_c": 0.9657,
+          "incumbent_error_c": 1.4706
+        },
+        "KATL": {
+          "challenger_error_c": 0.4129,
+          "incumbent_error_c": 0.2549
+        },
+        "KAUS": {
+          "challenger_error_c": 1.8503,
+          "incumbent_error_c": 1.9681
+        },
+        "KBKF": {
+          "challenger_error_c": -4.5063,
+          "incumbent_error_c": -4.2957
+        },
+        "KDAL": {
+          "challenger_error_c": -0.4083,
+          "incumbent_error_c": -0.3076
+        },
+        "KHOU": {
+          "challenger_error_c": 2.1409,
+          "incumbent_error_c": 2.2725
+        },
+        "KLAX": {
+          "challenger_error_c": 1.1013,
+          "incumbent_error_c": 1.0069
+        },
+        "KLGA": {
+          "challenger_error_c": -2.866,
+          "incumbent_error_c": -3.0476
+        },
+        "KMIA": {
+          "challenger_error_c": 1.8872,
+          "incumbent_error_c": 1.9361
+        },
+        "KORD": {
+          "challenger_error_c": 0.9085,
+          "incumbent_error_c": 0.1903
+        },
+        "KSEA": {
+          "challenger_error_c": -1.9706,
+          "incumbent_error_c": -1.7583
+        },
+        "KSFO": {
+          "challenger_error_c": -2.7852,
+          "incumbent_error_c": -3.2352
+        },
+        "LEMD": {
+          "challenger_error_c": -2.7322,
+          "incumbent_error_c": -2.3702
+        },
+        "LFPB": {
+          "challenger_error_c": 0.3321,
+          "incumbent_error_c": 0.6607
+        },
+        "LIMC": {
+          "challenger_error_c": -4.4583,
+          "incumbent_error_c": -4.4268
+        },
+        "LTAC": {
+          "challenger_error_c": -1.76,
+          "incumbent_error_c": -1.4436
+        },
+        "MMMX": {
+          "challenger_error_c": -0.1653,
+          "incumbent_error_c": -0.3731
+        },
+        "MPMG": {
+          "challenger_error_c": -1.9541,
+          "incumbent_error_c": -2.1786
+        },
+        "NZWN": {
+          "challenger_error_c": -0.6453,
+          "incumbent_error_c": -0.4449
+        },
+        "OEJN": {
+          "challenger_error_c": -6.5537,
+          "incumbent_error_c": -6.4716
+        },
+        "OPKC": {
+          "challenger_error_c": -0.349,
+          "incumbent_error_c": 0.0486
+        },
+        "RCSS": {
+          "challenger_error_c": -5.0238,
+          "incumbent_error_c": -4.7157
+        },
+        "RJTT": {
+          "challenger_error_c": -3.0649,
+          "incumbent_error_c": -2.77
+        },
+        "RKPK": {
+          "challenger_error_c": -3.0687,
+          "incumbent_error_c": -2.7901
+        },
+        "RKSI": {
+          "challenger_error_c": -2.3687,
+          "incumbent_error_c": -2.3731
+        },
+        "RPLL": {
+          "challenger_error_c": -0.9354,
+          "incumbent_error_c": -0.5139
+        },
+        "SAEZ": {
+          "challenger_error_c": -1.079,
+          "incumbent_error_c": -0.9933
+        },
+        "SBGR": {
+          "challenger_error_c": 1.1962,
+          "incumbent_error_c": 1.3316
+        },
+        "VILK": {
+          "challenger_error_c": 0.7285,
+          "incumbent_error_c": 1.8436
+        },
+        "WMKK": {
+          "challenger_error_c": -2.5863,
+          "incumbent_error_c": -2.4139
+        },
+        "WSSS": {
+          "challenger_error_c": -0.276,
+          "incumbent_error_c": -0.1852
+        },
+        "ZBAA": {
+          "challenger_error_c": -2.4414,
+          "incumbent_error_c": -2.2653
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.9193,
+          "incumbent_error_c": -2.7414
+        },
+        "ZGSZ": {
+          "challenger_error_c": -0.7754,
+          "incumbent_error_c": -1.2028
+        },
+        "ZHHH": {
+          "challenger_error_c": -4.4152,
+          "incumbent_error_c": -3.2074
+        },
+        "ZSPD": {
+          "challenger_error_c": -4.6975,
+          "incumbent_error_c": -4.2994
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.5565,
+          "incumbent_error_c": 2.4501
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.33,
+          "incumbent_error_c": -0.5582
+        },
+        "ZUUU": {
+          "challenger_error_c": 0.8397,
+          "incumbent_error_c": 1.0875
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-17T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.4783,
+        "mae_c": 2.2569,
+        "n": 45,
+        "rmse_c": 2.9085
+      },
+      "event_date": "2026-07-20",
+      "incumbent": {
+        "bias_c": -1.4112,
+        "mae_c": 2.2728,
+        "n": 45,
+        "rmse_c": 2.9096
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -3.2255,
+          "incumbent_error_c": -2.8236
+        },
+        "EDDM": {
+          "challenger_error_c": -0.5186,
+          "incumbent_error_c": -0.8527
+        },
+        "EFHK": {
+          "challenger_error_c": -2.4637,
+          "incumbent_error_c": -2.7699
+        },
+        "EGLC": {
+          "challenger_error_c": -2.3974,
+          "incumbent_error_c": -1.5717
+        },
+        "EHAM": {
+          "challenger_error_c": -0.3729,
+          "incumbent_error_c": 0.0128
+        },
+        "EPWA": {
+          "challenger_error_c": 0.1976,
+          "incumbent_error_c": 0.5598
+        },
+        "FACT": {
+          "challenger_error_c": -1.5637,
+          "incumbent_error_c": -1.1675
+        },
+        "KATL": {
+          "challenger_error_c": -0.9277,
+          "incumbent_error_c": -1.7822
+        },
+        "KAUS": {
+          "challenger_error_c": 1.9862,
+          "incumbent_error_c": 1.6416
+        },
+        "KBKF": {
+          "challenger_error_c": -5.3448,
+          "incumbent_error_c": -5.2156
+        },
+        "KDAL": {
+          "challenger_error_c": -0.8281,
+          "incumbent_error_c": -1.187
+        },
+        "KHOU": {
+          "challenger_error_c": 3.2786,
+          "incumbent_error_c": 3.125
+        },
+        "KLAX": {
+          "challenger_error_c": -1.1354,
+          "incumbent_error_c": -0.8383
+        },
+        "KLGA": {
+          "challenger_error_c": -1.99,
+          "incumbent_error_c": -2.0783
+        },
+        "KMIA": {
+          "challenger_error_c": 1.126,
+          "incumbent_error_c": 1.3684
+        },
+        "KORD": {
+          "challenger_error_c": 3.7015,
+          "incumbent_error_c": 4.1443
+        },
+        "KSEA": {
+          "challenger_error_c": -3.4521,
+          "incumbent_error_c": -2.9478
+        },
+        "KSFO": {
+          "challenger_error_c": -4.3801,
+          "incumbent_error_c": -4.433
+        },
+        "LEMD": {
+          "challenger_error_c": -1.9281,
+          "incumbent_error_c": -1.8741
+        },
+        "LFPB": {
+          "challenger_error_c": -0.8583,
+          "incumbent_error_c": -0.1642
+        },
+        "LIMC": {
+          "challenger_error_c": -5.5287,
+          "incumbent_error_c": -6.005
+        },
+        "LTAC": {
+          "challenger_error_c": -0.6863,
+          "incumbent_error_c": -0.8856
+        },
+        "MMMX": {
+          "challenger_error_c": -0.3915,
+          "incumbent_error_c": -0.9605
+        },
+        "MPMG": {
+          "challenger_error_c": -1.8094,
+          "incumbent_error_c": -1.5348
+        },
+        "NZWN": {
+          "challenger_error_c": -1.7874,
+          "incumbent_error_c": -1.7709
+        },
+        "OEJN": {
+          "challenger_error_c": -7.6045,
+          "incumbent_error_c": -7.5864
+        },
+        "OPKC": {
+          "challenger_error_c": -1.0277,
+          "incumbent_error_c": -0.897
+        },
+        "RCSS": {
+          "challenger_error_c": -4.0219,
+          "incumbent_error_c": -3.58
+        },
+        "RJTT": {
+          "challenger_error_c": -3.9131,
+          "incumbent_error_c": -4.2109
+        },
+        "RKPK": {
+          "challenger_error_c": -6.0665,
+          "incumbent_error_c": -5.7702
+        },
+        "RKSI": {
+          "challenger_error_c": -2.4376,
+          "incumbent_error_c": -2.5699
+        },
+        "RPLL": {
+          "challenger_error_c": -0.4878,
+          "incumbent_error_c": -0.4254
+        },
+        "SAEZ": {
+          "challenger_error_c": -3.3732,
+          "incumbent_error_c": -4.6666
+        },
+        "SBGR": {
+          "challenger_error_c": 0.7053,
+          "incumbent_error_c": 0.8227
+        },
+        "VILK": {
+          "challenger_error_c": 0.838,
+          "incumbent_error_c": 1.8726
+        },
+        "WMKK": {
+          "challenger_error_c": 0.3456,
+          "incumbent_error_c": 0.5936
+        },
+        "WSSS": {
+          "challenger_error_c": -0.3556,
+          "incumbent_error_c": -0.2401
+        },
+        "ZBAA": {
+          "challenger_error_c": 2.6842,
+          "incumbent_error_c": 0.9284
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.4038,
+          "incumbent_error_c": -2.1265
+        },
+        "ZGSZ": {
+          "challenger_error_c": 0.2138,
+          "incumbent_error_c": 0.5596
+        },
+        "ZHHH": {
+          "challenger_error_c": -4.1434,
+          "incumbent_error_c": -3.4005
+        },
+        "ZSPD": {
+          "challenger_error_c": -6.1228,
+          "incumbent_error_c": -6.0026
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.556,
+          "incumbent_error_c": 2.5772
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.493,
+          "incumbent_error_c": -0.5519
+        },
+        "ZUUU": {
+          "challenger_error_c": 0.8848,
+          "incumbent_error_c": 1.179
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-18T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.9448,
+        "mae_c": 2.6709,
+        "n": 45,
+        "rmse_c": 3.9634
+      },
+      "event_date": "2026-07-21",
+      "incumbent": {
+        "bias_c": -1.9517,
+        "mae_c": 2.6295,
+        "n": 45,
+        "rmse_c": 4.006
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": 0.6338,
+          "incumbent_error_c": 0.5412
+        },
+        "EDDM": {
+          "challenger_error_c": -1.1849,
+          "incumbent_error_c": -1.1117
+        },
+        "EFHK": {
+          "challenger_error_c": 1.9836,
+          "incumbent_error_c": 1.9796
+        },
+        "EGLC": {
+          "challenger_error_c": 2.6455,
+          "incumbent_error_c": 2.1288
+        },
+        "EHAM": {
+          "challenger_error_c": -0.861,
+          "incumbent_error_c": -1.2007
+        },
+        "EPWA": {
+          "challenger_error_c": -0.3665,
+          "incumbent_error_c": 0.4413
+        },
+        "FACT": {
+          "challenger_error_c": -2.6436,
+          "incumbent_error_c": -2.5133
+        },
+        "KATL": {
+          "challenger_error_c": 0.6166,
+          "incumbent_error_c": 0.4387
+        },
+        "KAUS": {
+          "challenger_error_c": 0.5945,
+          "incumbent_error_c": 0.3261
+        },
+        "KBKF": {
+          "challenger_error_c": -7.6172,
+          "incumbent_error_c": -7.0597
+        },
+        "KDAL": {
+          "challenger_error_c": -2.265,
+          "incumbent_error_c": -2.3358
+        },
+        "KHOU": {
+          "challenger_error_c": 2.0897,
+          "incumbent_error_c": 2.1404
+        },
+        "KLAX": {
+          "challenger_error_c": -0.4838,
+          "incumbent_error_c": -0.5302
+        },
+        "KLGA": {
+          "challenger_error_c": -2.6024,
+          "incumbent_error_c": -3.0332
+        },
+        "KMIA": {
+          "challenger_error_c": 3.1961,
+          "incumbent_error_c": 2.5431
+        },
+        "KORD": {
+          "challenger_error_c": -1.7601,
+          "incumbent_error_c": -2.0611
+        },
+        "KSEA": {
+          "challenger_error_c": -7.6837,
+          "incumbent_error_c": -7.163
+        },
+        "KSFO": {
+          "challenger_error_c": -15.2467,
+          "incumbent_error_c": -15.9113
+        },
+        "LEMD": {
+          "challenger_error_c": -2.0789,
+          "incumbent_error_c": -2.113
+        },
+        "LFPB": {
+          "challenger_error_c": -0.5242,
+          "incumbent_error_c": -1.1498
+        },
+        "LIMC": {
+          "challenger_error_c": -1.0477,
+          "incumbent_error_c": -2.0368
+        },
+        "LTAC": {
+          "challenger_error_c": -1.2929,
+          "incumbent_error_c": -1.0623
+        },
+        "MMMX": {
+          "challenger_error_c": -2.1784,
+          "incumbent_error_c": -1.4019
+        },
+        "MPMG": {
+          "challenger_error_c": -3.37,
+          "incumbent_error_c": -3.8708
+        },
+        "NZWN": {
+          "challenger_error_c": 0.2,
+          "incumbent_error_c": 0.1473
+        },
+        "OEJN": {
+          "challenger_error_c": -11.5266,
+          "incumbent_error_c": -11.7386
+        },
+        "OPKC": {
+          "challenger_error_c": -1.2298,
+          "incumbent_error_c": -1.0313
+        },
+        "RCSS": {
+          "challenger_error_c": -4.1258,
+          "incumbent_error_c": -4.1491
+        },
+        "RJTT": {
+          "challenger_error_c": -1.301,
+          "incumbent_error_c": -1.1103
+        },
+        "RKPK": {
+          "challenger_error_c": -5.4451,
+          "incumbent_error_c": -5.2866
+        },
+        "RKSI": {
+          "challenger_error_c": -2.6099,
+          "incumbent_error_c": -2.1669
+        },
+        "RPLL": {
+          "challenger_error_c": -1.495,
+          "incumbent_error_c": -1.1456
+        },
+        "SAEZ": {
+          "challenger_error_c": -0.9912,
+          "incumbent_error_c": -0.5452
+        },
+        "SBGR": {
+          "challenger_error_c": -0.1182,
+          "incumbent_error_c": -0.1119
+        },
+        "VILK": {
+          "challenger_error_c": -3.537,
+          "incumbent_error_c": -3.4173
+        },
+        "WMKK": {
+          "challenger_error_c": -4.3734,
+          "incumbent_error_c": -4.1894
+        },
+        "WSSS": {
+          "challenger_error_c": 0.2874,
+          "incumbent_error_c": 0.3894
+        },
+        "ZBAA": {
+          "challenger_error_c": -1.1649,
+          "incumbent_error_c": -1.2662
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.3775,
+          "incumbent_error_c": -1.1022
+        },
+        "ZGSZ": {
+          "challenger_error_c": -0.8471,
+          "incumbent_error_c": -0.5481
+        },
+        "ZHHH": {
+          "challenger_error_c": -5.1186,
+          "incumbent_error_c": -6.5831
+        },
+        "ZSPD": {
+          "challenger_error_c": -3.9639,
+          "incumbent_error_c": -3.8951
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.9482,
+          "incumbent_error_c": 2.0469
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.4197,
+          "incumbent_error_c": -0.2345
+        },
+        "ZUUU": {
+          "challenger_error_c": 2.1422,
+          "incumbent_error_c": 2.1279
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-19T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.3254,
+        "mae_c": 2.2975,
+        "n": 45,
+        "rmse_c": 3.0517
+      },
+      "event_date": "2026-07-22",
+      "incumbent": {
+        "bias_c": -1.2211,
+        "mae_c": 2.39,
+        "n": 45,
+        "rmse_c": 3.1157
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -1.1572,
+          "incumbent_error_c": -1.3985
+        },
+        "EDDM": {
+          "challenger_error_c": -0.9639,
+          "incumbent_error_c": -0.7694
+        },
+        "EFHK": {
+          "challenger_error_c": -2.403,
+          "incumbent_error_c": -2.5017
+        },
+        "EGLC": {
+          "challenger_error_c": 0.0128,
+          "incumbent_error_c": 0.913
+        },
+        "EHAM": {
+          "challenger_error_c": -1.114,
+          "incumbent_error_c": -1.0836
+        },
+        "EPWA": {
+          "challenger_error_c": -0.3162,
+          "incumbent_error_c": -0.3267
+        },
+        "FACT": {
+          "challenger_error_c": -0.9121,
+          "incumbent_error_c": -1.0012
+        },
+        "KATL": {
+          "challenger_error_c": 0.5187,
+          "incumbent_error_c": 0.7775
+        },
+        "KAUS": {
+          "challenger_error_c": 0.23,
+          "incumbent_error_c": 0.1361
+        },
+        "KBKF": {
+          "challenger_error_c": -2.4374,
+          "incumbent_error_c": -3.1794
+        },
+        "KDAL": {
+          "challenger_error_c": -2.97,
+          "incumbent_error_c": -2.3949
+        },
+        "KHOU": {
+          "challenger_error_c": 0.5669,
+          "incumbent_error_c": 0.4003
+        },
+        "KLAX": {
+          "challenger_error_c": 2.0386,
+          "incumbent_error_c": 2.6928
+        },
+        "KLGA": {
+          "challenger_error_c": -5.3905,
+          "incumbent_error_c": -5.6339
+        },
+        "KMIA": {
+          "challenger_error_c": 2.0058,
+          "incumbent_error_c": 2.2191
+        },
+        "KORD": {
+          "challenger_error_c": 0.5276,
+          "incumbent_error_c": 1.2273
+        },
+        "KSEA": {
+          "challenger_error_c": -5.413,
+          "incumbent_error_c": -6.8041
+        },
+        "KSFO": {
+          "challenger_error_c": -4.4035,
+          "incumbent_error_c": -4.7231
+        },
+        "LEMD": {
+          "challenger_error_c": -2.863,
+          "incumbent_error_c": -3.1058
+        },
+        "LFPB": {
+          "challenger_error_c": 1.1719,
+          "incumbent_error_c": 1.2759
+        },
+        "LIMC": {
+          "challenger_error_c": -0.371,
+          "incumbent_error_c": -0.417
+        },
+        "LTAC": {
+          "challenger_error_c": -0.4302,
+          "incumbent_error_c": 0.0977
+        },
+        "MMMX": {
+          "challenger_error_c": -1.7381,
+          "incumbent_error_c": -1.6409
+        },
+        "MPMG": {
+          "challenger_error_c": -1.5074,
+          "incumbent_error_c": -1.7305
+        },
+        "NZWN": {
+          "challenger_error_c": -2.2235,
+          "incumbent_error_c": -1.7309
+        },
+        "OEJN": {
+          "challenger_error_c": -6.2463,
+          "incumbent_error_c": -6.3597
+        },
+        "OPKC": {
+          "challenger_error_c": -1.2108,
+          "incumbent_error_c": -0.9534
+        },
+        "RCSS": {
+          "challenger_error_c": -6.4196,
+          "incumbent_error_c": -6.3874
+        },
+        "RJTT": {
+          "challenger_error_c": -1.1445,
+          "incumbent_error_c": -1.2913
+        },
+        "RKPK": {
+          "challenger_error_c": -7.68,
+          "incumbent_error_c": -7.4818
+        },
+        "RKSI": {
+          "challenger_error_c": -2.4086,
+          "incumbent_error_c": -2.5776
+        },
+        "RPLL": {
+          "challenger_error_c": -1.071,
+          "incumbent_error_c": -1.4157
+        },
+        "SAEZ": {
+          "challenger_error_c": -3.691,
+          "incumbent_error_c": -2.4415
+        },
+        "SBGR": {
+          "challenger_error_c": 6.318,
+          "incumbent_error_c": 6.1857
+        },
+        "VILK": {
+          "challenger_error_c": -3.9731,
+          "incumbent_error_c": -3.1085
+        },
+        "WMKK": {
+          "challenger_error_c": -1.3999,
+          "incumbent_error_c": -1.3491
+        },
+        "WSSS": {
+          "challenger_error_c": 0.9341,
+          "incumbent_error_c": 1.1458
+        },
+        "ZBAA": {
+          "challenger_error_c": 1.512,
+          "incumbent_error_c": 3.8807
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.7353,
+          "incumbent_error_c": -2.8338
+        },
+        "ZGSZ": {
+          "challenger_error_c": -1.0054,
+          "incumbent_error_c": -1.0375
+        },
+        "ZHHH": {
+          "challenger_error_c": 0.1683,
+          "incumbent_error_c": 0.0369
+        },
+        "ZSPD": {
+          "challenger_error_c": -5.5992,
+          "incumbent_error_c": -5.2888
+        },
+        "ZSQD": {
+          "challenger_error_c": 4.7429,
+          "incumbent_error_c": 3.7338
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.3156,
+          "incumbent_error_c": -0.2813
+        },
+        "ZUUU": {
+          "challenger_error_c": 1.1257,
+          "incumbent_error_c": 1.5775
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-20T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.2757,
+        "mae_c": 2.0837,
+        "n": 45,
+        "rmse_c": 2.8046
+      },
+      "event_date": "2026-07-23",
+      "incumbent": {
+        "bias_c": -1.1711,
+        "mae_c": 2.1035,
+        "n": 45,
+        "rmse_c": 2.8676
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -2.821,
+          "incumbent_error_c": -3.0834
+        },
+        "EDDM": {
+          "challenger_error_c": 0.3253,
+          "incumbent_error_c": 0.6661
+        },
+        "EFHK": {
+          "challenger_error_c": -0.8991,
+          "incumbent_error_c": -0.5193
+        },
+        "EGLC": {
+          "challenger_error_c": -2.2909,
+          "incumbent_error_c": -0.3567
+        },
+        "EHAM": {
+          "challenger_error_c": -1.2142,
+          "incumbent_error_c": -1.1988
+        },
+        "EPWA": {
+          "challenger_error_c": -0.0485,
+          "incumbent_error_c": -0.2996
+        },
+        "FACT": {
+          "challenger_error_c": -1.228,
+          "incumbent_error_c": -1.3499
+        },
+        "KATL": {
+          "challenger_error_c": -0.9296,
+          "incumbent_error_c": -2.1134
+        },
+        "KAUS": {
+          "challenger_error_c": 1.3338,
+          "incumbent_error_c": 1.5399
+        },
+        "KBKF": {
+          "challenger_error_c": -2.0371,
+          "incumbent_error_c": -1.5268
+        },
+        "KDAL": {
+          "challenger_error_c": 0.2504,
+          "incumbent_error_c": 0.2338
+        },
+        "KHOU": {
+          "challenger_error_c": 3.5773,
+          "incumbent_error_c": 4.7716
+        },
+        "KLAX": {
+          "challenger_error_c": 1.2042,
+          "incumbent_error_c": 1.1342
+        },
+        "KLGA": {
+          "challenger_error_c": -2.3424,
+          "incumbent_error_c": -2.3244
+        },
+        "KMIA": {
+          "challenger_error_c": 2.3966,
+          "incumbent_error_c": 2.0844
+        },
+        "KORD": {
+          "challenger_error_c": 1.2382,
+          "incumbent_error_c": 0.9766
+        },
+        "KSEA": {
+          "challenger_error_c": 1.337,
+          "incumbent_error_c": 1.7641
+        },
+        "KSFO": {
+          "challenger_error_c": -4.4813,
+          "incumbent_error_c": -4.5987
+        },
+        "LEMD": {
+          "challenger_error_c": -2.1342,
+          "incumbent_error_c": -1.8506
+        },
+        "LFPB": {
+          "challenger_error_c": 0.4848,
+          "incumbent_error_c": 0.9303
+        },
+        "LIMC": {
+          "challenger_error_c": 0.6658,
+          "incumbent_error_c": 0.9542
+        },
+        "LTAC": {
+          "challenger_error_c": -0.8123,
+          "incumbent_error_c": -1.161
+        },
+        "MMMX": {
+          "challenger_error_c": 0.9753,
+          "incumbent_error_c": 0.9648
+        },
+        "MPMG": {
+          "challenger_error_c": -2.9692,
+          "incumbent_error_c": -2.6938
+        },
+        "NZWN": {
+          "challenger_error_c": -0.9898,
+          "incumbent_error_c": -0.8624
+        },
+        "OEJN": {
+          "challenger_error_c": -8.6315,
+          "incumbent_error_c": -8.6018
+        },
+        "OPKC": {
+          "challenger_error_c": -0.6284,
+          "incumbent_error_c": -0.6153
+        },
+        "RCSS": {
+          "challenger_error_c": -5.1035,
+          "incumbent_error_c": -4.6825
+        },
+        "RJTT": {
+          "challenger_error_c": -2.1395,
+          "incumbent_error_c": -2.0418
+        },
+        "RKPK": {
+          "challenger_error_c": -7.7333,
+          "incumbent_error_c": -7.6124
+        },
+        "RKSI": {
+          "challenger_error_c": -5.0977,
+          "incumbent_error_c": -4.8983
+        },
+        "RPLL": {
+          "challenger_error_c": -0.1134,
+          "incumbent_error_c": -0.3842
+        },
+        "SAEZ": {
+          "challenger_error_c": -2.6842,
+          "incumbent_error_c": -2.9394
+        },
+        "SBGR": {
+          "challenger_error_c": -2.2828,
+          "incumbent_error_c": -4.6837
+        },
+        "VILK": {
+          "challenger_error_c": -0.663,
+          "incumbent_error_c": 0.3737
+        },
+        "WMKK": {
+          "challenger_error_c": -2.4091,
+          "incumbent_error_c": -2.1223
+        },
+        "WSSS": {
+          "challenger_error_c": 0.4709,
+          "incumbent_error_c": 1.03
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.6336,
+          "incumbent_error_c": -0.3879
+        },
+        "ZGGG": {
+          "challenger_error_c": -4.3203,
+          "incumbent_error_c": -4.5083
+        },
+        "ZGSZ": {
+          "challenger_error_c": -0.7172,
+          "incumbent_error_c": -0.8019
+        },
+        "ZHHH": {
+          "challenger_error_c": -1.6783,
+          "incumbent_error_c": -0.6416
+        },
+        "ZSPD": {
+          "challenger_error_c": -4.6874,
+          "incumbent_error_c": -4.708
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.0988,
+          "incumbent_error_c": -0.1108
+        },
+        "ZUCK": {
+          "challenger_error_c": -0.8665,
+          "incumbent_error_c": 0.4076
+        },
+        "ZUUU": {
+          "challenger_error_c": 2.8207,
+          "incumbent_error_c": 3.1494
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-21T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.6101,
+        "mae_c": 2.1854,
+        "n": 45,
+        "rmse_c": 2.99
+      },
+      "event_date": "2026-07-24",
+      "incumbent": {
+        "bias_c": -1.604,
+        "mae_c": 2.1034,
+        "n": 45,
+        "rmse_c": 2.9103
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -2.1432,
+          "incumbent_error_c": -1.8259
+        },
+        "EDDM": {
+          "challenger_error_c": -0.5301,
+          "incumbent_error_c": -0.6467
+        },
+        "EFHK": {
+          "challenger_error_c": -1.1916,
+          "incumbent_error_c": -1.64
+        },
+        "EGLC": {
+          "challenger_error_c": -1.2122,
+          "incumbent_error_c": -1.5324
+        },
+        "EHAM": {
+          "challenger_error_c": -1.2035,
+          "incumbent_error_c": -1.5271
+        },
+        "EPWA": {
+          "challenger_error_c": -0.2583,
+          "incumbent_error_c": -0.053
+        },
+        "FACT": {
+          "challenger_error_c": -2.7874,
+          "incumbent_error_c": -2.8539
+        },
+        "KATL": {
+          "challenger_error_c": -0.5965,
+          "incumbent_error_c": -0.7698
+        },
+        "KAUS": {
+          "challenger_error_c": -1.0242,
+          "incumbent_error_c": -0.7518
+        },
+        "KBKF": {
+          "challenger_error_c": -4.3417,
+          "incumbent_error_c": -4.4285
+        },
+        "KDAL": {
+          "challenger_error_c": 0.8731,
+          "incumbent_error_c": 1.8361
+        },
+        "KHOU": {
+          "challenger_error_c": -1.1356,
+          "incumbent_error_c": -1.0503
+        },
+        "KLAX": {
+          "challenger_error_c": 2.8403,
+          "incumbent_error_c": 2.5215
+        },
+        "KLGA": {
+          "challenger_error_c": -0.5821,
+          "incumbent_error_c": -0.8695
+        },
+        "KMIA": {
+          "challenger_error_c": 1.5242,
+          "incumbent_error_c": 1.4708
+        },
+        "KORD": {
+          "challenger_error_c": 1.4669,
+          "incumbent_error_c": 1.6797
+        },
+        "KSEA": {
+          "challenger_error_c": -1.2537,
+          "incumbent_error_c": -1.7313
+        },
+        "KSFO": {
+          "challenger_error_c": -4.8041,
+          "incumbent_error_c": -4.7612
+        },
+        "LEMD": {
+          "challenger_error_c": -0.9905,
+          "incumbent_error_c": -0.7753
+        },
+        "LFPB": {
+          "challenger_error_c": -0.9087,
+          "incumbent_error_c": -0.7467
+        },
+        "LIMC": {
+          "challenger_error_c": 1.1937,
+          "incumbent_error_c": 0.5557
+        },
+        "LTAC": {
+          "challenger_error_c": 0.8888,
+          "incumbent_error_c": 0.8266
+        },
+        "MMMX": {
+          "challenger_error_c": 0.0175,
+          "incumbent_error_c": 0.4669
+        },
+        "MPMG": {
+          "challenger_error_c": -1.863,
+          "incumbent_error_c": -1.792
+        },
+        "NZWN": {
+          "challenger_error_c": -1.4542,
+          "incumbent_error_c": -1.3142
+        },
+        "OEJN": {
+          "challenger_error_c": -8.3345,
+          "incumbent_error_c": -8.1003
+        },
+        "OPKC": {
+          "challenger_error_c": 0.1717,
+          "incumbent_error_c": -0.2753
+        },
+        "RCSS": {
+          "challenger_error_c": -5.9412,
+          "incumbent_error_c": -5.9011
+        },
+        "RJTT": {
+          "challenger_error_c": -4.4458,
+          "incumbent_error_c": -3.9949
+        },
+        "RKPK": {
+          "challenger_error_c": -8.4002,
+          "incumbent_error_c": -7.9831
+        },
+        "RKSI": {
+          "challenger_error_c": -5.7081,
+          "incumbent_error_c": -5.5673
+        },
+        "RPLL": {
+          "challenger_error_c": 0.3927,
+          "incumbent_error_c": 0.7944
+        },
+        "SAEZ": {
+          "challenger_error_c": -2.3184,
+          "incumbent_error_c": -2.2995
+        },
+        "SBGR": {
+          "challenger_error_c": 1.8262,
+          "incumbent_error_c": 0.0103
+        },
+        "VILK": {
+          "challenger_error_c": -1.3096,
+          "incumbent_error_c": -0.6741
+        },
+        "WMKK": {
+          "challenger_error_c": -2.4477,
+          "incumbent_error_c": -2.4094
+        },
+        "WSSS": {
+          "challenger_error_c": -0.4904,
+          "incumbent_error_c": -0.8298
+        },
+        "ZBAA": {
+          "challenger_error_c": -2.5553,
+          "incumbent_error_c": -3.0975
+        },
+        "ZGGG": {
+          "challenger_error_c": -3.4831,
+          "incumbent_error_c": -3.4587
+        },
+        "ZGSZ": {
+          "challenger_error_c": -1.7565,
+          "incumbent_error_c": -1.52
+        },
+        "ZHHH": {
+          "challenger_error_c": -1.41,
+          "incumbent_error_c": -1.052
+        },
+        "ZSPD": {
+          "challenger_error_c": -6.5028,
+          "incumbent_error_c": -6.4069
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.7492,
+          "incumbent_error_c": 1.0751
+        },
+        "ZUCK": {
+          "challenger_error_c": -1.3225,
+          "incumbent_error_c": -0.4518
+        },
+        "ZUUU": {
+          "challenger_error_c": -0.6922,
+          "incumbent_error_c": -0.326
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-22T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.7549,
+        "mae_c": 2.2711,
+        "n": 45,
+        "rmse_c": 3.0382
+      },
+      "event_date": "2026-07-25",
+      "incumbent": {
+        "bias_c": -1.6465,
+        "mae_c": 2.171,
+        "n": 45,
+        "rmse_c": 3.0937
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -2.9798,
+          "incumbent_error_c": -2.0723
+        },
+        "EDDM": {
+          "challenger_error_c": -2.1815,
+          "incumbent_error_c": -1.2815
+        },
+        "EFHK": {
+          "challenger_error_c": -0.5384,
+          "incumbent_error_c": 0.3339
+        },
+        "EGLC": {
+          "challenger_error_c": -1.9358,
+          "incumbent_error_c": -2.8096
+        },
+        "EHAM": {
+          "challenger_error_c": -1.3096,
+          "incumbent_error_c": -1.7938
+        },
+        "EPWA": {
+          "challenger_error_c": 0.1494,
+          "incumbent_error_c": -0.091
+        },
+        "FACT": {
+          "challenger_error_c": -3.2288,
+          "incumbent_error_c": -2.9705
+        },
+        "KATL": {
+          "challenger_error_c": -1.9153,
+          "incumbent_error_c": -0.4572
+        },
+        "KAUS": {
+          "challenger_error_c": -0.1534,
+          "incumbent_error_c": 0.0358
+        },
+        "KBKF": {
+          "challenger_error_c": -4.953,
+          "incumbent_error_c": -5.328
+        },
+        "KDAL": {
+          "challenger_error_c": -0.4205,
+          "incumbent_error_c": -0.3589
+        },
+        "KHOU": {
+          "challenger_error_c": 0.666,
+          "incumbent_error_c": 0.4244
+        },
+        "KLAX": {
+          "challenger_error_c": 3.3476,
+          "incumbent_error_c": 2.8697
+        },
+        "KLGA": {
+          "challenger_error_c": 0.6614,
+          "incumbent_error_c": 0.2118
+        },
+        "KMIA": {
+          "challenger_error_c": 0.8638,
+          "incumbent_error_c": 0.841
+        },
+        "KORD": {
+          "challenger_error_c": 2.161,
+          "incumbent_error_c": 1.9977
+        },
+        "KSEA": {
+          "challenger_error_c": -0.067,
+          "incumbent_error_c": 0.0263
+        },
+        "KSFO": {
+          "challenger_error_c": -4.4572,
+          "incumbent_error_c": -4.5618
+        },
+        "LEMD": {
+          "challenger_error_c": -0.5063,
+          "incumbent_error_c": 0.5697
+        },
+        "LFPB": {
+          "challenger_error_c": -2.203,
+          "incumbent_error_c": -1.8386
+        },
+        "LIMC": {
+          "challenger_error_c": -1.2024,
+          "incumbent_error_c": 0.2872
+        },
+        "LTAC": {
+          "challenger_error_c": -0.5974,
+          "incumbent_error_c": -0.2199
+        },
+        "MMMX": {
+          "challenger_error_c": -1.0129,
+          "incumbent_error_c": -0.2584
+        },
+        "MPMG": {
+          "challenger_error_c": -2.9215,
+          "incumbent_error_c": -2.6673
+        },
+        "NZWN": {
+          "challenger_error_c": -0.3353,
+          "incumbent_error_c": -0.4289
+        },
+        "OEJN": {
+          "challenger_error_c": -8.0376,
+          "incumbent_error_c": -7.9361
+        },
+        "OPKC": {
+          "challenger_error_c": 1.5334,
+          "incumbent_error_c": 1.7043
+        },
+        "RCSS": {
+          "challenger_error_c": -5.7716,
+          "incumbent_error_c": -6.1004
+        },
+        "RJTT": {
+          "challenger_error_c": -5.9233,
+          "incumbent_error_c": -7.568
+        },
+        "RKPK": {
+          "challenger_error_c": -7.8198,
+          "incumbent_error_c": -7.511
+        },
+        "RKSI": {
+          "challenger_error_c": -5.2092,
+          "incumbent_error_c": -5.2833
+        },
+        "RPLL": {
+          "challenger_error_c": -2.322,
+          "incumbent_error_c": -1.3488
+        },
+        "SAEZ": {
+          "challenger_error_c": -1.785,
+          "incumbent_error_c": -2.614
+        },
+        "SBGR": {
+          "challenger_error_c": 0.7462,
+          "incumbent_error_c": 1.5818
+        },
+        "VILK": {
+          "challenger_error_c": -2.1594,
+          "incumbent_error_c": -2.6435
+        },
+        "WMKK": {
+          "challenger_error_c": -0.7628,
+          "incumbent_error_c": -0.732
+        },
+        "WSSS": {
+          "challenger_error_c": 0.4922,
+          "incumbent_error_c": 0.1172
+        },
+        "ZBAA": {
+          "challenger_error_c": -1.0719,
+          "incumbent_error_c": 0.0845
+        },
+        "ZGGG": {
+          "challenger_error_c": -2.3229,
+          "incumbent_error_c": -2.6901
+        },
+        "ZGSZ": {
+          "challenger_error_c": -3.1128,
+          "incumbent_error_c": -3.0059
+        },
+        "ZHHH": {
+          "challenger_error_c": -1.1457,
+          "incumbent_error_c": -1.1685
+        },
+        "ZSPD": {
+          "challenger_error_c": -5.9108,
+          "incumbent_error_c": -5.794
+        },
+        "ZSQD": {
+          "challenger_error_c": 0.9926,
+          "incumbent_error_c": 0.7149
+        },
+        "ZUCK": {
+          "challenger_error_c": -1.1163,
+          "incumbent_error_c": -0.425
+        },
+        "ZUUU": {
+          "challenger_error_c": -3.196,
+          "incumbent_error_c": -3.9356
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-23T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.8987,
+        "mae_c": 2.3789,
+        "n": 45,
+        "rmse_c": 3.1318
+      },
+      "event_date": "2026-07-26",
+      "incumbent": {
+        "bias_c": -1.8833,
+        "mae_c": 2.2973,
+        "n": 45,
+        "rmse_c": 3.0451
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -4.8971,
+          "incumbent_error_c": -3.5679
+        },
+        "EDDM": {
+          "challenger_error_c": 0.6633,
+          "incumbent_error_c": -0.6397
+        },
+        "EFHK": {
+          "challenger_error_c": -0.2274,
+          "incumbent_error_c": 0.3409
+        },
+        "EGLC": {
+          "challenger_error_c": -2.6639,
+          "incumbent_error_c": -2.6138
+        },
+        "EHAM": {
+          "challenger_error_c": -2.1626,
+          "incumbent_error_c": -1.7711
+        },
+        "EPWA": {
+          "challenger_error_c": 1.0782,
+          "incumbent_error_c": 0.6152
+        },
+        "FACT": {
+          "challenger_error_c": -6.1321,
+          "incumbent_error_c": -6.1974
+        },
+        "KATL": {
+          "challenger_error_c": -3.6102,
+          "incumbent_error_c": -3.6413
+        },
+        "KAUS": {
+          "challenger_error_c": -1.1281,
+          "incumbent_error_c": -1.2729
+        },
+        "KBKF": {
+          "challenger_error_c": -4.1403,
+          "incumbent_error_c": -3.4539
+        },
+        "KDAL": {
+          "challenger_error_c": 0.1695,
+          "incumbent_error_c": 0.1914
+        },
+        "KHOU": {
+          "challenger_error_c": 0.459,
+          "incumbent_error_c": 0.5427
+        },
+        "KLAX": {
+          "challenger_error_c": 2.2704,
+          "incumbent_error_c": 2.414
+        },
+        "KLGA": {
+          "challenger_error_c": 0.4529,
+          "incumbent_error_c": -0.5482
+        },
+        "KMIA": {
+          "challenger_error_c": -0.8521,
+          "incumbent_error_c": -0.444
+        },
+        "KORD": {
+          "challenger_error_c": 2.0892,
+          "incumbent_error_c": 1.1455
+        },
+        "KSEA": {
+          "challenger_error_c": -1.509,
+          "incumbent_error_c": -1.7123
+        },
+        "KSFO": {
+          "challenger_error_c": -3.6708,
+          "incumbent_error_c": -3.7887
+        },
+        "LEMD": {
+          "challenger_error_c": -0.703,
+          "incumbent_error_c": -0.7609
+        },
+        "LFPB": {
+          "challenger_error_c": -1.5577,
+          "incumbent_error_c": -2.2396
+        },
+        "LIMC": {
+          "challenger_error_c": -4.6125,
+          "incumbent_error_c": -5.0341
+        },
+        "LTAC": {
+          "challenger_error_c": -2.8173,
+          "incumbent_error_c": -3.6447
+        },
+        "MMMX": {
+          "challenger_error_c": 1.3649,
+          "incumbent_error_c": 1.3933
+        },
+        "MPMG": {
+          "challenger_error_c": -1.6515,
+          "incumbent_error_c": -1.9259
+        },
+        "NZWN": {
+          "challenger_error_c": -1.3,
+          "incumbent_error_c": -1.1044
+        },
+        "OEJN": {
+          "challenger_error_c": -8.0155,
+          "incumbent_error_c": -7.8094
+        },
+        "OPKC": {
+          "challenger_error_c": -1.106,
+          "incumbent_error_c": -0.697
+        },
+        "RCSS": {
+          "challenger_error_c": -4.2197,
+          "incumbent_error_c": -3.9064
+        },
+        "RJTT": {
+          "challenger_error_c": -3.25,
+          "incumbent_error_c": -3.5347
+        },
+        "RKPK": {
+          "challenger_error_c": -9.289,
+          "incumbent_error_c": -9.2002
+        },
+        "RKSI": {
+          "challenger_error_c": -4.7758,
+          "incumbent_error_c": -4.4994
+        },
+        "RPLL": {
+          "challenger_error_c": -1.9807,
+          "incumbent_error_c": -2.3996
+        },
+        "SAEZ": {
+          "challenger_error_c": -0.9487,
+          "incumbent_error_c": -0.8841
+        },
+        "SBGR": {
+          "challenger_error_c": 0.4694,
+          "incumbent_error_c": -1.2912
+        },
+        "VILK": {
+          "challenger_error_c": -2.631,
+          "incumbent_error_c": -1.9586
+        },
+        "WMKK": {
+          "challenger_error_c": -3.554,
+          "incumbent_error_c": -3.4227
+        },
+        "WSSS": {
+          "challenger_error_c": -0.3297,
+          "incumbent_error_c": -0.3418
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.6951,
+          "incumbent_error_c": -0.2512
+        },
+        "ZGGG": {
+          "challenger_error_c": -1.4677,
+          "incumbent_error_c": -0.7719
+        },
+        "ZGSZ": {
+          "challenger_error_c": -2.0538,
+          "incumbent_error_c": -1.881
+        },
+        "ZHHH": {
+          "challenger_error_c": -0.2302,
+          "incumbent_error_c": -0.3311
+        },
+        "ZSPD": {
+          "challenger_error_c": -4.8646,
+          "incumbent_error_c": -4.7444
+        },
+        "ZSQD": {
+          "challenger_error_c": 0.8336,
+          "incumbent_error_c": 1.8665
+        },
+        "ZUCK": {
+          "challenger_error_c": -3.1993,
+          "incumbent_error_c": -1.7767
+        },
+        "ZUUU": {
+          "challenger_error_c": 0.9534,
+          "incumbent_error_c": 0.8063
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-24T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.7767,
+        "mae_c": 2.3214,
+        "n": 45,
+        "rmse_c": 3.2712
+      },
+      "event_date": "2026-07-27",
+      "incumbent": {
+        "bias_c": -1.7054,
+        "mae_c": 2.1923,
+        "n": 45,
+        "rmse_c": 3.1432
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -8.6115,
+          "incumbent_error_c": -8.0749
+        },
+        "EDDM": {
+          "challenger_error_c": -0.2215,
+          "incumbent_error_c": 0.0331
+        },
+        "EFHK": {
+          "challenger_error_c": -1.7998,
+          "incumbent_error_c": -1.5205
+        },
+        "EGLC": {
+          "challenger_error_c": -0.9513,
+          "incumbent_error_c": -1.1554
+        },
+        "EHAM": {
+          "challenger_error_c": -1.5129,
+          "incumbent_error_c": -1.3025
+        },
+        "EPWA": {
+          "challenger_error_c": 0.4522,
+          "incumbent_error_c": -0.4109
+        },
+        "FACT": {
+          "challenger_error_c": -0.9291,
+          "incumbent_error_c": -1.0071
+        },
+        "KATL": {
+          "challenger_error_c": -0.2906,
+          "incumbent_error_c": -0.5609
+        },
+        "KAUS": {
+          "challenger_error_c": 0.0639,
+          "incumbent_error_c": -0.0395
+        },
+        "KBKF": {
+          "challenger_error_c": -0.6076,
+          "incumbent_error_c": -0.4846
+        },
+        "KDAL": {
+          "challenger_error_c": 0.4663,
+          "incumbent_error_c": 0.4391
+        },
+        "KHOU": {
+          "challenger_error_c": 1.3214,
+          "incumbent_error_c": 1.2411
+        },
+        "KLAX": {
+          "challenger_error_c": 2.0034,
+          "incumbent_error_c": 2.3536
+        },
+        "KLGA": {
+          "challenger_error_c": -0.2351,
+          "incumbent_error_c": -0.9525
+        },
+        "KMIA": {
+          "challenger_error_c": 1.3538,
+          "incumbent_error_c": 0.6939
+        },
+        "KORD": {
+          "challenger_error_c": 2.9882,
+          "incumbent_error_c": 2.7736
+        },
+        "KSEA": {
+          "challenger_error_c": -3.0444,
+          "incumbent_error_c": -2.6097
+        },
+        "KSFO": {
+          "challenger_error_c": -3.8794,
+          "incumbent_error_c": -4.1431
+        },
+        "LEMD": {
+          "challenger_error_c": -1.7923,
+          "incumbent_error_c": -1.6361
+        },
+        "LFPB": {
+          "challenger_error_c": -0.709,
+          "incumbent_error_c": -0.3646
+        },
+        "LIMC": {
+          "challenger_error_c": -1.259,
+          "incumbent_error_c": -1.0456
+        },
+        "LTAC": {
+          "challenger_error_c": -2.9961,
+          "incumbent_error_c": -2.7901
+        },
+        "MMMX": {
+          "challenger_error_c": 0.9419,
+          "incumbent_error_c": 1.1158
+        },
+        "MPMG": {
+          "challenger_error_c": -4.158,
+          "incumbent_error_c": -3.889
+        },
+        "NZWN": {
+          "challenger_error_c": -1.5198,
+          "incumbent_error_c": -1.6109
+        },
+        "OEJN": {
+          "challenger_error_c": -11.1227,
+          "incumbent_error_c": -10.9227
+        },
+        "OPKC": {
+          "challenger_error_c": -0.611,
+          "incumbent_error_c": -0.1273
+        },
+        "RCSS": {
+          "challenger_error_c": -4.4054,
+          "incumbent_error_c": -4.0197
+        },
+        "RJTT": {
+          "challenger_error_c": -1.5151,
+          "incumbent_error_c": -2.6427
+        },
+        "RKPK": {
+          "challenger_error_c": -7.5797,
+          "incumbent_error_c": -7.4719
+        },
+        "RKSI": {
+          "challenger_error_c": -4.7163,
+          "incumbent_error_c": -4.6187
+        },
+        "RPLL": {
+          "challenger_error_c": -3.8509,
+          "incumbent_error_c": -3.5627
+        },
+        "SAEZ": {
+          "challenger_error_c": -0.6092,
+          "incumbent_error_c": 0.4188
+        },
+        "SBGR": {
+          "challenger_error_c": -0.3918,
+          "incumbent_error_c": -0.3023
+        },
+        "VILK": {
+          "challenger_error_c": 0.2157,
+          "incumbent_error_c": 0.3403
+        },
+        "WMKK": {
+          "challenger_error_c": -3.4869,
+          "incumbent_error_c": -3.6327
+        },
+        "WSSS": {
+          "challenger_error_c": -1.3515,
+          "incumbent_error_c": -1.4332
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.6966,
+          "incumbent_error_c": -1.5761
+        },
+        "ZGGG": {
+          "challenger_error_c": -3.9392,
+          "incumbent_error_c": -3.4282
+        },
+        "ZGSZ": {
+          "challenger_error_c": -1.5989,
+          "incumbent_error_c": -1.3595
+        },
+        "ZHHH": {
+          "challenger_error_c": -2.7252,
+          "incumbent_error_c": -1.3863
+        },
+        "ZSPD": {
+          "challenger_error_c": -5.3127,
+          "incumbent_error_c": -5.2206
+        },
+        "ZSQD": {
+          "challenger_error_c": 2.4493,
+          "incumbent_error_c": 1.5464
+        },
+        "ZUCK": {
+          "challenger_error_c": -2.6907,
+          "incumbent_error_c": -2.3886
+        },
+        "ZUUU": {
+          "challenger_error_c": -1.0844,
+          "incumbent_error_c": -0.0078
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-25T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "challenger": {
+        "bias_c": -1.7338,
+        "mae_c": 2.288,
+        "n": 45,
+        "rmse_c": 2.9912
+      },
+      "event_date": "2026-07-28",
+      "incumbent": {
+        "bias_c": -1.7187,
+        "mae_c": 2.2551,
+        "n": 45,
+        "rmse_c": 2.9252
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -7.4802,
+          "incumbent_error_c": -7.1504
+        },
+        "EDDM": {
+          "challenger_error_c": -1.1875,
+          "incumbent_error_c": -0.5982
+        },
+        "EFHK": {
+          "challenger_error_c": -2.078,
+          "incumbent_error_c": -1.9078
+        },
+        "EGLC": {
+          "challenger_error_c": 0.0539,
+          "incumbent_error_c": 0.1271
+        },
+        "EHAM": {
+          "challenger_error_c": -1.6402,
+          "incumbent_error_c": -2.4077
+        },
+        "EPWA": {
+          "challenger_error_c": -0.335,
+          "incumbent_error_c": -0.3151
+        },
+        "FACT": {
+          "challenger_error_c": -1.9334,
+          "incumbent_error_c": -2.654
+        },
+        "KATL": {
+          "challenger_error_c": -0.5627,
+          "incumbent_error_c": -0.2584
+        },
+        "KAUS": {
+          "challenger_error_c": 1.3655,
+          "incumbent_error_c": 1.444
+        },
+        "KBKF": {
+          "challenger_error_c": -3.9337,
+          "incumbent_error_c": -3.739
+        },
+        "KDAL": {
+          "challenger_error_c": 1.0679,
+          "incumbent_error_c": 1.425
+        },
+        "KHOU": {
+          "challenger_error_c": 1.2617,
+          "incumbent_error_c": 1.2061
+        },
+        "KLAX": {
+          "challenger_error_c": 1.8556,
+          "incumbent_error_c": 1.8093
+        },
+        "KLGA": {
+          "challenger_error_c": -1.6181,
+          "incumbent_error_c": -3.7899
+        },
+        "KMIA": {
+          "challenger_error_c": 1.849,
+          "incumbent_error_c": 1.9035
+        },
+        "KORD": {
+          "challenger_error_c": 0.4086,
+          "incumbent_error_c": -0.2526
+        },
+        "KSEA": {
+          "challenger_error_c": -1.3661,
+          "incumbent_error_c": -1.2306
+        },
+        "KSFO": {
+          "challenger_error_c": -4.3948,
+          "incumbent_error_c": -4.5445
+        },
+        "LEMD": {
+          "challenger_error_c": -1.9899,
+          "incumbent_error_c": -1.5315
+        },
+        "LFPB": {
+          "challenger_error_c": -1.1137,
+          "incumbent_error_c": -1.107
+        },
+        "LIMC": {
+          "challenger_error_c": -0.2137,
+          "incumbent_error_c": -0.1434
+        },
+        "LTAC": {
+          "challenger_error_c": -0.2604,
+          "incumbent_error_c": 0.0476
+        },
+        "MMMX": {
+          "challenger_error_c": -3.4692,
+          "incumbent_error_c": -2.7107
+        },
+        "MPMG": {
+          "challenger_error_c": -2.7819,
+          "incumbent_error_c": -2.7703
+        },
+        "NZWN": {
+          "challenger_error_c": -1.9904,
+          "incumbent_error_c": -1.7694
+        },
+        "OEJN": {
+          "challenger_error_c": -6.1327,
+          "incumbent_error_c": -5.9469
+        },
+        "OPKC": {
+          "challenger_error_c": 0.324,
+          "incumbent_error_c": 0.389
+        },
+        "RCSS": {
+          "challenger_error_c": -6.3983,
+          "incumbent_error_c": -5.8332
+        },
+        "RJTT": {
+          "challenger_error_c": -3.1572,
+          "incumbent_error_c": -3.8979
+        },
+        "RKPK": {
+          "challenger_error_c": -6.8694,
+          "incumbent_error_c": -6.6388
+        },
+        "RKSI": {
+          "challenger_error_c": -3.9343,
+          "incumbent_error_c": -3.7643
+        },
+        "RPLL": {
+          "challenger_error_c": -1.1356,
+          "incumbent_error_c": -1.2733
+        },
+        "SAEZ": {
+          "challenger_error_c": 1.9244,
+          "incumbent_error_c": 2.1249
+        },
+        "SBGR": {
+          "challenger_error_c": 0.072,
+          "incumbent_error_c": 0.1249
+        },
+        "VILK": {
+          "challenger_error_c": -4.1122,
+          "incumbent_error_c": -4.127
+        },
+        "WMKK": {
+          "challenger_error_c": -1.5353,
+          "incumbent_error_c": -1.529
+        },
+        "WSSS": {
+          "challenger_error_c": 0.4351,
+          "incumbent_error_c": -0.1296
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.7871,
+          "incumbent_error_c": -0.7748
+        },
+        "ZGGG": {
+          "challenger_error_c": -0.7314,
+          "incumbent_error_c": -0.9077
+        },
+        "ZGSZ": {
+          "challenger_error_c": -0.8228,
+          "incumbent_error_c": -1.2973
+        },
+        "ZHHH": {
+          "challenger_error_c": -4.838,
+          "incumbent_error_c": -4.9244
+        },
+        "ZSPD": {
+          "challenger_error_c": -4.3257,
+          "incumbent_error_c": -4.2328
+        },
+        "ZSQD": {
+          "challenger_error_c": 1.8522,
+          "incumbent_error_c": 1.4685
+        },
+        "ZUCK": {
+          "challenger_error_c": -2.2818,
+          "incumbent_error_c": -1.5381
+        },
+        "ZUUU": {
+          "challenger_error_c": -5.0796,
+          "incumbent_error_c": -3.7149
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-26T12:00:00Z",
+      "station_count": 45
+    },
+    {
+      "event_date": "2026-07-29",
+      "failed": "RuntimeError:eccc_geps_archive_45station_registry_required"
+    },
+    {
+      "challenger": {
+        "bias_c": -1.9788,
+        "mae_c": 2.5022,
+        "n": 31,
+        "rmse_c": 3.5491
+      },
+      "event_date": "2026-07-30",
+      "incumbent": {
+        "bias_c": -1.8748,
+        "mae_c": 2.5595,
+        "n": 31,
+        "rmse_c": 3.5838
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -5.021,
+          "incumbent_error_c": -6.015
+        },
+        "EDDM": {
+          "challenger_error_c": -1.6063,
+          "incumbent_error_c": -1.8803
+        },
+        "EFHK": {
+          "challenger_error_c": -0.4731,
+          "incumbent_error_c": -0.2279
+        },
+        "EGLC": {
+          "challenger_error_c": -0.9311,
+          "incumbent_error_c": -1.6298
+        },
+        "EHAM": {
+          "challenger_error_c": 0.986,
+          "incumbent_error_c": 0.4804
+        },
+        "EPWA": {
+          "challenger_error_c": 0.729,
+          "incumbent_error_c": 1.8125
+        },
+        "FACT": {
+          "challenger_error_c": -1.2076,
+          "incumbent_error_c": -1.1216
+        },
+        "KATL": {
+          "challenger_error_c": -0.707,
+          "incumbent_error_c": -0.7422
+        },
+        "KAUS": {
+          "challenger_error_c": -0.4808,
+          "incumbent_error_c": -0.6321
+        },
+        "KDAL": {
+          "challenger_error_c": 1.0096,
+          "incumbent_error_c": 1.2346
+        },
+        "KLAX": {
+          "challenger_error_c": 1.8554,
+          "incumbent_error_c": 1.8058
+        },
+        "KLGA": {
+          "challenger_error_c": 0.0061,
+          "incumbent_error_c": -0.917
+        },
+        "KORD": {
+          "challenger_error_c": 0.4477,
+          "incumbent_error_c": 0.5294
+        },
+        "KSEA": {
+          "challenger_error_c": -2.9199,
+          "incumbent_error_c": -2.6843
+        },
+        "KSFO": {
+          "challenger_error_c": -6.6524,
+          "incumbent_error_c": -6.7725
+        },
+        "LEMD": {
+          "challenger_error_c": -3.052,
+          "incumbent_error_c": -2.8256
+        },
+        "LFPB": {
+          "challenger_error_c": 0.949,
+          "incumbent_error_c": 0.856
+        },
+        "LIMC": {
+          "challenger_error_c": -1.9425,
+          "incumbent_error_c": 0.9197
+        },
+        "LTAC": {
+          "challenger_error_c": -2.2805,
+          "incumbent_error_c": -1.7482
+        },
+        "MMMX": {
+          "challenger_error_c": -4.6679,
+          "incumbent_error_c": -4.7905
+        },
+        "MPMG": {
+          "challenger_error_c": -1.5875,
+          "incumbent_error_c": -1.7556
+        },
+        "NZWN": {
+          "challenger_error_c": -1.3904,
+          "incumbent_error_c": -1.3478
+        },
+        "OEJN": {
+          "challenger_error_c": -10.4184,
+          "incumbent_error_c": -10.2695
+        },
+        "OPKC": {
+          "challenger_error_c": 0.2069,
+          "incumbent_error_c": 0.3743
+        },
+        "RJTT": {
+          "challenger_error_c": -3.1153,
+          "incumbent_error_c": -2.909
+        },
+        "RKPK": {
+          "challenger_error_c": -9.5332,
+          "incumbent_error_c": -9.5843
+        },
+        "RKSI": {
+          "challenger_error_c": -3.8292,
+          "incumbent_error_c": -3.5123
+        },
+        "RPLL": {
+          "challenger_error_c": -3.9333,
+          "incumbent_error_c": -3.4901
+        },
+        "SBGR": {
+          "challenger_error_c": 0.6973,
+          "incumbent_error_c": 2.2263
+        },
+        "WMKK": {
+          "challenger_error_c": -3.7062,
+          "incumbent_error_c": -3.8755
+        },
+        "WSSS": {
+          "challenger_error_c": 1.2245,
+          "incumbent_error_c": 0.3744
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-28T12:00:00Z",
+      "station_count": 31
+    },
+    {
+      "challenger": {
+        "bias_c": -0.3772,
+        "mae_c": 2.4261,
+        "n": 31,
+        "rmse_c": 3.5144
+      },
+      "event_date": "2026-07-31",
+      "incumbent": {
+        "bias_c": -0.4619,
+        "mae_c": 2.507,
+        "n": 31,
+        "rmse_c": 3.5653
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -7.0896,
+          "incumbent_error_c": -7.5782
+        },
+        "EDDM": {
+          "challenger_error_c": 0.1819,
+          "incumbent_error_c": -0.8126
+        },
+        "EFHK": {
+          "challenger_error_c": -0.3181,
+          "incumbent_error_c": -0.6132
+        },
+        "EGLC": {
+          "challenger_error_c": -0.8924,
+          "incumbent_error_c": -1.3861
+        },
+        "EPWA": {
+          "challenger_error_c": 3.3189,
+          "incumbent_error_c": 1.7643
+        },
+        "FACT": {
+          "challenger_error_c": -2.3785,
+          "incumbent_error_c": -2.6328
+        },
+        "KATL": {
+          "challenger_error_c": 0.4074,
+          "incumbent_error_c": 0.0848
+        },
+        "KAUS": {
+          "challenger_error_c": 9.0455,
+          "incumbent_error_c": 8.9157
+        },
+        "KBKF": {
+          "challenger_error_c": -1.9731,
+          "incumbent_error_c": -0.823
+        },
+        "KSFO": {
+          "challenger_error_c": -0.1355,
+          "incumbent_error_c": -0.5406
+        },
+        "LFPB": {
+          "challenger_error_c": 1.6866,
+          "incumbent_error_c": 1.1979
+        },
+        "MPMG": {
+          "challenger_error_c": -3.6812,
+          "incumbent_error_c": -4.3232
+        },
+        "NZWN": {
+          "challenger_error_c": -1.9375,
+          "incumbent_error_c": -1.9485
+        },
+        "OEJN": {
+          "challenger_error_c": -8.687,
+          "incumbent_error_c": -8.3827
+        },
+        "OPKC": {
+          "challenger_error_c": -0.8655,
+          "incumbent_error_c": -0.4515
+        },
+        "RCSS": {
+          "challenger_error_c": 0.7855,
+          "incumbent_error_c": 0.6975
+        },
+        "RJTT": {
+          "challenger_error_c": 0.3959,
+          "incumbent_error_c": -0.0311
+        },
+        "RKPK": {
+          "challenger_error_c": -8.2385,
+          "incumbent_error_c": -8.3609
+        },
+        "RKSI": {
+          "challenger_error_c": -3.658,
+          "incumbent_error_c": -3.3664
+        },
+        "RPLL": {
+          "challenger_error_c": -0.6528,
+          "incumbent_error_c": -0.9968
+        },
+        "SBGR": {
+          "challenger_error_c": 3.8129,
+          "incumbent_error_c": 4.0806
+        },
+        "VILK": {
+          "challenger_error_c": 0.0913,
+          "incumbent_error_c": -0.4587
+        },
+        "WSSS": {
+          "challenger_error_c": -0.5438,
+          "incumbent_error_c": -0.6294
+        },
+        "ZBAA": {
+          "challenger_error_c": 2.8638,
+          "incumbent_error_c": 3.6689
+        },
+        "ZGGG": {
+          "challenger_error_c": 0.9427,
+          "incumbent_error_c": 1.6143
+        },
+        "ZGSZ": {
+          "challenger_error_c": 2.1421,
+          "incumbent_error_c": 2.6005
+        },
+        "ZHHH": {
+          "challenger_error_c": 0.3673,
+          "incumbent_error_c": 0.9033
+        },
+        "ZSPD": {
+          "challenger_error_c": -1.683,
+          "incumbent_error_c": -1.4482
+        },
+        "ZSQD": {
+          "challenger_error_c": 3.8489,
+          "incumbent_error_c": 4.1954
+        },
+        "ZUCK": {
+          "challenger_error_c": 1.8678,
+          "incumbent_error_c": 1.9767
+        },
+        "ZUUU": {
+          "challenger_error_c": -0.7177,
+          "incumbent_error_c": -1.2341
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-29T12:00:00Z",
+      "station_count": 31
+    },
+    {
+      "challenger": {
+        "bias_c": -1.7321,
+        "mae_c": 2.887,
+        "n": 28,
+        "rmse_c": 3.6574
+      },
+      "event_date": "2026-08-01",
+      "incumbent": {
+        "bias_c": -1.6536,
+        "mae_c": 2.8721,
+        "n": 28,
+        "rmse_c": 3.6254
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -6.9099,
+          "incumbent_error_c": -6.1516
+        },
+        "EPWA": {
+          "challenger_error_c": 1.075,
+          "incumbent_error_c": -0.9688
+        },
+        "FACT": {
+          "challenger_error_c": -5.7792,
+          "incumbent_error_c": -6.7546
+        },
+        "KATL": {
+          "challenger_error_c": 0.3357,
+          "incumbent_error_c": 0.3493
+        },
+        "KLAX": {
+          "challenger_error_c": 2.7288,
+          "incumbent_error_c": 2.4093
+        },
+        "KORD": {
+          "challenger_error_c": -1.0651,
+          "incumbent_error_c": 0.9404
+        },
+        "KSEA": {
+          "challenger_error_c": 3.1142,
+          "incumbent_error_c": 3.1723
+        },
+        "KSFO": {
+          "challenger_error_c": 3.5869,
+          "incumbent_error_c": 3.3941
+        },
+        "LEMD": {
+          "challenger_error_c": -2.7086,
+          "incumbent_error_c": -2.4832
+        },
+        "LFPB": {
+          "challenger_error_c": 0.4755,
+          "incumbent_error_c": 0.9568
+        },
+        "MPMG": {
+          "challenger_error_c": -3.2367,
+          "incumbent_error_c": -3.2958
+        },
+        "NZWN": {
+          "challenger_error_c": -1.4327,
+          "incumbent_error_c": -1.6155
+        },
+        "OEJN": {
+          "challenger_error_c": -10.0726,
+          "incumbent_error_c": -9.9022
+        },
+        "OPKC": {
+          "challenger_error_c": -0.1994,
+          "incumbent_error_c": 0.5442
+        },
+        "RCSS": {
+          "challenger_error_c": -4.6965,
+          "incumbent_error_c": -4.6504
+        },
+        "RJTT": {
+          "challenger_error_c": -2.5506,
+          "incumbent_error_c": -2.4015
+        },
+        "RKSI": {
+          "challenger_error_c": -3.5945,
+          "incumbent_error_c": -3.3328
+        },
+        "RPLL": {
+          "challenger_error_c": -0.7171,
+          "incumbent_error_c": -0.5551
+        },
+        "SBGR": {
+          "challenger_error_c": 1.765,
+          "incumbent_error_c": 2.0092
+        },
+        "WSSS": {
+          "challenger_error_c": -1.1405,
+          "incumbent_error_c": -0.9953
+        },
+        "ZBAA": {
+          "challenger_error_c": -0.7955,
+          "incumbent_error_c": -0.407
+        },
+        "ZGGG": {
+          "challenger_error_c": -3.9181,
+          "incumbent_error_c": -3.4367
+        },
+        "ZGSZ": {
+          "challenger_error_c": -2.9111,
+          "incumbent_error_c": -2.8408
+        },
+        "ZHHH": {
+          "challenger_error_c": -1.8309,
+          "incumbent_error_c": -1.5409
+        },
+        "ZSPD": {
+          "challenger_error_c": -6.7999,
+          "incumbent_error_c": -6.722
+        },
+        "ZSQD": {
+          "challenger_error_c": 3.0864,
+          "incumbent_error_c": 3.2839
+        },
+        "ZUCK": {
+          "challenger_error_c": -1.9072,
+          "incumbent_error_c": -2.7313
+        },
+        "ZUUU": {
+          "challenger_error_c": -2.4013,
+          "incumbent_error_c": -2.5736
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-30T12:00:00Z",
+      "station_count": 28
+    },
+    {
+      "challenger": {
+        "bias_c": -2.2122,
+        "mae_c": 2.6716,
+        "n": 9,
+        "rmse_c": 4.0692
+      },
+      "event_date": "2026-08-02",
+      "incumbent": {
+        "bias_c": -2.2624,
+        "mae_c": 2.8458,
+        "n": 9,
+        "rmse_c": 4.1438
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": -4.2396,
+          "incumbent_error_c": -4.3446
+        },
+        "EPWA": {
+          "challenger_error_c": 1.5252,
+          "incumbent_error_c": 2.0506
+        },
+        "KATL": {
+          "challenger_error_c": -0.3002,
+          "incumbent_error_c": -1.867
+        },
+        "KLGA": {
+          "challenger_error_c": 0.5417,
+          "incumbent_error_c": 0.5745
+        },
+        "KORD": {
+          "challenger_error_c": -3.0146,
+          "incumbent_error_c": -3.1983
+        },
+        "LEMD": {
+          "challenger_error_c": -2.1214,
+          "incumbent_error_c": -2.168
+        },
+        "LFPB": {
+          "challenger_error_c": -1.6119,
+          "incumbent_error_c": -0.4898
+        },
+        "OEJN": {
+          "challenger_error_c": -10.5899,
+          "incumbent_error_c": -10.6005
+        },
+        "SBGR": {
+          "challenger_error_c": -0.0996,
+          "incumbent_error_c": -0.3188
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-07-31T12:00:00Z",
+      "station_count": 9
+    },
+    {
+      "challenger": {
+        "bias_c": 5.5905,
+        "mae_c": 5.5905,
+        "n": 3,
+        "rmse_c": 5.7566
+      },
+      "event_date": "2026-08-03",
+      "incumbent": {
+        "bias_c": 4.7874,
+        "mae_c": 4.7874,
+        "n": 3,
+        "rmse_c": 4.9958
+      },
+      "per_station": {
+        "CYYZ": {
+          "challenger_error_c": 3.6682,
+          "incumbent_error_c": 3.1747
+        },
+        "EPWA": {
+          "challenger_error_c": 6.3161,
+          "incumbent_error_c": 4.5413
+        },
+        "KLAX": {
+          "challenger_error_c": 6.7872,
+          "incumbent_error_c": 6.6463
+        }
+      },
+      "run_cycle_challenger": "12Z",
+      "run_cycle_incumbent": "00Z",
+      "run_init_utc_challenger": "2026-08-01T12:00:00Z",
+      "station_count": 3
+    },
+    {
+      "event_date": "2026-08-04",
+      "skipped": "no_settled_truth"
+    },
+    {
+      "event_date": "2026-08-05",
+      "skipped": "no_settled_truth"
+    }
+  ],
+  "schema": "eccc_geps_run_cycle_ab_experiment_v1",
+  "summary": {
+    "challenger": {
+      "bias_c": -1.5361,
+      "mae_c": 2.3334,
+      "rmse_c": 3.1365
+    },
+    "challenger_wins_mae": false,
+    "dates_attempted": 25,
+    "dates_paired": 18,
+    "incumbent": {
+      "bias_c": -1.4814,
+      "mae_c": 2.301,
+      "rmse_c": 3.111
+    }
+  },
+  "system_id": "ECCC_GEM_GLOBAL_ENS",
+  "writes_ssot": false
+}

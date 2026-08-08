@@ -280,7 +280,18 @@ def compile_delta_v2_runtime_plan(
         {row.bucket: row.ordinal for row in snapshot.buckets},
         basket_policy,
     )
-    if diagnosed_center != center.bucket:
+    # The diagnostic center is the probability argmax.  It is the anchor only
+    # for stages that publish no point estimate of their own; when one exists
+    # the anchor is deliberately not the argmax, because an open-ended edge
+    # bucket spans an unbounded interval and outranks the 1°C buckets it is
+    # compared against without the forecast pointing anywhere near it.  Keeping
+    # the equality unconditional would reject exactly the cases the anchor was
+    # introduced to fix (ZUUU: anchor 33°C, argmax "35°C or higher").  The
+    # runner-up/lead/stability diagnostics below remain informative either way.
+    if (
+        snapshot.evidence.model_center_ordinal is None
+        and diagnosed_center != center.bucket
+    ):
         raise ContractError("delta_v2_center_diagnostic_mismatch")
     probabilities = {row.bucket: row.probability for row in snapshot.buckets}
     by_bucket = {row.bucket: row for row in snapshot.buckets}

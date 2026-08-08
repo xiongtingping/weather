@@ -39,6 +39,12 @@ MULTISTATION_SCHEMA = (
 SYSTEM_ID = "ECCC_GEM_GLOBAL_ENS"
 INDEPENDENCE_FAMILY_ID = "ECCC_GEM"
 RUN_CYCLE = "00Z"
+# ECCC is the only native family without an 18Z run, so its d2 cycle is a real
+# choice rather than a given.  00Z fires 18 hours before the 18Z the other
+# families use; 12Z narrows that information deficit to 6 hours.  Both are
+# admitted here so the two can be measured against each other instead of one
+# being assumed.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 12)
 ARCHIVE_LEAD_BUCKET = "d2"
 EXTRACTION_VERSION = "eccc_geps_0p5_00z_d2_station_tmax_v1"
 BASE_URL = "https://dd.weather.gc.ca"
@@ -108,6 +114,20 @@ def _get_bytes(
         "eccc_geps_archive_transport_failed:"
         + type(last_error).__name__
     ) from last_error
+
+
+def _run_cycle_label(run_init: datetime) -> str:
+    """Derive the cycle label from the run itself, never from a constant.
+
+    ECCC publishes GEPS on 00Z and 12Z only.  Deriving the label here means a
+    capture can never claim a cycle its ``run_init`` does not actually carry,
+    which is what makes the 00Z/12Z comparison auditable.
+    """
+
+    hour = run_init.astimezone(timezone.utc).hour
+    if hour not in SUPPORTED_RUN_CYCLE_HOURS:
+        raise ContractError("eccc_geps_archive_run_cycle_unsupported")
+    return f"{hour:02d}Z"
 
 
 def _forecast_hours(
@@ -366,7 +386,7 @@ def _build_station_capture(
         "latitude": float(scope["latitude"]),
         "longitude": float(scope["longitude"]),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": _run_cycle_label(run_init),
         "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
         "forecast_hours": hours,
         "ensemble_system_id": SYSTEM_ID,
@@ -424,11 +444,14 @@ def capture_geps_station_days(
     station_scopes: Sequence[Mapping[str, Any]],
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
+    run_cycle_hour: int = 0,
 ) -> dict[str, Any]:
+    if run_cycle_hour not in SUPPORTED_RUN_CYCLE_HOURS:
+        raise ContractError("eccc_geps_archive_run_cycle_unsupported")
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=2),
-        time(hour=0),
+        time(hour=run_cycle_hour),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -573,7 +596,7 @@ def capture_geps_station_days(
         "schema": MULTISTATION_SCHEMA,
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": _run_cycle_label(run_init),
         "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": INDEPENDENCE_FAMILY_ID,

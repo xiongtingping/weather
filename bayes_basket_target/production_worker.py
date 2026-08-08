@@ -43,6 +43,11 @@ from .contracts import (
 from .cash_phase_forward_observation import (
     build_forward_observation_packet,
 )
+from .dwd_icon_eps_archive import (
+    EXTRACTION_VERSION as _ICON_EXTRACTION_VERSION,
+    RUN_CYCLE as _ICON_RUN_CYCLE,
+    SYSTEM_ID as _ICON_SYSTEM_ID,
+)
 from .event_contracts import ForecastRevision, validate_forecast_revision_chain
 from .database import (
     DEFAULT_TARGET_DB,
@@ -345,6 +350,8 @@ OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC = 45.0
 # start.  Official coverage is what gates P0, so this is sized to grow it
 # quickly while staying bounded against the external archives.
 OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY = 4
+ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
+
 # Hard wall-clock ceiling on one capture, enforced by killing the child.  The
 # command's own ``--timeout-seconds`` bounds individual archive requests only;
 # total runtime is unbounded.
@@ -354,7 +361,64 @@ OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY = 4
 # ~140s, so this leaves roughly a 1.7x margin.  It sits on the background capture
 # pool and no longer blocks the rotation, which is what makes a ceiling this
 # large safe; a wedged child still gets killed and frees its slot.
-OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 240.0
+# Four archives now share one capture.  The first scope of an event date pays
+# every download (GEFS ~50s, ECCC ~220s, ICON ~45s, plus ECMWF); later scopes
+# reuse the retained archives within their TTL and finish in seconds.  Sized so
+# that first scope can complete rather than being killed just short of it, and
+# capped at one poll interval so a wedged child still frees its pool slot.
+OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 600.0
+# ICON runs once per day over all 45 stations instead of joining the per-station
+# rotation above.  Its objects are global fields -- one file per lead holding
+# every member -- so the rotation would re-download the same ~543MiB for each
+# station, and the retained-archive reuse check keys on the exact station set,
+# so it would not deduplicate them either.
+#
+# The deadline is larger than the rotation's because this pass is inherently
+# whole-archive: 15 leads at ~36MiB measured at ~4 minutes end to end, leaving
+# roughly a 3x margin for a slow day.
+# Sized to the measured pass rather than to a guess.  One capture pulls ~543MiB
+# (15 leads at ~36MiB) and DWD sustains 0.59 MB/s at 16 workers, so the download
+# alone needs ~15 minutes before decode and ingest.  The previous 780s could
+# never contain that at the old 3-worker rate (~2.5h), which meant every daily
+# ICON capture ran to the deadline and was killed with nothing to show.
+#
+# This runs on its own single-worker pool, so a long pass costs the per-station
+# rotation nothing.
+ICON_DAILY_CAPTURE_DEADLINE_SEC = 1800.0
+# DWD keeps one run per cycle, so a day missed here is unrecoverable -- unlike
+# ECMWF/GEFS/ECCC, which expose rolling archives.  That asymmetry justifies a
+# much tighter retry floor than the rotation's 1800s: there is no later chance.
+# Longer than the deadline above: a floor shorter than the pass it guards would
+# expire while that pass is still running.  The in-flight future prevents a
+# duplicate submission either way, but keeping the floor above the deadline
+# makes the retry cadence mean what it says.
+ICON_DAILY_CAPTURE_RETRY_SEC = 2400.0
+# ICON's d2 target is two days out from the run day.
+ICON_DAILY_CAPTURE_LEAD_DAYS = 2
+# Open-Meteo supplies UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS -- three
+# independence families with no official native archive, so this republisher is
+# their only route to a d2 member set.  Like ICON it is forward-only: members
+# are retained about five days and a backward query returns the current run's
+# hindcast rather than the d2 forecast issued then, so a missed day is lost.
+# 135 small JSON requests, far lighter than ICON's ~543MiB of GRIB.
+OPEN_METEO_D2_CAPTURE_DEADLINE_SEC = 600.0
+OPEN_METEO_D2_CAPTURE_RETRY_SEC = 900.0
+OPEN_METEO_D2_CAPTURE_LEAD_DAYS = 2
+OPEN_METEO_D2_SYSTEM_IDS = (
+    "UKMO_GLOBAL_ENS", "GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025",
+)
+# Markets for a future date are listed progressively, so a snapshot must be
+# redone often enough to pick up stations added after it was taken.
+REGISTRY_EXPORT_MAX_AGE_SEC = 1800.0
+OPEN_METEO_D2_EXTRACTION_VERSION = (
+    "open_meteo_forward_d2_daily_tmax_member_v1"
+)
+# Imported from the collector rather than restated, so the idempotence check
+# cannot drift from what the capture actually writes and re-download the same
+# day forever (or, worse, accept a superseded extraction as done).
+ICON_SYSTEM_ID = _ICON_SYSTEM_ID
+ICON_RUN_CYCLE = _ICON_RUN_CYCLE
+ICON_EXTRACTION_VERSION = _ICON_EXTRACTION_VERSION
 CANONICAL_TARGET_STATIONS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
@@ -1190,6 +1254,37 @@ def _active_forward_scopes(path: Path, *, horizon: date) -> set[tuple[str, str]]
     return scopes
 
 
+def _active_registry_scopes(path: Path, *, horizon: date) -> set[tuple[str, str]]:
+    """Return the still-open (station, event_date) scopes the market lists.
+
+    The forward market registry is the authority on which scopes exist at all,
+    so it is the correct bound on the official inbox.  Deriving that bound from
+    another inbox instead makes coverage self-limiting: a scope missing from
+    that inbox can never accept the very packet meant to cover it.
+    """
+
+    if not path.is_file():
+        return set()
+    try:
+        root = load_bounded_json(path)
+    except Exception:
+        return set()
+    if not isinstance(root, Mapping) or not isinstance(root.get("rows"), list):
+        return set()
+    scopes: set[tuple[str, str]] = set()
+    for row in root["rows"]:
+        if not isinstance(row, Mapping):
+            continue
+        event_date = str(row.get("event_date") or "").strip()
+        parsed = _event_date_or_none(event_date)
+        if parsed is not None and parsed < horizon:
+            continue
+        station_id = str(row.get("station_id") or "").strip().upper()
+        if station_id and event_date:
+            scopes.add((station_id, event_date))
+    return scopes
+
+
 def _merge_official_native_inbox(
     inbox_path: Path,
     *,
@@ -1350,6 +1445,20 @@ def _resident_open_event_dates(
         if _event_date_or_none(event_date) is None
         or _event_date_or_none(event_date) >= horizon
     }
+    # The manifest lists scopes that already have a probability, so it can only
+    # ever name dates the pipeline has already processed.  Treating it as the
+    # sole authority closes a loop: a day with no P0 never appears in it, never
+    # enters the capture allowlist, never gets model data, and so never gets a
+    # P0.  On 2026-08-08 that held the whole lane on 2026-08-07 while the
+    # registry already carried 45 stations for the new day.
+    #
+    # The existing guard above only discards days that are over everywhere on
+    # earth, which is a day too late to break this.  A manifest naming solely a
+    # date earlier than today has demonstrably not kept up, so the scope is
+    # handed back to live registry discovery -- the same path taken when no
+    # manifest exists at all.
+    if len(dates) == 1 and next(iter(dates)) < reference.isoformat():
+        return ()
     # Mixing open station-days would turn the 45-station cap into a
     # station-day cap.  Require the coordinator to pass an explicit scope in
     # that case instead of guessing.
@@ -1674,6 +1783,7 @@ class TargetProductionWorker:
         picks it up on a later pass.
         """
 
+
         throttle: dict[tuple[str, str], float] = getattr(
             self, "_official_native_capture_attempts", None
         ) or {}
@@ -1774,6 +1884,18 @@ class TargetProductionWorker:
             # download.
             "--gefs-output", str(capture_root / f"gefs_{event_date}.json"),
             "--ecmwf-output", str(capture_root / f"ecmwf_{event_date}.json"),
+            # ECCC is captured on the same rotation rather than left to operator
+            # commands.  Its history is what admits a third independent family
+            # to the cross-ensemble candidate set; a system whose archive stops
+            # growing can never cover the holdout cohort and is silently
+            # excluded, which is how per-station model selection ended up with a
+            # candidate set of exactly two.
+            #
+            # ICON is deliberately absent here and runs once per day over all 45
+            # stations instead -- see ``_capture_icon_daily``.  Its objects are
+            # global fields rather than per-station extracts, so one pass of
+            # this rotation would pull the same ~543MiB once per station.
+            "--eccc-output", str(capture_root / f"eccc_{event_date}.json"),
             "--inbox-output", str(staging_inbox),
             "--station-id", station_id,
             "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
@@ -1783,6 +1905,16 @@ class TargetProductionWorker:
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
         )
 
+        # ECMWF's S3 endpoint throttles sustained parallel range requests with
+        # `503 Slow Down` and is therefore held to three workers; its GCS
+        # replica serves the same official objects without that limit and is
+        # allowed sixteen.  Since ECMWF dominates a capture (51 members), the
+        # replica is what keeps four archives inside one deadline.
+        capture_env = {
+            **os.environ,
+            "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
+        }
+
         def _run_capture() -> dict[str, Any]:
             try:
                 completed = subprocess.run(
@@ -1791,6 +1923,7 @@ class TargetProductionWorker:
                     capture_output=True,
                     text=True,
                     timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
+                    env=capture_env,
                 )
                 if completed.returncode != 0:
                     return {
@@ -1823,8 +1956,16 @@ class TargetProductionWorker:
                         inbox_path,
                         staging_path=staging_inbox,
                         as_of_utc=as_of_utc,
-                        allowed_scopes=_active_forward_scopes(
-                            republisher_inbox,
+                        # The scope set is bounded by the live market registry,
+                        # not by whatever the republisher inbox happens to hold.
+                        # Gating on the republisher meant a scope it had not yet
+                        # covered could never accept its official packet: ZUUU
+                        # 2026-08-07 was captured successfully and then silently
+                        # dropped at merge, leaving the station with no P0 at
+                        # all.  Official capture exists precisely to cover what
+                        # the republisher cannot.
+                        allowed_scopes=_active_registry_scopes(
+                            registry_path,
                             horizon=horizon,
                         ),
                     )
@@ -1855,6 +1996,295 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
+    def _icon_daily_target_date(self, *, as_of_utc: str) -> str:
+        return (
+            _utc_date(as_of_utc)
+            + timedelta(days=ICON_DAILY_CAPTURE_LEAD_DAYS)
+        ).isoformat()
+
+    def _icon_daily_already_captured(self, *, target_date: str) -> bool:
+        """Whether today's ICON run is already canonical for all 45 stations.
+
+        Keyed on the extraction version in force, so a change in how the run is
+        read does not let a superseded capture satisfy the day.
+        """
+
+        if self.conn is None:
+            return False
+        try:
+            row = self.conn.execute(
+                "SELECT COUNT(DISTINCT station_id) "
+                "FROM calibration_native_ensemble_historical_member_run "
+                "WHERE ensemble_system_id=? AND target_local_date=? "
+                "  AND run_cycle=? AND extraction_version=?",
+                (
+                    ICON_SYSTEM_ID,
+                    target_date,
+                    ICON_RUN_CYCLE,
+                    ICON_EXTRACTION_VERSION,
+                ),
+            ).fetchone()
+        except Exception:
+            return False
+        return int((row or [0])[0]) >= len(CANONICAL_TARGET_STATIONS)
+
+    def _capture_icon_daily(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Take today's ICON run for all 45 stations, once, in the background.
+
+        Separate from the per-station rotation because ICON objects are global
+        fields: the rotation would pull the same archive once per station and
+        its retained-archive reuse keys on the exact station set, so nothing
+        would be deduplicated.
+
+        This is also the only family whose history cannot be backfilled -- DWD
+        keeps one run per cycle -- so a day skipped here is lost outright rather
+        than merely delayed.
+        """
+
+        target_date = self._icon_daily_target_date(as_of_utc=as_of_utc)
+        if self._icon_daily_already_captured(target_date=target_date):
+            return {
+                "state": "ALREADY_CAPTURED",
+                "target_local_date": target_date,
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        inflight = getattr(self, "_icon_daily_capture_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {
+                "state": "IN_FLIGHT",
+                "target_local_date": target_date,
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        now_mono = time.monotonic()
+        last_attempt = getattr(self, "_icon_daily_capture_last_mono", None)
+        if (
+            last_attempt is not None
+            and now_mono - last_attempt < ICON_DAILY_CAPTURE_RETRY_SEC
+        ):
+            return {
+                "state": "THROTTLED",
+                "target_local_date": target_date,
+                "retry_in_seconds": round(
+                    ICON_DAILY_CAPTURE_RETRY_SEC - (now_mono - last_attempt), 1
+                ),
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        self._icon_daily_capture_last_mono = now_mono
+
+        capture_root = self.nwp_runtime_root / "official_native_capture"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / "capture_icon_eps_daily_all_stations.py"),
+            "--event-date", target_date,
+            "--output", str(capture_root / f"icon_{target_date}.json"),
+            "--commit",
+        ]
+
+        def _run_icon_capture() -> dict[str, Any]:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=ICON_DAILY_CAPTURE_DEADLINE_SEC,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "state": "DEADLINE_EXCEEDED",
+                    "reason": (
+                        f"icon_capture_exceeded_"
+                        f"{ICON_DAILY_CAPTURE_DEADLINE_SEC:.0f}s"
+                    ),
+                }
+            except Exception as exc:
+                return {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            if completed.returncode != 0:
+                return {
+                    "state": "FAILED",
+                    "reason": (
+                        f"icon_capture_exit_{completed.returncode}:"
+                        f"{(completed.stderr or '').strip()[:200]}"
+                    ),
+                }
+            return {"state": "CAPTURED", "target_local_date": target_date}
+
+        # A dedicated single-worker pool rather than the shared capture pool.
+        # ICON is one ~543MiB pass per day; the shared pool serves the
+        # per-station rotation that must sweep the whole catalog every hour.
+        # Letting a multi-minute download hold one of its four slots -- for up
+        # to the 780s deadline -- steals a quarter of the rotation's capacity
+        # for something that gains nothing from running there.  One worker is
+        # enough because the call is idempotent and runs once per day.
+        pool = getattr(self, "_icon_daily_capture_pool", None)
+        if pool is None:
+            self._icon_daily_capture_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="icon-daily-capture",
+            )
+            pool = self._icon_daily_capture_pool
+        self._icon_daily_capture_inflight = pool.submit(_run_icon_capture)
+        return {
+            "state": "SUBMITTED",
+            "target_local_date": target_date,
+            "orders_submitted": 0,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+        }
+
+    def _registry_export_is_stale(
+        self, path: Path, *, as_of_utc: str
+    ) -> bool:
+        """Whether the published registry snapshot is old enough to redo.
+
+        Markets for a future event date are listed progressively, so a snapshot
+        taken early carries a station count that is merely how far Polymarket
+        had got at that moment.  Holding it indefinitely makes that partial
+        count permanent for the date.
+        """
+
+        try:
+            snapshot = load_market_registry_snapshot(path)
+        except Exception:
+            return True
+        taken = str(snapshot.get("as_of_utc") or "").strip()
+        if not taken:
+            return True
+        try:
+            def _at(value: str) -> datetime:
+                return datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+
+            age = (_at(as_of_utc) - _at(taken)).total_seconds()
+        except Exception:
+            return True
+        return age >= REGISTRY_EXPORT_MAX_AGE_SEC or age < 0
+
+    def _open_meteo_d2_already_captured(self, *, target_date: str) -> bool:
+        """Whether all three republisher families already hold this target day.
+
+        Keyed on the extraction version so a change in how members are read
+        does not let a superseded capture satisfy the day.
+        """
+
+        if self.conn is None:
+            return False
+        try:
+            row = self.conn.execute(
+                "SELECT COUNT(DISTINCT ensemble_system_id) "
+                "FROM calibration_republisher_ensemble_historical_member_run "
+                "WHERE target_local_date=? AND archive_lead_bucket='d2' "
+                "  AND extraction_version=? "
+                f"  AND ensemble_system_id IN ({
+                    ','.join('?' * len(OPEN_METEO_D2_SYSTEM_IDS))
+                })",
+                (
+                    target_date,
+                    OPEN_METEO_D2_EXTRACTION_VERSION,
+                    *OPEN_METEO_D2_SYSTEM_IDS,
+                ),
+            ).fetchone()
+        except Exception:
+            return False
+        return int((row or [0])[0]) >= len(OPEN_METEO_D2_SYSTEM_IDS)
+
+    def _capture_open_meteo_d2_daily(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Take today's republisher d2 members for all stations, once."""
+
+        target_date = (
+            _utc_date(as_of_utc)
+            + timedelta(days=OPEN_METEO_D2_CAPTURE_LEAD_DAYS)
+        ).isoformat()
+        if self._open_meteo_d2_already_captured(target_date=target_date):
+            return {
+                "state": "ALREADY_CAPTURED",
+                "target_local_date": target_date,
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        inflight = getattr(self, "_open_meteo_d2_capture_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {
+                "state": "IN_FLIGHT",
+                "target_local_date": target_date,
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        now_mono = time.monotonic()
+        last_attempt = getattr(self, "_open_meteo_d2_capture_last_mono", None)
+        if (
+            last_attempt is not None
+            and now_mono - last_attempt < OPEN_METEO_D2_CAPTURE_RETRY_SEC
+        ):
+            return {
+                "state": "THROTTLED",
+                "target_local_date": target_date,
+                "orders_submitted": 0,
+                "calls_order_gateway": False,
+            }
+        self._open_meteo_d2_capture_last_mono = now_mono
+
+        capture_root = self.nwp_runtime_root / "open_meteo_d2_capture"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / "capture_open_meteo_d2_ensemble_daily.py"),
+            "--output", str(capture_root / f"om_d2_{target_date}.json"),
+            "--commit",
+        ]
+
+        def _run() -> dict[str, Any]:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=OPEN_METEO_D2_CAPTURE_DEADLINE_SEC,
+                )
+            except subprocess.TimeoutExpired:
+                return {"state": "DEADLINE_EXCEEDED"}
+            except Exception as exc:
+                return {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            if completed.returncode != 0:
+                return {
+                    "state": "FAILED",
+                    "reason": (
+                        f"open_meteo_d2_exit_{completed.returncode}:"
+                        f"{(completed.stderr or '').strip()[:200]}"
+                    ),
+                }
+            return {"state": "CAPTURED", "target_local_date": target_date}
+
+        pool = getattr(self, "_official_native_capture_pool", None)
+        if pool is None:
+            self._official_native_capture_pool = ThreadPoolExecutor(
+                max_workers=OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY,
+                thread_name_prefix="official-native-capture",
+            )
+            pool = self._official_native_capture_pool
+        self._open_meteo_d2_capture_inflight = pool.submit(_run)
+        return {
+            "state": "SUBMITTED",
+            "target_local_date": target_date,
+            "orders_submitted": 0,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+        }
+
     def refresh_resident_nwp(self, *, as_of_utc: str) -> dict[str, Any]:
         """Capture official models and refresh the bounded P0 inbox.
 
@@ -1863,6 +2293,15 @@ class TargetProductionWorker:
         against the canonical database; only the isolated target registry and
         P0 inbox may change.
         """
+
+        # Kick ICON before anything else can fail-closed and return early.
+        # Every other family can be backfilled from a rolling archive; ICON
+        # cannot, so a poll that exits before reaching this line costs a day of
+        # the fourth independence family permanently.  The call is idempotent
+        # and throttled, and it never blocks -- it submits to the background
+        # pool and returns.
+        icon_daily = self._capture_icon_daily(as_of_utc=as_of_utc)
+        open_meteo_d2 = self._capture_open_meteo_d2_daily(as_of_utc=as_of_utc)
 
         read_conn = getattr(self, "commit_conn", None) or getattr(
             self, "conn", None
@@ -1927,7 +2366,29 @@ class TargetProductionWorker:
             )
         except Exception:
             existing_registry = None
-        if existing_registry is None:
+        # The comment above assigns ongoing publication to a resident registry
+        # worker, but no such writer exists -- this is the only code in the
+        # repository that writes the file.  Reusing it whenever it was present
+        # therefore froze the catalog at whatever the first bootstrap saw: the
+        # snapshot went two days stale, so a new event date was registered with
+        # the station count it happened to have at bootstrap time, and every
+        # downstream capture scope inherited that stale bound.
+        #
+        # Refreshing is still refused while a narrowing allowlist is in force,
+        # which is what the original guard was protecting: a single-station
+        # acquisition run must never overwrite the multi-station catalog.
+        stale = self._registry_export_is_stale(
+            registry_path, as_of_utc=as_of_utc
+        )
+        # Narrowing means exactly what the export call below treats as
+        # narrowing: a single station or a single event date, which is what
+        # makes the export smaller than the catalog.  A full 45-station
+        # allowlist is the normal resident configuration, so testing merely for
+        # a non-empty allowlist suppressed every refresh.
+        narrowed = (
+            len(station_allowlist) == 1 or len(event_date_allowlist) == 1
+        )
+        if existing_registry is None or (stale and not narrowed):
             export = export_shared_live_registry(
                 source_db=self.canonical_source_db_path,
                 output_path=registry_path,

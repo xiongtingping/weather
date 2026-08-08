@@ -22,6 +22,7 @@ from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
 )
 from bayes_basket_target.official_native_forward_packet import (  # noqa: E402
+    DWD_ICON_EPS_MULTISTATION_SCHEMA,
     ECCC_GEPS_MULTISTATION_SCHEMA,
     ECMWF_MULTISTATION_SCHEMA,
     NOAA_GEFS_MULTISTATION_SCHEMA,
@@ -41,6 +42,7 @@ _ARCHIVE_SCHEMA_BY_ROLE = {
     "NOAA_GEFS": NOAA_GEFS_MULTISTATION_SCHEMA,
     "ECMWF": ECMWF_MULTISTATION_SCHEMA,
     "ECCC_GEM": ECCC_GEPS_MULTISTATION_SCHEMA,
+    "DWD_ICON_EPS": DWD_ICON_EPS_MULTISTATION_SCHEMA,
 }
 _ARCHIVE_FAMILY_BY_SCHEMA = {
     schema: family

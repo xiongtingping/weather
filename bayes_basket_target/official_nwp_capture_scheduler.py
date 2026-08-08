@@ -9,7 +9,7 @@ caps, and the exact capture set handed to the resident P0 producer.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import os
 from pathlib import Path
 import shutil
@@ -177,6 +177,34 @@ def candidate_run_initializations(
     return [_stamp(ceiling - timedelta(hours=6 * offset)) for offset in range(count)]
 
 
+# Hours after a d2 run's 18Z init before its members are reliably complete on
+# the object store.  Sized to the slower provider (ECMWF trails GEFS), and
+# deliberately conservative: a late fetch costs one rotation step, an early
+# one wastes an entire capture.
+D2_PUBLICATION_MARGIN_HOURS = 8
+
+
+def d2_model_ready_at_utc(event_date: str) -> datetime:
+    """Return when the d2 run backing this event date is safe to fetch.
+
+    Both archives take the same run for a d2 lead -- 18Z two days before the
+    event date -- but the run existing is not the run being complete: members
+    land on the object store over the following hours.  Fetching before then
+    burns a capture slot on a scope whose fields cannot all resolve yet.
+
+    The margin is deliberately the slower of the two providers.  Fetching a
+    little late costs one rotation step; fetching early costs a whole capture.
+    """
+
+    target = date.fromisoformat(event_date)
+    run_init = datetime.combine(
+        target - timedelta(days=2),
+        time(hour=18),
+        tzinfo=timezone.utc,
+    )
+    return run_init + timedelta(hours=D2_PUBLICATION_MARGIN_HOURS)
+
+
 def registry_capture_scopes(
     registry: Mapping[str, Any],
     *,
@@ -230,9 +258,20 @@ def registry_capture_scopes(
             "station_ids": [station],
             "outcome_count": len(grouped[(event_date, timezone_name, station)]),
             "event_day_state": state["state"],
+            "d2_model_ready_at_utc": d2_model_ready_at_utc(event_date)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "d2_model_ready": d2_model_ready_at_utc(event_date) <= now,
         })
+    # Model readiness outranks the timezone order.  Event days differ by up to
+    # a day in when their backing run publishes, so a purely chronological
+    # sweep spends capture slots on scopes whose run is still incomplete while
+    # ready scopes wait behind them.  Within each readiness group the
+    # east-to-west day order is preserved, so the station whose event day opens
+    # first is still served first.
     scopes.sort(
         key=lambda item: (
+            not item["d2_model_ready"],
             _parse_utc(
                 settlement_day_window(
                     item["event_date"],

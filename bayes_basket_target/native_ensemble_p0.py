@@ -64,6 +64,12 @@ def _season_bin(day: str) -> str:
     return "SON"
 
 
+# Leads P0 may be compiled at, freshest first.  A shorter lead supersedes a
+# longer one for the same station-day: the newest run replaces the previous
+# P0 rather than sitting alongside it.
+SUPPORTED_P0_LEAD_BUCKETS = ("d0", "d1", "d2")
+
+
 def _lead_bucket(
     *,
     event_date: str,
@@ -623,7 +629,18 @@ def compile_native_ensemble_p0(
         lead_bucket = str(
             forward_packet.get("lead_bucket") or ""
         )
-        if lead_bucket != "d2":
+        # P0 follows the freshest run available, so its lead shortens as the
+        # event day approaches: d2 two days out, then d1, then d0.  Pinning the
+        # official path to d2 meant the event day itself was still priced off a
+        # forecast issued two days earlier, with every later model update
+        # discarded -- P0-M and P1 correct from observations and cannot recover
+        # what the model itself has since learned.
+        #
+        # Admitting the lead here is not the same as trusting it.  Skill at d0
+        # is far higher than at d2, so the weights are not interchangeable, and
+        # the OOS snapshot is keyed by lead further down: a lead with no trained
+        # weights fails closed there rather than silently borrowing d2's.
+        if lead_bucket not in SUPPORTED_P0_LEAD_BUCKETS:
             raise ContractError(
                 "native_ensemble_p0_official_scope_invalid"
             )
