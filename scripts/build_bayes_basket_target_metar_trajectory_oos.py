@@ -161,6 +161,14 @@ def main() -> int:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--packet-output", type=Path, required=True)
+    # Persistence is opt-in so the offline evaluate-and-inspect flow keeps
+    # writing nothing.  With ``--commit`` the packet's rows are ingested
+    # through the evidence store's own validated inserts: the artifact row
+    # always (deduplicated on its content-addressed id), an activation row
+    # only when the gate promoted it -- a rejected candidate stays visible as
+    # evidence without ever becoming resolvable authority.
+    parser.add_argument("--db", type=Path, default=None)
+    parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
     input_path = args.input.expanduser().resolve()
     if (
@@ -313,10 +321,55 @@ def main() -> int:
         receipt,
         limit=OUTPUT_LIMIT_BYTES,
     )
+    ingress_receipt = None
+    if args.commit:
+        if args.db is None:
+            raise SystemExit("--commit requires --db")
+        import sqlite3
+
+        from bayes_basket_target.probability_evidence_store import (
+            apply_probability_evidence_schema,
+            insert_probability_evidence_activation,
+            insert_probability_evidence_artifact,
+        )
+
+        conn = sqlite3.connect(
+            str(args.db.expanduser().resolve(strict=True)), timeout=120.0
+        )
+        conn.execute("PRAGMA busy_timeout=120000")
+        try:
+            apply_probability_evidence_schema(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            wrote_artifacts = 0
+            wrote_activations = 0
+            for row in ingress_packet.get("artifacts") or []:
+                exists = conn.execute(
+                    "SELECT 1 FROM basket_probability_evidence_artifact "
+                    "WHERE artifact_id=?",
+                    (str(row.get("artifact_id") or ""),),
+                ).fetchone()
+                if exists:
+                    continue
+                insert_probability_evidence_artifact(conn, dict(row))
+                wrote_artifacts += 1
+            for row in ingress_packet.get("activations") or []:
+                insert_probability_evidence_activation(conn, dict(row))
+                wrote_activations += 1
+            conn.commit()
+            ingress_receipt = {
+                "wrote_artifacts": wrote_artifacts,
+                "wrote_activations": wrote_activations,
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     print(json.dumps({
         "artifact_id": result["artifact"]["artifact_id"],
         "oos_gate_passed": receipt["oos_gate_passed"],
         "packet_sha256": ingress_packet["packet_sha256"],
+        "ingress": ingress_receipt,
         "calls_order_gateway": False,
         "orders_submitted": 0,
     }, sort_keys=True))

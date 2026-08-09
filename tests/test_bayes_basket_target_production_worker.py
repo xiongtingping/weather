@@ -3649,6 +3649,81 @@ def test_pending_official_capture_states_cover_every_async_admission() -> None:
     assert "DEADLINE_EXCEEDED" not in pending
 
 
+def _trajectory_worker(conn) -> TargetProductionWorker:
+    worker = object.__new__(TargetProductionWorker)
+    worker.commit_conn = conn
+    return worker
+
+
+def _trajectory_schema(conn) -> None:
+    conn.execute(
+        "CREATE TABLE calibration_station_daily_high_truth("
+        "station_id TEXT, local_date TEXT, settlement_timezone TEXT,"
+        "qc_status TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_evidence_artifact("
+        "station_id TEXT, artifact_kind TEXT, trained_through_utc TEXT)"
+    )
+
+
+def test_trajectory_training_is_due_when_a_new_day_settles() -> None:
+    """The pass is fold-driven: it owes a run exactly when coverage lags truth.
+
+    A station gains at most one fold per settled day, so an artifact trained
+    through the latest settled day's close cannot gain evidence until the next
+    day settles -- rerunning the gate before then is a no-op by construction,
+    and skipping it after would leave the promotion waiting on a human again,
+    which is the failure this pass exists to remove.
+    """
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _trajectory_schema(conn)
+    worker = _trajectory_worker(conn)
+    conn.execute(
+        "INSERT INTO calibration_station_daily_high_truth VALUES"
+        "('ZUUU','2026-08-08','Asia/Shanghai','ACCEPTED')"
+    )
+
+    # No artifact at all: due.
+    due, timezone_name, latest = worker._metar_trajectory_training_due(
+        station_id="ZUUU"
+    )
+    assert (due, timezone_name, latest) == (True, "Asia/Shanghai", "2026-08-08")
+
+    # Covered through the latest day's close (16:00Z for UTC+8): not due.
+    conn.execute(
+        "INSERT INTO basket_probability_evidence_artifact VALUES"
+        "('ZUUU','METAR_TRAJECTORY_LIKELIHOOD','2026-08-08T16:00:00.000Z')"
+    )
+    assert worker._metar_trajectory_training_due(station_id="ZUUU")[0] is False
+
+    # A newer settled day reopens the debt.
+    conn.execute(
+        "INSERT INTO calibration_station_daily_high_truth VALUES"
+        "('ZUUU','2026-08-09','Asia/Shanghai','ACCEPTED')"
+    )
+    assert worker._metar_trajectory_training_due(station_id="ZUUU")[0] is True
+
+
+def test_trajectory_training_not_due_without_settled_truth() -> None:
+    # No truth means no folds and nothing to gate; running would only burn a
+    # subprocess pair against an empty packet.
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _trajectory_schema(conn)
+    worker = _trajectory_worker(conn)
+
+    assert worker._metar_trajectory_training_due(station_id="ZUUU") == (
+        False,
+        "",
+        "",
+    )
+
+
 def _rotation_worker(tmp_path: Path) -> TargetProductionWorker:
     worker = object.__new__(TargetProductionWorker)
     worker.nwp_runtime_root = tmp_path

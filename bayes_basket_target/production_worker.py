@@ -453,6 +453,21 @@ ICON_DAILY_CAPTURE_LEAD_DAYS = 2
 # loses them permanently -- DWD keeps only the newest run per cycle, so a lead
 # not taken on the day its run publishes cannot be backfilled later.
 ICON_DAILY_CAPTURE_LEADS = (2, 1, 0)
+# METAR trajectory training is fold-driven: a station gains at most one fold
+# per settled day, so sweeping more often than a few times a day only reruns a
+# gate against unchanged evidence.  The chain stays as offline scripts --
+# packet build, OOS fit, gated persist -- and this pass merely runs them when
+# a station's newest settled day is not yet covered by an artifact.  Nothing
+# here can promote: the OOS gate inside the fit decides, and a rejected
+# candidate is persisted as evidence without ever becoming resolvable
+# authority.
+METAR_TRAJECTORY_TRAINING_RETRY_SEC = 6 * 3600.0
+METAR_TRAJECTORY_TRAINING_DEADLINE_SEC = 600.0
+# NIGHT is deliberately absent: a fold anchored at the bucket start would
+# require a report that cannot exist before local midnight, and the
+# anchor-to-first-report variant is a separate decision.
+METAR_TRAJECTORY_TRAINING_BUCKETS = ("MORNING", "AFTERNOON", "EVENING")
+METAR_TRAJECTORY_ARTIFACT_VALID_DAYS = 14
 # Open-Meteo supplies UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS -- three
 # independence families with no official native archive, so this republisher is
 # their only route to a d2 member set.  Like ICON it is forward-only: members
@@ -2150,6 +2165,272 @@ class TargetProductionWorker:
             return False
         return int((row or [0])[0]) >= len(CANONICAL_TARGET_STATIONS)
 
+    def _metar_trajectory_training_due(
+        self, *, station_id: str
+    ) -> tuple[bool, str, str]:
+        """Whether this station's newest settled day lacks artifact coverage.
+
+        Returns ``(due, settlement_timezone, latest_truth_day)``.  Coverage is
+        judged against ``trained_through_utc`` of the newest trajectory
+        artifact: folds only exist for settled days, so an artifact trained
+        through the latest settled day's close cannot gain evidence until the
+        next day settles, and rerunning the gate before then is a no-op by
+        construction.
+        """
+
+        # The read-only handle, mirroring ``_icon_daily_already_captured``:
+        # this runs on the network-prefetch worker, which deliberately holds no
+        # write connection to the target SSOT.  Requiring ``commit_conn`` here
+        # silently reported NOT_CONFIGURED on every cycle and the pass never
+        # fired.  All queries in this method are reads; the only write in the
+        # chain is the fit subprocess's own gated commit.
+        read_conn = getattr(self, "conn", None) or self.commit_conn
+        if read_conn is None:
+            return False, "", ""
+        row = read_conn.execute(
+            "SELECT settlement_timezone, MAX(local_date) "
+            "FROM calibration_station_daily_high_truth "
+            "WHERE station_id=? AND qc_status='ACCEPTED'",
+            (station_id,),
+        ).fetchone()
+        if row is None or not row[0] or not row[1]:
+            return False, "", ""
+        timezone_name, latest_day = str(row[0]), str(row[1])
+        day_end = settlement_day_window(latest_day, timezone_name)[
+            "target_day_end_utc"
+        ]
+        covered = read_conn.execute(
+            "SELECT MAX(trained_through_utc) "
+            "FROM basket_probability_evidence_artifact "
+            "WHERE station_id=? AND artifact_kind='METAR_TRAJECTORY_LIKELIHOOD'",
+            (station_id,),
+        ).fetchone()
+        newest = str((covered or [None])[0] or "")
+        if not newest:
+            return True, timezone_name, latest_day
+        # Parsed, not lexicographic: trained_through carries milliseconds and
+        # the settlement window does not, and "…00.000Z" sorts before "…00Z"
+        # as text -- a covered station would look forever due.
+        try:
+            covered_at = datetime.fromisoformat(newest.replace("Z", "+00:00"))
+            closes_at = datetime.fromisoformat(
+                str(day_end).replace("Z", "+00:00")
+            )
+        except ValueError:
+            return True, timezone_name, latest_day
+        return covered_at < closes_at, timezone_name, latest_day
+
+    def _run_metar_trajectory_training(
+        self, *, as_of_utc: str
+    ) -> dict[str, Any]:
+        """Run the packet->fit->gated-persist chain for one due station.
+
+        One station per cycle, rotated, on its own single-worker pool -- the
+        same shape as the ICON daily pass.  The subprocesses read the target
+        SSOT and canonical archive and only the fit's ``--commit`` step writes,
+        through the evidence store's validated inserts.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if (
+            (getattr(self, "conn", None) is None and self.commit_conn is None)
+            or self.canonical_source_db_path is None
+            or not self.station_allowlist
+        ):
+            return {"state": "NOT_CONFIGURED", **boundary}
+        inflight = getattr(self, "_metar_trajectory_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {"state": "IN_FLIGHT", **boundary}
+        cursor = int(getattr(self, "_metar_trajectory_station_cursor", 0))
+        throttle: dict[str, float] = getattr(
+            self, "_metar_trajectory_attempts", None
+        ) or {}
+        self._metar_trajectory_attempts = throttle
+        now_mono = time.monotonic()
+        chosen: tuple[str, str, str] | None = None
+        for offset in range(len(self.station_allowlist)):
+            station = self.station_allowlist[
+                (cursor + offset) % len(self.station_allowlist)
+            ]
+            last = throttle.get(station)
+            if (
+                last is not None
+                and now_mono - last < METAR_TRAJECTORY_TRAINING_RETRY_SEC
+            ):
+                continue
+            try:
+                due, timezone_name, latest_day = (
+                    self._metar_trajectory_training_due(station_id=station)
+                )
+            except Exception:
+                continue
+            if due:
+                chosen = (station, timezone_name, latest_day)
+                self._metar_trajectory_station_cursor = (
+                    cursor + offset + 1
+                ) % len(self.station_allowlist)
+                break
+        if chosen is None:
+            self._metar_trajectory_station_cursor = (
+                cursor + 1
+            ) % len(self.station_allowlist)
+            return {"state": "NOT_DUE", **boundary}
+        station, timezone_name, latest_day = chosen
+        throttle[station] = now_mono
+        generation = 1 + int(
+            (getattr(self, "conn", None) or self.commit_conn).execute(
+                "SELECT COUNT(*) FROM basket_probability_evidence_artifact "
+                "WHERE station_id=? "
+                "AND artifact_kind='METAR_TRAJECTORY_LIKELIHOOD'",
+                (station,),
+            ).fetchone()[0]
+        )
+        target_db = str(self.db_path)
+        archive_db = str(self.canonical_source_db_path)
+        work_root = self.nwp_runtime_root / "metar_trajectory_training"
+        work_root.mkdir(parents=True, exist_ok=True)
+        valid_until = (
+            datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+            + timedelta(days=METAR_TRAJECTORY_ARTIFACT_VALID_DAYS)
+        ).astimezone(timezone.utc).isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z")
+
+        def _train() -> dict[str, Any]:
+            outcomes: list[dict[str, Any]] = []
+            for bucket in METAR_TRAJECTORY_TRAINING_BUCKETS:
+                prefix = work_root / f"{station}_{bucket.lower()}"
+                packet_path = Path(f"{prefix}_packet.json")
+                build = subprocess.run(
+                    [
+                        sys.executable,
+                        str(
+                            ROOT
+                            / "scripts"
+                            / "build_bayes_basket_target_metar_trajectory_training_packet.py"
+                        ),
+                        "--target-db", target_db,
+                        "--archive-db", archive_db,
+                        "--station-id", station,
+                        "--settlement-timezone", timezone_name,
+                        "--local-time-bucket", bucket,
+                        "--decided-at-utc", as_of_utc,
+                        "--valid-from-utc", as_of_utc,
+                        "--valid-until-utc", valid_until,
+                        "--generation", str(generation),
+                        "--output", str(packet_path),
+                    ],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=METAR_TRAJECTORY_TRAINING_DEADLINE_SEC,
+                )
+                if build.returncode != 0:
+                    outcomes.append({
+                        "local_time_bucket": bucket,
+                        "state": "PACKET_FAILED",
+                        "reason": (build.stderr or "").strip()[-200:],
+                    })
+                    continue
+                fit = subprocess.run(
+                    [
+                        sys.executable,
+                        str(
+                            ROOT
+                            / "scripts"
+                            / "build_bayes_basket_target_metar_trajectory_oos.py"
+                        ),
+                        "--input", str(packet_path),
+                        "--output", str(Path(f"{prefix}_artifact.json")),
+                        "--packet-output", str(Path(f"{prefix}_oos.json")),
+                        "--db", target_db,
+                        "--commit",
+                    ],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=METAR_TRAJECTORY_TRAINING_DEADLINE_SEC,
+                )
+                if fit.returncode != 0:
+                    # A nonzero exit covers two very different situations, and
+                    # the packet output tells them apart: BLOCKED_EVIDENCE is
+                    # the gate saying "not enough curve-complete folds yet",
+                    # which is the expected state for every station whose
+                    # recent days have not settled -- an error label there
+                    # would make the receipt cry wolf on all 45 stations.
+                    blocked_reason = ""
+                    try:
+                        blocked = json.loads(
+                            Path(f"{prefix}_oos.json").read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                        if blocked.get("state") == "BLOCKED_EVIDENCE":
+                            blocked_reason = str(blocked.get("reason") or "")
+                    except Exception:
+                        pass
+                    outcomes.append({
+                        "local_time_bucket": bucket,
+                        "state": (
+                            "BLOCKED_EVIDENCE"
+                            if blocked_reason
+                            else "FIT_FAILED"
+                        ),
+                        "reason": (
+                            blocked_reason
+                            or (fit.stderr or "").strip()[-200:]
+                        ),
+                    })
+                    continue
+                summary: dict[str, Any] = {}
+                try:
+                    summary = json.loads(
+                        (fit.stdout or "").strip().splitlines()[-1]
+                    )
+                except Exception:
+                    pass
+                outcomes.append({
+                    "local_time_bucket": bucket,
+                    "state": (
+                        "PROMOTED"
+                        if summary.get("oos_gate_passed")
+                        else "GATE_REJECTED"
+                    ),
+                    "artifact_id": summary.get("artifact_id"),
+                    "ingress": summary.get("ingress"),
+                })
+            result = {
+                "station_id": station,
+                "latest_truth_day": latest_day,
+                "generation": generation,
+                "outcomes": outcomes,
+            }
+            self._metar_trajectory_last_result = result
+            return result
+
+        pool = getattr(self, "_metar_trajectory_pool", None)
+        if pool is None:
+            self._metar_trajectory_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="metar-trajectory-training",
+            )
+            pool = self._metar_trajectory_pool
+        self._metar_trajectory_inflight = pool.submit(_train)
+        return {
+            "state": "SUBMITTED",
+            "station_id": station,
+            "latest_truth_day": latest_day,
+            "last_completed": dict(
+                getattr(self, "_metar_trajectory_last_result", {}) or {}
+            ),
+            **boundary,
+        }
+
     def _capture_icon_daily(self, *, as_of_utc: str) -> dict[str, Any]:
         """Take today's ICON run for all 45 stations, once, in the background.
 
@@ -2519,6 +2800,12 @@ class TargetProductionWorker:
         # pool and returns.
         icon_daily = self._capture_icon_daily(as_of_utc=as_of_utc)
         open_meteo_d2 = self._capture_open_meteo_d2_daily(as_of_utc=as_of_utc)
+        # Same fire-and-forget shape: the trajectory chain runs for at most one
+        # due station per cycle and persists through its own gated commit.
+        metar_trajectory_training = self._run_metar_trajectory_training(
+            as_of_utc=as_of_utc
+        )
+        del metar_trajectory_training
 
         read_conn = getattr(self, "commit_conn", None) or getattr(
             self, "conn", None
