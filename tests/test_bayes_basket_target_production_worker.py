@@ -3617,6 +3617,38 @@ def test_republisher_inbox_packet_cap_fits_inside_the_json_write_limit() -> None
     assert projected > MAX_JSON_OUTPUT_BYTES // 2
 
 
+def test_pending_official_capture_states_cover_every_async_admission() -> None:
+    """Official first: a scope whose own packet is coming must not be bought.
+
+    Official capture is asynchronous -- the cycle that starts one returns
+    SUBMITTED and the packet lands minutes later, taking precedence over
+    anything the aggregator produced meanwhile.  The aggregator's ensemble
+    endpoint bills per member, so one such capture costs ~409 units against a
+    10,000/day allowance while the catalogue is 270 scopes; paying for evidence
+    that is about to be superseded is what exhausted the quota.
+
+    Listed explicitly rather than inferred from "not CAPTURED", because a new
+    admission state must be classified deliberately: treating an unknown state
+    as terminal silently restores the spending this prevents.
+    """
+
+    pending = production_worker_module.OFFICIAL_NATIVE_CAPTURE_PENDING_STATES
+
+    # Every state the admission path can return without a packet in hand.
+    assert pending == {
+        "SUBMITTED",
+        "IN_FLIGHT",
+        "DEFERRED_CAPTURE_SLOTS_BUSY",
+        "THROTTLED",
+    }
+    # CAPTURED is not pending -- it means the packet is already available.
+    assert "CAPTURED" not in pending
+    # Terminal failures are not pending: those are the scopes the aggregator
+    # fallback exists for.
+    assert "FAILED" not in pending
+    assert "DEADLINE_EXCEEDED" not in pending
+
+
 def _rotation_worker(tmp_path: Path) -> TargetProductionWorker:
     worker = object.__new__(TargetProductionWorker)
     worker.nwp_runtime_root = tmp_path

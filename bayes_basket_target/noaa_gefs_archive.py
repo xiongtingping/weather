@@ -24,7 +24,11 @@ import httpx
 
 from .contracts import ContractError, content_sha256
 from .native_archive_lead import capture_lead_and_run, run_cycle_label
-from .future_temperature_curve import build_native_family_temperature_curve
+from .future_temperature_curve import (
+    MIN_CURVE_POINTS,
+    MIN_SAME_DAY_CURVE_POINTS,
+    build_native_family_temperature_curve,
+)
 from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
 from .native_raw_object_store import (
     find_content_addressed_message,
@@ -767,7 +771,18 @@ def _build_station_capture(
     receipt_set_sha = content_sha256(receipts)
     run_day = run_init.strftime("%Y%m%d")
     cycle = run_init.strftime("%H")
-    family_curve = build_native_family_temperature_curve({
+    family_curve = build_native_family_temperature_curve(
+        # A same-day run cannot describe hours that have already happened, so
+        # its curve is legitimately shorter than a run that precedes the day.
+        min_points=(
+            MIN_SAME_DAY_CURVE_POINTS
+            if (
+                date.fromisoformat(event_date)
+                - run_init.astimezone(timezone.utc).date()
+            ).days == 0
+            else MIN_CURVE_POINTS
+        ),
+        payload={
         "station_id": station_id,
         "event_date": event_date,
         "settlement_timezone": settlement_timezone,

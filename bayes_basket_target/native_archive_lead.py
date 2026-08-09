@@ -151,11 +151,93 @@ def capture_lead_and_run(
     return lead_days, f"d{lead_days}", run_init, run_cycle_label(run_init)
 
 
+# Training groups are keyed by how far ahead a run was issued, not by the
+# calendar-day label the collector used.  Measured over the retained archive,
+# the two disagree badly:
+#
+#   label   min     median   max     span
+#   d0     -12.0h    -2.0h    7.0h    19h
+#   d1      12.0h    22.0h   31.0h    19h
+#   d2      18.0h    35.0h   55.0h    37h
+#
+# d1 and d2 overlap across 18-31h -- two samples issued the same number of
+# hours ahead land in different training groups purely because of which
+# calendar day their run fell on -- and d2 spans 37 hours, so its within-group
+# spread is wider than the gap between groups.  Both follow from the label
+# being a property of the run's UTC date while skill is a property of the lead
+# to the station's own local day.
+LEAD_HOUR_BUCKETS: tuple[tuple[str, float], ...] = (
+    ("h00_12", 12.0),
+    ("h12_24", 24.0),
+    ("h24_48", 48.0),
+)
+# Open-ended rather than capped at 72h.  Runs are bounded by UTC calendar day
+# while the lead is measured to the local day start, so a station west of the
+# meridian sees more than 48h from the same run set -- 55h in the retained
+# archive.  Naming a ceiling the collection window does not enforce would
+# create a bucket that silently never fills.
+LONGEST_LEAD_HOUR_BUCKET = "h48_plus"
+
+
+def lead_hours_to_local_day(
+    *,
+    day_start_utc: datetime,
+    run_init: datetime,
+) -> float:
+    """Hours between a run and the start of the target *local* day.
+
+    Measured to the local day start rather than UTC midnight.  The event date
+    is a local calendar date, so for a station at UTC-4 its day begins four
+    hours after UTC midnight and every run is that much further ahead of it --
+    enough to move a run across a bucket boundary, which is the distinction the
+    bucket exists to draw.
+    """
+
+    return (
+        day_start_utc.astimezone(timezone.utc)
+        - run_init.astimezone(timezone.utc)
+    ).total_seconds() / 3600.0
+
+
+def lead_hour_bucket(lead_hours: float) -> str:
+    """The training group a run belongs to, from its lead in hours.
+
+    A negative lead -- a run issued after the local day had already begun --
+    belongs with the freshest bucket.  That is what it is: the most recent
+    information available for the day, not a separate regime.  Half the d0
+    samples in the retained archive are negative for exactly this reason.
+    """
+
+    for name, upper in LEAD_HOUR_BUCKETS:
+        if lead_hours <= upper:
+            return name
+    return LONGEST_LEAD_HOUR_BUCKET
+
+
+def lead_hour_bucket_for_run(
+    *,
+    day_start_utc: datetime,
+    run_init: datetime,
+) -> str:
+    """Training group for one run against one station-day."""
+
+    return lead_hour_bucket(
+        lead_hours_to_local_day(
+            day_start_utc=day_start_utc, run_init=run_init
+        )
+    )
+
+
 __all__ = [
+    "LEAD_HOUR_BUCKETS",
+    "LONGEST_LEAD_HOUR_BUCKET",
     "capture_lead_and_run",
     "capture_lead_days",
     "capture_run_init",
     "lead_bucket_for_run",
+    "lead_hour_bucket",
+    "lead_hour_bucket_for_run",
+    "lead_hours_to_local_day",
     "run_cycle_label",
     "run_init_for_lead",
 ]

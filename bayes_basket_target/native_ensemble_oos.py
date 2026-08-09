@@ -33,6 +33,7 @@ from .ecmwf_ifs_archive import (
     SUPPORTED_LEAD_DAYS as _IFS_LEADS,
     extraction_version_for_lead as _ifs_extraction_version,
 )
+from .native_archive_lead import lead_hour_bucket_for_run
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     native_ensemble_family_set_hash,
@@ -1233,10 +1234,47 @@ def _load_cases(
             # contract from a closed day or from the transport name alone.
             if evidence_timing_class != HISTORICAL_REPUBLISHER_RECEIPT:
                 oos_eligible = False
+        # Group by how far ahead the run was issued, not by the calendar-day
+        # label the collector wrote.  ``archive_lead_bucket`` stays on the row
+        # as the capture fact; it is the wrong key for training, because it is
+        # a property of the run's UTC date while skill is a property of the
+        # lead to this station's own local day.  Measured over the retained
+        # archive the two disagree by enough to matter: d1 and d2 overlap
+        # across 18-31h, and d2 alone spans 37 hours.
+        run_inits = {
+            str(native_run_init or "")
+            for _m, _v, _s, _h, _c, _t, native_run_init in member_rows
+        }
+        training_lead_bucket = lead_bucket
+        if len(run_inits) == 1 and next(iter(run_inits)):
+            # Members of one capture come from one run, so a single run
+            # initialisation is what lets this be bucketed by lead at all.
+            # More than one would mean the group is not the unit it claims to
+            # be, and averaging across runs is what the hour bucket exists to
+            # prevent -- so that case keeps the calendar label rather than
+            # inventing an hour for it.
+            try:
+                run_init = datetime.fromisoformat(
+                    next(iter(run_inits)).replace("Z", "+00:00")
+                )
+            except ValueError:
+                run_init = None
+            if run_init is not None and run_init.tzinfo is not None:
+                day_start = (
+                    datetime.fromisoformat(day).replace(tzinfo=tz)
+                ).astimezone(timezone.utc)
+                training_lead_bucket = lead_hour_bucket_for_run(
+                    day_start_utc=day_start, run_init=run_init
+                )
+        # Aggregator rows keep their calendar label.  A republisher packet has
+        # no native run initialisation by construction -- that is what
+        # ``AGGREGATOR_UNKNOWN_NATIVE_CYCLE`` records -- so there is no lead to
+        # measure, and forcing one would be inventing a number.  Its lane is
+        # grouped as it always was.
         scope_day = (
             system_id,
             _season_bin(day),
-            lead_bucket,
+            training_lead_bucket,
             run_cycle,
             day,
         )

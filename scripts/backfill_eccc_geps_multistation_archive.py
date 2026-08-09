@@ -214,8 +214,18 @@ def main() -> int:
         try:
             scopes = _station_scopes(conn, event_date=args.event_date)
         except RuntimeError as exc:
+            # A date whose snapshot is missing entirely is the same situation
+            # as one whose snapshot is incomplete, only more so: the historical
+            # registry cannot supply a download scope.  The flag's whole
+            # purpose is to fall back to the current 45-station contract for
+            # exactly that, train-only and labelled as such -- and the market
+            # registry only reaches back 25 days, so without this the OOS
+            # window can never be filled for this family.
             if (
-                str(exc) != "eccc_geps_archive_45station_registry_required"
+                str(exc) not in {
+                    "eccc_geps_archive_45station_registry_required",
+                    "eccc_geps_archive_registry_snapshot_missing",
+                }
                 or not args.allow_current_registry_scope
             ):
                 raise

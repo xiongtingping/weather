@@ -17,6 +17,18 @@ NATIVE_FAMILY_CURVE_SCHEMA = (
 )
 FUTURE_CURVE_FEATURES_SCHEMA = "bayes_basket_future_temperature_curve_features_v1"
 MAX_CURVE_POINTS = 72
+# A curve needs enough points to describe a shape rather than a line segment.
+MIN_CURVE_POINTS = 4
+# A same-day run is issued after the local day has already begun, so its curve
+# describes only the part of the day still ahead -- the hours before it are
+# settled observation, not something a forecast should be asked to cover.  At
+# 3-hour steps that leaves as few as three points for the furthest-east station
+# (NZWN, UTC+12, measured), and demanding four rejected the whole 45-station
+# capture over that one station.
+#
+# The floor is not removed: three points still carry a rise, a peak and a fall,
+# which is what the conditional hourly path reads.  Two would not.
+MIN_SAME_DAY_CURVE_POINTS = 3
 
 
 def _utc(name: str, value: Any) -> datetime:
@@ -89,7 +101,7 @@ class RootFutureTemperatureCurve:
         if (
             not isinstance(points_raw, Sequence)
             or isinstance(points_raw, (str, bytes, bytearray))
-            or len(points_raw) < 4
+            or len(points_raw) < MIN_SAME_DAY_CURVE_POINTS
             or len(points_raw) > MAX_CURVE_POINTS
         ):
             raise ContractError("future_temperature_curve_point_count_invalid")
@@ -195,14 +207,25 @@ def build_root_future_temperature_curve(payload: Mapping[str, Any]) -> RootFutur
 
 def build_native_family_temperature_curve(
     payload: Mapping[str, Any],
+    *,
+    min_points: int = MIN_CURVE_POINTS,
 ) -> dict[str, Any]:
-    """Seal one native family mean curve produced by the same field decode."""
+    """Seal one native family mean curve produced by the same field decode.
+
+    ``min_points`` is the collector's, because only the collector knows the
+    lead it captured at.  A run issued before the local day must cover the
+    whole of it, and a short grid there means the decode is broken; a same-day
+    run cannot cover hours that already happened, so the same shortfall is
+    normal.  Re-sealing an existing curve accepts the lower floor, since it is
+    validating a curve some collector was already allowed to seal rather than
+    deciding whether the capture was complete.
+    """
 
     points_raw = payload.get("points")
     if (
         not isinstance(points_raw, Sequence)
         or isinstance(points_raw, (str, bytes, bytearray))
-        or len(points_raw) < 4
+        or len(points_raw) < int(min_points)
         or len(points_raw) > MAX_CURVE_POINTS
     ):
         raise ContractError("native_family_temperature_curve_point_count_invalid")
@@ -307,6 +330,9 @@ def compile_future_curve_features(
 
 __all__ = [
     "FUTURE_CURVE_FEATURES_SCHEMA",
+    "MAX_CURVE_POINTS",
+    "MIN_CURVE_POINTS",
+    "MIN_SAME_DAY_CURVE_POINTS",
     "FUTURE_CURVE_SCHEMA",
     "NATIVE_FAMILY_CURVE_SCHEMA",
     "RootFutureTemperatureCurve",

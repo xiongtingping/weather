@@ -115,6 +115,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument("--event-date", required=True)
+    # P0 follows the freshest run, so history is backfilled per lead: the same
+    # event date has a d2, a d1 and a d0 capture, each from a different run.
+    parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
     parser.add_argument("--station-id", action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--input", type=Path)
@@ -152,6 +155,7 @@ def main() -> int:
             .replace("+00:00", "Z")
         )
         archive = capture_gefs_station_days(
+            lead_days=args.lead_days,
             event_date=args.event_date,
             station_scopes=scopes,
             archive_query_at_utc=queried_at,

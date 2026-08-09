@@ -21,7 +21,11 @@ import httpx
 
 from .contracts import ContractError, content_sha256
 from .native_archive_lead import capture_lead_and_run, lead_bucket_for_run
-from .future_temperature_curve import build_native_family_temperature_curve
+from .future_temperature_curve import (
+    MIN_CURVE_POINTS,
+    MIN_SAME_DAY_CURVE_POINTS,
+    build_native_family_temperature_curve,
+)
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import (
     ECCODES_GRIB_GET,
@@ -398,7 +402,18 @@ def _build_station_capture(
         for row in members
     ]
     receipt_set_sha = content_sha256(station_receipts)
-    family_curve = build_native_family_temperature_curve({
+    family_curve = build_native_family_temperature_curve(
+        # A same-day run cannot describe hours that have already happened, so
+        # its curve is legitimately shorter than a run that precedes the day.
+        min_points=(
+            MIN_SAME_DAY_CURVE_POINTS
+            if (
+                date.fromisoformat(event_date)
+                - run_init.astimezone(timezone.utc).date()
+            ).days == 0
+            else MIN_CURVE_POINTS
+        ),
+        payload={
         "station_id": station,
         "event_date": event_date,
         "settlement_timezone": scope["settlement_timezone"],

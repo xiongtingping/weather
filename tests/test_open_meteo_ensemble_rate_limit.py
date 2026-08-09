@@ -255,3 +255,120 @@ def test_persistent_rate_limit_carries_the_reason_into_the_error(
         open_meteo_ensemble._bounded_get_json(
             "https://example.invalid/ensemble", timeout_seconds=1.0
         )
+
+
+def test_diagnostics_read_a_streamed_body_that_has_not_been_read_yet() -> None:
+    # httpx raises rather than returning empty when a streamed response is
+    # asked for .content before read(), and raise_for_status fires while the
+    # response is still streaming.  getattr(..., None) does not cover that --
+    # its default only applies to AttributeError -- so the first version of
+    # this helper silently produced no reason at all in production.
+    body = b'{"error": true, "reason": "Minutely API request limit exceeded."}'
+
+    class _Streamed:
+        headers = {"Retry-After": "9"}
+
+        def __init__(self) -> None:
+            self._read = False
+
+        @property
+        def content(self):
+            if not self._read:
+                raise RuntimeError("ResponseNotRead")
+            return body
+
+        def read(self):
+            self._read = True
+            return body
+
+    diagnostics = open_meteo_ensemble.rate_limit_diagnostics(_Streamed())
+
+    assert diagnostics["reason"] == "Minutely API request limit exceeded."
+    assert diagnostics["retry-after"] == "9"
+
+
+def test_diagnostics_still_work_on_an_already_read_response() -> None:
+    body = b'{"error": true, "reason": "Daily API request limit exceeded."}'
+
+    class _Eager:
+        headers: dict[str, str] = {}
+        content = body
+
+        def read(self):
+            raise RuntimeError("already consumed")
+
+    diagnostics = open_meteo_ensemble.rate_limit_diagnostics(_Eager())
+
+    assert diagnostics["reason"] == "Daily API request limit exceeded."
+
+
+def test_the_reason_survives_the_stream_closing(monkeypatch) -> None:
+    """The diagnostic must be taken while the response is still open.
+
+    ``raise_for_status`` is handled outside both ``with`` blocks, so by the
+    time the handler runs the stream and the client have closed and the body
+    can no longer be fetched.  Two earlier versions of this diagnostic looked
+    correct in isolation and returned nothing in production for exactly that
+    reason, so the fake below closes like the real client does.
+    """
+
+    body = b'{"error": true, "reason": "Minutely API request limit exceeded."}'
+
+    class _ClosingResponse:
+        headers = {"Retry-After": "5"}
+        status_code = 429
+
+        def __init__(self) -> None:
+            self._read = False
+            self._closed = False
+
+        @property
+        def content(self):
+            if self._closed:
+                raise RuntimeError("StreamClosed")
+            if not self._read:
+                raise RuntimeError("ResponseNotRead")
+            return body
+
+        def read(self):
+            if self._closed:
+                raise RuntimeError("StreamClosed")
+            self._read = True
+            return body
+
+        def raise_for_status(self):
+            raise open_meteo_ensemble.httpx.HTTPStatusError(
+                "429", request=None, response=self
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            self._closed = True
+            return False
+
+    class _ClosingClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def stream(self, _method, _url):
+            return _ClosingResponse()
+
+    monkeypatch.setattr(open_meteo_ensemble.httpx, "Client", _ClosingClient)
+    monkeypatch.setattr(
+        open_meteo_ensemble, "time", types.SimpleNamespace(sleep=lambda _s: None)
+    )
+
+    with pytest.raises(
+        ContractError, match="Minutely API request limit exceeded"
+    ):
+        open_meteo_ensemble._bounded_get_json(
+            "https://example.invalid/ensemble", timeout_seconds=1.0
+        )

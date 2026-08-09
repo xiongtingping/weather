@@ -209,6 +209,29 @@ MAX_FORWARD_P0_STATIONS = 45
 # 45 stations x three open event days is what the horizon prune below leaves
 # behind, and at the observed packet size that is ~13MiB with headroom.
 MAX_REPUBLISHER_INBOX_PACKETS = 45 * 3
+# Capture states that mean an official packet is on its way for this scope.
+#
+# The republisher is a fallback for scopes the official archives cannot serve,
+# not a hedge against one being slow.  Official capture is asynchronous: the
+# cycle that starts it returns SUBMITTED and the packet lands minutes later, at
+# which point it takes precedence and the republisher packet it raced is
+# discarded.  Paying for that packet anyway is what exhausted the aggregator's
+# daily quota -- the ensemble endpoint bills per member, so one republisher
+# capture costs ~409 units against a 10,000/day allowance, and the catalogue is
+# 270 scopes.
+#
+# THROTTLED counts as pending: that state exists because an attempt was made
+# within the retry window, so the answer for this scope is already being
+# decided.  The cost is that a scope whose official capture keeps failing gets
+# no aggregator fallback until its throttle expires, which is the intended
+# trade -- official first, and the fallback reserved for scopes officially
+# unavailable rather than officially late.
+OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
+    "SUBMITTED",
+    "IN_FLIGHT",
+    "DEFERRED_CAPTURE_SLOTS_BUSY",
+    "THROTTLED",
+})
 # Open scopes are station-*days*, not stations.  Several event days are open at
 # once -- discovery admits a day from 72h before its local start until it
 # closes -- so a station appears once per open day.  Bounding them at the
@@ -2872,6 +2895,52 @@ class TargetProductionWorker:
                     "official_native_compile_rejected:"
                     f"{type(exc).__name__}:{exc}"
                 )
+        official_capture_state = str(
+            (official_capture or {}).get("state") or ""
+        )
+        if (
+            official_packet is None
+            and official_capture_state
+            in OFFICIAL_NATIVE_CAPTURE_PENDING_STATES
+        ):
+            # Official first: this scope's own packet is already being fetched,
+            # so buying an aggregator one now pays full price for evidence that
+            # will be superseded before it is used.
+            rotation_receipt = self._persist_nwp_rotation(
+                station_ids=station_allowlist,
+                scopes=scopes,
+                selected_scopes=[native_scope],
+                outcomes=[{
+                    "scope_key": nwp_rotation_scope_key(native_scope),
+                    "state": "AWAITING_OFFICIAL_NATIVE",
+                    "candidate_only": False,
+                    "reason": (
+                        "official_native_capture_"
+                        f"{official_capture_state.lower()}"
+                    ),
+                }],
+                as_of_utc=as_of_utc,
+            )
+            return {
+                "schema": "bayes_basket_target_resident_nwp_cycle_v1",
+                "state": "awaiting_official_native",
+                "reason": (
+                    "official_native_precedence_no_republisher_spend"
+                ),
+                **rotation_receipt,
+                "station_id": native_station,
+                "event_date": native_event_date,
+                "source_role": "official_native",
+                "official_packet_reused": False,
+                "republisher_fallback_used": False,
+                "official_probe_reason": official_probe_reason,
+                "official_native_capture": official_capture,
+                "writes_target_database": False,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
         native_rows = [
             row
             for row in registry.get("rows") or []

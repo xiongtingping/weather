@@ -708,6 +708,21 @@ def _install_fakes(
             ContractError("strict_oos_activation_missing")
         ),
     )
+    # These cases exercise the aggregator fallback, which only runs for scopes
+    # the official archives cannot serve.  Left unstubbed, the real admission
+    # path returns SUBMITTED -- an official packet on its way -- and the cycle
+    # correctly declines to buy an aggregator one, so the fallback under test
+    # would never be reached.
+    monkeypatch.setattr(
+        production_worker_module.TargetProductionWorker,
+        "_capture_official_native_packet",
+        lambda *_args, **_kwargs: {
+            "state": "FAILED",
+            "reason": "official_native_archive_unavailable_for_scope",
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    )
 
 
 def test_native_ensemble_scope_rotation_wraps_and_never_emits_legacy_p0(

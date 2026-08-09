@@ -241,13 +241,25 @@ def rate_limit_diagnostics(response: Any) -> dict[str, str]:
                 result[name] = str(value)[:MAX_RATE_LIMIT_DIAGNOSTIC_CHARS]
     except Exception:
         pass
+    # A streamed response has not been read at the point ``raise_for_status``
+    # fires, and asking such a response for ``.content`` raises rather than
+    # returning empty.  ``getattr(..., None)`` does not help: its default only
+    # covers AttributeError, so the raise escapes and skips the read below --
+    # which is exactly how the first version of this returned no reason at all.
+    body = b""
+    for source in ("read", "content"):
+        try:
+            candidate = (
+                response.read()
+                if source == "read"
+                else getattr(response, "content")
+            )
+        except Exception:
+            continue
+        if candidate:
+            body = candidate
+            break
     try:
-        # A streamed response has not been read at the point raise_for_status
-        # fires, so the body has to be pulled explicitly before it can be
-        # inspected.
-        body = getattr(response, "content", None)
-        if not body and hasattr(response, "read"):
-            body = response.read()
         text = (body or b"").decode("utf-8", errors="replace")
         try:
             decoded = json.loads(text)
@@ -341,8 +353,10 @@ def _bounded_get_json(
             "open_meteo_ensemble_httpx_dependency_missing"
         )
     last_error: Exception | None = None
+    last_diagnostics: dict[str, str] = {}
     raw = b""
     for _attempt in range(MAX_TRANSPORT_ATTEMPTS):
+        pending_diagnostics: dict[str, str] = {}
         try:
             with httpx.Client(
                 timeout=timeout_seconds,
@@ -350,6 +364,16 @@ def _bounded_get_json(
                 follow_redirects=False,
             ) as client:
                 with client.stream("GET", url) as response:
+                    if response.status_code >= 400:
+                        # Taken here, while the stream is still open.  The
+                        # handler for ``raise_for_status`` sits outside both
+                        # ``with`` blocks, and by the time it runs the stream
+                        # and the client have closed: reading the body from the
+                        # exception then yields nothing, which is why the first
+                        # two attempts at this diagnostic came back empty.
+                        # An error body is small; the size guard below is for
+                        # the success path.
+                        pending_diagnostics = rate_limit_diagnostics(response)
                     response.raise_for_status()
                     length = response.headers.get("Content-Length")
                     if length and int(length) > MAX_RESPONSE_BYTES:
@@ -374,6 +398,7 @@ def _bounded_get_json(
                 # "later" are worth another unit of quota.
                 raise
             last_error = exc
+            last_diagnostics = pending_diagnostics or last_diagnostics
             # No wait after the final attempt: the scope is given up either
             # way, and sleeping first only holds a rotation slot open for a
             # retry that will not happen.  It is retried on the next sweep.
@@ -392,8 +417,7 @@ def _bounded_get_json(
                 )
     else:
         if isinstance(last_error, httpx.HTTPStatusError):
-            diagnostics = rate_limit_diagnostics(last_error.response)
-            detail = diagnostics.get("reason") or ""
+            detail = last_diagnostics.get("reason") or ""
             raise ContractError(
                 "open_meteo_ensemble_rate_limited:"
                 + str(last_error.response.status_code)
