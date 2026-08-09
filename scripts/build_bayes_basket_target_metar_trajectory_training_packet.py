@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import math
 from pathlib import Path
@@ -26,6 +26,9 @@ from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
 )
 from bayes_basket_target.resource_bounds import write_bounded_json
+from bayes_basket_target.future_temperature_curve import (
+    build_root_future_temperature_curve,
+)
 from bayes_basket_target.settlement_time import settlement_day_window
 
 
@@ -214,6 +217,211 @@ def _read_probability_roots(
             (station_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+CURVE_HISTORY_DIR = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "native_curve_history"
+)
+POSTERIOR_HISTORY_DIR = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "native_posterior_history"
+)
+HISTORICAL_FOLD_EVIDENCE_CLASS = "HISTORICAL_ARCHIVE_CURVE_FOLD"
+# The lead the reconstruction reads.  d1's 00Z run is ready (init + 8h
+# publication margin) the morning *before* the event day, so it strictly
+# precedes every local-time-bucket cutoff of the day itself.
+HISTORICAL_CURVE_LEAD = "d1"
+_HISTORICAL_CACHE: dict[str, Any] = {}
+
+
+def _historical_fold_binding(
+    *,
+    station: str,
+    event_date: str,
+    settlement_timezone: str,
+    cutoff_iso: str,
+    prefix_rows: list,
+    running_high: float,
+    truth_tmax_c: float,
+) -> dict[str, Any] | None:
+    """Bind a fold to archive-reconstructed evidence when no root committed.
+
+    Committed curve-carrying P0 roots exist only from 2026-08-02, which left
+    every earlier settled day unusable as a fold and the promotion gate ~17
+    days away at one fold per day.  The information for those days exists: the
+    d1 run genuinely published the morning before each day, and the expanding
+    -window posterior is fitted only on days strictly before it.  This binding
+    is labelled ``HISTORICAL_ARCHIVE_CURVE_FOLD`` and the posterior source is
+    ``TRAINING_ONLY_NEVER_P0`` -- it can train the trajectory artifact, and the
+    artifact still has to pass the unchanged n>=20 / stable-gain gate.
+
+    Returns None when either reconstruction input is absent, leaving the fold
+    exactly as it was: present but without a conditional path state.
+    """
+
+    key = f"posterior::{station}"
+    if key not in _HISTORICAL_CACHE:
+        path = POSTERIOR_HISTORY_DIR / f"{station}_{HISTORICAL_CURVE_LEAD}.json"
+        _HISTORICAL_CACHE[key] = (
+            json.loads(path.read_text(encoding="utf-8"))
+            if path.is_file()
+            else None
+        )
+    posterior_file = _HISTORICAL_CACHE[key]
+    if not posterior_file:
+        return None
+    entry = next(
+        (
+            row
+            for row in posterior_file.get("posteriors") or []
+            if str(row.get("event_date")) == event_date
+        ),
+        None,
+    )
+    if entry is None:
+        return None
+    curve_key = f"curves::{event_date}"
+    if curve_key not in _HISTORICAL_CACHE:
+        path = CURVE_HISTORY_DIR / f"{event_date}_{HISTORICAL_CURVE_LEAD}.json"
+        _HISTORICAL_CACHE[curve_key] = (
+            json.loads(path.read_text(encoding="utf-8"))
+            if path.is_file()
+            else None
+        )
+    curve_file = _HISTORICAL_CACHE[curve_key]
+    if not curve_file:
+        return None
+    weights = {
+        str(k): float(v)
+        for k, v in (entry.get("system_weights") or {}).items()
+    }
+    bias = {
+        str(k): float(v)
+        for k, v in (entry.get("system_bias_c") or {}).items()
+    }
+    family_curves: dict[str, dict[str, Any]] = {}
+    for system, per_station in (
+        curve_file.get("curves_by_system") or {}
+    ).items():
+        curve = (per_station or {}).get(station)
+        if curve and system in weights:
+            family_curves[str(system)] = curve
+    if len(family_curves) < 2:
+        return None
+    # Combine exactly the production shape: weighted sum of bias-corrected
+    # family means at the common valid times.
+    times_by_system = {
+        system: {
+            str(point["valid_time_utc"]): float(point["temperature_c"])
+            for point in curve.get("points") or []
+        }
+        for system, curve in family_curves.items()
+    }
+    common_times = sorted(
+        set.intersection(*(set(v) for v in times_by_system.values()))
+    )
+    if len(common_times) < 3:
+        return None
+    total_weight = sum(weights[s] for s in family_curves)
+    probabilities = {
+        str(k): float(v)
+        for k, v in (entry.get("root_probabilities") or {}).items()
+    }
+    centers = {
+        str(k): float(v)
+        for k, v in (entry.get("bucket_centers_c") or {}).items()
+    }
+    if not probabilities or set(probabilities) != set(centers):
+        return None
+    posterior_sha = content_sha256(probabilities)
+    checkpoint_id = f"hist-ew-{station.lower()}-{event_date}"
+    # The run really became complete at init + margin the previous morning;
+    # the download timestamp on the retained curve is transport, not
+    # availability.
+    run_day = (
+        date.fromisoformat(event_date) - timedelta(days=1)
+    ).isoformat()
+    available_at = f"{run_day}T08:00:00.000Z"
+    if available_at > cutoff_iso:
+        return None
+    sealed = build_root_future_temperature_curve({
+        "station_id": station,
+        "event_date": event_date,
+        "settlement_timezone": settlement_timezone,
+        "root_checkpoint_id": checkpoint_id,
+        "root_probability_sha256": posterior_sha,
+        "available_at_utc": available_at,
+        "source_snapshot_sha256": content_sha256({
+            "family_curve_sha256_by_system": {
+                system: str(curve.get("content_sha256") or "")
+                for system, curve in sorted(family_curves.items())
+            },
+            "system_weights": weights,
+            "system_bias_c": bias,
+        }),
+        "independence_family_ids": sorted(
+            str(curve.get("independence_family_id") or system)
+            for system, curve in family_curves.items()
+        ),
+        "points": [
+            {
+                "valid_time_utc": valid_time,
+                "temperature_c": sum(
+                    (weights[system] / total_weight)
+                    * (
+                        times_by_system[system][valid_time]
+                        + bias.get(system, 0.0)
+                    )
+                    for system in family_curves
+                ),
+            }
+            for valid_time in common_times
+        ],
+    })
+    ordered = sorted(centers, key=lambda key: (centers[key], key))
+    truth_bucket = min(
+        ordered,
+        key=lambda key: (
+            abs(centers[key] - truth_tmax_c),
+            centers[key],
+            key,
+        ),
+    )
+    path_state = compile_conditional_metar_path_state(
+        [
+            {
+                "observation_id": str(row["observation_id"]),
+                "observed_at_utc": str(row["valid_at"]),
+                "temperature_c": float(row["reported_temperature_c"]),
+                "raw_text": str(row.get("raw_text") or ""),
+            }
+            for row in prefix_rows
+        ],
+        as_of_utc=cutoff_iso,
+        settlement_timezone=settlement_timezone,
+        root_probabilities=probabilities,
+        bucket_centers_c=centers,
+        future_curve=sealed.to_dict(),
+        root_checkpoint_id=checkpoint_id,
+        root_probability_sha256=posterior_sha,
+        station_id=station,
+        event_date=event_date,
+    )
+    return {
+        "root_checkpoint_id": checkpoint_id,
+        "root_content_sha256": str(posterior_file.get("content_sha256") or ""),
+        "root_stage": "HISTORICAL_EXPANDING_WINDOW",
+        "evidence_class": HISTORICAL_FOLD_EVIDENCE_CLASS,
+        "root_probabilities": probabilities,
+        "bucket_centers_c": centers,
+        "bucket_upper_bounds_c": {
+            key: centers[key] + 0.499999 for key in ordered
+        },
+        "truth_bucket": truth_bucket,
+        "running_high_c": running_high,
+        "conditional_path_state": path_state.to_dict(),
+    }
 
 
 def build_training_packet(
@@ -696,6 +904,18 @@ def build_training_packet(
                 )
                 fold["conditional_path_state"] = path_state.to_dict()
                 break
+        if "conditional_path_state" not in fold:
+            historical = _historical_fold_binding(
+                station=station,
+                event_date=event_date,
+                settlement_timezone=settlement_timezone,
+                cutoff_iso=_iso_utc(cutoff),
+                prefix_rows=prefix,
+                running_high=running_high,
+                truth_tmax_c=float(truth["official_tmax_c"]),
+            )
+            if historical is not None:
+                fold.update(historical)
         folds.append(fold)
     support = {str(value): 1.0 / 13.0 for value in range(13)}
     trained_through = max(

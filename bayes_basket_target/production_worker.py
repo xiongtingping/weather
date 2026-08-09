@@ -2323,6 +2323,12 @@ class TargetProductionWorker:
                         "--valid-from-utc", as_of_utc,
                         "--valid-until-utc", valid_until,
                         "--generation", str(generation),
+                        # Fold cutoffs anchor to the first report after the
+                        # bucket start, matching how runtime P1 is actually
+                        # evaluated -- and without it every sparse-archive day
+                        # (5 reports/day before 2026-08-01) fails the
+                        # bucket-start prefix requirement outright.
+                        "--anchor-to-first-report",
                         "--output", str(packet_path),
                     ],
                     cwd=str(ROOT),
