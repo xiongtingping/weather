@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .native_archive_lead import capture_lead_and_run, lead_bucket_for_run
 from .future_temperature_curve import build_native_family_temperature_curve
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import (
@@ -45,8 +46,36 @@ RUN_CYCLE = "00Z"
 # admitted here so the two can be measured against each other instead of one
 # being assumed.
 SUPPORTED_RUN_CYCLE_HOURS = (0, 12)
-ARCHIVE_LEAD_BUCKET = "d2"
-EXTRACTION_VERSION = "eccc_geps_0p5_00z_d2_station_tmax_v1"
+# P0 follows the freshest run, so this collector is asked for a shorter lead as
+# the event day approaches.  The default keeps existing d2 callers unchanged.
+SUPPORTED_LEAD_DAYS = (0, 1, 2)
+DEFAULT_LEAD_DAYS = 2
+# ECCC is the one family whose cycle does *not* move with the lead.  The others
+# read a late cycle at d2 and fall back to the day's first cycle at d1/d0,
+# because a late run no longer precedes the local day in the far east.  00Z is
+# already the day's first cycle, so there is nothing to fall back to and every
+# lead reads it.  ``SUPPORTED_RUN_CYCLE_HOURS`` still admits 12Z so the two can
+# be measured against each other; this mapping is what production takes.
+RUN_CYCLE_HOUR_BY_LEAD = {2: 0, 1: 0, 0: 0}
+ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+
+
+def extraction_version_for_lead(lead_days: int, cycle_hour: int = 0) -> str:
+    """Extraction identity is specific to both lead and cycle.
+
+    ECCC is the one family without an 18Z run, so its cycle is already part of
+    the identity; a shorter lead adds a second dimension.  Sharing a version
+    string across either would let the OOS scope check accept one against the
+    other's contract and train them together.
+    """
+
+    return (
+        f"eccc_geps_0p5_{int(cycle_hour):02d}z_"
+        f"d{int(lead_days)}_station_tmax_v1"
+    )
+
+
+EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS, 0)
 BASE_URL = "https://dd.weather.gc.ca"
 EXPECTED_MEMBER_COUNT = 21
 MAX_STATION_COUNT = 64
@@ -146,7 +175,17 @@ def _forecast_hours(
         ).astimezone(zone).date()
         == target
     ]
-    if not 7 <= len(result) <= 9:
+    # A full local day is eight periods, and that is the right bar for d2 and
+    # d1: their run precedes the day, so a short grid means it is broken.
+    #
+    # It is the wrong bar for d0.  That run is issued after the local day has
+    # begun and cannot describe hours that already happened -- nor does it need
+    # to, since those are settled observation by then.  Its value is the fresher
+    # initial state, not sampling density: a same-day run has assimilated that
+    # morning's observations and beats a two-day-old d2 even with few points.
+    run_day = run_init_utc.astimezone(timezone.utc).date()
+    minimum = 1 if (target - run_day).days == 0 else 7
+    if not minimum <= len(result) <= 9:
         raise ContractError("eccc_geps_archive_local_day_grid_incomplete")
     return result
 
@@ -387,7 +426,12 @@ def _build_station_capture(
         "longitude": float(scope["longitude"]),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": _run_cycle_label(run_init),
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": lead_bucket_for_run(
+            event_date=event_date,
+            run_init=run_init,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            error_code="eccc_geps_archive_lead_days_invalid",
+        ),
         "forecast_hours": hours,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": INDEPENDENCE_FAMILY_ID,
@@ -445,12 +489,15 @@ def capture_geps_station_days(
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
     run_cycle_hour: int = 0,
+    lead_days: int = DEFAULT_LEAD_DAYS,
 ) -> dict[str, Any]:
     if run_cycle_hour not in SUPPORTED_RUN_CYCLE_HOURS:
         raise ContractError("eccc_geps_archive_run_cycle_unsupported")
+    if lead_days not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("eccc_geps_archive_lead_days_invalid")
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
-        target - timedelta(days=2),
+        target - timedelta(days=lead_days),
         time(hour=run_cycle_hour),
         tzinfo=timezone.utc,
     )
@@ -597,7 +644,12 @@ def capture_geps_station_days(
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": _run_cycle_label(run_init),
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": lead_bucket_for_run(
+            event_date=event_date,
+            run_init=run_init,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            error_code="eccc_geps_archive_lead_days_invalid",
+        ),
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": INDEPENDENCE_FAMILY_ID,
         "member_count": EXPECTED_MEMBER_COUNT,
@@ -632,6 +684,20 @@ def ingest_geps_station_day(
 ) -> dict[str, Any]:
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
+    # Lead, cycle and run all come from the capture.  ECCC is the one family
+    # read at two cycles, so its identity depends on both dimensions, and the
+    # module constants answer neither for a capture that was not the default.
+    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+        capture_lead_and_run(
+            capture,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            default_lead_days=DEFAULT_LEAD_DAYS,
+            error_code="eccc_geps_archive_lead_days_invalid",
+        )
+    )
+    capture_extraction_version = extraction_version_for_lead(
+        capture_lead_days, int(capture_run_cycle[:2])
+    )
     identity = {
         key: value
         for key, value in capture.items()
@@ -668,14 +734,15 @@ def ingest_geps_station_day(
         "SELECT member_id,member_role,raw_tmax_c "
         "FROM calibration_native_ensemble_historical_member_run "
         "WHERE ensemble_system_id=? AND station_id=? "
-        "AND target_local_date=? AND run_cycle=? "
-        "AND extraction_version=? ORDER BY member_id",
+        "AND target_local_date=? AND archive_lead_bucket=? "
+        "AND run_cycle=? AND extraction_version=? ORDER BY member_id",
         (
             SYSTEM_ID,
             station,
             event_date,
-            RUN_CYCLE,
-            EXTRACTION_VERSION,
+            capture_lead_bucket,
+            capture_run_cycle,
+            capture_extraction_version,
         ),
     ).fetchall()
     expected = sorted(
@@ -705,13 +772,13 @@ def ingest_geps_station_day(
             "ensemble_system_id": SYSTEM_ID,
             "station_id": station,
             "target_local_date": event_date,
-            "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
-            "run_cycle": RUN_CYCLE,
+            "archive_lead_bucket": capture_lead_bucket,
+            "run_cycle": capture_run_cycle,
             "member_id": str(row["member_id"]),
             "member_role": str(row["member_role"]),
             "raw_tmax_c": float(row["raw_tmax_c"]),
             "settlement_definition": "official_daily_tmax_c",
-            "extraction_version": EXTRACTION_VERSION,
+            "extraction_version": capture_extraction_version,
             "provider_id": str(system[0]),
             "transport_provider_id": "ECCC_DD_WEATHER",
             "native_run_init_utc": str(capture["run_init_utc"]),
@@ -758,7 +825,7 @@ def ingest_geps_station_day(
         "ensemble_system_id": SYSTEM_ID,
         "station_id": station,
         "target_local_date": event_date,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": capture_lead_bucket,
         "archive_query_at_utc": str(capture["archive_query_at_utc"]),
         "member_set_sha256": str(capture["member_set_sha256"]),
         "member_count": EXPECTED_MEMBER_COUNT,

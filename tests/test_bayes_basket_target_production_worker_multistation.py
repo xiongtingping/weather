@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
 from pathlib import Path
@@ -307,10 +308,15 @@ def test_forward_packet_cycle_scope_excludes_retained_other_dates() -> None:
     ) is False
 
 
-def test_production_worker_infers_single_open_event_date_from_resident_manifest(
+def test_resident_manifest_never_narrows_the_event_date_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Today, computed rather than written down.  A fixed date here is a time
+    # bomb: the helper drops days that are over in every timezone, so a
+    # hard-coded date silently starts exercising that guard instead of the
+    # behaviour under test once it falls far enough into the past.
+    open_day = datetime.now(timezone.utc).date().isoformat()
     manifest = tmp_path / "resident-ws.json"
     manifest.write_text(
         json.dumps(
@@ -321,12 +327,12 @@ def test_production_worker_infers_single_open_event_date_from_resident_manifest(
                 "scopes": [
                     {
                         "station_id": "RKPK",
-                        "event_date": "2026-08-03",
+                        "event_date": open_day,
                         "event_day_state": "open",
                     },
                     {
                         "station_id": "KSEA",
-                        "event_date": "2026-08-03",
+                        "event_date": open_day,
                         "event_day_state": "open",
                     },
                 ],
@@ -344,17 +350,27 @@ def test_production_worker_infers_single_open_event_date_from_resident_manifest(
         native_oos_snapshot_path=tmp_path / "missing-oos.json",
     )
     try:
-        assert worker.event_date_allowlist == ("2026-08-03",)
-        assert worker.event_date_scope_source == (
-            "resident_ws_manifest_open_scope"
-        )
+        # The manifest names one open day, and the worker still refuses to
+        # treat that as the scope.  It only ever lists days that already have a
+        # probability, so letting it set the allowlist closes a loop: a day
+        # with no P0 never appears in it, never enters the capture allowlist,
+        # never gets model data, and so never gets a P0.
+        assert worker.event_date_allowlist == ()
+        assert worker.event_date_scope_source == "live_registry_discovery"
+        # Still read, because knowing which days the handoff believes are open
+        # is useful in a receipt -- it just does not decide anything.
+        assert worker.manifest_open_event_dates == (open_day,)
     finally:
         worker.close()
 
 
-def test_resident_open_event_date_inference_rejects_mixed_dates(
+def test_resident_open_event_dates_reports_every_open_day(
     tmp_path: Path,
 ) -> None:
+    today = datetime.now(timezone.utc).date()
+    days = [
+        (today + timedelta(days=offset)).isoformat() for offset in (0, 1)
+    ]
     manifest = tmp_path / "resident-ws.json"
     manifest.write_text(
         json.dumps(
@@ -363,20 +379,21 @@ def test_resident_open_event_date_inference_rejects_mixed_dates(
                     "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
                 ),
                 "scopes": [
-                    {
-                        "event_date": "2026-08-02",
-                        "event_day_state": "open",
-                    },
-                    {
-                        "event_date": "2026-08-03",
-                        "event_day_state": "open",
-                    },
+                    {"event_date": day, "event_day_state": "open"}
+                    for day in days
                 ],
             }
         ),
         encoding="utf-8",
     )
-    assert production_worker_module._resident_open_event_dates(manifest) == ()
+    # Two open days used to collapse to "no scope", because a multi-day scope
+    # would have breached a cap that counted station-days against the station
+    # count.  The cap is a station-day cap now, so several open days are the
+    # normal case rather than an error, and the helper reports all of them.
+    assert production_worker_module._resident_open_event_dates(manifest) == (
+        days[0],
+        days[1],
+    )
 
 
 def test_forward_p0_never_retries_republisher_when_official_compile_is_unavailable(
@@ -667,6 +684,9 @@ def _install_fakes(
                 "event_date": "2026-07-31",
                 "settlement_timezone": "Asia/Seoul",
                 "station_ids": [row["station_id"]],
+                # Discovery emits one scope per lead, and the rotation key
+                # includes it, so a stub without a lead is not a scope.
+                "lead_days": 2,
             }
             for row in registry["rows"]
         ],

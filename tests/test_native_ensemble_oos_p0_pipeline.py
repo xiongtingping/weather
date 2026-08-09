@@ -164,10 +164,14 @@ def test_official_oos_transport_cycle_lead_contract_is_exact() -> None:
               run_cycle=contract["run_cycle"],
               extraction_version=contract["extraction_version"],
           )
+          # A lead the system is not registered at.  "d0" no longer serves
+          # here: ECMWF is registered at d0/d1/d2 because P0 follows the
+          # freshest run, so the unregistered case has to be a lead nobody
+          # publishes.
           assert not _historical_transport_scope_allowed(
               system_id=system_id,
               transport_provider_id=contract["transport_provider_id"],
-              lead_bucket="d0",
+              lead_bucket="d7",
               run_cycle=contract["run_cycle"],
               extraction_version=contract["extraction_version"],
           )
@@ -1759,7 +1763,16 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         observations=[{
             "observation_id": "metar-test-1",
             "station_id": "TEST",
-                "event_date_local": "2026-07-01",
+            "event_date_local": "2026-07-01",
+            # P1 requires each observation to name its settlement timezone and
+            # to agree with the predecessor's: the local event day is what
+            # decides which observations belong to the day at all, so an
+            # unstated timezone would silently settle against the wrong day.
+            "settlement_timezone": "Etc/UTC",
+            # The canonical revision fact this report was drawn from.  The
+            # truth ledger is keyed on it, so an envelope compiled without it
+            # cannot become an atomic fact.
+            "truth_observation_revision_content_sha256": "7" * 64,
             "reported_temperature_c": 20.0,
                 "valid_at_utc": "2026-07-01T00:10:00Z",
                 "canonical_committed_at_utc": "2026-07-01T00:10:01Z",
@@ -2193,6 +2206,9 @@ def test_native_oos_excludes_an_open_future_station_day_even_with_early_truth() 
     preclose_truth = {
         "station_id": "TEST",
         "local_date": "2026-06-28",
+        # Ordered to match the table, because the row below is bound
+        # positionally.
+        "settlement_timezone": "UTC",
         "official_tmax_c": 26.0,
         "source_lane": "AWC",
         "settlement_definition": "official_daily_tmax_c",
@@ -2208,7 +2224,8 @@ def test_native_oos_excludes_an_open_future_station_day_even_with_early_truth() 
         "authority_scope": "FORMAL_NATIVE_ELIGIBLE",
     }
     conn.execute(
-        "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO calibration_station_daily_high_truth "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             "truth-preclose-20260628",
             *preclose_truth.values(),

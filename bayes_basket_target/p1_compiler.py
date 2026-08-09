@@ -332,6 +332,7 @@ def compile_station_p1_packets(
             # authorities.
             last_decision = floor
     trajectory_prefix: list[MetarTrajectoryObservation] = []
+    truth_revision_sha_by_observation: dict[str, str] = {}
     for sequence, observation in enumerate(ordered, start=1):
         if (
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
@@ -373,6 +374,13 @@ def compile_station_p1_packets(
         observation_id = str(observation.get("observation_id") or "")
         if not observation_id:
             raise ContractError("p1_observation_id_missing")
+        # Carried alongside the trajectory rather than inside it: the METAR
+        # event describes the report, while this names the canonical revision
+        # fact the truth ledger is keyed on.  Tracked for every observation so
+        # the closing one can be looked up once the prefix is known.
+        truth_revision_sha_by_observation[observation_id] = str(
+            observation.get("truth_observation_revision_content_sha256") or ""
+        ).strip().lower()
         trajectory_prefix.append(
             MetarTrajectoryObservation.from_mapping({
                 "event": {
@@ -487,9 +495,19 @@ def compile_station_p1_packets(
             decision_at_utc=decision_text,
             fresh_until_utc=_stamp(fresh_until),
             bridge_sha256=root.bridge_sha256,
+            truth_observation_revision_content_sha256=(
+                truth_revision_sha_by_observation.get(observation_id) or None
+            ),
         )
         packets.append({
             "observation_id": observation_id,
+            # Carried on the packet, not only into the envelope built above:
+            # the strict materializer contract is rebuilt from this packet, so
+            # a field the projection cannot see is a field the rebuilt envelope
+            # will not have.
+            "truth_observation_revision_content_sha256": (
+                truth_revision_sha_by_observation.get(observation_id) or ""
+            ),
             "predecessor": previous.to_dict(),
             "prediction_root": root.to_dict(),
             "trajectory_artifact": governed_artifact.to_dict(),
@@ -705,6 +723,13 @@ def materialization_packet(
         ),
         "reported_high_advanced": packet.get(
             "reported_high_advanced"
+        ),
+        # Projected explicitly.  This dict is the whole input to the strict
+        # materializer, so anything omitted here is silently absent from the
+        # rebuilt envelope -- and without this key the envelope compiles but
+        # can never become an atomic fact.
+        "truth_observation_revision_content_sha256": str(
+            packet.get("truth_observation_revision_content_sha256") or ""
         ),
         "decision_at_utc": expected.decision_at_utc,
         "fresh_until_utc": expected.fresh_until_utc,

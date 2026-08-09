@@ -32,6 +32,8 @@ from .contracts import (
 from .et_history import event_day_window
 from .market_registry import load_market_registry_snapshot
 from .model_run_contract import build_model_run_contract
+from .native_ensemble_contract import MIN_CROSS_ENSEMBLE_FAMILIES
+from .native_ensemble_oos import OFFICIAL_ARCHIVE_SCOPE_CONTRACTS
 from .resource_bounds import (
     MAX_INPUT_FILES_PER_BATCH,
     assert_process_memory_budget,
@@ -126,12 +128,27 @@ REGIONAL_MODEL_POOL_PATH = (
 REGIONAL_MODEL_POOL_SCHEMA = (
     "bayes_basket_target_station_regional_model_pool_v1"
 )
-# Discovery and network execution are separate bounds.  A canonical
-# 45-station registry may expose current, d1 and d2 scopes at once, so the
-# scheduler must return the complete bounded catalog to its caller.  The
-# resident worker independently admits at most MAX_SCOPES_PER_CYCLE scopes to
-# network capture.
-MAX_DISCOVERED_SCOPES = 135
+# Runs older than this relative to the event date are not worth capturing: the
+# forecast is superseded several times over before the day arrives, and the
+# archives are not kept indefinitely either.
+MAX_RUN_AGE_DAYS = 2
+# Leads a station-day is captured at, freshest first.  P0 is recomputed as the
+# models update rather than decided once, so an open station-day is a series of
+# captures: d2 two days out, then d1, then d0 on the day itself, each reading a
+# run that has assimilated observations the previous had not.
+SUPPORTED_LEAD_DAYS = tuple(range(0, MAX_RUN_AGE_DAYS + 1))
+# Discovery and network execution are separate bounds.  The resident worker
+# independently admits at most MAX_SCOPES_PER_CYCLE scopes to network capture,
+# so this only bounds what discovery may return.
+#
+# The old figure of 135 was "45 stations x 3 event days", from when a
+# station-day was captured once.  It is now captured once per lead, so the
+# ceiling is stations x open event days x leads: 45 stations, at most four
+# event days open at once (discovery admits a day from 72h before its local
+# start until it closes), and one scope per supported lead.  Truncating below
+# that drops the longest-lead scopes, which are the only ones ready early
+# enough to give a not-yet-started day any P0 at all.
+MAX_DISCOVERED_SCOPES = 45 * 4 * len(SUPPORTED_LEAD_DAYS)
 MAX_SCOPES_PER_CYCLE = 4
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 CANDIDATE_PREFETCH_SCHEMA = (
@@ -184,25 +201,78 @@ def candidate_run_initializations(
 D2_PUBLICATION_MARGIN_HOURS = 8
 
 
-def d2_model_ready_at_utc(event_date: str) -> datetime:
-    """Return when the d2 run backing this event date is safe to fetch.
+def contracted_run_inits(
+    event_date: str,
+    *,
+    lead_days: int,
+) -> dict[str, datetime]:
+    """The run each official archive reads for this event date at this lead.
 
-    Both archives take the same run for a d2 lead -- 18Z two days before the
-    event date -- but the run existing is not the run being complete: members
-    land on the object store over the following hours.  Fetching before then
-    burns a capture slot on a scope whose fields cannot all resolve yet.
-
-    The margin is deliberately the slower of the two providers.  Fetching a
-    little late costs one rotation step; fetching early costs a whole capture.
+    Derived from ``OFFICIAL_ARCHIVE_SCOPE_CONTRACTS`` rather than restated, so
+    the schedule cannot advertise a run the collectors will not fetch.  The
+    cycles differ by system -- ECMWF and GEFS are read at 18Z, ECCC at 00Z,
+    ICON at 12Z, each being the cycle where that provider publishes the fields
+    at the resolution the extraction needs -- so a lead is a set of runs, not
+    one run.
     """
 
     target = date.fromisoformat(event_date)
-    run_init = datetime.combine(
-        target - timedelta(days=2),
-        time(hour=18),
-        tzinfo=timezone.utc,
+    lead_key = f"d{int(lead_days)}"
+    runs: dict[str, datetime] = {}
+    for system_id, contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.items():
+        lead = (contract.get("leads") or {}).get(lead_key)
+        if not isinstance(lead, Mapping):
+            continue
+        cycle = str(lead.get("run_cycle") or "").strip().upper()
+        if not cycle.endswith("Z") or not cycle[:-1].isdigit():
+            raise ContractError("official_nwp_scheduler_run_cycle_invalid")
+        runs[str(system_id)] = datetime.combine(
+            target - timedelta(days=int(lead_days)),
+            time(hour=int(cycle[:-1])),
+            tzinfo=timezone.utc,
+        )
+    if not runs:
+        raise ContractError("official_nwp_scheduler_lead_not_contracted")
+    return runs
+
+
+def run_ready_at_utc(run_init: datetime) -> datetime:
+    """When a run's members are reliably complete on the object store.
+
+    A run existing is not a run being complete: its members land over the
+    following hours.  Fetching before then burns a capture slot on a scope
+    whose fields cannot all resolve yet.
+
+    The margin is a property of the providers, not of the lead -- every cycle
+    publishes on the same schedule relative to its own initialisation -- so
+    this takes the run itself rather than an event date and a lead.  It is
+    sized to the slower of the two archives (ECMWF trails GEFS): fetching a
+    little late costs one rotation step, fetching early costs a whole capture.
+    """
+
+    return (
+        run_init.astimezone(timezone.utc)
+        + timedelta(hours=D2_PUBLICATION_MARGIN_HOURS)
     )
-    return run_init + timedelta(hours=D2_PUBLICATION_MARGIN_HOURS)
+
+
+def scope_ready_at_utc(event_date: str, *, lead_days: int) -> datetime:
+    """When a lead has enough families on the object store to be worth taking.
+
+    Not the last system, and not the first.  A capture that yields a single
+    family cannot produce a cross-family P0 at all, so waiting for the second
+    is not conservatism; waiting for the fourth would hold d0 back until after
+    the event day has ended for most stations, since the 18Z archives only land
+    the following morning.
+    """
+
+    ready = sorted(
+        run_ready_at_utc(run)
+        for run in contracted_run_inits(
+            event_date, lead_days=lead_days
+        ).values()
+    )
+    return ready[min(MIN_CROSS_ENSEMBLE_FAMILIES, len(ready)) - 1]
 
 
 def registry_capture_scopes(
@@ -211,12 +281,16 @@ def registry_capture_scopes(
     as_of_utc: str,
     max_scopes: int = MAX_DISCOVERED_SCOPES,
 ) -> list[dict[str, Any]]:
-    """Discover the bounded open/d2/d1 station-date-timezone catalog.
+    """Discover the bounded station-date-lead catalog for the open window.
+
+    An open station-day appears once per supported lead, because P0 is
+    recomputed as the models update rather than decided once: the same day is
+    captured at d2, again at d1, and again at d0, each from a run that has
+    assimilated more than the last.
 
     This function performs no network work.  Its bound therefore covers the
-    full canonical three-day catalog; callers apply their smaller per-cycle
-    acquisition limit only after deterministic priority and round-robin
-    selection.
+    full canonical catalog; callers apply their smaller per-cycle acquisition
+    limit only after deterministic priority and round-robin selection.
     """
 
     rows = registry.get("rows")
@@ -239,7 +313,11 @@ def registry_capture_scopes(
         if not station or not event_date or not timezone_name or not outcome:
             raise ContractError("official_nwp_scheduler_registry_scope_invalid")
         grouped.setdefault((event_date, timezone_name, station), set()).add(outcome)
-    scopes: list[dict[str, Any]] = []
+    # Scopes carry their sort key alongside them rather than recomputing it in
+    # the comparator: a station-day now expands to one scope per lead, so a key
+    # derived per comparison would redo the timezone arithmetic several times
+    # more often than there are scopes.
+    ordered: list[tuple[tuple[bool, datetime, str, int], dict[str, Any]]] = []
     now = _parse_utc(as_of_utc)
     for event_date, timezone_name, station in sorted(grouped):
         state = event_day_window(
@@ -252,35 +330,55 @@ def registry_capture_scopes(
         start = _parse_utc(str(state["target_day_start_utc"]))
         if start - now > timedelta(hours=72):
             continue
-        scopes.append({
-            "event_date": event_date,
-            "settlement_timezone": timezone_name,
-            "station_ids": [station],
-            "outcome_count": len(grouped[(event_date, timezone_name, station)]),
-            "event_day_state": state["state"],
-            "d2_model_ready_at_utc": d2_model_ready_at_utc(event_date)
-            .isoformat()
-            .replace("+00:00", "Z"),
-            "d2_model_ready": d2_model_ready_at_utc(event_date) <= now,
-        })
-    # Model readiness outranks the timezone order.  Event days differ by up to
-    # a day in when their backing run publishes, so a purely chronological
-    # sweep spends capture slots on scopes whose run is still incomplete while
-    # ready scopes wait behind them.  Within each readiness group the
-    # east-to-west day order is preserved, so the station whose event day opens
-    # first is still served first.
-    scopes.sort(
-        key=lambda item: (
-            not item["d2_model_ready"],
-            _parse_utc(
-                settlement_day_window(
-                    item["event_date"],
-                    item["settlement_timezone"],
-                )["target_day_start_utc"]
-            ),
-            item["station_ids"][0],
-        )
-    )
+        # One scope per lead, freshest lead first.  A station-day is not one
+        # unit of work but a series: the d1 capture reads a run that has
+        # assimilated a day of observations the d2 run had not, and the d0 one
+        # another day beyond that.  Emitting only the freshest lead would leave
+        # the earlier ones permanently uncaptured, and those are what the
+        # archive trains on; emitting only d2 is what used to freeze P0 at the
+        # forecast made two days out.
+        #
+        # The lead is the finest unit the collectors distinguish: each archive
+        # module reads its own contracted cycle and varies only the run day, so
+        # a finer schedule would emit scopes that resolve to the same fetch.
+        for lead_days in SUPPORTED_LEAD_DAYS:
+            runs = contracted_run_inits(event_date, lead_days=lead_days)
+            ready_at = scope_ready_at_utc(event_date, lead_days=lead_days)
+            # Model readiness outranks the timezone order.  Leads differ by a
+            # day in when their runs publish, so a purely chronological sweep
+            # spends capture slots on scopes whose runs are still incomplete
+            # while ready ones wait behind them.  Within a readiness group the
+            # east-to-west day order still holds, and within one station-day
+            # the shortest lead -- the freshest run -- leads.
+            ordered.append(((
+                not (ready_at <= now),
+                start,
+                station,
+                lead_days,
+            ), {
+                "event_date": event_date,
+                "settlement_timezone": timezone_name,
+                "station_ids": [station],
+                "outcome_count": len(
+                    grouped[(event_date, timezone_name, station)]
+                ),
+                "event_day_state": state["state"],
+                "lead_days": lead_days,
+                # Per system, because the archives are contracted at different
+                # cycles.  Publishing one run time for the scope would name a
+                # run three of the four collectors do not read.
+                "run_init_utc_by_system": {
+                    system_id: run.isoformat().replace("+00:00", "Z")
+                    for system_id, run in sorted(runs.items())
+                },
+                # A run is publishable before its fields have all landed.
+                "model_ready_at_utc": ready_at.isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "model_ready": ready_at <= now,
+            }))
+    ordered.sort(key=lambda pair: pair[0])
+    scopes = [scope for _, scope in ordered]
     return scopes[: max(0, min(int(max_scopes), MAX_DISCOVERED_SCOPES))]
 
 

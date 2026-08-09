@@ -29,6 +29,7 @@ from .ecmwf_pf50_raw_reuse import (
     store_content_addressed_message,
 )
 from .future_temperature_curve import build_native_family_temperature_curve
+from .native_archive_lead import capture_lead_and_run, run_cycle_label
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import decode_nearest_temperatures_c
 from .p0_producer import bucket_intervals_from_registry_rows
@@ -42,6 +43,10 @@ MULTISTATION_SCHEMA = (
     "ecmwf_ifs_open_pf50_historical_multistation_members_v1"
 )
 SYSTEM_ID = "ECMWF_IFS_ENS_OPEN_PF50"
+# The cycle this collector reads at its default lead.  Every capture and every
+# row carries the cycle of the run it was actually drawn from instead of this
+# constant; it survives only as the d2 answer and as external documentation of
+# what "the ECMWF archive" means without further qualification.
 RUN_CYCLE = "18Z"
 # P0 follows the freshest run, so the same collector is asked for a different
 # lead as the event day approaches: d2 two days out, d1 the day before, d0 on
@@ -49,19 +54,35 @@ RUN_CYCLE = "18Z"
 # ask, so existing d2 behaviour is unchanged.
 SUPPORTED_LEAD_DAYS = (0, 1, 2)
 DEFAULT_LEAD_DAYS = 2
+# The cycle is not free to choose: it must leave enough forecast steps to cover
+# the target local day everywhere on earth.  18Z works at d2 because the run
+# precedes the day by a full night, but at d1 it starts after the local day has
+# already begun in the far east -- Auckland gets five 3-hour periods instead of
+# eight -- so the shorter leads take the day's first cycle instead.
+RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+
+
 def extraction_version_for_lead(lead_days: int) -> str:
-    """Extraction identity is lead-specific.
+    """Extraction identity is specific to the lead *and* to its cycle.
 
     A d1 row read the same way as a d2 row is still different evidence: it
     comes from a different run and carries different skill.  Sharing one
     version string across leads would let the OOS scope check accept a d1 row
     against d2's contract and train the two together.
+
+    The cycle is spelled out rather than fixed at ``18z`` because it moves with
+    the lead -- see ``RUN_CYCLE_HOUR_BY_LEAD``.  Writing ``18z`` on a capture
+    drawn from the 00Z run would restate the very mislabelling the per-lead
+    identity exists to prevent, one dimension over, and nothing downstream
+    could detect it: the label and the contract would agree with each other
+    while both disagreed with the object that was downloaded.
     """
 
+    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
     return (
-        "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_"
-        f"d{int(lead_days)}_v1"
+        "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_"
+        f"{cycle_hour:02d}z_d{int(lead_days)}_v1"
     )
 
 
@@ -330,7 +351,20 @@ def _period_end_steps(
             run_init_utc + timedelta(hours=step)
         ).astimezone(zone).date() == target
     ]
-    if not 7 <= len(result) <= 9:
+    # A full local day is eight 3-hour periods, and that is the right bar for
+    # d2 and d1: their run precedes the day, so anything short means the grid
+    # is broken.
+    #
+    # It is the wrong bar for d0.  That run is issued after the local day has
+    # begun, so it cannot describe hours that have already happened -- and does
+    # not need to: those are settled observation by then.  What d0 must still
+    # cover is the part of the day where the maximum can still occur.  Demanding
+    # eight periods here rejected every d0 capture outright, which is why the
+    # freshest same-day run was unusable.
+    run_day = run_init_utc.astimezone(timezone.utc).date()
+    lead_days = (target - run_day).days
+    minimum = 1 if lead_days == 0 else 7
+    if not minimum <= len(result) <= 9:
         raise ContractError("ecmwf_archive_local_day_grid_incomplete")
     return result
 
@@ -639,7 +673,9 @@ def _build_station_capture(
         "latitude": float(scope["latitude"]),
         "longitude": float(scope["longitude"]),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        # The run's own cycle.  It moves with the lead, so the module
+        # default would label a 00Z d1 capture as 18Z.
+        "run_cycle": run_cycle_label(run_init),
         # Derived from the run actually used rather than from the module
         # default, so a capture can never advertise a lead its run does not
         # carry.
@@ -711,7 +747,7 @@ def capture_ecmwf_station_days(
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=18),
+        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -973,7 +1009,7 @@ def capture_ecmwf_station_days(
         "schema": MULTISTATION_SCHEMA,
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": run_cycle_label(run_init),
         "archive_lead_bucket": lead_bucket,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "ECMWF",
@@ -1078,16 +1114,19 @@ def ingest_ecmwf_station_day(
     ):
         raise ContractError("ecmwf_archive_capture_invalid")
     provider_id, _family = _ensure_system(conn)
-    # The capture states its own lead; the module constant is only a fallback
-    # for archives written before leads other than d2 existed.  Reading the
-    # constant here would relabel a d1 capture as d2 at the moment it lands,
-    # which is exactly where the mislabelling would become permanent.
-    capture_lead_bucket = str(
-        capture.get("archive_lead_bucket") or ARCHIVE_LEAD_BUCKET
+    # The capture states its own lead, cycle and run; the module constants are
+    # only a fallback for archives written before leads other than d2 existed.
+    # Reading the constants here would relabel a d1 capture as d2 at the moment
+    # it lands, which is exactly where a mislabelling becomes permanent.
+    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+        capture_lead_and_run(
+            capture,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            default_lead_days=DEFAULT_LEAD_DAYS,
+            error_code="ecmwf_archive_lead_days_invalid",
+        )
     )
-    capture_extraction_version = extraction_version_for_lead(
-        int(capture_lead_bucket.lstrip("d") or DEFAULT_LEAD_DAYS)
-    )
+    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
     station = str(capture["station_id"])
     event_date = str(capture["event_date"])
     existing = conn.execute(
@@ -1101,7 +1140,7 @@ def ingest_ecmwf_station_day(
             station,
             event_date,
             capture_lead_bucket,
-            RUN_CYCLE,
+            capture_run_cycle,
             capture_extraction_version,
         ),
     ).fetchall()
@@ -1135,7 +1174,7 @@ def ingest_ecmwf_station_day(
             "station_id": station,
             "target_local_date": event_date,
             "archive_lead_bucket": capture_lead_bucket,
-            "run_cycle": RUN_CYCLE,
+            "run_cycle": capture_run_cycle,
             "member_id": str(row["member_id"]),
             "member_role": "PERTURBED",
             "raw_tmax_c": float(row["raw_tmax_c"]),

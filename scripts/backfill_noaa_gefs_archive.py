@@ -37,6 +37,8 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument("--station-id", required=True)
     parser.add_argument("--event-date", required=True)
+    # P0 follows the freshest run, so history is backfilled per lead.
+    parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--input",
@@ -103,6 +105,7 @@ def main() -> int:
             settlement_timezone=next(iter(timezones)),
             registry_rows=registry_rows,
             archive_query_at_utc=queried_at,
+            lead_days=args.lead_days,
         )
         output = args.output.expanduser().resolve()
         output_wrote = write_bounded_json_if_changed(output, capture)

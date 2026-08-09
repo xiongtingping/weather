@@ -389,6 +389,66 @@ def _likelihoods(
     return result
 
 
+# Lineage a later stage may never restate differently.  These describe the
+# model evidence P0 was built from -- which artifacts, which run, which bucket
+# grid, which envelope bounds -- and a downstream stage that changed one of
+# them would be reporting on a different forecast while claiming P0's identity.
+_FROZEN_MODEL_LINEAGE_KEYS = (
+    "selection_evidence_sha256",
+    "ensemble_artifact_content_sha256",
+    "ensemble_activation_content_sha256",
+    "probability_pathway",
+    "p0_probability_pathway",
+    "season_bin",
+    "lead_bucket",
+    "run_cycle",
+    "settlement_definition",
+    "diagnostic_model_run_ids",
+    "diagnostic_calibration_artifact_ids",
+    "diagnostic_activation_ids",
+    "diagnostic_model_set_hash",
+    "model_envelope_lower_c",
+    "model_envelope_upper_c",
+    "model_envelope_span_c",
+    "model_envelope_lower_bucket",
+    "model_envelope_upper_bucket",
+    "model_envelope_lower_ordinal",
+    "model_envelope_upper_ordinal",
+    "peripheral_model_reliability_by_bucket_json",
+    "bucket_intervals_c_json",
+    "bucket_centers_c_json",
+    "formal_model_members_json",
+    "formal_model_anchor_lower_bucket",
+    "formal_model_anchor_upper_bucket",
+    "formal_model_anchor_lower_ordinal",
+    "formal_model_anchor_upper_ordinal",
+    "p0_historical_tilt_proof_id",
+    "p0_historical_tilt_proof_sha256",
+    "p0_historical_tilt_artifact_id",
+    "p0_historical_climatology_artifact_id",
+    "p0_historical_applied_theta",
+    "p0_historical_theta_zero_fallback",
+    "conditional_future_temperature_curve_json",
+    "conditional_future_temperature_curve_sha256",
+    "conditional_future_temperature_curve_root_stage",
+    "conditional_future_temperature_curve_root_checkpoint_id",
+    "conditional_future_temperature_curve_root_probability_sha256",
+)
+# The centre is the one part of the model lineage each stage is *supposed* to
+# move: P0-M re-anchors it on the physically confirmed centre, and P1 on the
+# reported high plus the warming still expected.  Freezing it alongside the
+# envelope made those stages structurally unable to publish their own anchor
+# whenever the previous stage had set one -- P1 could never commit for any
+# station whose P0-M had confirmed a centre.  The basket reads this under one
+# key by design, so each stage restates it rather than inventing a new name;
+# inheritance still applies when a stage has no anchor of its own.
+_STAGE_ANCHOR_LINEAGE_KEYS = (
+    "model_center_bucket",
+    "model_center_c",
+    "model_center_ordinal",
+)
+
+
 def _lineage(
     stage: str,
     raw: Mapping[str, Any],
@@ -411,55 +471,16 @@ def _lineage(
     values["predecessor_content_sha256"] = predecessor.content_sha256
     values["materialization_schema"] = MATERIALIZATION_SCHEMA
     values["settlement_timezone"] = predecessor.settlement_timezone
-    for key in (
-        "selection_evidence_sha256",
-        "ensemble_artifact_content_sha256",
-        "ensemble_activation_content_sha256",
-        "probability_pathway",
-        "p0_probability_pathway",
-        "season_bin",
-        "lead_bucket",
-        "run_cycle",
-        "settlement_definition",
-        "diagnostic_model_run_ids",
-        "diagnostic_calibration_artifact_ids",
-        "diagnostic_activation_ids",
-        "diagnostic_model_set_hash",
-        "model_envelope_lower_c",
-        "model_envelope_upper_c",
-        "model_envelope_span_c",
-        "model_envelope_lower_bucket",
-        "model_envelope_upper_bucket",
-        "model_envelope_lower_ordinal",
-        "model_envelope_upper_ordinal",
-        "model_center_bucket",
-        "model_center_c",
-        "model_center_ordinal",
-        "peripheral_model_reliability_by_bucket_json",
-        "bucket_intervals_c_json",
-        "bucket_centers_c_json",
-        "formal_model_members_json",
-        "formal_model_anchor_lower_bucket",
-        "formal_model_anchor_upper_bucket",
-        "formal_model_anchor_lower_ordinal",
-        "formal_model_anchor_upper_ordinal",
-        "p0_historical_tilt_proof_id",
-        "p0_historical_tilt_proof_sha256",
-        "p0_historical_tilt_artifact_id",
-        "p0_historical_climatology_artifact_id",
-        "p0_historical_applied_theta",
-        "p0_historical_theta_zero_fallback",
-        "conditional_future_temperature_curve_json",
-        "conditional_future_temperature_curve_sha256",
-        "conditional_future_temperature_curve_root_stage",
-        "conditional_future_temperature_curve_root_checkpoint_id",
-        "conditional_future_temperature_curve_root_probability_sha256",
-    ):
+    for key in _FROZEN_MODEL_LINEAGE_KEYS:
         inherited = predecessor.lineage.get(key)
         if inherited is not None:
             supplied = values.get(key)
             if supplied is not None and supplied != inherited:
                 raise ContractError("probability_model_envelope_lineage_conflict")
+            values[key] = inherited
+    for key in _STAGE_ANCHOR_LINEAGE_KEYS:
+        inherited = predecessor.lineage.get(key)
+        if inherited is not None and values.get(key) is None:
             values[key] = inherited
     return values
 
@@ -697,10 +718,20 @@ def materialize_p1(
     decision_at_utc: str,
     fresh_until_utc: str,
     bridge_sha256: str,
+    truth_observation_revision_content_sha256: str | None = None,
     checkpoint_id: str | None = None,
     posterior_version: str = "p1_metar_trajectory_target_v2",
 ) -> ProbabilityEnvelope:
-    """Recompute P1 from one immutable P0/P0-M root and full METAR prefix."""
+    """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
+
+    ``truth_observation_revision_content_sha256`` names the canonical AWC
+    revision the closing observation was drawn from.  It is distinct from
+    ``canonical_observation_sha256``, which hashes the raw METAR object: the
+    revision fact is what the truth ledger is keyed on, so an envelope without
+    it cannot be turned into atomic facts at all.  Optional here because
+    callers that replay historical envelopes have no canonical store to resolve
+    it against.
+    """
 
     previous = predecessor if isinstance(predecessor, ProbabilityEnvelope) else ProbabilityEnvelope.from_mapping(predecessor)
     root = (
@@ -834,6 +865,20 @@ def materialize_p1(
             "canonical_observation_event_id": last_event_id,
             "canonical_observation_sha256": (
                 last_observation.event.raw_sha256
+            ),
+            # The canonical revision fact behind the closing observation, as
+            # distinct from the raw object hash above.  The truth ledger is
+            # keyed on the revision, so an envelope missing this compiles and
+            # then fails at the atomic-fact boundary.  No production path
+            # produced it before, so that boundary had never been crossed.
+            **(
+                {
+                    "truth_observation_revision_content_sha256": str(
+                        truth_observation_revision_content_sha256
+                    )
+                }
+                if truth_observation_revision_content_sha256
+                else {}
             ),
             "canonical_observation_committed_at": (
                 last_observation.canonical_committed_at_utc

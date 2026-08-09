@@ -37,6 +37,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .native_archive_lead import capture_lead_and_run, run_cycle_label
 from .native_ensemble_store import _insert_content_addressed
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
@@ -63,8 +64,44 @@ INDEPENDENCE_FAMILY_ID = "DWD_ICON_EPS"
 # 0.04C at a d2 lead, and even that favoured the *earlier* run.  Trading them
 # for the primary cycle's hourly grid is the clear side of that bargain.
 RUN_CYCLE = "12Z"
-ARCHIVE_LEAD_BUCKET = "d2"
-EXTRACTION_VERSION = "dwd_icon_global_eps_12z_d2_station_tmax_3h_v3"
+# P0 follows the freshest run, so this collector is asked for a shorter lead as
+# the event day approaches.  The default keeps existing d2 callers unchanged.
+SUPPORTED_LEAD_DAYS = (0, 1, 2)
+DEFAULT_LEAD_DAYS = 2
+# The cycle is not free to choose: it must leave enough forecast steps to cover
+# the whole target local day, and that day starts at a different UTC hour for
+# every station.  12Z works at d2 because the run precedes the day, but at d1
+# it starts after the local day has already begun in the far east -- Auckland's
+# day opens at 12Z the previous day -- so the grid comes up short and the
+# capture is rejected outright.  Shorter leads take 00Z, which is DWD's other
+# primary assimilation cycle and therefore the only other one carrying t_2m
+# hourly rather than 6-hourly.
+RUN_CYCLE_HOUR_BY_LEAD = {2: 12, 1: 0, 0: 0}
+ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
+
+
+def extraction_version_for_lead(lead_days: int) -> str:
+    """Extraction identity is specific to the lead *and* to its cycle.
+
+    A d1 row read the same way as a d2 row is still different evidence, drawn
+    from a different run with different skill.  A shared version string would
+    let the OOS scope check accept it against d2's contract and train the two
+    together.
+
+    The cycle is spelled out rather than fixed at ``12z`` because it moves with
+    the lead.  A capture drawn from 00Z but labelled ``12z`` would be
+    undetectable downstream: the label and the contract would agree with each
+    other while both disagreed with the object that was downloaded.
+    """
+
+    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    return (
+        f"dwd_icon_global_eps_{cycle_hour:02d}z_"
+        f"d{int(lead_days)}_station_tmax_3h_v3"
+    )
+
+
+EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS)
 BASE_URL = "https://opendata.dwd.de/weather/nwp/icon-eps/grib"
 ECCODES_LIBRARY = Path("/opt/homebrew/lib/libeccodes.dylib")
 EXPECTED_MEMBER_COUNT = 40
@@ -321,7 +358,19 @@ def _forecast_hours(
         ).astimezone(zone).date()
         == target
     ]
-    if not MIN_LOCAL_DAY_HOURS <= len(hours) <= MAX_LOCAL_DAY_HOURS:
+    # A full local day is eight periods, and that is the right bar for d2 and
+    # d1: their run precedes the day, so a short grid means it is broken.
+    #
+    # It is the wrong bar for d0.  That run is issued after the local day has
+    # begun and cannot describe hours that already happened -- nor does it need
+    # to, since those are settled observation by then.  Its value is the fresher
+    # initial state, not sampling density: a same-day run has assimilated that
+    # morning's observations and beats a two-day-old d2 even with few points.
+    run_day = run_init_utc.astimezone(timezone.utc).date()
+    minimum = (
+        1 if (target - run_day).days == 0 else MIN_LOCAL_DAY_HOURS
+    )
+    if not minimum <= len(hours) <= MAX_LOCAL_DAY_HOURS:
         raise ContractError("icon_eps_archive_local_day_grid_incomplete")
     return hours
 
@@ -333,13 +382,17 @@ def capture_icon_eps_station_days(
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
     grid_cache_dir: Path | None = None,
+    lead_days: int = DEFAULT_LEAD_DAYS,
 ) -> dict[str, Any]:
-    """Capture one official ICON EPS 18Z d2 cohort for many stations."""
+    """Capture one official ICON EPS cohort at the requested lead."""
+
+    if lead_days not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("icon_eps_archive_lead_days_invalid")
 
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
-        target - timedelta(days=2),
-        time(hour=int(RUN_CYCLE[:2])),
+        target - timedelta(days=lead_days),
+        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -491,8 +544,8 @@ def capture_icon_eps_station_days(
             "event_date": event_date,
             "settlement_timezone": scope["settlement_timezone"],
             "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-            "run_cycle": RUN_CYCLE,
-            "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+            "run_cycle": run_cycle_label(run_init),
+            "archive_lead_bucket": f"d{lead_days}",
             "forecast_hours": scope["hours"],
             "ensemble_system_id": SYSTEM_ID,
             "independence_family_id": INDEPENDENCE_FAMILY_ID,
@@ -536,7 +589,7 @@ def capture_icon_eps_station_days(
             "field_receipt_set_sha256": object_receipt_sha,
             "archive_query_at_utc": archive_query_at_utc,
             "source_prefix": f"{BASE_URL}/{cycle}/t_2m/",
-            "extraction_version": EXTRACTION_VERSION,
+            "extraction_version": extraction_version_for_lead(lead_days),
             "grid_point_index": grid[station_id],
         }
         captures.append({
@@ -548,8 +601,8 @@ def capture_icon_eps_station_days(
         "schema": MULTISTATION_SCHEMA,
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "run_cycle": run_cycle_label(run_init),
+        "archive_lead_bucket": f"d{lead_days}",
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": INDEPENDENCE_FAMILY_ID,
         "member_count": EXPECTED_MEMBER_COUNT,
@@ -564,7 +617,7 @@ def capture_icon_eps_station_days(
         "training_only": True,
         "holdout_eligible": False,
         "single_download_per_global_field": True,
-        "extraction_version": EXTRACTION_VERSION,
+        "extraction_version": extraction_version_for_lead(lead_days),
         "source_prefix": f"{BASE_URL}/{cycle}/t_2m/",
         "source_class": "OFFICIAL_NATIVE_ARCHIVE",
         "captures": captures,
@@ -594,6 +647,18 @@ def ingest_icon_eps_station_day(
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
+    # Lead, cycle and run come from the capture, never from the module
+    # constants: reading the constants would relabel a shorter-lead capture as
+    # d2 at the moment it lands, where the mislabelling becomes permanent.
+    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+        capture_lead_and_run(
+            capture,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            default_lead_days=DEFAULT_LEAD_DAYS,
+            error_code="icon_eps_archive_lead_days_invalid",
+        )
+    )
+    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
     identity = {
         key: value
         for key, value in capture.items()
@@ -629,9 +694,17 @@ def ingest_icon_eps_station_day(
         "SELECT member_id,member_role,raw_tmax_c "
         "FROM calibration_native_ensemble_historical_member_run "
         "WHERE ensemble_system_id=? AND station_id=? "
-        "AND target_local_date=? AND run_cycle=? AND extraction_version=? "
+        "AND target_local_date=? AND archive_lead_bucket=? "
+        "AND run_cycle=? AND extraction_version=? "
         "ORDER BY member_id",
-        (SYSTEM_ID, station, event_date, RUN_CYCLE, EXTRACTION_VERSION),
+        (
+            SYSTEM_ID,
+            station,
+            event_date,
+            capture_lead_bucket,
+            capture_run_cycle,
+            capture_extraction_version,
+        ),
     ).fetchall()
     expected = sorted(
         (str(row["member_id"]), str(row["member_role"]), float(row["raw_tmax_c"]))
@@ -657,13 +730,13 @@ def ingest_icon_eps_station_day(
             "ensemble_system_id": SYSTEM_ID,
             "station_id": station,
             "target_local_date": event_date,
-            "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
-            "run_cycle": RUN_CYCLE,
+            "archive_lead_bucket": capture_lead_bucket,
+            "run_cycle": capture_run_cycle,
             "member_id": str(row["member_id"]),
             "member_role": str(row["member_role"]),
             "raw_tmax_c": float(row["raw_tmax_c"]),
             "settlement_definition": "official_daily_tmax_c",
-            "extraction_version": EXTRACTION_VERSION,
+            "extraction_version": capture_extraction_version,
             "provider_id": str(system[0]),
             "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
             "native_run_init_utc": str(capture["run_init_utc"]),

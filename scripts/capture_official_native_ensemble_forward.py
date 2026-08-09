@@ -279,6 +279,9 @@ def capture_official_native_forward(
     eccc_station_ids: Sequence[str] | None = None,
     eccc_output: Path | None = None,
     icon_output: Path | None = None,
+    # P0 follows the freshest run issued for the event date, so the caller
+    # states which lead this pass is for.  Two is the historical default.
+    lead_days: int = 2,
 ) -> dict[str, Any]:
     """Capture and materialize a formally admissible official-native inbox."""
 
@@ -347,6 +350,7 @@ def capture_official_native_forward(
             station_scopes=scopes,
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
+            lead_days=int(lead_days),
         )
     if ecmwf is None:
         assert_process_memory_budget()
@@ -355,6 +359,7 @@ def capture_official_native_forward(
             station_scopes=scopes,
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
+            lead_days=int(lead_days),
         )
     if eccc_output is not None and eccc is None:
         assert_process_memory_budget()
@@ -363,6 +368,7 @@ def capture_official_native_forward(
             station_scopes=scopes,
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
+            lead_days=int(lead_days),
         )
     if icon_output is not None and icon is None:
         assert_process_memory_budget()
@@ -371,6 +377,7 @@ def capture_official_native_forward(
             station_scopes=scopes,
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
+            lead_days=int(lead_days),
         )
     assert_process_memory_budget()
     inbox_path = inbox_output.expanduser().resolve()
@@ -467,6 +474,7 @@ def capture_official_native_forward(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event-date", required=True)
+    parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
     parser.add_argument("--market-registry", type=Path, default=DEFAULT_REGISTRY)
     parser.add_argument("--gefs-output", type=Path, default=DEFAULT_GEFS_OUTPUT)
     parser.add_argument("--ecmwf-output", type=Path, default=DEFAULT_ECMWF_OUTPUT)
@@ -520,6 +528,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             eccc_geps_archive=args.eccc_geps_archive,
             eccc_output=args.eccc_output,
             icon_output=args.icon_output,
+        lead_days=args.lead_days,
             eccc_station_ids=args.eccc_station_id,
         )
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:

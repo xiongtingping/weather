@@ -265,6 +265,61 @@ def test_price_change_mutates_full_book_before_atomic_snapshot(tmp_path) -> None
     assert quote["book_observed_at"] == "2026-07-16T12:00:00.200Z"
 
 
+def _quiet_book_row(created_at: str) -> dict:
+    return {
+        "token_id": "token", "slug": "s", "event_date": "2026-07-16",
+        "outcome": "38°C", "side": "YES", "best_bid": 0.40, "best_ask": 0.42,
+        "spread": 0.02, "bid_depth_topN": 2, "ask_depth_topN": 3,
+        "source": "clob_ws", "source_detail": "book", "created_at": created_at,
+    }
+
+
+def _observe_quiet_book(state: LatestQuoteSnapshot, observed_at: str) -> None:
+    state.observe_market_message(
+        {
+            "event_type": "book", "asset_id": "token",
+            "bids": [{"price": "0.40", "size": "2"}],
+            "asks": [{"price": "0.42", "size": "3"}],
+        }, observed_at=observed_at, depth_levels=5,
+    )
+    state.observe([_quiet_book_row(observed_at)], observed_at=observed_at)
+
+
+def test_unchanged_book_republishes_attestation_once_it_ages(tmp_path) -> None:
+    path = tmp_path / "latest.json"
+    state = LatestQuoteSnapshot(path, min_write_interval_sec=0)
+    state.connected(0, ["token"])
+    _observe_quiet_book(state, "2026-07-16T12:00:00.000Z")
+    assert json.loads(path.read_text())["quotes_by_token"]["token"][
+        "book_observed_at"
+    ] == "2026-07-16T12:00:00.000Z"
+
+    # Re-observing the same book inside the interval stays deduplicated.
+    _observe_quiet_book(state, "2026-07-16T12:00:05.000Z")
+    assert json.loads(path.read_text())["quotes_by_token"]["token"][
+        "book_observed_at"
+    ] == "2026-07-16T12:00:00.000Z"
+
+    # A book that never moves must not silently age out of every freshness
+    # bound downstream; the attestation advances once the interval elapses.
+    _observe_quiet_book(state, "2026-07-16T12:00:31.000Z")
+    quote = json.loads(path.read_text())["quotes_by_token"]["token"]
+    assert quote["book_observed_at"] == "2026-07-16T12:00:31.000Z"
+    assert quote["asks"] == [{"price": 0.42, "size": 3}]
+
+
+def test_unchanged_book_refresh_can_be_disabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PM_MARKET_WS_BOOK_FRESHNESS_REFRESH_SEC", "0")
+    path = tmp_path / "latest.json"
+    state = LatestQuoteSnapshot(path, min_write_interval_sec=0)
+    state.connected(0, ["token"])
+    _observe_quiet_book(state, "2026-07-16T12:00:00.000Z")
+    _observe_quiet_book(state, "2026-07-16T13:00:00.000Z")
+    assert json.loads(path.read_text())["quotes_by_token"]["token"][
+        "book_observed_at"
+    ] == "2026-07-16T12:00:00.000Z"
+
+
 def test_snapshot_disconnect_is_explicit(tmp_path) -> None:
     path = tmp_path / "latest.json"
     state = LatestQuoteSnapshot(path, min_write_interval_sec=0)

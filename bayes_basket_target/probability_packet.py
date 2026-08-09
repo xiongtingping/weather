@@ -32,6 +32,11 @@ ALLOWED_KEYS = {
     "trajectory_artifact", "trajectory_proof", "trajectory_observations",
     "bucket_centers_c", "bucket_upper_bounds_c",
     "reported_high_advanced",
+    # P1 only: the canonical AWC revision the closing observation came from.
+    # Distinct from the raw object hash the trajectory carries -- the truth
+    # ledger is keyed on the revision, so an envelope without it compiles and
+    # then fails at the atomic-fact boundary.
+    "truth_observation_revision_content_sha256",
     "decision_at_utc", "fresh_until_utc",
     "bridge_sha256", "checkpoint_id", "posterior_version",
     "created_at_utc",
@@ -307,6 +312,16 @@ def build_probability_envelope(
             bucket_upper_bounds_c=packet.get("bucket_upper_bounds_c"),
             reported_high_advanced=packet.get(
                 "reported_high_advanced"
+            ),
+            # Empty means "the caller had no canonical store to resolve it
+            # against", which is the historical-replay case; the envelope then
+            # compiles without it and simply cannot become an atomic fact.
+            truth_observation_revision_content_sha256=(
+                str(
+                    packet.get("truth_observation_revision_content_sha256")
+                    or ""
+                ).strip()
+                or None
             ),
             **common,
         )

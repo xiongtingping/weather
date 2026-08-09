@@ -6,6 +6,7 @@ from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.nwp_rotation_state import (
     build_rotation_state,
     load_rotation_state,
+    scope_key,
     persist_rotation_state,
     validate_rotation_state,
 )
@@ -14,13 +15,16 @@ from bayes_basket_target.nwp_rotation_state import (
 STATIONS = ("EGLC", "RKPK")
 
 
-def _scope(station: str, date: str) -> dict:
+def _scope(station: str, date: str, lead_days: int = 2) -> dict:
     return {
         "station_ids": [station],
         "event_date": date,
         "settlement_timezone": (
             "Europe/London" if station == "EGLC" else "Asia/Seoul"
         ),
+        # A station-day is captured once per lead, from a different run each
+        # time, so the lead is part of what identifies a scope.
+        "lead_days": lead_days,
     }
 
 
@@ -35,7 +39,7 @@ def test_rotation_state_wraps_and_survives_restart(tmp_path) -> None:
         selected_scopes=[scopes[0]],
         cursor_by_priority={0: 1},
         outcomes=[{
-            "scope_key": "EGLC|2026-07-30|Europe/London",
+            "scope_key": "EGLC|2026-07-30|Europe/London|d2",
             "state": "failed",
             "reason": "provider_timeout",
         }],
@@ -54,7 +58,7 @@ def test_rotation_state_wraps_and_survives_restart(tmp_path) -> None:
         selected_scopes=[scopes[1]],
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-30|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-30|Asia/Seoul|d2",
             "state": "candidate_capture_only",
             "candidate_only": True,
         }],
@@ -74,7 +78,7 @@ def test_catalog_change_resets_bounded_coverage() -> None:
         selected_scopes=[first_scope],
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-30|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-30|Asia/Seoul|d2",
             "state": "captured",
         }],
         previous=None,
@@ -87,7 +91,7 @@ def test_catalog_change_resets_bounded_coverage() -> None:
         selected_scopes=[next_scope],
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-31|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-31|Asia/Seoul|d2",
             "state": "captured",
         }],
         previous=first,
@@ -96,7 +100,7 @@ def test_catalog_change_resets_bounded_coverage() -> None:
     assert second["generation"] == 1
     assert second["previous_content_sha256"] == ""
     assert second["attempted_scope_keys"] == [
-        "RKPK|2026-07-31|Asia/Seoul"
+        "RKPK|2026-07-31|Asia/Seoul|d2"
     ]
 
 
@@ -108,7 +112,7 @@ def test_tamper_and_scope_drift_fail_closed(tmp_path) -> None:
         selected_scopes=[scope],
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-30|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-30|Asia/Seoul|d2",
             "state": "captured",
         }],
         previous=None,
@@ -133,6 +137,7 @@ def test_135_scope_rotation_completes_in_34_bounded_cycles() -> None:
             "station_ids": [station],
             "event_date": event_date,
             "settlement_timezone": "UTC",
+            "lead_days": 2,
         }
         for event_date in (
             "2026-07-30",
@@ -153,7 +158,7 @@ def test_135_scope_rotation_completes_in_34_bounded_cycles() -> None:
                 {
                     "scope_key": (
                         f"{row['station_ids'][0]}|"
-                        f"{row['event_date']}|UTC"
+                        f"{row['event_date']}|UTC|d{row['lead_days']}"
                     ),
                     # Failed network attempts still prove fair admission;
                     # success remains a separate materialization contract.
@@ -182,7 +187,7 @@ def test_catalog_low_high_low_resets_coverage_each_time() -> None:
         selected_scopes=low,
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-30|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-30|Asia/Seoul|d2",
             "state": "captured",
         }],
         previous=None,
@@ -194,7 +199,7 @@ def test_catalog_low_high_low_resets_coverage_each_time() -> None:
         selected_scopes=[high[1]],
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "EGLC|2026-07-30|Europe/London",
+            "scope_key": "EGLC|2026-07-30|Europe/London|d2",
             "state": "captured",
         }],
         previous=first,
@@ -206,7 +211,7 @@ def test_catalog_low_high_low_resets_coverage_each_time() -> None:
         selected_scopes=low,
         cursor_by_priority={0: 0},
         outcomes=[{
-            "scope_key": "RKPK|2026-07-30|Asia/Seoul",
+            "scope_key": "RKPK|2026-07-30|Asia/Seoul|d2",
             "state": "captured",
         }],
         previous=second,
@@ -214,9 +219,49 @@ def test_catalog_low_high_low_resets_coverage_each_time() -> None:
     )
     assert second["generation"] == 1
     assert second["attempted_scope_keys"] == [
-        "EGLC|2026-07-30|Europe/London"
+        "EGLC|2026-07-30|Europe/London|d2"
     ]
     assert third["generation"] == 1
     assert third["attempted_scope_keys"] == [
-        "RKPK|2026-07-30|Asia/Seoul"
+        "RKPK|2026-07-30|Asia/Seoul|d2"
     ]
+
+
+def test_a_station_day_is_not_complete_until_every_lead_is_attempted() -> None:
+    # The key used to be station|date|timezone, so the three leads of one
+    # station-day collapsed into a single catalogue entry: attempting d2 marked
+    # the whole day attempted, and a sweep reported itself complete with two
+    # thirds of the work never started.
+    scopes = [_scope("RKPK", "2026-07-30", lead_days=lead) for lead in (2, 1, 0)]
+    previous = None
+    for index, scope in enumerate(scopes):
+        previous = build_rotation_state(
+            station_ids=("RKPK",),
+            scopes=scopes,
+            selected_scopes=[scope],
+            cursor_by_priority={0: index + 1},
+            outcomes=[{
+                "scope_key": scope_key(scope),
+                "state": "CAPTURED_CANDIDATE",
+                "candidate_only": True,
+                "reason": "native_ensemble_calibration_and_cross_family_oos_required",
+            }],
+            previous=previous,
+            updated_at_utc=f"2026-07-30T0{index}:00:00Z",
+        )
+        assert previous["catalog_scope_count"] == 3
+        expected_complete = index == len(scopes) - 1
+        assert previous["complete_rotation"] is expected_complete
+    assert previous["attempted_scope_keys"] == sorted(
+        scope_key(scope) for scope in scopes
+    )
+
+
+def test_a_scope_without_a_lead_is_rejected_rather_than_folded_in() -> None:
+    # Two spellings of one scope in a single catalogue is the drift this key
+    # exists to prevent, so an unstated lead fails closed instead of defaulting.
+    scope = _scope("RKPK", "2026-07-30")
+    scope.pop("lead_days")
+
+    with pytest.raises(ContractError, match="nwp_rotation_scope_lead_invalid"):
+        scope_key(scope)

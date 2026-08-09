@@ -1124,7 +1124,12 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
     required = (
         "canonical_observation_event_id",
         "truth_observation_revision_content_sha256",
-        "canonical_observation_committed_at_utc",
+        # ``canonical_observation_committed_at``, not ``..._utc``.  Nothing has
+        # ever written the ``_utc`` spelling -- materialization publishes the
+        # bare name, and the sibling check below already uses it -- so this
+        # presence test could only ever fail, which is what left every resident
+        # P1 unable to become an atomic fact.
+        "canonical_observation_committed_at",
         "settlement_timezone",
         "hard_bound_id",
         "source_lane",

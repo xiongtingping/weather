@@ -18,10 +18,30 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
+from .dwd_icon_eps_archive import (
+    RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
+    SUPPORTED_LEAD_DAYS as _ICON_LEADS,
+    extraction_version_for_lead as _icon_extraction_version,
+)
+from .eccc_geps_archive import (
+    RUN_CYCLE_HOUR_BY_LEAD as _GEPS_CYCLE_BY_LEAD,
+    SUPPORTED_LEAD_DAYS as _GEPS_LEADS,
+    extraction_version_for_lead as _geps_extraction_version,
+)
+from .ecmwf_ifs_archive import (
+    RUN_CYCLE_HOUR_BY_LEAD as _IFS_CYCLE_BY_LEAD,
+    SUPPORTED_LEAD_DAYS as _IFS_LEADS,
+    extraction_version_for_lead as _ifs_extraction_version,
+)
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     native_ensemble_family_set_hash,
     validate_cross_native_ensemble_weights,
+)
+from .noaa_gefs_archive import (
+    RUN_CYCLE_HOUR_BY_LEAD as _GEFS_CYCLE_BY_LEAD,
+    SUPPORTED_LEAD_DAYS as _GEFS_LEADS,
+    extraction_version_for_lead as _gefs_extraction_version,
 )
 from .official_native_forward_packet import MIXED_NATIVE_CYCLES
 from .ssot import native_ensemble_foundation_schema_status
@@ -57,76 +77,81 @@ DEFAULT_VALID_DAYS = 30
 # outright.  Leaving this empty restores the symmetric 0.75 diversity bound and
 # lets skill decide.
 DEFAULT_FAMILY_WEIGHT_CAPS: dict[str, float] = {}
+def _lead_contracts(
+    *,
+    supported_lead_days,
+    cycle_hour_by_lead,
+    extraction_version_for_lead,
+) -> dict[str, dict[str, str]]:
+    """One lead's cycle and extraction identity, taken from its collector.
+
+    Restating these by hand is what let the table drift from the code: the
+    collector was changed to read 00Z at the shorter leads while the table --
+    and the extraction version it named -- still said 18Z, so the scope check
+    passed on rows whose object had come from a different run entirely.  A
+    contract that is derived cannot disagree with the collector; it can only be
+    wrong in the same way, which the collector's own tests can catch.
+    """
+
+    return {
+        f"d{lead}": {
+            "run_cycle": f"{int(cycle_hour_by_lead[lead]):02d}Z",
+            "extraction_version": extraction_version_for_lead(lead),
+        }
+        for lead in sorted(supported_lead_days)
+    }
+
+
+# Registered at all three leads, because P0 follows the freshest run: d2 two
+# days out, d1 the day before, d0 on the event day.  Each lead keeps its own
+# extraction version so the OOS scope check cannot accept one lead against
+# another's contract, and training stays split by (season_bin, lead_bucket).
+#
+# The cycle differs by family and, within a family, by lead.  The reasons live
+# with each collector -- ECCC's measured 00Z-over-12Z result, DWD's hourly t_2m
+# only on its primary cycles, the shorter leads moving to the day's first cycle
+# so the local-day grid still fits -- and are read from there rather than
+# repeated here.
 OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     "NOAA_GEFS_05": {
         "transport_provider_id": "NOAA_GEFS_PDS_S3",
-        "lead_bucket": "d2",
-        "run_cycle": "18Z",
-        "extraction_version": "noaa_gefs_pds_0p50_18z_d2_station_tmax_v2",
+        "leads": _lead_contracts(
+            supported_lead_days=_GEFS_LEADS,
+            cycle_hour_by_lead=_GEFS_CYCLE_BY_LEAD,
+            extraction_version_for_lead=_gefs_extraction_version,
+        ),
     },
-    # Registered at all three leads, because P0 follows the freshest run: d2
-    # two days out, d1 the day before, d0 on the event day.  Each lead keeps
-    # its own extraction version so the OOS scope check cannot accept one lead
-    # against another's contract, and training stays split by
-    # (season_bin, lead_bucket).
-    #
-    # Only ECMWF is registered this way so far.  The other three collectors
-    # still write ARCHIVE_LEAD_BUCKET as a constant at ingest, so a d1 capture
-    # would land labelled d2 -- registering their shorter leads before that is
-    # fixed would feed mislabelled rows straight into d2's training set.
     "ECMWF_IFS_ENS_OPEN_PF50": {
         "transport_provider_id": "ECMWF_OPEN_DATA_S3",
-        "leads": {
-            "d0": {
-                "run_cycle": "18Z",
-                "extraction_version": (
-                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d0_v1"
-                ),
-            },
-            "d1": {
-                "run_cycle": "18Z",
-                "extraction_version": (
-                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d1_v1"
-                ),
-            },
-            "d2": {
-                "run_cycle": "18Z",
-                "extraction_version": (
-                    "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_18z_d2_v1"
-                ),
-            },
-        },
+        "leads": _lead_contracts(
+            supported_lead_days=_IFS_LEADS,
+            cycle_hour_by_lead=_IFS_CYCLE_BY_LEAD,
+            extraction_version_for_lead=_ifs_extraction_version,
+        ),
     },
-    # 00Z rather than the 12Z ECCC also publishes.  ECCC is the only family
-    # without an 18Z run, so its cycle is a real choice, and the obvious
-    # reasoning -- later run, fresher observations, smaller deficit against the
-    # others' 18Z -- turned out to be wrong.  Re-capturing 18 event dates at 12Z
-    # and scoring both against settled truth put 12Z *behind* 00Z by 0.043C MAE
-    # over the 13 fully-covered days (t=+2.09, 12Z winning only 4 of 13).  At a
-    # d2 lead the six hours of extra freshness are worth less than whatever 00Z
-    # gains as a primary assimilation cycle.
     "ECCC_GEM_GLOBAL_ENS": {
         "transport_provider_id": "ECCC_DD_WEATHER",
-        "lead_bucket": "d2",
-        "run_cycle": "00Z",
-        "extraction_version": "eccc_geps_0p5_00z_d2_station_tmax_v1",
+        "leads": _lead_contracts(
+            supported_lead_days=_GEPS_LEADS,
+            cycle_hour_by_lead=_GEPS_CYCLE_BY_LEAD,
+            # ECCC is the one family read at two cycles, so its extraction
+            # identity takes the cycle explicitly rather than deriving it.
+            extraction_version_for_lead=lambda lead: _geps_extraction_version(
+                lead, _GEPS_CYCLE_BY_LEAD[lead]
+            ),
+        ),
     },
-    # 12Z, because DWD publishes t_2m hourly only on its primary assimilation
-    # cycles (00Z/12Z) and 6-hourly on the secondary ones (06Z/18Z).  The 18Z
-    # this used to name cost the hourly grid for six hours of freshness that the
-    # ECCC cycle experiment measured at ~0.04C -- see dwd_icon_eps_archive.
-    #
-    # DWD retains only the newest run per cycle, so ICON's d2 history cannot be
+    # DWD retains only the newest run per cycle, so ICON's history cannot be
     # backfilled at all: the run captured today qualifies two days later, and a
     # run not taken before it is overwritten is gone permanently.  Registering
     # the scope now means the accumulating archive is admitted as soon as it
     # covers a holdout cohort, rather than needing a second change then.
     "DWD_ICON_GLOBAL_EPS": {
         "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
-        "lead_bucket": "d2",
-        "run_cycle": "12Z",
-        "extraction_version": (
-            "dwd_icon_global_eps_12z_d2_station_tmax_3h_v3"
+        "leads": _lead_contracts(
+            supported_lead_days=_ICON_LEADS,
+            cycle_hour_by_lead=_ICON_CYCLE_BY_LEAD,
+            extraction_version_for_lead=_icon_extraction_version,
         ),
     },
 }
@@ -1575,6 +1600,117 @@ def _select_exact_shared_holdout_cohort(
     )[0]
 
 
+# P0 resolves its parameters along four dimensions: season, station, system
+# and lead.  Bias uses all four; weights use the same key but with the station
+# slot set to this sentinel until that station has enough training days of its
+# own, because a per-station weight fit is noise-dominated at small n.
+POOLED_STATION_SENTINEL = "__POOLED__"
+# Below this many training days a station's own weights are not trusted.
+#
+# Measured on 45 stations x 33 days: per-station weights moved by a median of
+# 0.148 (max 0.459) between the first and second half of the same period --
+# LIMC's ECMWF share fell 0.45 -> 0.22 while NOAA rose 0.25 -> 0.71 -- whereas
+# pooled weights moved 0.018.  At that sample size the station-to-station
+# spread is estimation noise, and it buys only brier -0.005 out of sample
+# against pooled weights.  Per-station bias, by contrast, buys brier -0.068.
+#
+# The dimension is kept rather than removed: real climate differences between,
+# say, a tropical maritime station and a temperate continental one are
+# plausible, they are simply not measurable in a month.  The threshold lets a
+# station graduate to its own weights once it can support the fit.
+MIN_STATION_WEIGHT_TRAIN_DAYS = 200
+
+
+def pooled_train_rmse_by_system(
+    conn: sqlite3.Connection,
+    *,
+    station_ids: Sequence[str],
+    as_of_utc: str,
+    min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
+    min_holdout_days: int = DEFAULT_MIN_HOLDOUT_DAYS,
+    max_event_date: str | None = None,
+) -> dict[tuple[str, str, str, str], float]:
+    """Training RMSE keyed by (season, station slot, system, lead).
+
+    Each station is evaluated on its own split exactly as before; only the
+    resulting residuals are combined.  Pooling the errors rather than averaging
+    the per-station RMSEs keeps stations with more training days weighted
+    accordingly, and keeps a station with an unusually hard climate from
+    counting the same as one with an easy one.
+
+    Bias is deliberately not pooled -- it is where the per-station signal
+    actually lives.
+    """
+
+    # Keyed by (season_bin, lead_bucket, system_id).  Season and lead are kept
+    # as dimensions even though weights pool across stations: a model's
+    # relative skill genuinely differs between summer and winter, and between a
+    # three-day-old run and a same-day one, whereas it does not differ enough
+    # between stations to be worth the sample cost.
+    squared: dict[tuple[str, str, str, str], float] = defaultdict(float)
+    counts: dict[tuple[str, str, str, str], int] = defaultdict(int)
+    for station in station_ids:
+        try:
+            report = build_native_ensemble_oos(
+                conn,
+                station_id=str(station),
+                as_of_utc=as_of_utc,
+                min_train_days=min_train_days,
+                min_holdout_days=min_holdout_days,
+                max_event_date=max_event_date,
+            )
+        except ContractError:
+            # One station failing its own OOS contract must not deny every
+            # other station a pooled fit; it simply contributes nothing.  Only
+            # contract failures are absorbed: a programming error or a broken
+            # database would otherwise be laundered into weights fitted on
+            # whatever subset happened to survive, with nothing in the result
+            # to say so.
+            continue
+        for candidate in report.get("cross_candidates") or []:
+            season_bin = str(candidate.get("season_bin") or "")
+            lead_bucket = str(candidate.get("lead_bucket") or "")
+            for system_id, evaluation in (
+                candidate.get("system_evaluations") or {}
+            ).items():
+                parameters = evaluation.get("parameters") or {}
+                try:
+                    rmse = float(parameters["train_rmse_c"])
+                    # ``train_n`` sits on the evaluation, not in parameters.
+                    n = int(evaluation.get("train_n") or 0)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if n <= 0:
+                    continue
+                # Accumulate both slots.  The pooled entry always exists;
+                # the per-station entry is emitted too, so a station that has
+                # graduated can be served from the same table without a second
+                # pass.
+                for station_slot in (
+                    POOLED_STATION_SENTINEL,
+                    str(station),
+                ):
+                    key = (
+                        season_bin,
+                        station_slot,
+                        str(system_id),
+                        lead_bucket,
+                    )
+                    squared[key] += rmse * rmse * n
+                    counts[key] += n
+    return {
+        key: (squared[key] / counts[key]) ** 0.5
+        for key in sorted(counts)
+        if counts[key] > 0
+        # A per-station entry is only published once it clears the threshold,
+        # so a caller cannot accidentally read an under-sampled fit.
+        and (
+            key[1] == POOLED_STATION_SENTINEL
+            or counts[key] >= MIN_STATION_WEIGHT_TRAIN_DAYS
+        )
+    }
+
+
 def build_native_ensemble_oos(
     conn: sqlite3.Connection,
     *,
@@ -1585,8 +1721,14 @@ def build_native_ensemble_oos(
     family_weight_caps: Mapping[str, float] | None = None,
     system_mask: Sequence[str] | None = None,
     max_event_date: str | None = None,
+    pooled_train_rmse: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Build candidate artifacts; perform no writes."""
+    """Build candidate artifacts; perform no writes.
+
+    ``pooled_train_rmse`` supplies cross-station training RMSE per system so
+    weights can be fitted on all stations at once while bias stays per station.
+    Omitting it reproduces the previous per-station behaviour exactly.
+    """
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
@@ -1795,10 +1937,33 @@ def build_native_ensemble_oos(
             raise ContractError(
                 "native_ensemble_oos_cross_holdout_window_invalid"
             )
+        # Weights come from pooled cross-station RMSE when it is supplied,
+        # and fall back to this station's own train RMSE when it is not.
+        #
+        # Measured on 45 stations x 33 days: fitting weights per station buys
+        # brier -0.005 / crps -0.008 over pooled weights, while per-station
+        # bias correction buys brier -0.068 / crps -0.203.  Nearly all the
+        # value is in the bias, and per-station weights cost an order of
+        # magnitude in sample size -- 33 station-days instead of 1320.
+        #
+        # That matters beyond tidiness: once P0 recomputes on every model run,
+        # a per-station-per-lead weight fit would have almost no samples left,
+        # whereas pooled weights keep theirs.
+        # Look up per-station first, then pooled, then this station's own fit.
+        # The per-station entry only exists once it cleared the sample-size
+        # threshold, so the order encodes the policy without a second check.
+        def _train_rmse(system_id: str, evaluation: Mapping[str, Any]) -> float:
+            table = pooled_train_rmse or {}
+            for station_slot in (station, POOLED_STATION_SENTINEL):
+                value = table.get(
+                    (season_bin, station_slot, system_id, lead_bucket)
+                )
+                if value is not None:
+                    return float(value)
+            return float(evaluation["parameters"]["train_rmse_c"])
+
         train_rmse = {
-            system_id: float(
-                evaluation["parameters"]["train_rmse_c"]
-            )
+            system_id: _train_rmse(system_id, evaluation)
             for system_id, evaluation in rows
         }
         weights = _bounded_family_weights(

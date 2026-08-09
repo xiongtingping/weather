@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import bayes_basket_target.production_worker as production_worker_module
+from bayes_basket_target.resource_bounds import MAX_JSON_OUTPUT_BYTES
 from bayes_basket_target.production_worker import (
     CANONICAL_TARGET_STATIONS,
     DEFAULT_TARGET_MARKET_MANIFEST,
@@ -3595,17 +3596,144 @@ def test_open_scope_round_robin_is_deterministic_and_bounded() -> None:
     assert selected == ["EGLC", "KATL", "RKPK", "EGLC", "KATL"]
 
 
-def test_open_scope_round_robin_rejects_more_than_45_open_stations() -> None:
+def test_republisher_inbox_packet_cap_fits_inside_the_json_write_limit() -> None:
+    # These two bounds have to agree, and they did not: the count cap allowed
+    # 256 packets while the byte cap allowed roughly 176 of them, so the inbox
+    # filled to 99.7% of the write limit and then every capture failed with
+    # target_json_output_bytes_exceeded.  A count cap that a single write
+    # cannot satisfy is not a bound, it is a delayed failure.
+    #
+    # 95KiB is the largest packet observed in the live inbox; each carries
+    # every registered ensemble system, so the figure moves with
+    # ENSEMBLE_SYSTEMS rather than being arbitrary.
+    largest_observed_packet_bytes = 95 * 1024
+    projected = (
+        production_worker_module.MAX_REPUBLISHER_INBOX_PACKETS
+        * largest_observed_packet_bytes
+    )
+
+    assert projected < MAX_JSON_OUTPUT_BYTES
+    # And not so far under that the cap is doing no work at all.
+    assert projected > MAX_JSON_OUTPUT_BYTES // 2
+
+
+def _rotation_worker(tmp_path: Path) -> TargetProductionWorker:
+    worker = object.__new__(TargetProductionWorker)
+    worker.nwp_runtime_root = tmp_path
+    worker.nwp_rotation_state_path = tmp_path / "rotation_state.json"
+    worker._native_ensemble_scope_cursor = 3
+    worker._nwp_rotation_state = None
+    return worker
+
+
+def _rotation_scope(station: str, day: str) -> dict[str, object]:
+    return {
+        "event_date": day,
+        "settlement_timezone": "America/New_York",
+        "station_ids": [station],
+        "outcome_count": 1,
+        "event_day_state": "open",
+        "lead_days": 2,
+    }
+
+
+def test_rotation_state_is_persisted_on_a_reused_scope_not_only_a_capture(
+    tmp_path: Path,
+) -> None:
+    # The cycle used to write this file on exactly one of its seven exits.
+    # Once packets existed it returned "official_native_reused" instead, so the
+    # last write stayed put while capture carried on for another fourteen
+    # hours -- leaving the cursor and the scope catalogue describing a sweep
+    # two days old.
+    worker = _rotation_worker(tmp_path)
+    scopes = [
+        _rotation_scope("KMIA", "2026-08-09"),
+        _rotation_scope("KLGA", "2026-08-09"),
+    ]
+
+    receipt = worker._persist_nwp_rotation(
+        station_ids=("KMIA", "KLGA"),
+        scopes=scopes,
+        selected_scopes=[scopes[0]],
+        outcomes=[{
+            "scope_key": "KMIA|2026-08-09|America/New_York|d2",
+            "state": "OFFICIAL_NATIVE_REUSED",
+            "candidate_only": False,
+            "reason": "official_native_precedence",
+        }],
+        as_of_utc="2026-08-09T00:00:00Z",
+    )
+
+    assert receipt["rotation_state_wrote"] is True
+    assert receipt["next_scope_cursor"] == 3
+    written = json.loads(
+        (tmp_path / "rotation_state.json").read_text(encoding="utf-8")
+    )
+    assert written["catalog_scope_count"] == 2
+    # The catalogue on disk has to be the one just discovered, because the
+    # in-flight status receipt republishes it verbatim and a restart resumes
+    # the cursor against it.
+    assert all("2026-08-09" in key for key in written["catalog_scope_keys"])
+
+
+def test_rotation_state_write_failure_does_not_fail_the_cycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Rotation state is scheduler telemetry and a restart hint, not an
+    # authorization boundary: a failed write must not turn a completed capture
+    # into a fail-closed cycle.
+    worker = _rotation_worker(tmp_path)
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(production_worker_module, "persist_rotation_state", _boom)
+
+    receipt = worker._persist_nwp_rotation(
+        station_ids=("KMIA",),
+        scopes=[_rotation_scope("KMIA", "2026-08-09")],
+        selected_scopes=[_rotation_scope("KMIA", "2026-08-09")],
+        outcomes=[],
+        as_of_utc="2026-08-09T00:00:00Z",
+    )
+
+    assert receipt["rotation_state_wrote"] is False
+    assert "OSError" in receipt["rotation_state_error"]
+    # Still advanced in memory, so the current process does not replay the
+    # scope it just finished.
+    assert worker._nwp_rotation_state is not None
+
+
+def test_open_scope_round_robin_accepts_every_station_on_several_days() -> None:
+    # Open scopes are station-days.  Bounding them at the station count made
+    # "more than one event day is open" an error, which is what forced
+    # something upstream to pin the lane to a single date.
     worker = object.__new__(TargetProductionWorker)
     worker._resident_open_scope_cursor = 0
     scopes = [
-        {"scope_key": f"S{index:02d}|2026-07-30"}
-        for index in range(46)
+        {"scope_key": f"S{station:02d}|2026-07-{30 + day:02d}"}
+        for day in range(3)
+        for station in range(45)
+    ]
+
+    assert len(scopes) > production_worker_module.MAX_FORWARD_P0_STATIONS
+    assert worker._select_resident_open_ws_scope(scopes) is not None
+
+
+def test_open_scope_round_robin_still_bounds_the_station_day_catalogue() -> None:
+    worker = object.__new__(TargetProductionWorker)
+    worker._resident_open_scope_cursor = 0
+    scopes = [
+        {"scope_key": f"S{index:04d}|2026-07-30"}
+        for index in range(
+            production_worker_module.MAX_FORWARD_P0_STATION_DAYS + 1
+        )
     ]
 
     with pytest.raises(
         ContractError,
-        match="resident_target_ws_open_scope_station_cap_exceeded",
+        match="resident_target_ws_open_scope_station_day_cap_exceeded",
     ):
         worker._select_resident_open_ws_scope(scopes)
 

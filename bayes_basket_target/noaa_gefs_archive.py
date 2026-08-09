@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .native_archive_lead import capture_lead_and_run, run_cycle_label
 from .future_temperature_curve import build_native_family_temperature_curve
 from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
 from .native_raw_object_store import (
@@ -42,25 +43,46 @@ MULTISTATION_SCHEMA = (
     "noaa_gefs_official_historical_multistation_members_v2"
 )
 SYSTEM_ID = "NOAA_GEFS_05"
+# The cycle this collector reads at its default lead.  Every capture and every
+# row carries the cycle of the run it was actually drawn from instead of this
+# constant; it survives as the d2 answer and as documentation of what "the
+# GEFS archive" means unqualified.
 RUN_CYCLE = "18Z"
 GRID = "0p50"
 # P0 follows the freshest run, so this collector is asked for a shorter lead as
 # the event day approaches.  The default keeps existing d2 callers unchanged.
 SUPPORTED_LEAD_DAYS = (0, 1, 2)
 DEFAULT_LEAD_DAYS = 2
+# The cycle is not free to choose: it must leave enough forecast hours to cover
+# the whole target local day, and that day starts at a different UTC hour for
+# every station.  18Z works at d2 because the run precedes the day by a full
+# night, but at d1 it starts after the local day has already begun in the far
+# east -- Auckland's day opens at 12Z the previous day -- so the grid comes up
+# short and the capture is rejected outright.  Shorter leads take the day's
+# first cycle instead; GEFS publishes 00/06/12/18Z, so 00Z is available.
+RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 
 def extraction_version_for_lead(lead_days: int) -> str:
-    """Extraction identity is lead-specific.
+    """Extraction identity is specific to the lead *and* to its cycle.
 
     A d1 row read the same way as a d2 row is still different evidence, drawn
     from a different run with different skill.  One shared version string would
     let the OOS scope check accept it against d2's contract and train both
     together.
+
+    The cycle is spelled out rather than fixed at ``18z`` because it moves with
+    the lead.  A capture drawn from 00Z but labelled ``18z`` would be
+    undetectable downstream: the label and the contract would agree with each
+    other while both disagreed with the object that was downloaded.
     """
 
-    return f"noaa_gefs_pds_0p50_18z_d{int(lead_days)}_station_tmax_v2"
+    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    return (
+        f"noaa_gefs_pds_0p50_{cycle_hour:02d}z_"
+        f"d{int(lead_days)}_station_tmax_v2"
+    )
 
 
 EXTRACTION_VERSION = extraction_version_for_lead(DEFAULT_LEAD_DAYS)
@@ -445,7 +467,17 @@ def _forecast_hours(
             run_init_utc + timedelta(hours=forecast_hour)
         ).astimezone(zone).date() == target
     ]
-    if not 7 <= len(result) <= 9:
+    # A full local day is eight periods, and that is the right bar for d2 and
+    # d1: their run precedes the day, so a short grid means it is broken.
+    #
+    # It is the wrong bar for d0.  That run is issued after the local day has
+    # begun and cannot describe hours that already happened -- nor does it need
+    # to, since those are settled observation by then.  Its value is the fresher
+    # initial state, not sampling density: a same-day run has assimilated that
+    # morning's observations and beats a two-day-old d2 even with few points.
+    run_day = run_init_utc.astimezone(timezone.utc).date()
+    minimum = 1 if (target - run_day).days == 0 else 7
+    if not minimum <= len(result) <= 9:
         raise ContractError("gefs_archive_local_day_grid_incomplete")
     return result
 
@@ -460,12 +492,15 @@ def capture_gefs_station_day(
     registry_rows: Sequence[Mapping[str, Any]],
     archive_query_at_utc: str,
     timeout_seconds: float = 30.0,
+    lead_days: int = DEFAULT_LEAD_DAYS,
 ) -> dict[str, Any]:
+    if lead_days not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("noaa_gefs_archive_lead_days_invalid")
     station = str(station_id or "").strip().upper()
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
-        target - timedelta(days=2),
-        time(hour=18),
+        target - timedelta(days=lead_days),
+        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -602,7 +637,7 @@ def capture_gefs_station_day(
         "latitude": float(latitude),
         "longitude": float(longitude),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": run_cycle_label(run_init),
         "forecast_hours": hours,
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "NOAA_GEFS",
@@ -644,6 +679,18 @@ def capture_gefs_station_day(
         "live_submit_authorized": False,
     }
     return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def _lead_bucket_for_run(*, event_date: str, run_init: datetime) -> str:
+    """Lead implied by the gap between the run day and the target day."""
+
+    delta = (
+        date.fromisoformat(event_date)
+        - run_init.astimezone(timezone.utc).date()
+    ).days
+    if delta not in SUPPORTED_LEAD_DAYS:
+        raise ContractError("noaa_gefs_archive_lead_days_invalid")
+    return f"d{delta}"
 
 
 def _build_station_capture(
@@ -747,7 +794,12 @@ def _build_station_capture(
         "latitude": float(latitude),
         "longitude": float(longitude),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": run_cycle_label(run_init),
+        # Derived from the run actually used, so a capture cannot advertise
+        # a lead its run does not carry.
+        "archive_lead_bucket": _lead_bucket_for_run(
+            event_date=event_date, run_init=run_init
+        ),
         "forecast_hours": list(forecast_hours),
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "NOAA_GEFS",
@@ -809,7 +861,7 @@ def capture_gefs_station_days(
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=18),
+        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -1041,7 +1093,7 @@ def capture_gefs_station_days(
         "schema": MULTISTATION_SCHEMA,
         "event_date": event_date,
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
-        "run_cycle": RUN_CYCLE,
+        "run_cycle": run_cycle_label(run_init),
         "ensemble_system_id": SYSTEM_ID,
         "independence_family_id": "NOAA_GEFS",
         "station_count": len(captures),
@@ -1076,6 +1128,19 @@ def ingest_gefs_station_day(
 ) -> dict[str, Any]:
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
+    # Lead, cycle and run come from the capture.  Falling back to the module
+    # constants would relabel a shorter-lead capture as d2 at the moment it
+    # lands, which is where such a mislabelling becomes permanent and silently
+    # contaminates d2's training set.
+    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+        capture_lead_and_run(
+            capture,
+            supported_lead_days=SUPPORTED_LEAD_DAYS,
+            default_lead_days=DEFAULT_LEAD_DAYS,
+            error_code="noaa_gefs_archive_lead_days_invalid",
+        )
+    )
+    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
     identity = {
         key: value
         for key, value in capture.items()
@@ -1111,14 +1176,15 @@ def ingest_gefs_station_day(
         "SELECT member_id,member_role,raw_tmax_c "
         "FROM calibration_native_ensemble_historical_member_run "
         "WHERE ensemble_system_id=? AND station_id=? "
-        "AND target_local_date=? AND run_cycle=? "
-        "AND extraction_version=? ORDER BY member_id",
+        "AND target_local_date=? AND archive_lead_bucket=? "
+        "AND run_cycle=? AND extraction_version=? ORDER BY member_id",
         (
             SYSTEM_ID,
             station,
             event_date,
-            RUN_CYCLE,
-            EXTRACTION_VERSION,
+            capture_lead_bucket,
+            capture_run_cycle,
+            capture_extraction_version,
         ),
     ).fetchall()
     expected_semantics = sorted(
@@ -1163,13 +1229,13 @@ def ingest_gefs_station_day(
             "ensemble_system_id": SYSTEM_ID,
             "station_id": station,
             "target_local_date": event_date,
-            "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
-            "run_cycle": RUN_CYCLE,
+            "archive_lead_bucket": capture_lead_bucket,
+            "run_cycle": capture_run_cycle,
             "member_id": str(row["member_id"]),
             "member_role": str(row["member_role"]),
             "raw_tmax_c": float(row["raw_tmax_c"]),
             "settlement_definition": "official_daily_tmax_c",
-            "extraction_version": EXTRACTION_VERSION,
+            "extraction_version": capture_extraction_version,
             "provider_id": str(system[0]),
             "transport_provider_id": "NOAA_GEFS_PDS_S3",
             "native_run_init_utc": str(capture["run_init_utc"]),
@@ -1206,7 +1272,7 @@ def ingest_gefs_station_day(
         "ensemble_system_id": SYSTEM_ID,
         "station_id": station,
         "target_local_date": event_date,
-        "archive_lead_bucket": ARCHIVE_LEAD_BUCKET,
+        "archive_lead_bucket": capture_lead_bucket,
         "archive_query_at_utc": str(capture["archive_query_at_utc"]),
         "member_set_sha256": str(capture["member_set_sha256"]),
         "member_count": 31,

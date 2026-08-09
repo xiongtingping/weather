@@ -173,7 +173,84 @@ def load_resident_formal_observations(
     return result
 
 
+def attach_truth_observation_revisions(
+    conn: sqlite3.Connection,
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    station_id: str,
+    as_of_utc: str,
+) -> list[dict[str, Any]]:
+    """Name the canonical revision fact behind each observation.
+
+    P1's envelope has to carry it -- the truth ledger is keyed on the revision,
+    not on the raw METAR object -- but it cannot be read from the same place as
+    the observations.  ``reported_trajectory_observations`` lives in the
+    read-only canonical archive while the revision facts live in the target
+    SSOT, so this takes the SSOT connection and is applied after loading.
+
+    Strict as-of: the newest revision whose canonical commit is at or before
+    the decision clock wins.  A later revision exists for corrected reports and
+    must not be visible to a decision taken before it landed.
+
+    An observation with no revision fact is returned unchanged rather than
+    rejected: it simply cannot close a P1 packet, and failing here would deny
+    the whole station-day over one report the canonical ingress has not caught
+    up with.
+    """
+
+    rows = list(observations)
+    if not rows:
+        return []
+    wanted = {
+        str(row.get("observation_id") or "").strip()
+        for row in rows
+        if str(row.get("observation_id") or "").strip()
+    }
+    if not wanted:
+        return [dict(row) for row in rows]
+    by_observation: dict[str, tuple[int, str]] = {}
+    placeholders = ",".join("?" for _ in sorted(wanted))
+    try:
+        found = conn.execute(
+            "SELECT json_extract(fact_json,'$.observation_id'),"
+            "  json_extract(fact_json,'$.revision_no'),"
+            "  json_extract(fact_json,'$.canonical_committed_at_utc'),"
+            "  content_sha256 "
+            "FROM canonical_ssot_fact "
+            "WHERE fact_type='truth_observation_revision' "
+            "  AND json_extract(fact_json,'$.station_id')=? "
+            f"  AND json_extract(fact_json,'$.observation_id') IN ({placeholders})",
+            (str(station_id).strip().upper(), *sorted(wanted)),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        raise ContractError(
+            f"resident_p1_truth_revision_lookup_failed:{exc}"
+        ) from exc
+    for observation_id, revision_no, committed_at, content_sha in found:
+        key = str(observation_id or "")
+        committed = str(committed_at or "")
+        if not key or not committed or committed > str(as_of_utc):
+            continue
+        candidate = (int(revision_no or 0), str(content_sha or ""))
+        current = by_observation.get(key)
+        if current is None or candidate[0] > current[0]:
+            by_observation[key] = candidate
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        enriched = dict(row)
+        found_revision = by_observation.get(
+            str(row.get("observation_id") or "").strip()
+        )
+        if found_revision is not None:
+            enriched["truth_observation_revision_content_sha256"] = (
+                found_revision[1]
+            )
+        result.append(enriched)
+    return result
+
+
 __all__ = [
     "MAX_FORMAL_OBSERVATIONS_PER_SCOPE",
+    "attach_truth_observation_revisions",
     "load_resident_formal_observations",
 ]

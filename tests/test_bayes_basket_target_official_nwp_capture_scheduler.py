@@ -638,9 +638,7 @@ def test_registry_scope_discovery_covers_canonical_multiday_catalog() -> None:
         as_of_utc="2026-07-30T16:00:00Z",
     )
 
-    assert scheduler.MAX_DISCOVERED_SCOPES == 135
     assert scheduler.MAX_SCOPES_PER_CYCLE == 4
-    assert len(scopes) == 135
     by_day = {
         day: [
             row for row in scopes if row["event_date"] == day
@@ -652,7 +650,32 @@ def test_registry_scope_discovery_covers_canonical_multiday_catalog() -> None:
         "2026-07-31",
         "2026-08-01",
     }
-    assert all(len(by_day[day]) == 45 for day in by_day)
+    # A station-day expands to one scope per lead, so the catalogue is
+    # stations x days x leads.  Station coverage and lead coverage are asserted
+    # separately, because collapsing them into a single count would hide either
+    # one going missing.
+    for day, day_scopes in by_day.items():
+        assert {row["station_ids"][0] for row in day_scopes} == set(stations)
+        assert {row["lead_days"] for row in day_scopes} == set(
+            scheduler.SUPPORTED_LEAD_DAYS
+        )
+        assert len(day_scopes) == len(stations) * len(
+            scheduler.SUPPORTED_LEAD_DAYS
+        )
+        # Every scope names the run each archive will actually read, so an
+        # operator can tell which cycle a capture came from.
+        for row in day_scopes:
+            assert row["run_init_utc_by_system"] == {
+                system_id: run.isoformat().replace("+00:00", "Z")
+                for system_id, run in sorted(
+                    scheduler.contracted_run_inits(
+                        day, lead_days=row["lead_days"]
+                    ).items()
+                )
+            }
+    # The bound has to clear what a full canonical catalogue produces, or
+    # discovery truncates and the oldest runs are dropped for good.
+    assert len(scopes) <= scheduler.MAX_DISCOVERED_SCOPES
     assert {
         row["event_day_state"] for row in by_day["2026-07-30"]
     } == {"open"}

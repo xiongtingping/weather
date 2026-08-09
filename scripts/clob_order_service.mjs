@@ -741,6 +741,46 @@ function proxyClobReachable(proxyUrl) {
   }
 }
 
+/**
+ * Attest the exchange-visible region of an egress route.
+ *
+ * Reachability alone proves nothing about admission: the public CLOB reads
+ * answer 200 from a restricted region and only the signed order POST is
+ * rejected, so a route selected on reachability can look healthy for days
+ * while every order comes back 403 `geoblocked`.  This asks the exchange
+ * directly and is deliberately three-valued -- an unreachable or unparseable
+ * probe returns `blocked: null` so a flaky probe can never close the lane on
+ * its own.
+ */
+export function probeRegion(proxyUrl = "") {
+  const args = ["-fsS", "--max-time", "6"];
+  if (proxyUrl) args.push("--proxy", String(proxyUrl));
+  args.push("https://polymarket.com/api/geoblock");
+  let raw = "";
+  try {
+    raw = execFileSync("/usr/bin/curl", args, {
+      encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch (err) {
+    return { blocked: null, error: `region_probe_failed:${String(err?.code || err?.message || "error")}` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw || ""));
+  } catch {
+    return { blocked: null, error: "region_probe_unparseable" };
+  }
+  if (typeof parsed?.blocked !== "boolean") {
+    return { blocked: null, error: "region_probe_missing_blocked" };
+  }
+  return {
+    blocked: parsed.blocked,
+    country: String(parsed.country || ""),
+    region: String(parsed.region || ""),
+    error: "",
+  };
+}
+
 async function configureProxy() {
   const forceProxy = truthy(env("PM_CLOB_FORCE_PROXY", "0"));
   if (truthy(env("PM_CLOB_FORCE_DIRECT", "0")) && !forceProxy) {
@@ -765,25 +805,32 @@ async function configureProxy() {
       ...parsePortList(env("PM_PROXY_LOCAL_FALLBACK_PORTS", "1082")),
       1082,
     ].filter((port, idx, arr) => arr.indexOf(port) === idx);
+    const reachable = [];
     for (const port of ports) {
       const candidate = `http://127.0.0.1:${port}`;
       if (await proxyReachable("127.0.0.1", port) && proxyClobReachable(candidate)) {
-        proxy = candidate;
-        break;
+        reachable.push(candidate);
       }
     }
+    // Reachability decides nothing about admission, so prefer the first route
+    // the exchange itself says it will accept orders from.  A reachable but
+    // blocked route is still better than none -- the read-only evidence paths
+    // depend on it -- but it is never chosen over an admitting one.
+    proxy = reachable.find((candidate) => probeRegion(candidate).blocked === false)
+      || reachable[0]
+      || "";
   }
   if (proxy) {
     process.env.HTTP_PROXY = proxy;
     process.env.HTTPS_PROXY = proxy;
     process.env.GLOBAL_AGENT_HTTP_PROXY = proxy;
     bootstrap();
-    return { mode: "proxy", proxy };
+    return { mode: "proxy", proxy, region: probeRegion(proxy) };
   }
   if (forceProxy) {
     return { mode: "proxy_required_missing", forced_proxy: true, error: "proxy_unavailable" };
   }
-  return { mode: "direct_no_proxy" };
+  return { mode: "direct_no_proxy", region: probeRegion("") };
 }
 
 function redactErrorText(text) {
@@ -1052,6 +1099,8 @@ export class ClobOrderService {
   constructor() {
     this.startedAt = new Date();
     this.proxy = {};
+    this.region = { blocked: null, error: "region_not_probed" };
+    this.regionObservedAt = "";
     this.client = null;
     this.signer = null;
     this.apiCreds = null;
@@ -1117,6 +1166,7 @@ export class ClobOrderService {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     this.loadIdempotency();
     this.proxy = await configureProxy();
+    this.recordRegion(this.proxy?.region);
     const keepAliveSockets = Math.max(2, Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_MAX_SOCKETS", "8"), 8)));
     axios.defaults.httpAgent = new HttpAgent({ keepAlive: true, maxSockets: keepAliveSockets });
     axios.defaults.httpsAgent = new HttpsAgent({ keepAlive: true, maxSockets: keepAliveSockets });
@@ -1143,6 +1193,7 @@ export class ClobOrderService {
       this.startBalancePrefetch();
     }
     this.startProxyRecoveryWatch();
+    this.startRegionWatch();
     this.readyAt = new Date();
   }
 
@@ -1460,6 +1511,72 @@ export class ClobOrderService {
     this.idemStore.delete(key);
     this.idem.delete(key);
     this.unresolved.delete(key);
+  }
+
+  recordRegion(result) {
+    if (!result || typeof result !== "object") return this.region;
+    const blocked = typeof result.blocked === "boolean" ? result.blocked : null;
+    this.region = {
+      blocked,
+      country: String(result.country || ""),
+      region: String(result.region || ""),
+      error: String(result.error || ""),
+    };
+    // Only a decided answer carries an observation time.  Leaving the previous
+    // timestamp in place on a failed probe would let a stale "blocked" verdict
+    // masquerade as fresh and close the lane on evidence nobody re-confirmed.
+    this.regionObservedAt = blocked === null ? "" : new Date().toISOString();
+    return this.region;
+  }
+
+  /**
+   * Keep the exchange-visible region attestation current, off the hot path.
+   *
+   * The probe shells out, so it never runs inline with an order: a blocking
+   * refresh would add seconds of event-loop stall to the exact request that is
+   * racing a frozen argmax period.
+   */
+  startRegionWatch() {
+    const sec = positiveNumber(env("PM_CLOB_REGION_PROBE_SEC", "300"), 300);
+    if (!Number.isFinite(sec) || sec <= 0) return null;
+    const proxyUrl = String(this.proxy?.proxy || "").trim();
+    const args = ["-fsS", "--max-time", "6"];
+    if (proxyUrl) args.push("--proxy", proxyUrl);
+    args.push("https://polymarket.com/api/geoblock");
+    const run = () => {
+      execFile("/usr/bin/curl", args, { encoding: "utf8", timeout: 8000 }, (err, stdout) => {
+        if (err) {
+          this.recordRegion({ blocked: null, error: "region_probe_failed" });
+          return;
+        }
+        try {
+          const parsed = JSON.parse(String(stdout || ""));
+          this.recordRegion(
+            typeof parsed?.blocked === "boolean"
+              ? { blocked: parsed.blocked, country: parsed.country, region: parsed.region }
+              : { blocked: null, error: "region_probe_missing_blocked" },
+          );
+        } catch {
+          this.recordRegion({ blocked: null, error: "region_probe_unparseable" });
+        }
+      });
+    };
+    return setInterval(run, Math.round(sec * 1000)).unref?.() ?? null;
+  }
+
+  /**
+   * Report a region verdict only while it is still fresh.
+   *
+   * A stale verdict is treated as unknown in both directions: an old "blocked"
+   * must not keep rejecting after the route was fixed, and an old "allowed"
+   * must not vouch for a route that has since moved.
+   */
+  regionBlockedNow() {
+    if (this.region?.blocked !== true) return false;
+    const observed = Date.parse(String(this.regionObservedAt || ""));
+    if (!Number.isFinite(observed)) return false;
+    const maxAgeMs = Math.max(60, positiveNumber(env("PM_CLOB_REGION_MAX_AGE_SEC", "900"), 900)) * 1000;
+    return Date.now() - observed <= maxAgeMs;
   }
 
   startHeartbeat() {
@@ -2131,6 +2248,7 @@ export class ClobOrderService {
       ready_at: this.readyAt ? this.readyAt.toISOString() : null,
       uptime_sec: Math.round(process.uptime() * 1000) / 1000,
       proxy: this.proxy,
+      region: { ...this.region, observed_at: this.regionObservedAt, blocking_orders: this.regionBlockedNow() },
       metadata_cache_size: this.metadata.size,
       idempotency_cache_size: this.idem.size,
       idempotency_unresolved_count: this.unresolved.size,
@@ -2670,6 +2788,25 @@ export class ClobOrderService {
           source: SERVICE_NAME,
         };
       }
+    }
+    // A fresh attestation that the exchange refuses this egress makes the POST
+    // a guaranteed 403.  Reject here, alongside the other admission gates and
+    // ahead of idempotency: nothing is signed, nothing is posted, and no
+    // durable identity is created, so the caller sees an ordinary terminal
+    // rejection it can retry on the next signal instead of an ambiguous
+    // in-flight order whose budget stays reserved until someone reconciles it.
+    if (this.regionBlockedNow() && !truthy(env("PM_CLOB_IGNORE_REGION_BLOCK", "0"))) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: `clob_region_blocked:${this.region?.country || "unknown"}`,
+        error_class: "clob_order_geoblocked",
+        geoblocked: true, retryable: false, fatal: true,
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
+        service_pid: process.pid,
+      };
     }
     const key = String(payload.idempotency_key || stableKey(payload));
     const orderIntentId = String(payload.order_intent_id || key);

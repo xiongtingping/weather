@@ -34,9 +34,20 @@ SUPPORTED_ARCHIVE_SCHEMAS = {
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
 }
+# Only a fallback, for archives written before collectors stated their lead.
+# Every current archive carries ``archive_lead_bucket`` derived from the run it
+# was actually drawn from, and that always wins.
 ARCHIVE_LEAD_BY_SCHEMA = {
     schema: "d2" for schema in SUPPORTED_ARCHIVE_SCHEMAS
 }
+# P0 is recomputed as the models update, so the same station-day is captured at
+# d2, again at d1, and again at d0.  This builder used to accept d2 alone: the
+# collectors were parameterised, the scheduler emitted all three leads, the
+# worker passed the lead through and the archives came back correctly labelled
+# -- and then every shorter-lead capture died here with
+# ``official_native_forward_scope_mismatch`` after doing all the downloading.
+# Nothing but d2 had ever reached a packet.
+SUPPORTED_ARCHIVE_LEAD_BUCKETS = frozenset({"d0", "d1", "d2"})
 VALID_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 MIXED_NATIVE_CYCLES = "MIXED_NATIVE_CYCLES"
 
@@ -236,7 +247,7 @@ def build_official_native_forward_packet(
             not system_id
             or system_id in archive_metadata_by_system
             or run_cycle not in VALID_RUN_CYCLES
-            or archive_lead != "d2"
+            or archive_lead not in SUPPORTED_ARCHIVE_LEAD_BUCKETS
             or not run_init_utc
             or not archive_query_at_utc
         ):
@@ -267,7 +278,12 @@ def build_official_native_forward_packet(
     if (
         len(event_dates) != 1
         or "" in event_dates
-        or lead_buckets != {"d2"}
+        # One lead per packet, not one particular lead.  Mixing a d1 archive
+        # with a d2 one would blend two different forecasts of the same day
+        # into a single cross-family ensemble and label the result with
+        # whichever lead won the set.
+        or len(lead_buckets) != 1
+        or not lead_buckets.issubset(SUPPORTED_ARCHIVE_LEAD_BUCKETS)
         or not run_cycles.issubset(VALID_RUN_CYCLES)
         or len(system_ids) != len(verified)
         or "" in system_ids
@@ -323,7 +339,11 @@ def build_official_native_forward_packet(
             != event_date
             or str(capture.get("run_cycle") or "")
             != archive_cycle
-            or (capture_lead and capture_lead != "d2")
+            or (
+                capture_lead
+                and capture_lead
+                != str(archive_metadata["archive_lead_bucket"])
+            )
             or not isinstance(capture.get("members"), list)
             or len(capture["members"])
             != int(
@@ -567,6 +587,7 @@ def build_official_native_forward_packet(
 __all__ = [
     "SCHEMA",
     "ARCHIVE_LEAD_BY_SCHEMA",
+    "SUPPORTED_ARCHIVE_LEAD_BUCKETS",
     "VALID_RUN_CYCLES",
     "MIXED_NATIVE_CYCLES",
     "SUPPORTED_ARCHIVE_SCHEMAS",

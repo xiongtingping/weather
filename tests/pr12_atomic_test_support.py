@@ -15,6 +15,8 @@ from bayes_basket_target.canonical_ssot_v12_migration import (
 )
 from bayes_basket_target.contracts import content_sha256
 
+from tests.pr12_authority_projection_test_support import authority_projection
+
 
 def _stamp(value: str) -> str:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -38,6 +40,11 @@ def awc_contract(
     reported_temperature_c: float = 38.0,
 ) -> tuple[dict[str, Any], str]:
     stamp = _stamp(observed_at_utc)
+    # Every fact names the projection that authorises its scope, and the
+    # contract carries that projection so the link can be checked without a
+    # second lookup.  Both sides have to come from the same object or the
+    # parent-mismatch guard rejects the contract.
+    projection = authority_projection(primary_station=station_id)
     revision = _seal(
         {
             "station_id": station_id,
@@ -47,6 +54,9 @@ def awc_contract(
             "settlement_timezone": settlement_timezone,
             "source_lane": "AWC",
             "authority_scope": AUTHORITY_SCOPE,
+            "authority_scope_projection_content_sha256": (
+                projection["content_sha256"]
+            ),
             "report_type": "METAR",
             "sequence": 1,
             "observed_at_utc": stamp,
@@ -81,6 +91,7 @@ def awc_contract(
             "schema": CONTRACT_SCHEMA,
             "as_of_utc": stamp,
             "builder_id": "tests.pr12.atomic.v1",
+            "authority_scope_projection": projection,
             "revision_facts": [revision],
             "day_bounds_facts": [],
         }

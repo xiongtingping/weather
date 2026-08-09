@@ -156,3 +156,104 @@ def test_empty_staging_fails_closed(tmp_path: Path) -> None:
 
     # A failed merge must leave the shared inbox untouched.
     assert _scopes(inbox) == {("KATL", "2026-08-07")}
+
+
+def _lead_packet(
+    station: str,
+    event_date: str,
+    *,
+    lead_bucket: str,
+    marker: str = "v1",
+) -> dict:
+    return {**_packet(station, event_date, marker), "lead_bucket": lead_bucket}
+
+
+def test_a_fresher_lead_replaces_an_older_one(tmp_path: Path) -> None:
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(inbox, [_lead_packet("KMIA", "2026-08-07", lead_bucket="d2")])
+    staging = tmp_path / "staging.json"
+    _write_inbox(
+        staging,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d1", marker="v2")],
+    )
+
+    result = _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-08-06T15:00:00Z"
+    )
+
+    assert result["packet_count"] == 1
+    assert _packets(inbox)[0]["lead_bucket"] == "d1"
+    assert _packets(inbox)[0]["marker"] == "v2"
+
+
+def test_a_late_older_lead_does_not_overwrite_a_fresher_packet(
+    tmp_path: Path,
+) -> None:
+    # Captures for the three leads of one station-day run concurrently, so a
+    # slow d2 fetch can land after the d1 fetch it was queued alongside.  The
+    # inbox holds one packet per station-day; on arrival order alone the older
+    # run would win and P0 would silently regress to a forecast made a day
+    # earlier.
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(
+        inbox,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d0", marker="fresh")],
+    )
+    staging = tmp_path / "staging.json"
+    _write_inbox(
+        staging,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d2", marker="stale")],
+    )
+
+    result = _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-08-06T15:00:00Z"
+    )
+
+    assert result["packet_count"] == 1
+    assert _packets(inbox)[0]["marker"] == "fresh"
+
+
+def test_recapture_at_the_same_lead_still_replaces(tmp_path: Path) -> None:
+    # A re-read of the same lead is a refresh: the first capture may have hit
+    # a run whose members had not all landed.
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(
+        inbox,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d1", marker="old")],
+    )
+    staging = tmp_path / "staging.json"
+    _write_inbox(
+        staging,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d1", marker="new")],
+    )
+
+    _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-08-06T15:00:00Z"
+    )
+
+    assert _packets(inbox)[0]["marker"] == "new"
+
+
+def test_other_scopes_are_untouched_by_the_lead_comparison(
+    tmp_path: Path,
+) -> None:
+    inbox = tmp_path / "inbox.json"
+    _write_inbox(
+        inbox,
+        [
+            _lead_packet("KMIA", "2026-08-07", lead_bucket="d0", marker="fresh"),
+            _lead_packet("KATL", "2026-08-07", lead_bucket="d2"),
+        ],
+    )
+    staging = tmp_path / "staging.json"
+    _write_inbox(
+        staging,
+        [_lead_packet("KMIA", "2026-08-07", lead_bucket="d2", marker="stale")],
+    )
+
+    result = _merge_official_native_inbox(
+        inbox, staging_path=staging, as_of_utc="2026-08-06T15:00:00Z"
+    )
+
+    assert result["packet_count"] == 2
+    assert _scopes(inbox) == {("KMIA", "2026-08-07"), ("KATL", "2026-08-07")}

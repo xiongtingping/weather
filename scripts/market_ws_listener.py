@@ -300,6 +300,21 @@ class LatestQuoteSnapshot:
             liveness_write_interval = 5.0
         self._liveness_write_interval_sec = max(1.0, liveness_write_interval)
         self._last_liveness_write_monotonic = 0.0
+        # A book that is re-observed without changing is still a fresh official
+        # observation.  Consumers reject any shard whose ``book_observed_at``
+        # exceeds their freshness bound, so dropping an unchanged re-observation
+        # silently makes a quiet token unexecutable until its book happens to
+        # move -- which is exactly when the execution lane needs it most.
+        # Republish those tokens on a bounded cadence so the attestation keeps
+        # advancing without letting re-observations crowd real value changes out
+        # of the per-second write budget.
+        try:
+            freshness_refresh_interval = float(
+                os.environ.get("PM_MARKET_WS_BOOK_FRESHNESS_REFRESH_SEC", "30.0")
+            )
+        except (TypeError, ValueError):
+            freshness_refresh_interval = 30.0
+        self._book_freshness_refresh_sec = max(0.0, freshness_refresh_interval)
         self.sharded = str(os.environ.get("PM_MARKET_WS_SHARDED_SNAPSHOT", "0")).strip().lower() in {
             "1", "true", "yes", "on", "y",
         }
@@ -990,6 +1005,38 @@ class LatestQuoteSnapshot:
                 levels[price] = size
             book["observed_at"] = observed_at
 
+    @staticmethod
+    def _iso_utc(value: Any) -> Optional[datetime]:
+        text = str(value or "").strip().replace("Z", "+00:00")
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+    def _book_freshness_refresh_due(
+        self, previous: Mapping[str, Any], next_quote: Mapping[str, Any],
+    ) -> bool:
+        """Republish an unchanged book once its published attestation has aged.
+
+        ``book_observed_at`` is the only proof a consumer has that a quiet book
+        is still being observed live, so an unchanged re-observation has to
+        reach the shard eventually.  Everything inside the bounded interval
+        stays deduplicated on the hot path.
+        """
+
+        if self._book_freshness_refresh_sec <= 0.0:
+            return False
+        observed = self._iso_utc(next_quote.get("book_observed_at"))
+        if observed is None:
+            return False
+        published = self._iso_utc(previous.get("book_observed_at"))
+        if published is None:
+            return True
+        return (observed - published).total_seconds() >= self._book_freshness_refresh_sec
+
     def observe(self, rows: Iterable[Mapping[str, Any]], *, observed_at: str) -> None:
         self.observe_with_shard(rows, observed_at=observed_at, shard_index=None)
 
@@ -1070,7 +1117,8 @@ class LatestQuoteSnapshot:
                 "ask_depth_topN", "bids", "asks", "tick_size",
             )
             if isinstance(previous, Mapping) and all(previous.get(key) == next_quote.get(key) for key in value_keys):
-                continue
+                if not self._book_freshness_refresh_due(previous, next_quote):
+                    continue
             quotes[token_id] = next_quote
             if not is_pending:
                 dirty_tokens.append(token_id)

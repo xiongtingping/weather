@@ -56,6 +56,17 @@ MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 60.0
 MAX_ATTEMPTS = 4
 RETRY_SLEEP_SECONDS = 3.0
+# Minimum gap between requests.  This pass is 45 stations x 3 models = 135
+# separate calls issued back to back, and the provider prices per model-day, so
+# an unpaced sweep arrives as one burst against a per-minute allowance.  The
+# resulting 429s were being retried rather than avoided, which spends the quota
+# that is refusing us.
+#
+# 0.25s spreads the sweep over ~34 seconds -- well inside the 15 minute cadence
+# this pass runs at, so it costs nothing in practice while removing the burst.
+MIN_REQUEST_INTERVAL_SECONDS = 0.25
+# Retrying a rate limit sooner than the server said only earns another refusal.
+MAX_RETRY_SLEEP_SECONDS = 30.0
 
 # Open-Meteo model id -> (system id, independence family, expected members).
 # Member counts are the published ensemble size including control; the API
@@ -85,6 +96,43 @@ def _proxy() -> str | None:
     return None
 
 
+_LAST_REQUEST_MONOTONIC: float = 0.0
+
+
+def _pace_request() -> None:
+    """Hold each request at least ``MIN_REQUEST_INTERVAL_SECONDS`` apart.
+
+    Paced before the call rather than after: the point is to shape what this
+    process sends, and a sweep that only slows down once it has already been
+    refused has already spent the quota.
+    """
+
+    global _LAST_REQUEST_MONOTONIC
+    elapsed = time.monotonic() - _LAST_REQUEST_MONOTONIC
+    if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
+        time.sleep(MIN_REQUEST_INTERVAL_SECONDS - elapsed)
+    _LAST_REQUEST_MONOTONIC = time.monotonic()
+
+
+def _retry_sleep_seconds(exc: Exception, *, attempt: int) -> float:
+    """Prefer the provider's own Retry-After over a guess."""
+
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status == 429 and response is not None:
+        raw = str(response.headers.get("Retry-After") or "").strip()
+        if raw:
+            try:
+                return max(0.0, min(float(raw), MAX_RETRY_SLEEP_SECONDS))
+            except ValueError:
+                pass
+        # A rate limit needs materially longer than a socket retry.
+        return min(
+            RETRY_SLEEP_SECONDS * (2 ** (attempt + 1)), MAX_RETRY_SLEEP_SECONDS
+        )
+    return min(RETRY_SLEEP_SECONDS * (attempt + 1), MAX_RETRY_SLEEP_SECONDS)
+
+
 def _fetch(client: httpx.Client, url: str) -> tuple[bytes, str]:
     """One bounded GET.  Returns the raw body and its digest.
 
@@ -95,6 +143,7 @@ def _fetch(client: httpx.Client, url: str) -> tuple[bytes, str]:
 
     last: Exception | None = None
     for attempt in range(MAX_ATTEMPTS):
+        _pace_request()
         try:
             response = client.get(url)
             response.raise_for_status()
@@ -105,7 +154,25 @@ def _fetch(client: httpx.Client, url: str) -> tuple[bytes, str]:
         except (httpx.HTTPError, OSError) as exc:
             last = exc
             if attempt + 1 < MAX_ATTEMPTS:
-                time.sleep(RETRY_SLEEP_SECONDS * (attempt + 1))
+                time.sleep(_retry_sleep_seconds(exc, attempt=attempt))
+    # Say which limit was reached, not merely that the transport failed.
+    # Reducing model count, slowing the sweep and raising the quota are three
+    # different fixes, and the provider names the window it refused on.
+    detail = ""
+    response = getattr(last, "response", None)
+    if response is not None:
+        try:
+            decoded = json.loads(
+                (response.content or b"").decode("utf-8", errors="replace")
+            )
+            detail = str(decoded.get("reason") or "")[:200]
+        except Exception:
+            detail = ""
+        status = getattr(response, "status_code", None)
+        raise RuntimeError(
+            f"open_meteo_d2_http_{status}"
+            + (f":{detail}" if detail else "")
+        ) from last
     raise RuntimeError(
         f"open_meteo_d2_transport_failed:{type(last).__name__}"
     ) from last

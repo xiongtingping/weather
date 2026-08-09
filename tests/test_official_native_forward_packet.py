@@ -21,6 +21,7 @@ def _archive(
     run_cycle: str = "18Z",
     run_init_utc: str = "2026-06-29T18:00:00Z",
     archive_query_at_utc: str = "2026-07-31T00:00:00Z",
+    archive_lead_bucket: str = "d2",
 ) -> dict[str, object]:
     capture_identity = {
         "station_id": "SAEZ",
@@ -46,7 +47,7 @@ def _archive(
     archive_identity = {
         "schema": schema,
         "event_date": "2026-07-01",
-        "archive_lead_bucket": "d2",
+        "archive_lead_bucket": archive_lead_bucket,
         "run_cycle": run_cycle,
         "ensemble_system_id": system_id,
         "independence_family_id": family_id,
@@ -231,3 +232,79 @@ def test_mixed_native_cycles_keep_per_system_lineage() -> None:
         for key, value in packet.items()
         if key != "snapshot_content_sha256"
     })
+
+
+def _lead_archives(lead_bucket: str, run_init_utc: str, run_cycle: str):
+    intervals = {
+        "16°C or below": [None, 16.5],
+        "17°C or higher": [16.5, None],
+    }
+    return [
+        _archive(
+            schema=NOAA_GEFS_MULTISTATION_SCHEMA,
+            system_id="NOAA_GEFS_05",
+            family_id="NOAA_GEFS",
+            intervals=intervals,
+            run_cycle=run_cycle,
+            run_init_utc=run_init_utc,
+            archive_lead_bucket=lead_bucket,
+        ),
+        _archive(
+            schema=ECMWF_MULTISTATION_SCHEMA,
+            system_id="ECMWF_IFS_ENS_OPEN_PF50",
+            family_id="ECMWF",
+            intervals=intervals,
+            run_cycle=run_cycle,
+            run_init_utc=run_init_utc,
+            archive_lead_bucket=lead_bucket,
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "lead_bucket,run_init_utc,run_cycle",
+    [
+        ("d2", "2026-06-29T18:00:00Z", "18Z"),
+        ("d1", "2026-06-30T00:00:00Z", "00Z"),
+        ("d0", "2026-07-01T00:00:00Z", "00Z"),
+    ],
+)
+def test_every_supported_lead_builds_a_packet(
+    lead_bucket: str, run_init_utc: str, run_cycle: str
+) -> None:
+    # P0 is recomputed as the models update, so the same station-day arrives at
+    # d2, then d1, then d0.  This builder used to accept d2 alone: the shorter
+    # leads were captured, downloaded and correctly labelled, and then rejected
+    # here -- so nothing but d2 had ever reached a packet.
+    packet = build_official_native_forward_packet(
+        archives=_lead_archives(lead_bucket, run_init_utc, run_cycle),
+        station_id="SAEZ",
+    )
+
+    assert packet["lead_bucket"] == lead_bucket
+    assert packet["run_cycle"] == run_cycle
+
+
+def test_archives_at_different_leads_cannot_be_blended() -> None:
+    # Mixing a d1 archive with a d2 one would fold two different forecasts of
+    # the same day into one cross-family ensemble, then label the result with
+    # whichever lead happened to win.
+    mixed = [
+        _lead_archives("d2", "2026-06-29T18:00:00Z", "18Z")[0],
+        _lead_archives("d1", "2026-06-30T00:00:00Z", "00Z")[1],
+    ]
+
+    with pytest.raises(
+        ContractError, match="official_native_forward_scope_mismatch"
+    ):
+        build_official_native_forward_packet(archives=mixed, station_id="SAEZ")
+
+
+def test_an_unsupported_lead_is_still_rejected() -> None:
+    with pytest.raises(
+        ContractError, match="official_native_forward_scope_mismatch"
+    ):
+        build_official_native_forward_packet(
+            archives=_lead_archives("d7", "2026-06-24T18:00:00Z", "18Z"),
+            station_id="SAEZ",
+        )

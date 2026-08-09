@@ -10,12 +10,34 @@ from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
 
 
 SCHEMA = "bayes_basket_target_nwp_rotation_state_v1"
-MAX_CATALOG_SCOPES = 135
+# Stations x open event days x leads, matching what discovery may return
+# (``official_nwp_capture_scheduler.MAX_DISCOVERED_SCOPES``): 45 stations, at
+# most four event days open at once, one scope per supported lead.  Restated
+# rather than imported to keep this module free of the collector dependency
+# chain -- but it has to move whenever that arithmetic does, which is why the
+# arithmetic is spelled out rather than a bare number.  The previous 135 was
+# "45 x 3 event days" from when a station-day was one scope; leaving it there
+# made every rotation write fail closed the moment leads entered the key.
+MAX_CATALOG_SCOPES = 45 * 4 * 3
 MAX_SELECTED_SCOPES = 4
 MAX_BYTES = 1024 * 1024
 
 
 def scope_key(scope: Mapping[str, Any]) -> str:
+    """Identify a scope by the same unit the scheduler hands out.
+
+    The lead belongs in the key.  A station-day is captured once per lead, from
+    a different run each time, so keying on the station-day alone folded three
+    units of work into one: the catalogue undercounted by a factor of three,
+    and ``complete_rotation`` went true once a single lead of each station-day
+    had been attempted -- reporting a finished sweep with two thirds of it
+    never started.
+
+    ``lead_days`` is required rather than optional.  Making it optional would
+    let two spellings of the same scope coexist in one catalogue, which is the
+    drift this key exists to prevent.
+    """
+
     stations = [
         str(value or "").strip().upper()
         for value in scope.get("station_ids") or []
@@ -23,9 +45,16 @@ def scope_key(scope: Mapping[str, Any]) -> str:
     ]
     event_date = str(scope.get("event_date") or "").strip()
     timezone_name = str(scope.get("settlement_timezone") or "").strip()
+    raw_lead = scope.get("lead_days")
     if len(stations) != 1 or not event_date or not timezone_name:
         raise ContractError("nwp_rotation_scope_invalid")
-    return f"{stations[0]}|{event_date}|{timezone_name}"
+    try:
+        lead_days = int(raw_lead)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("nwp_rotation_scope_lead_invalid") from exc
+    if lead_days < 0:
+        raise ContractError("nwp_rotation_scope_lead_invalid")
+    return f"{stations[0]}|{event_date}|{timezone_name}|d{lead_days}"
 
 
 def _without_hash(value: Mapping[str, Any]) -> dict[str, Any]:
