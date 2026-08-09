@@ -542,6 +542,40 @@ def materialize_settled_station_truth(
     }
 
 
+# Failures that mean "this station-day has nothing to settle", as opposed to
+# "what this station-day contains cannot be trusted".
+#
+# The distinction decides whether the batch cursor may advance.  A scope with no
+# eligible hourly report is simply not settleable -- the AWC feed had a gap on
+# that day -- and retrying it forever cannot change that.  126 such station-days
+# accumulated from 2026-08-02, filled the 45-scope batch window, and every batch
+# came back all-failed; the caller then declined to advance the cursor, so the
+# same doomed scopes were reselected on every cycle and no later station-day was
+# ever reached.  Settled truth for all 45 stations stopped, and with it P1 and
+# the METAR trajectory training folds.
+#
+# Anything not listed here is treated as a consistency failure and still stops
+# the batch.  That default is deliberate: a new error code should have to be
+# classified on purpose, because silently skipping an unrecognised one is how a
+# real contradiction would get walked past.
+AVAILABILITY_BLOCKER_REASONS = frozenset({
+    "settlement_truth_hourly_observation_missing",
+    "settlement_truth_canonical_ssot_fact_missing",
+    "settlement_truth_scope_missing",
+})
+
+
+def blocker_class(reason: str) -> str:
+    """Whether a blocker is about availability or about trust."""
+
+    code = str(reason or "").split(":", 1)[-1].strip()
+    for candidate in (str(reason or "").strip(), code):
+        head = candidate.split(":", 1)[0].strip()
+        if head in AVAILABILITY_BLOCKER_REASONS:
+            return "AVAILABILITY"
+    return "CONSISTENCY"
+
+
 def materialize_settled_training_truths(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection,
@@ -674,10 +708,12 @@ def materialize_settled_training_truths(
         except Exception as exc:
             target_conn.execute(f"ROLLBACK TO {savepoint}")
             target_conn.execute(f"RELEASE {savepoint}")
+            reason = f"{type(exc).__name__}:{exc}"
             blockers.append({
                 "station_id": str(station_id),
                 "event_date": str(event_date),
-                "reason": f"{type(exc).__name__}:{exc}",
+                "reason": reason,
+                "blocker_class": blocker_class(reason),
             })
         assert_process_memory_budget()
     return {
@@ -688,6 +724,11 @@ def materialize_settled_training_truths(
             else "blocked_fail_closed"
             if blockers
             else "complete"
+        ),
+        # True when nothing in this batch was a trust failure, so the caller may
+        # record the gaps and move past them instead of reselecting them.
+        "advance_safe": not any(
+            item.get("blocker_class") != "AVAILABILITY" for item in blockers
         ),
         "scope_count": len(scopes),
         "additional_scope_count": len(supplemental),
@@ -708,10 +749,12 @@ def materialize_settled_training_truths(
 
 __all__ = [
     "AUTHORITY_SCOPE",
+    "AVAILABILITY_BLOCKER_REASONS",
     "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1",
     "MAX_OBSERVATIONS_PER_SCOPE",
     "MAX_TRUTH_SCOPES",
     "SCHEMA",
+    "blocker_class",
     "materialize_settled_station_truth",
     "materialize_settled_training_truths",
 ]

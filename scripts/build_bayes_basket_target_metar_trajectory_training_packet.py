@@ -512,6 +512,50 @@ def build_training_packet(
                         or "{}"
                     )
                 )
+                if not centers:
+                    # The dominant native P0 path publishes the bucket
+                    # geometry as intervals only -- 426 of 482 committed P0
+                    # roots carry ``bucket_intervals_c_json`` with no
+                    # ``bucket_centers_c_json`` -- and requiring the centers
+                    # key silently disqualified every such root, which left
+                    # every fold without a conditional path state and the
+                    # hourly-curve OOS gate permanently unsatisfiable.  The
+                    # centers are fully determined by the intervals: the
+                    # midpoint, or the finite edge offset by half a degree for
+                    # an open-ended bucket, matching the runtime fallback in
+                    # ``p1_compiler._bucket_geometry_c``.
+                    root_intervals = json.loads(
+                        str(
+                            lineage.get("bucket_intervals_c_json")
+                            or "{}"
+                        )
+                    )
+                    if isinstance(root_intervals, dict):
+                        derived: dict[str, float] = {}
+                        for interval_bucket, bounds in root_intervals.items():
+                            if (
+                                not isinstance(bounds, (list, tuple))
+                                or len(bounds) != 2
+                            ):
+                                derived = {}
+                                break
+                            lower, upper = bounds
+                            if lower is not None and upper is not None:
+                                derived[str(interval_bucket)] = (
+                                    float(lower) + float(upper)
+                                ) / 2.0
+                            elif upper is not None:
+                                derived[str(interval_bucket)] = (
+                                    float(upper) - 0.5
+                                )
+                            elif lower is not None:
+                                derived[str(interval_bucket)] = (
+                                    float(lower) + 0.5
+                                )
+                            else:
+                                derived = {}
+                                break
+                        centers = derived
                 if not (
                     isinstance(probabilities, dict)
                     and isinstance(centers, dict)

@@ -7354,18 +7354,50 @@ class TargetProductionWorker:
                     self.canonical_source_conn,
                     **truth_kwargs,
                 )
-                if result.get("state") == "blocked_fail_closed":
-                    blockers = result.get("blockers")
-                    first = (
-                        blockers[0].get("reason")
-                        if isinstance(blockers, list)
-                        and blockers
-                        and isinstance(blockers[0], Mapping)
-                        else "unknown"
-                    )
+                if (
+                    result.get("state") == "blocked_fail_closed"
+                    and not result.get("advance_safe")
+                ):
+                    blockers = [
+                        item
+                        for item in (result.get("blockers") or [])
+                        if isinstance(item, Mapping)
+                    ]
+                    # Name the blocker that actually stopped the batch, not
+                    # whichever happened to be first.  An all-availability
+                    # batch no longer reaches here, so what remains is a trust
+                    # failure -- and reporting an unrelated availability gap
+                    # instead sends the reader looking for a missing report
+                    # when the real problem is a contradiction.
+                    consistency = [
+                        item
+                        for item in blockers
+                        if item.get("blocker_class") != "AVAILABILITY"
+                    ]
+                    culprit = (consistency or blockers or [{}])[0]
                     raise ContractError(
-                        f"delta_v2_settlement_truth_blocked:{first}"
+                        "delta_v2_settlement_truth_blocked:"
+                        + str(culprit.get("reason") or "unknown")
+                        + ":"
+                        + str(culprit.get("station_id") or "?")
+                        + "|"
+                        + str(culprit.get("event_date") or "?")
+                        + f":consistency={len(consistency)}"
+                        + f"/total={len(blockers)}"
                     )
+                # A batch in which every scope was merely unsettleable is not a
+                # system failure, and refusing to advance past it is what turned
+                # a source gap into a standstill: 126 station-days with no
+                # eligible hourly report filled the batch window from
+                # 2026-08-02, every batch came back all-failed, the cursor was
+                # never committed, and the same doomed scopes were reselected
+                # forever.  No later station-day was ever reached, so settled
+                # truth stopped for all 45 stations and P1 with it.
+                #
+                # The original caution above still holds for the case it was
+                # written for -- a transaction that may yet fail must not move
+                # the cursor past a page it could roll back.  An all-unavailable
+                # batch wrote nothing, so there is no such page.
                 committed_cursor = int(
                     result.get("source_cursor_after") or 0
                 )

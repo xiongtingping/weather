@@ -874,3 +874,60 @@ def test_lr_bounds_and_hard_exhaustion_fail_closed() -> None:
     )
     with pytest.raises(ContractError, match="hard_bound_exhausts_support"):
         _compile([row])
+
+
+def test_a_bucket_is_dead_the_moment_the_running_high_reaches_its_upper() -> None:
+    """The exclusion boundary is ``>=``, for both shapes of upper bound.
+
+    For half-open interval uppers, a settled max equal to the upper lies
+    outside the bucket; for first-killing-value thresholds, equality is the
+    definition of killed.  The previous strict ``<`` kept the exactly-killed
+    bucket alive: LFPB 2026-07-31 carried a running high of 29 against a
+    threshold-style "28°C" upper of 29.0, and the provably dead bucket kept
+    2.6% of the posterior.  Threshold-style uppers hit the boundary routinely
+    because integer-degree markets produce integer thresholds and METAR
+    reports integer degrees.
+    """
+
+    threshold_style = {
+        # First reported C that kills each bucket of a 1°C market.
+        "33C": 34.0,
+        "34C": 35.0,
+        "35C": 36.0,
+        "36C": 37.0,
+        "37C": 38.0,
+    }
+    proof = _compile(
+        [
+            _observation(
+                "boundary",
+                sequence=1,
+                observed="2026-07-29T04:00:00Z",
+                temperature_c=35.0,
+            ),
+        ],
+    )
+    # Interval-style uppers (34.49 < 35): "34C" and below dead, "35C" alive.
+    assert proof.hard_excluded_buckets == ("33C", "34C")
+
+    boundary = compile_metar_trajectory_update_proof(
+        _root(),
+        observations=[
+            _observation(
+                "boundary-threshold",
+                sequence=1,
+                observed="2026-07-29T04:00:00Z",
+                temperature_c=35.0,
+            ),
+        ],
+        artifact=_artifact(),
+        bucket_centers_c=BUCKET_CENTERS,
+        bucket_upper_bounds_c=threshold_style,
+        maturity_bin="D0",
+        as_of_utc="2026-07-29T04:05:00Z",
+    )
+    # Threshold-style: running high 35 has exactly reached "34C"'s killing
+    # value of 35.0 -- that bucket is dead, not merely wounded.  The running
+    # high's own bucket ("35C", threshold 36.0) always survives, so a stricter
+    # boundary cannot exhaust the support.
+    assert boundary.hard_excluded_buckets == ("33C", "34C")

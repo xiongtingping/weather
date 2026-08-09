@@ -68,7 +68,17 @@ def _insert(
     )
 
 
-def test_awc_formal_scope_preserves_native_metar_minutes() -> None:
+def test_awc_formal_scope_reads_the_same_evidence_settlement_reads() -> None:
+    """A sub-hourly routine METAR must not move P1's running high.
+
+    This test used to assert the opposite -- that the :30 report was formal --
+    and production disproved it: LFPB 2026-07-31 published 14:30Z/15:30Z
+    reports at 29°C while the eligible :00 maximum settled at 28°C.  P1's
+    running high crossed the settled truth, its anchor moved one bucket high,
+    and one report further would have hard-excluded the bucket that settled
+    true.  Settlement skips those reports; P1 must skip exactly the same ones.
+    """
+
     conn = _source()
     _insert(
         conn,
@@ -79,10 +89,20 @@ def test_awc_formal_scope_preserves_native_metar_minutes() -> None:
     )
     _insert(
         conn,
-        observation_id="half-hour-formal",
+        observation_id="half-hour-reference-only",
         valid_at="2026-07-26T15:30:00Z",
         committed_at="2026-07-26T15:31:00Z",
         temperature_c=30,
+    )
+    # An effective SPECI keeps its official minute -- the timing rule is about
+    # routine cadence, not about the minute itself.
+    _insert(
+        conn,
+        observation_id="speci-keeps-minute",
+        valid_at="2026-07-26T15:47:00Z",
+        committed_at="2026-07-26T15:48:00Z",
+        temperature_c=31,
+        report_type="SPECI",
     )
 
     rows = load_resident_formal_observations(
@@ -95,7 +115,7 @@ def test_awc_formal_scope_preserves_native_metar_minutes() -> None:
 
     assert [item["observation_id"] for item in rows] == [
         "hourly",
-        "half-hour-formal",
+        "speci-keeps-minute",
     ]
     assert rows[0]["settlement_timezone"] == "Asia/Seoul"
     assert rows[0]["evidence_role"] == "FORMAL"

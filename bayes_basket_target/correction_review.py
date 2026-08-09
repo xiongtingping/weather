@@ -305,6 +305,89 @@ def append_correction_review(
     }
 
 
+AUTOMATIC_REVIEWER = "policy.correction_auto_clear.v1"
+AUTOMATIC_RATIONALE = (
+    "Automatic CLEAR_REFERENCE_ONLY: a corrected report is admitted as "
+    "reference evidence and never moves settled truth by itself. The "
+    "contradiction guard downstream is unchanged -- two reports that disagree "
+    "on temperature for one valid time still fail closed as "
+    "settlement_truth_hourly_revision_ambiguous."
+)
+
+
+def auto_clear_station_day_corrections(
+    conn: sqlite3.Connection,
+    *,
+    source_lane: str,
+    station_id: str,
+    event_date: str,
+    window_start_utc: str,
+    window_end_utc: str,
+    as_of_utc: str,
+) -> dict[str, Any]:
+    """Resolve every unreviewed correction in scope by standing policy.
+
+    The halt this clears is a *manual* gate, not a correctness one.  It fired
+    for every corrected report and waited for a person, and with nobody
+    reviewing, sixteen station-days held the settled-truth batch indefinitely
+    -- which stopped truth for all 45 stations and P1 with it.
+
+    What is removed is the wait, not the check.  ``CLEAR_REFERENCE_ONLY`` keeps
+    a corrected report out of the truth computation, and the real safety net is
+    downstream and untouched: two reports disagreeing on temperature for one
+    valid time still fail closed.  Each decision is appended as an ordinary
+    review receipt, so the ledger records what was decided and by which policy,
+    and a human decision can still supersede it.
+    """
+
+    lane = _text("correction_review_source_lane", source_lane).lower()
+    station = _text("correction_review_station_id", station_id).upper()
+    day = _text("correction_review_event_date", event_date)
+    as_of = _stamp(_instant("correction_review_as_of_utc", as_of_utc))
+    pending = conn.execute(
+        "SELECT o.observation_id FROM reported_trajectory_observations AS o "
+        "WHERE o.source_lane=? AND o.station_id=? AND o.correction_suspected=1 "
+        "AND julianday(o.valid_at)>=julianday(?) "
+        "AND julianday(o.valid_at)<julianday(?) "
+        "AND julianday(o.canonical_committed_at)<=julianday(?) "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM reported_trajectory_station_halt_reviews AS r "
+        "  WHERE r.source_lane=o.source_lane AND r.station_id=o.station_id "
+        "    AND r.event_date=? AND r.triggering_observation_id=o.observation_id"
+        "    AND julianday(r.reviewed_at)<=julianday(?)"
+        ") "
+        "ORDER BY o.valid_at,o.observation_id LIMIT ?",
+        (
+            lane, station, window_start_utc, window_end_utc, as_of,
+            day, as_of, MAX_CORRECTIONS_PER_SCOPE + 1,
+        ),
+    ).fetchall()
+    if len(pending) > MAX_CORRECTIONS_PER_SCOPE:
+        raise ContractError("correction_review_scope_cap_exceeded")
+    cleared: list[str] = []
+    for (observation_id,) in pending:
+        append_correction_review(
+            conn,
+            source_lane=lane,
+            station_id=station,
+            event_date=day,
+            triggering_observation_id=str(observation_id),
+            decision=CLEAR_REFERENCE_ONLY,
+            reviewer=AUTOMATIC_REVIEWER,
+            rationale=AUTOMATIC_RATIONALE,
+            reviewed_at=as_of,
+        )
+        cleared.append(str(observation_id))
+    return {
+        "schema": SCHEMA,
+        "state": "AUTO_CLEARED" if cleared else "NO_PENDING_CORRECTIONS",
+        "station_id": station,
+        "event_date": day,
+        "cleared_count": len(cleared),
+        "cleared_observation_ids": cleared,
+    }
+
+
 def assert_station_day_corrections_resolved(
     conn: sqlite3.Connection,
     *,
@@ -402,6 +485,8 @@ def assert_station_day_corrections_resolved(
 
 
 __all__ = [
+    "AUTOMATIC_REVIEWER",
+    "auto_clear_station_day_corrections",
     "CLEAR_REFERENCE_ONLY",
     "DECISIONS",
     "MAX_CORRECTIONS_PER_SCOPE",

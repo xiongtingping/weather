@@ -1426,9 +1426,23 @@ def compile_metar_trajectory_update_proof(
                 sigma_c=float(governed.path_model_sigma_c),
             )
         )
+    # A bucket is dead exactly when the running high has reached its upper
+    # bound: for half-open interval uppers ``[lo, hi)`` the settled max being
+    # ``>= hi`` puts it outside the bucket, and for first-killing-value
+    # thresholds ``>= threshold`` is the definition.  One ``<=`` predicate is
+    # therefore correct for both shapes callers supply.  The previous strict
+    # ``<`` was wrong at the boundary for both -- it only looked right on the
+    # native path because half-integer interval edges never equal an integer
+    # report.  On the threshold path the boundary is hit routinely: LFPB
+    # 2026-07-31 carried a running high of 29 against a "28°C" threshold of
+    # 29.0, and the provably dead bucket kept 2.6% of the posterior.
+    #
+    # The eps admits float noise in converted thresholds (an F-market bucket's
+    # (U-30.6)/1.8 lands within 1e-15 of its exact value); at 0.5-degree
+    # physical granularity it can never revive a genuinely live bucket.
     excluded = tuple(
         bucket for bucket in ordered_buckets
-        if upper_bounds[bucket] < running_high - _EPS
+        if upper_bounds[bucket] <= running_high + _EPS
     )
     survivors = [bucket for bucket in ordered_buckets if bucket not in excluded]
     if not survivors or sum(root.probabilities[bucket] for bucket in survivors) <= 0:
