@@ -24,3 +24,10 @@ logs/
 
 # Secrets / env
 .env
+
+# Canonical contract snapshots.  These are one-off database exports, not source:
+# the 2026-08-04 V11 snapshot alone is 106MiB, over GitHub's 100MiB hard limit,
+# and it blocked every push from commit 86 onward.  The build receipt beside
+# each one carries the content hashes and fact counts, so the audit chain
+# survives without the payload; keep the payload outside the repository.
+output/audits/*snapshot*/canonical_contract.json
