@@ -16,6 +16,10 @@ AMSC_HOUR_PRIMARY = "amsc_hourly_metar_for_amsc_station"
 AMSC_HALF_HOUR_REFERENCE = "amsc_half_hour_reference_only"
 AWC_HOUR_REFERENCE_FOR_AMSC = "awc_hourly_reference_only_for_amsc_station"
 AMSC_METAR_TIMING_INVALID = "amsc_metar_timing_invalid"
+# Retained for parsing historical receipts only: the live policy no longer
+# produces this reason.  Between 2026-08-04 and the cadence fix, routine AWC
+# METARs away from :00:00 were excluded under this code, which blanked the 17
+# stations whose provider cadence never lands on the hour.
 AWC_METAR_TIMING_INVALID = "awc_metar_timing_invalid"
 SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN = "source_lane_cross_fallback_forbidden"
 
@@ -80,10 +84,17 @@ def source_policy_reason(
     it to truth.  Every other non-empty result is a fail-closed blocker.
 
     ``valid_at`` is the report's official validity time, not receive time.
-    Routine METARs from either permitted lane are formal only at ``:00:00``.
     AMSC ``:30:00`` METAR remains a reference lane; effective SPECI is valid
-    at any minute/second.  AWC must not turn a provider-side routine cadence
-    into formal truth outside the unified hourly contract.
+    at any minute/second.
+
+    An AWC-owned routine METAR is formal at its provider's own official
+    minute.  Reporting cadence is a per-station property of the network --
+    much of Asia at :00, Europe at :20/:50 or :25/:55, ASOS-fed United States
+    stations at :51-:58 -- and a literal ``:00:00`` requirement silently
+    blanked every station that never publishes on the hour.  United States
+    stations additionally prefer the ASOS one-minute lane where it is
+    complete; the canonical bound selector already ranks ASOS above this
+    lane's rows, so admitting the AWC report here only feeds the fallback.
     """
 
     lane = str(source_lane or "").strip().lower()
@@ -118,11 +129,8 @@ def source_policy_reason(
         if valid_at.minute == 0 and valid_at.second == 0:
             return ""
         return AMSC_METAR_TIMING_INVALID
-    if owned_lane == "awc" and lane == "awc" and kind == "METAR":
-        if valid_at.minute == 0 and valid_at.second == 0:
-            return ""
-        return AWC_METAR_TIMING_INVALID
-    # SPECI is an effective special report and follows its official time.
+    # AWC-owned routine METARs and effective SPECI both follow the provider's
+    # official publication minute; no synthetic minute normalization.
     return ""
 
 

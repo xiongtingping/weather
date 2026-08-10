@@ -359,6 +359,8 @@ def export_canonical_observation_evidence(
             )
             if policy_reason == SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN:
                 raise ContractError("canonical_source_lane_cross_fallback_forbidden")
+            # Historical receipts can still carry the retired timing-exclusion
+            # vocabulary; the live policy no longer produces it.
             timing_exclusion = policy_reason == AWC_METAR_TIMING_INVALID
             if policy_reason and "reference_only" not in policy_reason and not timing_exclusion:
                 raise ContractError(policy_reason)

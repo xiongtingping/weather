@@ -34,7 +34,6 @@ from .correction_review import assert_station_day_corrections_resolved
 from .resource_bounds import assert_process_memory_budget
 from .settlement_time import settlement_day_window
 from .source_policy import (
-    AWC_METAR_TIMING_INVALID,
     source_policy_reason,
 )
 
@@ -277,19 +276,20 @@ def materialize_settled_station_truth(
         if int(row[6] or 0) != 0:
             continue
         # The formal AWC lane is the same source-policy contract used by the
-        # realtime ingress: routine METAR is eligible only at :00; an
-        # effective SPECI keeps its official minute.  AWC also publishes
-        # routine half-hour reports for some stations, but those are not
-        # formal daily-truth input and must not move tmax (for example WSSS
-        # 2026-07-30 05:30Z=31C versus its eligible :00 maximum of 30C).
+        # realtime ingress: every routine report at the provider's own
+        # official minute is formal, and effective SPECI keeps its official
+        # minute.  Providers publish on station-specific cadences -- :00 in
+        # much of Asia, :20/:50 or :25/:55 in Europe, :51-:58 in the United
+        # States, half-hourly extras at some hubs -- and all of them state
+        # official temperatures for the settlement day, so tmax is the
+        # maximum over all of them.  Any surviving policy reason is therefore
+        # a genuine contract violation, never a cadence artifact.
         policy_reason = source_policy_reason(
             source_lane=source_lane.lower(),
             report_type=report_type,
             valid_at=valid_at,
             expected_lane="awc",
         )
-        if policy_reason == AWC_METAR_TIMING_INVALID:
-            continue
         if policy_reason:
             raise ContractError(
                 "settlement_truth_observation_source_policy_invalid:"

@@ -171,9 +171,9 @@ def test_non_hourly_metar_is_blocked_but_speci_remains_formal() -> None:
     assert not blocked
     assert truth[0]["official_tmax_c"] == 31
 
-    # The unified AWC truth lane accepts routine METAR only at :00; a
-    # non-hourly AWC METAR is retained as a bounded blocker.  SPECI remains
-    # valid at its effective minute/second above.
+    # On an AWC-owned station every routine METAR is formal at the provider's
+    # own official minute -- :53 is the ASOS-fed United States cadence -- so
+    # no timing blocker exists for the AWC lane.
     awc = _observation(lane="awc", valid_at="2026-07-24T16:53:00Z")
     awc["first_seen_at_utc"] = "2026-07-24T16:54:00Z"
     awc["canonical_committed_at_utc"] = "2026-07-24T16:55:00Z"
@@ -182,8 +182,8 @@ def test_non_hourly_metar_is_blocked_but_speci_remains_formal() -> None:
         station_lane_map={"ZUUU": "awc"},
         as_of_utc="2026-07-26T00:00:00Z",
     )
-    assert truth == []
-    assert blocked == [{"row_index": "0", "reason": "awc_metar_timing_invalid"}]
+    assert not blocked
+    assert truth[0]["official_tmax_c"] == 31
 
 
 def test_truth_event_date_uses_explicit_settlement_timezone_not_operational_default() -> None:
