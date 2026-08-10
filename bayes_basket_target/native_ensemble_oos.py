@@ -1375,6 +1375,13 @@ def _load_cases(
             continue
         by_scope_day[scope_day] = {
             "event_date": day,
+            # The label the collector wrote, kept alongside the training group
+            # above.  Training groups by lead in hours, but the archive tables
+            # are keyed by the calendar label, so a consumer that needs to look
+            # a case back up in the archive has to ask in the collector's own
+            # vocabulary.  Dropping this made the scope key the only lead on
+            # the case, and any such lookup silently matched nothing.
+            "archive_lead_bucket": lead_bucket,
             "aggregator_snapshot_at_utc": snapshot_at,
             "values": [
                 value
