@@ -84,7 +84,9 @@ def main() -> int:
         default=None,
     )
     parser.add_argument("--station-id", default="RKPK")
-    parser.add_argument("--season-bin", default="summer")
+    # Must match the P0 lineage vocabulary (DJF/MAM/JJA/SON); a "summer"
+    # default fit artifacts no live root could ever join against.
+    parser.add_argument("--season-bin", required=True)
     parser.add_argument("--lead-bucket", default="d2_fallback")
     parser.add_argument("--run-cycle", default="18Z")
     parser.add_argument(

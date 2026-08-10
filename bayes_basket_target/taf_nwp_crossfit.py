@@ -29,6 +29,29 @@ SUPPORTED_LEAD_BUCKETS = frozenset({"d1", "d2", "d2_fallback"})
 SUPPORTED_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 
 
+def _season_bin(event_date: str) -> str:
+    """The month-trigram season the P0 lineage stamps on its envelopes.
+
+    This must be the P0 vocabulary and no other, because the crossfit's season
+    travels into the TAF revision artifact's scope, and resident P0-M selects
+    an artifact by exact equality against the live root's lineage.  The one
+    artifact ever activated was fit while P0 still wrote ``summer``; when P0
+    moved to ``JJA`` on 2026-07-31 the join stopped matching and the stage
+    went silent.  The English hemisphere-flipped vocabulary still exists for
+    policy scope -- that is configured, not joined against lineage, so the two
+    coexist -- but anything on the exact-join path has to speak lineage.
+    """
+
+    month = int(event_date[5:7])
+    if month in (12, 1, 2):
+        return "DJF"
+    if month in (3, 4, 5):
+        return "MAM"
+    if month in (6, 7, 8):
+        return "JJA"
+    return "SON"
+
+
 def _file_sha(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -288,7 +311,7 @@ def build_nwp_crossfit_predictions(
                 "decision_at_utc": latest_publication,
                 "settlement_timezone": sample["settlement_timezone"],
                 "settlement_definition": "official_daily_tmax_c",
-                "season_bin": "summer",
+                "season_bin": _season_bin(event_date),
                 "lead_bucket": normalized_lead,
                 "run_cycle": normalized_cycle,
                 "prediction_oos": True,

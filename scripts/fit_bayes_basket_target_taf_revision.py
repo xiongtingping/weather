@@ -315,7 +315,12 @@ def main() -> int:
     parser.add_argument("--scorecard-output", type=Path, required=True)
     parser.add_argument("--artifact-id", required=True)
     parser.add_argument("--activation-id", required=True)
-    parser.add_argument("--season-bin", default="summer")
+    # No default on purpose.  Resident P0-M selects a TAF artifact by exact
+    # equality against the live P0 root's lineage, and P0 stamps month-trigram
+    # seasons (DJF/MAM/JJA/SON).  The old default of "summer" produced an
+    # artifact no root would ever match once P0 moved off that vocabulary --
+    # the stage ran silent rather than failing loudly at fit time.
+    parser.add_argument("--season-bin", required=True)
     parser.add_argument("--lead-bucket", default="d0")
     parser.add_argument("--run-cycle", default="18Z")
     parser.add_argument("--settlement-definition", default="official_daily_tmax_c")

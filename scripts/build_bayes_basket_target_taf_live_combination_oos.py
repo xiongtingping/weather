@@ -28,7 +28,9 @@ def main() -> int:
     parser.add_argument("--live-p0-inbox", type=Path, default=ROOT / "data" / "bayes_basket_target_p0_inbox.json")
     parser.add_argument("--allowed-evidence-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--station-id", default="RKPK")
-    parser.add_argument("--season-bin", default="summer")
+    # Must match the P0 lineage vocabulary (DJF/MAM/JJA/SON); a "summer"
+    # default fit artifacts no live root could ever join against.
+    parser.add_argument("--season-bin", required=True)
     parser.add_argument("--lead-bucket", default="d2_fallback")
     parser.add_argument("--run-cycle", default="18Z")
     parser.add_argument("--minimum-sample-n", type=int, default=MIN_LIVE_COMBINATION_SAMPLE_N)

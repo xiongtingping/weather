@@ -134,6 +134,12 @@ def test_crossfit_uses_only_prior_days_and_minimum_two_models(tmp_path: Path) ->
         (row["lead_bucket"], row["run_cycle"])
         for row in result["predictions"]
     } == {("d2", "00Z")}
+    # Lineage vocabulary, not the policy one.  These predictions become the
+    # TAF artifact's scope, and resident P0-M matches that scope by exact
+    # equality against the live P0 root's month-trigram season.  The one
+    # artifact ever fit under "summer" stopped joining the day P0 moved to
+    # "JJA", and the stage went silent for eleven days.
+    assert {row["season_bin"] for row in result["predictions"]} == {"JJA"}
     for row in result["predictions"]:
         assert sum(row["selected_weights"].values()) == pytest.approx(1.0)
         assert all(weight > 0.0 for weight in row["selected_weights"].values())
