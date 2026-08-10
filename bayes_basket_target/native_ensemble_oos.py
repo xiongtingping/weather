@@ -14,6 +14,7 @@ import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from itertools import product
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -620,6 +621,80 @@ def _scope_contract_variants(
     return tuple(variants)
 
 
+# One group yields at most this many cycle assignments.  Four systems each
+# offering two cycles would be sixteen artifacts for one station-day scope,
+# which is more calibration than the evidence behind it justifies and more
+# rows than the activation lookup should have to rank.  In practice the live
+# configuration produces two.
+MAX_CYCLE_ASSIGNMENTS_PER_GROUP = 8
+
+
+def _cycle_variant_groups(
+    scope_groups: Mapping[
+        tuple[str, str],
+        Mapping[str, list[tuple[str, dict[str, Any]]]],
+    ],
+) -> list[tuple[tuple[str, str], dict[str, list[tuple[str, dict[str, Any]]]]]]:
+    """Split each lead group into one entry per realizable cycle assignment.
+
+    A system can reach the same lead-hour group from two cycles: an 18Z run two
+    calendar days out and a 00Z run one day out are both 24-48h ahead of some
+    station-days.  That is the grouping working as intended -- the hour bucket
+    exists because the calendar label was not what predicted skill -- but a
+    cross-ensemble artifact names one cycle per system.
+
+    Collapsing to a single "best" variant looks tidy and breaks P0.  The
+    activation lookup matches the artifact's ``run_cycle_by_system`` against
+    the cycles the forward packet actually carries, so an artifact built at a
+    cycle the packet does not use is unreachable.  Which cycle a packet carries
+    depends on which capture P0 reads, and both are legitimate, so both need an
+    artifact.
+
+    Assignments are emitted in a fixed order -- systems sorted, cycles sorted
+    within each system -- so the same evidence always produces the same
+    artifacts.
+    """
+
+    expanded: list[
+        tuple[tuple[str, str], dict[str, list[tuple[str, dict[str, Any]]]]]
+    ] = []
+    for scope_key, system_rows in sorted(scope_groups.items()):
+        ordered_systems = sorted(system_rows)
+        cycles_by_system = [
+            sorted(system_rows[system_id], key=lambda scope: str(scope[0]))
+            for system_id in ordered_systems
+        ]
+        assignment_count = 1
+        for scopes in cycles_by_system:
+            assignment_count *= max(1, len(scopes))
+        if assignment_count > MAX_CYCLE_ASSIGNMENTS_PER_GROUP:
+            # Keep only each system's best-evidenced cycle rather than dropping
+            # the group.  Weight of evidence, never score: ranking these on OOS
+            # metrics would be selecting on the holdout the artifact is about
+            # to be judged against.
+            cycles_by_system = [
+                [
+                    max(
+                        scopes,
+                        key=lambda scope: (
+                            int(scope[1].get("holdout_n") or 0),
+                            int(scope[1].get("train_n") or 0),
+                        ),
+                    )
+                ]
+                for scopes in cycles_by_system
+            ]
+        for assignment in product(*cycles_by_system):
+            expanded.append((
+                scope_key,
+                {
+                    system_id: [scope]
+                    for system_id, scope in zip(ordered_systems, assignment)
+                },
+            ))
+    return expanded
+
+
 def _historical_transport_scope_allowed(
     *,
     system_id: str,
@@ -943,7 +1018,18 @@ def _load_cases(
             "AND authority_scope='CALIBRATION_TRAIN_ONLY' "
             "AND holdout_eligible=0 "
             f"AND transport_provider_id IN ({_OFFICIAL_TRANSPORT_SQL_LIST}) "
-            "AND archive_lead_bucket='d2' "
+            # Every lead the archive holds, not d2 alone.  This filter dated
+            # from when d2 was the only lead captured; the scope contracts were
+            # later widened to d0/d1/d2 so that P0 could follow the freshest
+            # run, but this query was not, so the shorter leads were collected,
+            # stored, and never read.  No d1 or d0 weights have ever existed as
+            # a result, and P0 fails closed at those leads while the rows sit
+            # in the table.
+            #
+            # Widening here does not admit anything unvetted: the scope check
+            # below still requires the row to match a registered contract for
+            # its own lead, cycle and extraction version, and training groups
+            # by lead so weights are never shared across them.
             "ORDER BY target_local_date,archive_query_at_utc,member_id",
             (station,),
         ):
@@ -1903,6 +1989,7 @@ def build_native_ensemble_oos(
                     min_holdout_days,
             })
     cross_candidates: list[dict[str, Any]] = []
+    emitted_activation_keys: set[tuple[str, str, str, str]] = set()
     scope_groups: dict[
         tuple[str, str],
         dict[str, list[tuple[str, dict[str, Any]]]],
@@ -1924,12 +2011,7 @@ def build_native_ensemble_oos(
     for (
         season_bin,
         lead_bucket,
-    ), system_rows in sorted(scope_groups.items()):
-        for system_id, system_scopes in sorted(system_rows.items()):
-            if len({str(scope[0]) for scope in system_scopes}) != 1:
-                raise ContractError(
-                    "native_ensemble_oos_system_cycle_conflict"
-                )
+    ), system_rows in _cycle_variant_groups(scope_groups):
         ready_rows = [
             (system_id, run_cycle, evaluation)
             for system_id, scopes in sorted(system_rows.items())
@@ -2130,6 +2212,28 @@ def build_native_ensemble_oos(
             and cross_metrics["crps"]
             <= climate_metrics["crps"] + EPS
         )
+        # Activations are unique on
+        # (kind, station, system, season, lead, run_cycle, set_hash,
+        # generation) and the per-system cycle mapping is not part of that key.
+        # Two assignments can therefore reduce to the same key: with two
+        # systems and two cycles each, the two crossed pairs both label as
+        # MIXED_NATIVE_CYCLES.  Persisting both aborts the whole station's
+        # transaction on the unique constraint, which would turn a widened
+        # training set into no training at all.
+        #
+        # Keep the first in the fixed assignment order.  Only one mapping per
+        # label is reachable anyway: a forward packet comes from one collector
+        # pass per lead, so its systems carry the cycles their own contracts
+        # name, and the alternative crossing never appears in a packet.
+        candidate_activation_key = (
+            season_bin,
+            lead_bucket,
+            run_cycle,
+            content_sha256(selected_system_ids),
+        )
+        if candidate_activation_key in emitted_activation_keys:
+            continue
+        emitted_activation_keys.add(candidate_activation_key)
         cross_candidates.append({
             "state": (
                 "PRODUCTION_NO_LIVE_OOS_PASS"

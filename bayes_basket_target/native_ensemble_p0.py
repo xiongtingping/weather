@@ -21,6 +21,7 @@ from .native_ensemble_contract import (
     validate_cross_native_ensemble_weights,
     validate_native_ensemble_transport_gate,
 )
+from .native_archive_lead import lead_hour_bucket_for_run
 from .native_ensemble_authority import (
     NativeOosSnapshot,
     pointer_activation_mismatch_reasons,
@@ -84,6 +85,113 @@ def _lead_bucket(
         - captured.date()
     ).days
     return f"d{delta}" if delta >= 0 else f"d_minus_{abs(delta)}"
+
+
+def _hour_lead_bucket(
+    *,
+    event_date: str,
+    timezone_name: str,
+    run_init_utc_by_system: Mapping[str, Any],
+    observed_system_ids: Sequence[str],
+) -> str | None:
+    """The training group this packet's runs belong to, or None.
+
+    OOS trains by how far ahead a run was issued rather than by the calendar
+    label the collector wrote, because the two disagree badly: the calendar
+    ``d1`` and ``d2`` groups overlap across 18-31h and ``d2`` alone spans 37h.
+    P0 has to ask for weights under the same key they were fitted under, and
+    that key is derived here from the runs the packet actually carries.
+
+    ``None`` means no single hour bucket describes this packet -- either the
+    runs are not stated, or the systems were issued far enough apart to fall in
+    different groups.  A cross-ensemble artifact holds systems that all share
+    one bucket, so a split packet cannot match one, and saying so is different
+    from guessing which half to believe.
+    """
+
+    if not run_init_utc_by_system or not observed_system_ids:
+        return None
+    try:
+        day_start = datetime.fromisoformat(event_date).replace(
+            tzinfo=ZoneInfo(timezone_name)
+        ).astimezone(timezone.utc)
+    except (ValueError, TypeError, KeyError):
+        return None
+    buckets: set[str] = set()
+    for system_id in observed_system_ids:
+        raw = str(run_init_utc_by_system.get(system_id) or "").strip()
+        if not raw:
+            return None
+        try:
+            run_init = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if run_init.tzinfo is None or run_init.utcoffset() is None:
+            return None
+        buckets.add(
+            lead_hour_bucket_for_run(
+                day_start_utc=day_start, run_init=run_init
+            )
+        )
+    if len(buckets) != 1:
+        return None
+    return next(iter(buckets))
+
+
+def _activated_lead_bucket(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    season_bin: str,
+    decision_at_utc: str,
+    observed_system_ids: Sequence[str],
+    candidates: Sequence[str],
+) -> str:
+    """The first candidate lead bucket with an admissible cross activation.
+
+    Candidates are ordered freshest-vocabulary first: the hour bucket the
+    trainer now writes, then the calendar bucket earlier artifacts were keyed
+    under.  Both are real trained groupings of the same rows, so falling back
+    is not borrowing another lead's weights -- it is reading a coarser grouping
+    that still contains this run.  Preferring the hour bucket matters because
+    no new calendar-keyed artifact is written any more; without it P0 would
+    coast on artifacts already in their validity window and then fail closed
+    when they expire.
+
+    Only admissibility is probed here -- scope window and whether the selected
+    systems are among those observed.  The OOS-pass and lineage checks stay
+    where they were: this chooses which grouping to ask under, not whether the
+    answer is usable.
+    """
+
+    observed = set(observed_system_ids)
+    for candidate in candidates:
+        rows = conn.execute(
+            "SELECT r.ensemble_system_ids_json "
+            "FROM calibration_native_ensemble_activation a "
+            "JOIN calibration_cross_native_ensemble_artifact r "
+            "ON r.cross_ensemble_artifact_id=a.artifact_id "
+            "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+            "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+            "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+            "ORDER BY a.generation DESC,a.activation_id LIMIT 256",
+            (
+                station_id,
+                season_bin,
+                candidate,
+                decision_at_utc,
+                decision_at_utc,
+            ),
+        ).fetchall()
+        for row in rows:
+            try:
+                selected = {str(value) for value in json.loads(str(row[0]))}
+            except (TypeError, ValueError):
+                continue
+            if selected and selected.issubset(observed):
+                return candidate
+    return candidates[-1]
 
 
 def _interval_probability(
@@ -706,6 +814,39 @@ def compile_native_ensemble_p0(
         }
     )
     run_cycle = str(official_lineage["run_cycle"])
+    # Two different questions share the name "lead", and conflating them is
+    # what stranded the retrained weights.
+    #
+    # ``lead_bucket`` is the calendar label: how far from the event day this
+    # decision is being made.  Station policy, the TAF fingerprint identity and
+    # the operator-facing scope are all keyed by it, and it stays exactly as the
+    # capture stated it.
+    #
+    # ``training_lead_bucket`` is the group the weights were fitted in.  OOS
+    # switched that to lead measured in hours to the station's own local day,
+    # because the calendar groups overlap: d1 and d2 both contain runs issued
+    # 18-31h ahead, and d2 alone spans 37h.  Asking for weights under the
+    # calendar label after that switch finds nothing -- no calendar-keyed
+    # artifact is written any more -- so P0 has to ask under the key the fit
+    # used.
+    hour_lead_bucket = _hour_lead_bucket(
+        event_date=event_date,
+        timezone_name=timezone_name,
+        run_init_utc_by_system=official_lineage["run_init_utc_by_system"],
+        observed_system_ids=observed_system_ids,
+    )
+    training_lead_bucket = _activated_lead_bucket(
+        conn,
+        station_id=station_id,
+        season_bin=season_bin,
+        decision_at_utc=decision_at_utc,
+        observed_system_ids=observed_system_ids,
+        candidates=(
+            (hour_lead_bucket, lead_bucket)
+            if hour_lead_bucket is not None
+            else (lead_bucket,)
+        ),
+    )
     activation_sql = (
         "SELECT a.activation_id,a.artifact_id,a.content_sha256,"
         "a.generation,a.valid_from_utc,"
@@ -729,7 +870,7 @@ def compile_native_ensemble_p0(
     activation_parameters: tuple[Any, ...] = (
         station_id,
         season_bin,
-        lead_bucket,
+        training_lead_bucket,
     )
     activation_parameters += (decision_at_utc, decision_at_utc)
     activation_rows = conn.execute(
@@ -752,7 +893,7 @@ def compile_native_ensemble_p0(
                 selection_evidence_sha256=str(row[13]),
                 generation=int(row[3]),
                 season_bin=season_bin,
-                lead_bucket=lead_bucket,
+                lead_bucket=training_lead_bucket,
                 run_cycle=str(row[8] or ""),
                 run_cycle_by_system_json=str(row[9] or ""),
                 authority_scope="PRODUCTION_NO_LIVE_ONLY",
@@ -805,7 +946,7 @@ def compile_native_ensemble_p0(
             (
                 station_id,
                 season_bin,
-                lead_bucket,
+                training_lead_bucket,
                 selected_run_cycle,
                 selected_cycle_mapping_json,
                 selected_cycle_mapping_sha,
@@ -1000,7 +1141,7 @@ def compile_native_ensemble_p0(
         (
             station_id,
             season_bin,
-            lead_bucket,
+            training_lead_bucket,
             selected_run_cycle,
             expected_cycle_mapping_json,
             expected_cycle_mapping_sha,
@@ -1131,7 +1272,7 @@ def compile_native_ensemble_p0(
                 station_id,
                 system_id,
                 season_bin,
-                lead_bucket,
+                training_lead_bucket,
                 system_run_cycle,
                 _json({system_id: system_run_cycle}),
                 content_sha256({system_id: system_run_cycle}),
@@ -1565,6 +1706,10 @@ def compile_native_ensemble_p0(
         "settlement_definition": settlement_definition,
         "season_bin": season_bin,
         "lead_bucket": lead_bucket,
+        # The grouping the weights came from, recorded separately because it no
+        # longer equals the calendar label above.  Without it a plan cannot be
+        # traced back to the fit that priced it.
+        "training_lead_bucket": training_lead_bucket,
         "run_cycle": run_cycle,
         "run_cycle_scope": active_run_cycle_scope,
         "run_cycle_by_system_json": _json(
