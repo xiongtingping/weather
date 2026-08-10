@@ -24,8 +24,10 @@ import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Mapping
 import sqlite3
 import sys
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -59,22 +61,61 @@ def _pending_scopes(
     *,
     since: str,
     limit: int,
-) -> list[tuple[str, str, str]]:
-    """Station-days with a correction that has no review receipt yet."""
+    timezones: Mapping[str, str],
+) -> tuple[list[tuple[str, str, str]], list[dict[str, str]]]:
+    """Station-days with a correction that has no review receipt yet.
+
+    The day is the station's own settlement day, not the UTC date of the
+    report.  Those differ for most of the network, and grouping by the UTC date
+    produced scopes whose window does not contain the correction that suggested
+    them: at UTC+8 a report at 18:00Z belongs to the next local day, so the
+    pass kept asking about a window it was not in and the halt was never
+    cleared -- indefinitely, since nothing about it changed with time.
+    """
 
     rows = archive.execute(
-        "SELECT DISTINCT o.source_lane, o.station_id, date(o.valid_at) AS day "
+        "SELECT o.source_lane, o.station_id, o.valid_at "
         "FROM reported_trajectory_observations AS o "
-        "WHERE o.correction_suspected=1 AND date(o.valid_at)>=? "
+        # A local day can begin on the previous UTC date, so the coarse filter
+        # reaches back one day and the exact day is computed below.
+        "WHERE o.correction_suspected=1 AND date(o.valid_at)>=date(?, '-1 day') "
         "  AND NOT EXISTS ("
         "    SELECT 1 FROM reported_trajectory_station_halt_reviews AS r "
         "    WHERE r.source_lane=o.source_lane AND r.station_id=o.station_id "
         "      AND r.triggering_observation_id=o.observation_id"
         "  ) "
-        "ORDER BY day, o.station_id LIMIT ?",
-        (since, int(limit)),
+        "ORDER BY o.valid_at, o.station_id",
+        (since,),
     ).fetchall()
-    return [(str(a), str(b), str(c)) for a, b, c in rows]
+    scopes: dict[tuple[str, str, str], None] = {}
+    skipped: list[dict[str, str]] = []
+    seen_unzoned: set[str] = set()
+    for lane, station, valid_at in rows:
+        station_id = str(station)
+        zone = timezones.get(station_id)
+        if not zone:
+            # No settlement timezone means no defensible day window, and
+            # guessing one would clear observations belonging to a neighbour.
+            if station_id not in seen_unzoned:
+                seen_unzoned.add(station_id)
+                skipped.append({
+                    "station_id": station_id,
+                    "event_date": str(valid_at)[:10],
+                    "reason": "settlement_timezone_unknown",
+                })
+            continue
+        local_day = (
+            datetime.fromisoformat(str(valid_at).replace("Z", "+00:00"))
+            .astimezone(ZoneInfo(zone))
+            .date()
+            .isoformat()
+        )
+        if local_day < since:
+            continue
+        scopes[(str(lane), station_id, local_day)] = None
+        if len(scopes) >= int(limit):
+            break
+    return list(scopes), skipped
 
 
 def main() -> int:
@@ -116,24 +157,17 @@ def main() -> int:
     archive = sqlite3.connect(archive_path, timeout=120.0)
     archive.execute("PRAGMA busy_timeout=120000")
     try:
-        scopes = _pending_scopes(
-            archive, since=str(args.since), limit=int(args.max_scopes)
+        scopes, skipped = _pending_scopes(
+            archive,
+            since=str(args.since),
+            limit=int(args.max_scopes),
+            timezones=timezones,
         )
         results: list[dict[str, object]] = []
-        skipped: list[dict[str, str]] = []
         for lane, station, day in scopes:
-            zone = timezones.get(station)
-            if not zone:
-                # No settlement timezone means no defensible day window, and
-                # guessing one would clear observations that belong to the
-                # neighbouring day.
-                skipped.append({
-                    "station_id": station,
-                    "event_date": day,
-                    "reason": "settlement_timezone_unknown",
-                })
-                continue
-            window = settlement_day_window(day, zone)
+            # Scope discovery already resolved the timezone; a station without
+            # one never reaches this loop.
+            window = settlement_day_window(day, timezones[station])
             if args.commit:
                 archive.execute("BEGIN IMMEDIATE")
             try:
