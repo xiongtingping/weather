@@ -235,6 +235,41 @@ HISTORICAL_CURVE_LEAD = "d1"
 _HISTORICAL_CACHE: dict[str, Any] = {}
 
 
+def _deduplicate_prefix(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Collapse reports sharing a valid time, mirroring settled truth.
+
+    26 of 45 stations publish paired reports for one valid time -- usually two
+    SPECIs, sometimes a METAR reissue -- and the path-state compiler requires
+    strictly increasing observation times, so an undeduplicated prefix raised
+    ``metar_path_observation_time_rewind`` and took the station's entire packet
+    down.
+
+    Settled truth already answers this: two reports for one valid time that
+    agree on temperature state the same fact and either may be kept, while a
+    genuine disagreement is not resolvable.  This mirrors that rule exactly
+    rather than inventing a second one.  Returns ``(rows, ok)``; ``ok`` is
+    False when a disagreement makes the day unusable, which skips that fold
+    instead of the packet.
+    """
+
+    seen: dict[str, dict[str, Any]] = {}
+    ordered: list[dict[str, Any]] = []
+    for row in rows:
+        valid_at = str(row.get("valid_at") or "")
+        previous = seen.get(valid_at)
+        if previous is None:
+            seen[valid_at] = row
+            ordered.append(row)
+            continue
+        if float(previous["reported_temperature_c"]) != float(
+            row["reported_temperature_c"]
+        ):
+            return [], False
+    return ordered, True
+
+
 def _historical_fold_binding(
     *,
     station: str,
@@ -388,26 +423,35 @@ def _historical_fold_binding(
             key,
         ),
     )
-    path_state = compile_conditional_metar_path_state(
-        [
-            {
-                "observation_id": str(row["observation_id"]),
-                "observed_at_utc": str(row["valid_at"]),
-                "temperature_c": float(row["reported_temperature_c"]),
-                "raw_text": str(row.get("raw_text") or ""),
-            }
-            for row in prefix_rows
-        ],
-        as_of_utc=cutoff_iso,
-        settlement_timezone=settlement_timezone,
-        root_probabilities=probabilities,
-        bucket_centers_c=centers,
-        future_curve=sealed.to_dict(),
-        root_checkpoint_id=checkpoint_id,
-        root_probability_sha256=posterior_sha,
-        station_id=station,
-        event_date=event_date,
-    )
+    try:
+        path_state = compile_conditional_metar_path_state(
+            [
+                {
+                    "observation_id": str(row["observation_id"]),
+                    "observed_at_utc": str(row["valid_at"]),
+                    "temperature_c": float(row["reported_temperature_c"]),
+                    "raw_text": str(row.get("raw_text") or ""),
+                }
+                for row in prefix_rows
+            ],
+            as_of_utc=cutoff_iso,
+            settlement_timezone=settlement_timezone,
+            root_probabilities=probabilities,
+            bucket_centers_c=centers,
+            future_curve=sealed.to_dict(),
+            root_checkpoint_id=checkpoint_id,
+            root_probability_sha256=posterior_sha,
+            station_id=station,
+            event_date=event_date,
+        )
+    except ContractError:
+        # A fold that cannot be reconstructed is not a build failure -- the
+        # commonest case is a late bucket whose cutoff leaves fewer than two
+        # curve points ahead of it, which is a true statement about that day
+        # rather than a defect.  Returning None leaves the fold exactly as the
+        # committed-root pass left it; raising here would take the whole
+        # station's packet down over one unusable day.
+        return None
     return {
         "root_checkpoint_id": checkpoint_id,
         "root_content_sha256": str(posterior_file.get("content_sha256") or ""),
@@ -608,6 +652,13 @@ def build_training_packet(
                 ]
         elif require_source_poll_receipt:
             prefix = [row for row in prefix if _poll_receipt_verified(row)]
+        prefix, prefix_consistent = _deduplicate_prefix(prefix)
+        if not prefix_consistent:
+            excluded.append({
+                "event_date": event_date,
+                "reason": "canonical_prefix_revision_ambiguous",
+            })
+            continue
         if not prefix:
             excluded.append({
                 "event_date": event_date,
@@ -904,7 +955,13 @@ def build_training_packet(
                 )
                 fold["conditional_path_state"] = path_state.to_dict()
                 break
-        if "conditional_path_state" not in fold:
+        committed_state = fold.get("conditional_path_state") or {}
+        if not committed_state.get("future_curve_complete"):
+            # Fires both when no root bound at all and when the bound root
+            # predates the curve-carrying compiler (2026-08-02): a fold whose
+            # path state lacks a complete future curve is dropped by the
+            # hourly-curve fit either way, so the labelled reconstruction is
+            # strictly more evidence, never less.
             historical = _historical_fold_binding(
                 station=station,
                 event_date=event_date,

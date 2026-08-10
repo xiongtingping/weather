@@ -195,3 +195,50 @@ def test_builder_keeps_forward_rows_as_observational_candidates_only() -> None:
         row["evidence_role"] == "observational_candidate_not_oos"
         for row in manifest["observational_candidates"]
     )
+
+
+def test_paired_reports_for_one_valid_time_collapse_like_settled_truth():
+    """26 of 45 stations publish two reports for one valid time.
+
+    The path-state compiler requires strictly increasing observation times, so
+    an undeduplicated prefix raised ``metar_path_observation_time_rewind`` and
+    took the station's whole packet down -- over half the fleet could not build
+    a training packet at all.  Settled truth already answers this case: reports
+    agreeing on temperature state the same fact, so either may be kept.
+    """
+
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_packet_builder_dedupe",
+        root / "scripts"
+        / "build_bayes_basket_target_metar_trajectory_training_packet.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    agreeing = [
+        {"valid_at": "2026-07-18T13:13:00.000Z", "reported_temperature_c": 24.0},
+        {"valid_at": "2026-07-18T13:13:00.000Z", "reported_temperature_c": 24.0},
+        {"valid_at": "2026-07-18T14:00:00.000Z", "reported_temperature_c": 25.0},
+    ]
+    rows, ok = module._deduplicate_prefix(agreeing)
+    assert ok is True
+    assert [row["valid_at"] for row in rows] == [
+        "2026-07-18T13:13:00.000Z",
+        "2026-07-18T14:00:00.000Z",
+    ]
+
+    # A genuine disagreement is not resolvable, and skipping the fold is the
+    # bounded response -- the packet keeps every other day.
+    conflicting = [
+        {"valid_at": "2026-07-18T13:13:00.000Z", "reported_temperature_c": 24.0},
+        {"valid_at": "2026-07-18T13:13:00.000Z", "reported_temperature_c": 26.0},
+    ]
+    rows, ok = module._deduplicate_prefix(conflicting)
+    assert ok is False
+    assert rows == []
