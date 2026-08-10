@@ -8,7 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError
 from .correction_review import assert_station_day_corrections_resolved
-from .source_policy import AWC_METAR_TIMING_INVALID, source_policy_reason
+from .source_policy import source_policy_reason
 from .settlement_time import (
     registry_settlement_timezone,
     settlement_day_window,
@@ -138,28 +138,20 @@ def load_resident_formal_observations(
             # for this exact non-hourly correction.  It remains reference-only
             # and can never become a formal P1 observation.
             continue
-        # P1 must read the same physical evidence settlement will read.  The
-        # previous comment here claimed ingress owned source selection and the
-        # loader need not re-apply the timing rule -- but the archive
-        # demonstrably admits sub-hourly routine METARs (4,066 across 33
-        # stations in the last fortnight; European stations publish them every
-        # half hour), and settlement rejects exactly those.  LFPB 2026-07-31
-        # showed the consequence in production: two 14:30Z/15:30Z reports at
-        # 29°C pushed P1's running high to 29 while the eligible :00 maximum
-        # settled at 28 -- the anchor moved one bucket high, and one report
-        # further would have hard-excluded the bucket that settled true.
-        #
-        # Mirrors settlement_truth: timing-ineligible routine METAR is skipped
-        # as reference-only; any other policy reason is a fail-closed blocker.
-        # Effective SPECI keeps its official minute.
+        # P1 must read the same physical evidence settlement will read.
+        # Every routine report at the provider's own official minute is
+        # formal -- station cadences range from :00 through :20/:50 to
+        # :51-:58 -- and settlement_truth admits the identical set, so the
+        # LFPB 2026-07-31 divergence (P1 reading sub-hourly rows settlement
+        # then rejected) cannot recur: the two sides now agree by
+        # construction.  Any surviving policy reason is a fail-closed
+        # blocker, never a cadence artifact.
         policy_reason = source_policy_reason(
             source_lane=source_lane.lower(),
             report_type=report_type,
             valid_at=valid_at,
             expected_lane="awc",
         )
-        if policy_reason == AWC_METAR_TIMING_INVALID:
-            continue
         if policy_reason:
             raise ContractError(
                 "resident_p1_observation_source_policy_invalid:"

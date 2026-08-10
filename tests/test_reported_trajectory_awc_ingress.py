@@ -192,7 +192,15 @@ def test_awc_nonhourly_correction_is_retained_only_to_halt_station_day() -> None
         conn.close()
 
 
-def test_awc_nonhourly_uncorrected_metar_remains_ineligible() -> None:
+def test_awc_offhour_routine_metar_is_formal_and_advances_the_running_max() -> None:
+    """Routine METARs are formal at the provider's own official minute.
+
+    EDDM/EFHK/EGLC/LIMC/LTAC publish at :20/:50, EHAM at :25/:55 and the
+    ASOS-fed United States stations at :51-:58.  Under the previous
+    literal-`:00` contract all 17 of them produced no daily-high truth
+    at all.
+    """
+
     conn = _conn()
     try:
         ingress = ReportedTrajectoryAwcIngress(conn, config=load_config())
@@ -205,14 +213,62 @@ def test_awc_nonhourly_uncorrected_metar_remains_ineligible() -> None:
             response_completed_at="2026-07-18T02:53:00.100Z",
         )
 
-        assert result["new_observation_count"] == 0
-        assert result["nonformal_or_malformed_report_count"] == 1
-        assert conn.execute(
-            "SELECT COUNT(*) FROM reported_trajectory_observations"
-        ).fetchone()[0] == 0
+        assert result["new_observation_count"] == 1
+        assert result["nonformal_or_malformed_report_count"] == 0
+        assert result["station_day_fact_updates"] == [{
+            "event_date": "2026-07-18",
+            "state": "running_max_advanced",
+            "reported_max_c": 31,
+            "bound_generation": 1,
+        }]
         assert conn.execute(
             "SELECT COUNT(*) FROM reported_trajectory_station_halts"
         ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_awc_running_max_is_monotonic_across_every_routine_minute() -> None:
+    """All routine reports are formal, so the bound is a plain maximum.
+
+    A cooler later report -- whether :00 after :52, or :50 after :20 --
+    leaves the running maximum untouched; both rows are retained as
+    evidence.
+    """
+
+    conn = _conn()
+    try:
+        ingress = ReportedTrajectoryAwcIngress(conn, config=load_config())
+        ingress.process_source_poll(
+            _poll(
+                "METAR ZBAA 180220Z 18004MPS CAVOK 31/20 Q1000",
+                source_report_time="2026-07-18T02:20:00Z",
+            ),
+            request_started_at="2026-07-18T02:21:00Z",
+            response_completed_at="2026-07-18T02:21:00.100Z",
+        )
+        result = ingress.process_source_poll(
+            _poll(
+                "METAR ZBAA 180250Z 18004MPS CAVOK 29/20 Q1000",
+                source_report_time="2026-07-18T02:50:00Z",
+            ),
+            request_started_at="2026-07-18T02:51:00Z",
+            response_completed_at="2026-07-18T02:51:00.100Z",
+        )
+
+        assert result["new_observation_count"] == 1
+        assert result["station_day_fact_updates"] == [{
+            "event_date": "2026-07-18",
+            "state": "running_max_unchanged",
+            "reported_max_c": 31,
+        }]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_observations"
+        ).fetchone()[0] == 2
+        assert conn.execute(
+            "SELECT reported_max_c,max_valid_at "
+            "FROM reported_trajectory_station_day_bounds"
+        ).fetchone() == (31, "2026-07-18T02:20:00.000Z")
     finally:
         conn.close()
 

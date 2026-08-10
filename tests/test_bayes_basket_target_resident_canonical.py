@@ -69,14 +69,14 @@ def _insert(
 
 
 def test_awc_formal_scope_reads_the_same_evidence_settlement_reads() -> None:
-    """A sub-hourly routine METAR must not move P1's running high.
+    """P1 and settlement must admit the identical observation set.
 
-    This test used to assert the opposite -- that the :30 report was formal --
-    and production disproved it: LFPB 2026-07-31 published 14:30Z/15:30Z
-    reports at 29°C while the eligible :00 maximum settled at 28°C.  P1's
-    running high crossed the settled truth, its anchor moved one bucket high,
-    and one report further would have hard-excluded the bucket that settled
-    true.  Settlement skips those reports; P1 must skip exactly the same ones.
+    The LFPB 2026-07-31 incident was P1 and settlement disagreeing about
+    which rows count: P1 read the 14:30Z/15:30Z reports while settlement
+    rejected them, so the anchor moved one bucket away from the settled
+    truth.  Under the cadence policy of 2026-08-10 every routine report at
+    the provider's official minute is formal on both sides, so the two can
+    no longer diverge -- which is the property this test protects.
     """
 
     conn = _source()
@@ -89,13 +89,12 @@ def test_awc_formal_scope_reads_the_same_evidence_settlement_reads() -> None:
     )
     _insert(
         conn,
-        observation_id="half-hour-reference-only",
+        observation_id="half-hour",
         valid_at="2026-07-26T15:30:00Z",
         committed_at="2026-07-26T15:31:00Z",
         temperature_c=30,
     )
-    # An effective SPECI keeps its official minute -- the timing rule is about
-    # routine cadence, not about the minute itself.
+    # An effective SPECI keeps its official minute.
     _insert(
         conn,
         observation_id="speci-keeps-minute",
@@ -115,10 +114,11 @@ def test_awc_formal_scope_reads_the_same_evidence_settlement_reads() -> None:
 
     assert [item["observation_id"] for item in rows] == [
         "hourly",
+        "half-hour",
         "speci-keeps-minute",
     ]
     assert rows[0]["settlement_timezone"] == "Asia/Seoul"
-    assert rows[0]["evidence_role"] == "FORMAL"
+    assert all(item["evidence_role"] == "FORMAL" for item in rows)
 
 
 def test_resident_adapter_rejects_correction_in_scope() -> None:

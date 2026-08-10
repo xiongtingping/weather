@@ -444,7 +444,7 @@ def test_settlement_truth_rejects_future_asof_before_any_write() -> None:
     ).fetchone()[0] == 0
 
 
-def test_closed_day_uses_registry_timezone_and_filters_awc_routine_half_hour() -> None:
+def test_closed_day_uses_registry_timezone_and_admits_every_routine_minute() -> None:
     target = _target()
     target.execute(
         "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
@@ -460,6 +460,13 @@ def test_closed_day_uses_registry_timezone_and_filters_awc_routine_half_hour() -
         valid_at="2026-07-27T15:00:00Z",
         temperature_c=31,
         committed_at="2026-07-27T15:01:00Z",
+    )
+    _observation(
+        source,
+        observation_id="b-hourly",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=30,
+        committed_at="2026-07-28T03:01:00Z",
     )
     _observation(
         source,
@@ -487,15 +494,66 @@ def test_closed_day_uses_registry_timezone_and_filters_awc_routine_half_hour() -
 
     assert result["state"] == "staged_in_caller_transaction"
     assert result["settlement_timezone"] == "Asia/Seoul"
-    assert result["official_tmax_c"] == 35
+    # Every routine minute is formal, so the hot 03:30Z report sets tmax.
+    assert result["official_tmax_c"] == 39
     row = target.execute(
         "SELECT official_tmax_c,observation_ids_json "
         "FROM calibration_station_daily_high_truth"
     ).fetchone()
-    assert row[0] == 35
-    assert "b-half" not in row[1]
+    assert row[0] == 39
+    assert "b-half" in row[1]
     assert '"settlement_timezone":"Asia/Seoul"' in row[1]
     assert f'"registry_snapshot_sha256":"{"f" * 64}"' in row[1]
+
+
+def test_closed_day_yields_truth_for_a_cadence_that_never_lands_on_the_hour() -> None:
+    """:20/:50-style stations settle from their own routine reports.
+
+    This is the EDDM/EFHK/EGLC/EHAM/LIMC/LTAC/KBKF case plus the ten United
+    States stations, all of which settled to nothing while the contract
+    required a literal :00.
+    """
+
+    target = _target()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "RKPK", "2026-07-28", "America/New_York", "awc", 1,
+            "e" * 64, "2026-07-29T00:00:00Z",
+        ),
+    )
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="a-twenty",
+        valid_at="2026-07-28T03:20:00Z",
+        temperature_c=39,
+        committed_at="2026-07-28T03:21:00Z",
+    )
+    _observation(
+        source,
+        observation_id="b-fifty",
+        valid_at="2026-07-28T03:50:00Z",
+        temperature_c=33,
+        committed_at="2026-07-28T03:51:00Z",
+    )
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-28T19:00:00Z",
+    )
+
+    assert result["official_tmax_c"] == 39
+    row = target.execute(
+        "SELECT official_tmax_c,observation_ids_json "
+        "FROM calibration_station_daily_high_truth"
+    ).fetchone()
+    assert row[0] == 39
+    assert "a-twenty" in row[1]
+    assert "b-fifty" in row[1]
 
 
 def test_truth_writer_excludes_amsc_and_legacy_role_revisions() -> None:
@@ -550,7 +608,11 @@ def test_truth_writer_excludes_amsc_and_legacy_role_revisions() -> None:
     )
 
 
-def test_wsss_truth_excludes_half_hour_awc_metar_and_keeps_hourly_maximum() -> None:
+def test_wsss_truth_admits_half_hour_awc_metar_into_the_daily_maximum() -> None:
+    # Deliberate policy decision (2026-08-10): every routine report at the
+    # provider's official minute is formal, including half-hour extras at
+    # :00/:30 hubs.  This reverses the earlier reading of the WSSS 2026-07-30
+    # case, where the 05:30Z=31C report had been treated as reference-only.
     target = _target()
     target.execute(
         "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
@@ -594,13 +656,14 @@ def test_wsss_truth_excludes_half_hour_awc_metar_and_keeps_hourly_maximum() -> N
     )
 
     assert result["state"] == "staged_in_caller_transaction"
-    assert result["official_tmax_c"] == 30
+    assert result["official_tmax_c"] == 31
     lineage = json.loads(target.execute(
         "SELECT observation_ids_json FROM calibration_station_daily_high_truth"
     ).fetchone()[0])
     assert [item["observation_id"] for item in lineage["observations"]] == [
         "e-wsss-0200",
         "f-wsss-0500",
+        "a-wsss-0530",
     ]
 
 

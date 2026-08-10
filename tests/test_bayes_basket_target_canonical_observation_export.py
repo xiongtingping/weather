@@ -330,7 +330,9 @@ def test_official_timing_roles_fail_closed_and_preserve_speci(tmp_path: Path) ->
     assert result["accepted_truth_count"] == 1
 
 
-def test_awc_owned_station_excludes_routine_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
+def test_awc_owned_station_admits_routine_native_53_minute_and_rejects_amsc(tmp_path: Path) -> None:
+    # KATL's real cadence is :52-:53 with no on-the-hour report at all; the
+    # provider's own routine minute is formal evidence.
     native = tmp_path / "awc-native.db"
     _init_db(native)
     _insert(
@@ -348,12 +350,11 @@ def test_awc_owned_station_excludes_routine_native_53_minute_and_rejects_amsc(tm
         station_lane_map={"KATL": "awc"},
     )
     assert result["state"] == "EXPORTED"
-    assert result["accepted_truth_count"] == 0
-    assert result["excluded_policy_observation_count"] == 1
-    assert result["policy_exclusion_reason_counts"] == {
-        "awc_metar_timing_invalid": 1
-    }
-    assert result["observations"][0]["qc_status"] == "EXCLUDED_POLICY"
+    assert result["accepted_truth_count"] == 1
+    assert result["excluded_policy_observation_count"] == 0
+    assert result["policy_exclusion_reason_counts"] == {}
+    assert result["observations"][0]["evidence_role"] == "FORMAL"
+    assert result["observations"][0]["qc_status"] == "ACCEPTED"
 
     cross = tmp_path / "awc-cross.db"
     _init_db(cross)

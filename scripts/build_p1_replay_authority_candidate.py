@@ -277,9 +277,9 @@ def _canonical_rows(
         if report_type not in {"METAR", "SPECI"}:
             excluded.append({"observation_id": observation_id, "reason": "report_type_invalid"})
             continue
-        if report_type == "METAR" and (valid_at.minute != 0 or valid_at.second != 0 or valid_at.microsecond):
-            excluded.append({"observation_id": observation_id, "reason": "awc_metar_timing_invalid"})
-            continue
+        # Routine METARs are formal at the provider's own official minute
+        # (:00, :20/:50, :51-:58 ...); replay must admit the same set the
+        # live P1 reader and settlement admit.
         row["source_lane"] = AWC
         row["report_type"] = report_type
         row["raw_sha256"] = raw_sha

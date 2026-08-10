@@ -168,14 +168,16 @@ def test_amsc_metar_timing_and_speci_policy_and_awc_hourly_reference():
     ) == "awc_hourly_reference_only_for_amsc_station"
 
 
-def test_awc_owned_metar_requires_exact_hour_but_speci_keeps_effective_time():
+def test_awc_owned_metar_and_speci_are_formal_at_their_official_minute():
     from datetime import datetime, timezone
 
     off_hour = datetime(2026, 7, 17, 16, 30, tzinfo=timezone.utc)
 
+    # Provider cadences range from :00 through :20/:50 to :51-:58; the AWC
+    # lane admits routine METARs at the station's own official minute.
     assert source_policy_reason(
         source_lane="awc", report_type="METAR", valid_at=off_hour, expected_lane="awc"
-    ) == AWC_METAR_TIMING_INVALID
+    ) == ""
     assert source_policy_reason(
         source_lane="awc", report_type="SPECI", valid_at=off_hour, expected_lane="awc"
     ) == ""

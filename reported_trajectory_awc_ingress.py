@@ -15,10 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
-from bayes_basket_target.source_policy import (
-    AWC_METAR_TIMING_INVALID,
-    source_policy_reason,
-)
+from bayes_basket_target.source_policy import source_policy_reason
 from weather_basket_yes_runtime import identity, parse_metar_temperature
 from reported_trajectory_sources import infer_ddhhmm_time, utc_now
 
@@ -142,19 +139,15 @@ class ReportedTrajectoryAwcIngress:
             valid_at=valid_at,
             expected_lane=expected_lane,
         )
-        # A non-:00 routine METAR remains ineligible for formal P1.  Its
-        # official COR/AMD, however, must be retained as correction-only
-        # evidence so the whole station-day fails closed pending manual
-        # review.  Dropping it at the cadence gate would let later formal
-        # observations bypass an authoritative correction notice.  The
+        # Routine METARs are formal at the provider's own official minute --
+        # :00 in much of Asia, :20/:50 or :25/:55 in Europe, :51-:58 for the
+        # ASOS-fed United States stations -- so any surviving policy reason
+        # here is a genuine contract violation, not a cadence artifact.  An
+        # official COR/AMD is retained as correction evidence at any minute so
+        # the whole station-day fails closed pending manual review; the
         # resident P1 reader independently excludes every correction row,
         # including after a review receipt exists.
-        correction_only = (
-            correction
-            and parsed.report_type == "METAR"
-            and policy_reason == AWC_METAR_TIMING_INVALID
-        )
-        if policy_reason and not correction_only:
+        if policy_reason:
             raise ValueError(f"nonformal_source_report:{policy_reason}")
         observation_id = identity(
             "rtobs_",
