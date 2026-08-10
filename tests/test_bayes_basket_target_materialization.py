@@ -92,8 +92,16 @@ def _envelope() -> ProbabilityEnvelope:
     })
 
 
-def _mixed_native_envelope() -> ProbabilityEnvelope:
-    """Build an official GEFS/ECMWF + GEPS mixed-cycle P0 fixture."""
+def _mixed_native_envelope(
+    *, observed_only_system: str | None = None
+) -> ProbabilityEnvelope:
+    """Build an official GEFS/ECMWF + GEPS mixed-cycle P0 fixture.
+
+    ``observed_only_system`` adds a system the packet saw but the cross
+    ensemble did not select, so it appears in the availability evidence and
+    not in the cycle map -- the shape every live 18Z scope has, because ECCC
+    publishes only 00Z.
+    """
 
     base = _envelope()
     run_cycle_by_system = {"ECMWF_ENS": "18Z", "GEPS": "00Z"}
@@ -120,6 +128,12 @@ def _mixed_native_envelope() -> ProbabilityEnvelope:
             },
         },
     }
+    if observed_only_system is not None:
+        availability_identity["by_system"][observed_only_system] = {
+            "run_cycle": "00Z",
+            "run_init_utc": "2026-07-23T00:00:00Z",
+            "archive_query_at_utc": "2026-07-23T03:00:00Z",
+        }
     availability = {
         **availability_identity,
         "content_sha256": content_sha256(availability_identity),
@@ -641,6 +655,59 @@ def test_mixed_native_lineage_is_inherited_by_p0m_and_p1() -> None:
     assert {key: p1.lineage[key] for key in keys} == {
         key: p0.lineage[key] for key in keys
     }
+
+
+def test_a_system_observed_but_not_selected_does_not_block_the_chain() -> None:
+    """Availability evidence covers what was fetched, cycles what was used.
+
+    ECCC publishes only 00Z, so every live 18Z scope observes it and cannot
+    weight it: the packet records its availability, the cross ensemble leaves
+    it out of the cycle map, and the two sets differ by exactly that system.
+    Requiring them to match rejected the richer evidence as "incomplete" and
+    took P1 down for eleven stations at once.
+
+    The receipt for the unselected system is never read -- the per-system
+    checks index by the cycle map -- so carrying it costs nothing and losing
+    the stage costs the reported-high hard bound.
+    """
+
+    p0 = _mixed_native_envelope(observed_only_system="ECCC_GEM_GLOBAL_ENS")
+    availability = json.loads(
+        p0.lineage["native_forward_availability_evidence_json"]
+    )
+    cycles = json.loads(p0.lineage["run_cycle_by_system_json"])
+    assert set(availability["by_system"]) > set(cycles)
+
+    p1 = ProbabilityEnvelope.from_mapping(
+        _trajectory_packet(_p0m_root(p0), temperature_c=37.0)[
+            "expected_envelope"
+        ]
+    )
+    assert p1.stage == "P1"
+    assert p1.lineage["native_forward_availability_evidence_json"] == (
+        p0.lineage["native_forward_availability_evidence_json"]
+    )
+
+
+def test_a_system_in_use_without_a_receipt_still_fails_closed() -> None:
+    """The direction that matters is unchanged: evidence must cover use."""
+
+    p0 = _mixed_native_envelope()
+    availability = json.loads(
+        p0.lineage["native_forward_availability_evidence_json"]
+    )
+    availability["by_system"].pop("GEPS")
+    stripped = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **p0.lineage,
+            "native_forward_availability_evidence_json": json.dumps(
+                availability, sort_keys=True, separators=(",", ":")
+            ),
+        },
+    })
+    with pytest.raises(ContractError):
+        _trajectory_packet(_p0m_root(stripped), temperature_c=37.0)
 
 
 @pytest.mark.parametrize(

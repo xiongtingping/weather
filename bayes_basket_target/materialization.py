@@ -269,7 +269,19 @@ def _native_forward_lineage(
     availability_by_system = availability.get("by_system")
     if not isinstance(availability_by_system, Mapping):
         raise ContractError(f"{stage}_native_forward_availability_invalid")
-    if set(str(key) for key in availability_by_system) != set(cycles):
+    # Cover, not equal.  The availability evidence records every system the
+    # forward packet observed, while ``cycles`` names the subset the cross
+    # ensemble actually selected -- so a system that was fetched but left out
+    # of the weights appears in one and not the other.  That is the ordinary
+    # case, not a defect: ECCC publishes only 00Z, so an 18Z scope observes it
+    # and cannot use it, and demanding the two sets match blocked P1 for every
+    # such station with `availability_incomplete` while the evidence was in
+    # fact more complete than required.
+    #
+    # What has to hold is that every system in use has a receipt.  Entries for
+    # unselected systems are never read: the loop below indexes by ``cycles``,
+    # so an extra receipt cannot reach any decision.
+    if not set(cycles) <= set(str(key) for key in availability_by_system):
         raise ContractError(f"{stage}_native_forward_availability_incomplete")
     for system_id in sorted(cycles):
         receipt = availability_by_system[system_id]
