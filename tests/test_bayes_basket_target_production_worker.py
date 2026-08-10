@@ -2883,6 +2883,69 @@ def test_delta_v2_truth_blocker_rolls_back_before_labels(
     assert repeated["state"] != "throttled"
 
 
+def test_truth_bootstrap_rotates_instead_of_serving_one_alphabetical_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every settled candidate eventually gets a turn, whatever its name.
+
+    The candidate set is routinely larger than one page, and cutting a
+    station-sorted list at a fixed offset served the same prefix every cycle.
+    Stations late in the alphabet failed no gate -- replaying their scopes
+    reaches the write -- they were never asked, which looks exactly like a
+    source outage in the receipts.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    worker = TargetProductionWorker.__new__(TargetProductionWorker)
+    worker.commit_conn = conn
+    worker.canonical_source_conn = sqlite3.connect(":memory:")
+    worker.canonical_source_error = None
+    worker._last_delta_v2_label_scan_monotonic = None
+    worker._delta_v2_truth_cursor_initialized = True
+
+    # 100 candidates spanning the alphabet; one page is 45.
+    candidates = [
+        (f"{chr(ord('A') + index // 4)}{index:03d}", "2026-08-05", "Etc/UTC")
+        for index in range(100)
+    ]
+    monkeypatch.setattr(
+        production_worker_module,
+        "_candidate_ensemble_scopes_without_truth",
+        lambda _conn, *, limit: candidates,
+    )
+    monkeypatch.setattr(
+        production_worker_module,
+        "settlement_day_window",
+        lambda _day, _tz: {"target_day_end_utc": "2026-08-06T00:00:00Z"},
+    )
+    served: list[list[tuple[str, str]]] = []
+
+    def materialize(target_conn, canonical_conn, **kwargs):
+        served.append(list(kwargs.get("additional_scopes") or []))
+        return {
+            "state": "complete",
+            "written_count": 0,
+            "blockers": [],
+            "source_cursor_after": 0,
+        }
+
+    monkeypatch.setattr(
+        production_worker_module,
+        "materialize_settled_training_truths",
+        materialize,
+    )
+    for _cycle in range(3):
+        # The pass has its own scan interval; this test is about which page it
+        # serves, not how often it runs.
+        worker._last_delta_v2_truth_scan_monotonic = None
+        worker._materialize_delta_v2_truths(as_of_utc="2026-08-10T12:00:00Z")
+
+    assert [len(page) for page in served] == [45, 45, 45]
+    assert served[0] != served[1]
+    # Three pages of 45 over 100 candidates cover every one of them.
+    assert len({scope for page in served for scope in page}) == len(candidates)
+
+
 def test_delta_v2_truth_commits_before_label_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3722,6 +3785,364 @@ def test_trajectory_training_not_due_without_settled_truth() -> None:
         "",
         "",
     )
+
+
+def _taf_revision_schema(conn) -> None:
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "station_id TEXT, stage TEXT, state TEXT, settlement_timezone TEXT,"
+        "decision_at_utc TEXT, lineage_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_station_daily_high_truth("
+        "station_id TEXT, local_date TEXT, settlement_timezone TEXT,"
+        "qc_status TEXT)"
+    )
+
+
+def _taf_revision_worker(conn, registry_path: Path) -> TargetProductionWorker:
+    worker = object.__new__(TargetProductionWorker)
+    worker.conn = conn
+    worker.commit_conn = conn
+    worker.taf_artifact_path = registry_path
+    return worker
+
+
+def _p0_root(
+    conn,
+    *,
+    station: str = "ZUUU",
+    season: str = "JJA",
+    lead: str = "d2",
+    training_lead: str | None = None,
+    cycle: str = "18Z",
+    decision: str = "2026-08-10T00:00:00Z",
+) -> None:
+    lineage = {
+        "season_bin": season,
+        "lead_bucket": lead,
+        "run_cycle": cycle,
+        "settlement_definition": "official_daily_tmax_c",
+    }
+    if training_lead is not None:
+        lineage["training_lead_bucket"] = training_lead
+    conn.execute(
+        "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?)",
+        (
+            station,
+            "P0",
+            "COMMITTED",
+            "Asia/Shanghai",
+            decision,
+            json.dumps(lineage),
+        ),
+    )
+
+
+def _historical_taf_worker(conn, tmp_path: Path) -> TargetProductionWorker:
+    worker = object.__new__(TargetProductionWorker)
+    worker.conn = conn
+    worker.commit_conn = conn
+    worker.db_path = tmp_path / "target.db"
+    worker.nwp_runtime_root = tmp_path / "runtime"
+    worker.station_allowlist = ("KMIA", "RKPK", "ZUUU")
+    return worker
+
+
+def test_historical_taf_capture_skips_stations_whose_taf_has_no_tx(
+    tmp_path: Path,
+) -> None:
+    """TX is optional in a TAF and much of the network never publishes it.
+
+    Capturing those stations cannot yield a calibration sample, and the AWC
+    response budget is shared, so the request would be taken from a station
+    that can.  The set is read off what the archive has yielded rather than
+    hardcoded, so a station that starts publishing TX joins on its own.
+    """
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_historical_taf_capture("
+        "station_id TEXT, tx_c REAL)"
+    )
+    worker = _historical_taf_worker(conn, tmp_path)
+
+    # Nothing captured yet: the question cannot be answered, so try them all.
+    assert worker._historical_taf_capture_stations() == ["KMIA", "RKPK", "ZUUU"]
+
+    conn.executemany(
+        "INSERT INTO calibration_historical_taf_capture VALUES(?,?)",
+        [("RKPK", 31.0), ("ZUUU", 30.0), ("KMIA", None)],
+    )
+    assert worker._historical_taf_capture_stations() == ["RKPK", "ZUUU"]
+
+
+def test_historical_taf_capture_asks_only_for_closed_days_and_runs_daily(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_historical_taf_capture("
+        "station_id TEXT, tx_c REAL)"
+    )
+    conn.execute(
+        "INSERT INTO calibration_historical_taf_capture VALUES('RKPK',31.0)"
+    )
+    worker = _historical_taf_worker(conn, tmp_path)
+    submitted: list[list[str]] = []
+
+    class _StubPool:
+        def submit(self, function):
+            submitted.append(function)
+            return SimpleNamespace(done=lambda: True)
+
+    worker._historical_taf_capture_pool = _StubPool()
+
+    first = worker._capture_historical_taf_daily(
+        as_of_utc="2026-08-10T12:00:00Z"
+    )
+
+    assert first["state"] == "SUBMITTED"
+    # Two days of lag so the settlement day is closed in the station's own
+    # timezone, then a week of overlap so a short outage still heals.
+    assert first["end_date"] == "2026-08-08"
+    assert first["start_date"] == "2026-08-02"
+    assert first["station_count"] == 1
+    assert first["calls_order_gateway"] is False
+
+    # Daily, not every cycle: the same window would otherwise be re-fetched
+    # every ten minutes against a shared response budget.
+    second = worker._capture_historical_taf_daily(
+        as_of_utc="2026-08-10T12:10:00Z"
+    )
+    assert second["state"] == "THROTTLED"
+    assert len(submitted) == 1
+
+
+def test_taf_scope_lead_reads_the_grouping_the_weights_were_fitted_in() -> None:
+    """The calendar label identifies a decision; the hour bucket makes two
+    predictions comparable, and that is what a TAF artifact is scoped by.
+
+    d1 and d2 both contain runs issued 18-31h ahead, so the calendar label
+    cannot say whether two P0 predictions belong to the same group.  Roots
+    compiled before the trainer moved to hour buckets carry only the calendar
+    label, and for those it stays the answer -- otherwise an artifact fitted
+    under the old vocabulary would stop matching the roots it always matched.
+    """
+
+    from bayes_basket_target.taf_revision import taf_scope_lead_bucket
+
+    assert taf_scope_lead_bucket({
+        "lead_bucket": "d2",
+        "training_lead_bucket": "h24_48",
+    }) == "h24_48"
+    assert taf_scope_lead_bucket({"lead_bucket": "d2"}) == "d2"
+    assert taf_scope_lead_bucket({
+        "lead_bucket": "d2",
+        "training_lead_bucket": "",
+    }) == "d2"
+    assert taf_scope_lead_bucket({}) == ""
+
+
+def test_taf_training_scope_follows_the_hour_bucket_when_the_root_has_one(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _taf_revision_schema(conn)
+    worker = _taf_revision_worker(conn, tmp_path / "active.json")
+    _p0_root(conn, training_lead="h24_48")
+
+    _due, scope, _reason = worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-08-10T12:00:00Z",
+    )
+
+    # The lane looks for a rolling series under the training grouping, while
+    # the calendar label stays on the receipt for whoever reads it.
+    assert scope["lead_bucket"] == "h24_48"
+    assert scope["calendar_lead_bucket"] == "d2"
+
+
+def test_taf_training_is_due_for_the_scope_the_live_root_actually_stamps(
+    tmp_path: Path,
+) -> None:
+    """P0-M selects on exact lineage equality, so near-misses are not coverage.
+
+    The one artifact ever activated was fit under the "summer" vocabulary and a
+    00Z cycle; the live roots now stamp JJA and 18Z.  A lane that treated any
+    artifact for the station as coverage would keep the stage silent forever,
+    which is the state this pass exists to end.
+    """
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _taf_revision_schema(conn)
+    registry = tmp_path / "active.json"
+    worker = _taf_revision_worker(conn, registry)
+    _p0_root(conn)
+
+    due, scope, reason = worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-08-10T12:00:00Z",
+    )
+    assert due is True
+    assert reason == "no_artifact_for_live_p0_scope"
+    assert (scope["season_bin"], scope["lead_bucket"], scope["run_cycle"]) == (
+        "JJA", "d2", "18Z",
+    )
+
+    # An artifact for the superseded scope is not coverage for the live one.
+    registry.write_text(
+        json.dumps(_taf_artifact_registry(season="summer", cycle="00Z")),
+        encoding="utf-8",
+    )
+    assert worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-08-10T12:00:00Z",
+    )[0] is True
+
+    registry.write_text(
+        json.dumps(_taf_artifact_registry()),
+        encoding="utf-8",
+    )
+    due, _scope, reason = worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-08-10T12:00:00Z",
+    )
+    assert (due, reason) == (False, "active_artifact_covers_live_scope")
+
+    # And it reopens once that artifact's own validity window closes.
+    due, _scope, reason = worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-09-30T12:00:00Z",
+    )
+    assert (due, reason) == (True, "artifact_validity_window_lapsed")
+
+
+def test_taf_training_not_due_without_a_committed_p0_root(
+    tmp_path: Path,
+) -> None:
+    # There is no scope to fit against, and guessing one would produce an
+    # artifact no root can ever join to -- the exact stranding of 2026-07-29.
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _taf_revision_schema(conn)
+    worker = _taf_revision_worker(conn, tmp_path / "active.json")
+
+    due, scope, reason = worker._taf_revision_training_due(
+        station_id="ZUUU",
+        as_of_utc="2026-08-10T12:00:00Z",
+    )
+    assert (due, scope, reason) == (False, {}, "no_committed_p0_root")
+
+
+def test_taf_training_rotates_past_stations_it_cannot_serve(
+    tmp_path: Path,
+) -> None:
+    """One due station per cycle, and a throttled one does not stall the rest."""
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    _taf_revision_schema(conn)
+    worker = _taf_revision_worker(conn, tmp_path / "active.json")
+    worker.station_allowlist = ("KMIA", "RKPK", "ZUUU")
+    worker.db_path = tmp_path / "target.db"
+    worker.p0_inbox_path = tmp_path / "p0_inbox.json"
+    worker.p0_inbox_path.write_text("{}", encoding="utf-8")
+    worker.nwp_runtime_root = tmp_path / "runtime"
+    worker.taf_bound_artifact_root = tmp_path / "bound"
+    _p0_root(conn, station="RKPK")
+    _p0_root(conn, station="ZUUU")
+    submitted: list[object] = []
+
+    class _StubPool:
+        def submit(self, function):
+            submitted.append(function)
+            return SimpleNamespace(done=lambda: True)
+
+    worker._taf_revision_pool = _StubPool()
+
+    first = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
+    second = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
+    third = worker._run_taf_revision_training(as_of_utc="2026-08-10T12:00:00Z")
+
+    assert len(submitted) == 2
+    # KMIA has no P0 root and is skipped without consuming the cycle.
+    assert first["state"] == "SUBMITTED" and first["station_id"] == "RKPK"
+    assert second["state"] == "SUBMITTED" and second["station_id"] == "ZUUU"
+    # Both due stations are now inside their retry throttle.
+    assert third["state"] == "NOT_DUE"
+    assert all(value["calls_order_gateway"] is False for value in (first, second, third))
+    assert all(value["orders_submitted"] == 0 for value in (first, second, third))
+
+
+def _taf_artifact_registry(
+    *,
+    season: str = "JJA",
+    cycle: str = "18Z",
+) -> dict[str, object]:
+    identity = {
+        "schema": "bayes_basket_taf_revision_artifact_v2",
+        "artifact_id": f"taf-zuuu-{season}-d2-{cycle}-test",
+        "activation_id": f"taf-zuuu-{season}-d2-{cycle}-test-activation",
+        "station_id": "ZUUU",
+        "season_bin": season,
+        "lead_bucket": "d2",
+        "run_cycle": cycle,
+        "settlement_definition": "official_daily_tmax_c",
+        "settlement_timezone": "Asia/Shanghai",
+        "method_version": "oos_taf_confirmation_bounded_correction_v2",
+        "trained_through_utc": "2026-07-20T16:00:00Z",
+        "sample_n": 26,
+        "effective_sample_n": 20.0,
+        "oos_metrics": {"brier_score": 0.2, "nll": 0.5, "crps": 0.4},
+        "tx_bias_c": 0.1,
+        "taf_nwp_delta_coefficient": 0.5,
+        "tx_residual_scale_c": 1.0,
+        "physical_feature_effect_c": {
+            "cloud_cover_fraction": 0.2,
+            "precipitation_probability": -0.1,
+            "wind_speed_normalized": -0.05,
+        },
+        "wind_speed_cap_mps": 10.0,
+        "confirmation_tolerance_c": 0.75,
+        "max_confirmation_strength": 0.16,
+        "max_correction_strength": 0.11,
+        "max_probability_mass_transfer": 0.05,
+        "max_center_displacement_buckets": 1,
+        "likelihood_ratio_floor": 0.25,
+        "likelihood_ratio_ceiling": 4.0,
+        "nwp_combination_artifact_sha256": "9" * 64,
+        "nwp_combination_artifact_kind": TAF_NWP_CROSSFIT_ARTIFACT_KIND,
+        "nwp_live_compatibility_contract_version": (
+            TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION
+        ),
+        "nwp_live_compatibility_fingerprint_sha256": "a" * 64,
+        "nwp_live_compatibility_evidence_sha256": "b" * 64,
+        "nwp_live_compatibility_validated": True,
+        "oos_taf_nwp_residual_correlation": 0.3,
+        "correlation_discount_method": (
+            "holdout_taf_vs_nwp_combination_residual_pearson_v1"
+        ),
+        "correlation_discount": 0.7,
+        "joint_physical_oos_validated": True,
+        "valid_from_utc": "2026-08-01T00:00:00Z",
+        "valid_until_utc": "2026-08-31T00:00:00Z",
+        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+        "activated": True,
+    }
+    return build_taf_artifact_registry([
+        {**identity, "content_sha256": content_sha256(identity)}
+    ])
 
 
 def _rotation_worker(tmp_path: Path) -> TargetProductionWorker:

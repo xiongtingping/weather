@@ -100,9 +100,23 @@ def main() -> int:
     parser.add_argument("--timeout-sec", type=int, default=20)
     parser.add_argument("--request-interval-sec", type=float, default=0.25)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--decision-anchor-hour",
+        type=int,
+        action="append",
+        default=[],
+        help=(
+            "Hours after the local settlement day start to anchor a replay at; "
+            "repeat for several anchors (default 1).  TAF is issued on a "
+            "roughly six-hourly cycle, so 1/7/13/19 covers a day's decisions."
+        ),
+    )
     args = parser.parse_args()
     if not 1 <= args.max_workers <= 4:
         raise RuntimeError("historical_taf_worker_count_invalid")
+    anchors = sorted({int(value) for value in args.decision_anchor_hour}) or [1]
+    if any(not 0 < value < 24 for value in anchors) or len(anchors) > 8:
+        raise RuntimeError("historical_taf_decision_anchor_scope_invalid")
     requested = {
         str(value or "").strip().upper()
         for value in args.station_id
@@ -118,11 +132,16 @@ def main() -> int:
     def run(
         station: str,
         scope: tuple[str, str],
+        anchor_hour: int,
     ) -> dict[str, object]:
         timezone_name, source_lane = scope
+        # The default anchor keeps its historical filename, so existing
+        # artifacts stay resumable and every consumer that globs AWC_TAF_*
+        # keeps finding them.  Further anchors are separate replays.
+        suffix = "" if anchor_hour == 1 else f"_h{anchor_hour:02d}"
         output = destination / (
             f"AWC_TAF_{station}_{args.start_date.replace('-', '')}_"
-            f"{args.end_date.replace('-', '')}.json"
+            f"{args.end_date.replace('-', '')}{suffix}.json"
         )
         existing = (
             load_bounded_json(output)
@@ -138,6 +157,7 @@ def main() -> int:
             request_interval_sec=args.request_interval_sec,
             source_lane=source_lane,
             existing=existing,
+            decision_anchor_offset_hours=anchor_hour,
         )
         write_bounded_json(
             output,
@@ -147,6 +167,7 @@ def main() -> int:
         return {
             "station_id": station,
             "source_lane": source_lane,
+            "decision_anchor_offset_hours": anchor_hour,
             "output": str(output),
             "sample_count": int(artifact["sample_count"]),
             "excluded_sample_count": int(
@@ -162,24 +183,45 @@ def main() -> int:
         thread_name_prefix="awc-taf-history",
     ) as executor:
         pending = {
-            executor.submit(run, station, scope): station
+            executor.submit(run, station, scope, anchor): (station, anchor)
             for station, scope in scopes.items()
+            for anchor in anchors
         }
         for future in as_completed(pending):
-            station = pending[future]
+            station, anchor = pending[future]
             try:
                 results.append(future.result())
             except Exception as exc:
                 failures.append({
                     "station_id": station,
+                    "decision_anchor_offset_hours": anchor,
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
-    results.sort(key=lambda row: str(row["station_id"]))
-    failures.sort(key=lambda row: str(row["station_id"]))
+    results.sort(
+        key=lambda row: (
+            str(row["station_id"]),
+            int(row["decision_anchor_offset_hours"]),
+        )
+    )
+    failures.sort(
+        key=lambda row: (
+            str(row["station_id"]),
+            int(row.get("decision_anchor_offset_hours") or 0),
+        )
+    )
     receipt = {
         "station_count": len(scopes),
-        "completed_station_count": len(results),
-        "failed_station_count": len(failures),
+        "decision_anchor_offset_hours": anchors,
+        # One run is one station at one anchor, so these stop equalling the
+        # station count as soon as more than one anchor is requested.
+        "completed_run_count": len(results),
+        "failed_run_count": len(failures),
+        "completed_station_count": len({
+            str(row["station_id"]) for row in results
+        }),
+        "failed_station_count": len({
+            str(row["station_id"]) for row in failures
+        }),
         "sample_count": sum(
             int(row["sample_count"]) for row in results
         ),

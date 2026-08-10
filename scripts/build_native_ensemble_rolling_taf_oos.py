@@ -20,6 +20,7 @@ from bayes_basket_target.resource_bounds import write_bounded_json_if_changed  #
 from bayes_basket_target.rolling_native_taf_oos import (  # noqa: E402
     build_rolling_origin_native_oos,
     build_rolling_taf_exact_joins,
+    split_rolling_taf_exact_join,
 )
 
 
@@ -49,14 +50,43 @@ def main() -> int:
                 station_id=station,
                 as_of_utc=as_of,
             )
-            joins = build_rolling_taf_exact_joins(conn, rolling) if rolling["state"] == "READY" else []
+            skipped_scopes: list[dict] = []
+            joins = (
+                build_rolling_taf_exact_joins(
+                    conn,
+                    rolling,
+                    skipped_scopes=skipped_scopes,
+                )
+                if rolling["state"] == "READY"
+                else []
+            )
             rolling_path = destination / f"{station}_rolling_native_oos.json"
             write_bounded_json_if_changed(rolling_path, rolling)
             join_paths = []
+            splits = []
             for index, join in enumerate(joins):
                 target = destination / f"{station}_rolling_taf_exact_join_{index:02d}.json"
                 write_bounded_json_if_changed(target, join)
                 join_paths.append(str(target))
+                # A fitted artifact can never be qualified on its own rows, so
+                # emit the strictly-later transport window alongside the fit
+                # window rather than leaving the caller to cut the series.
+                split = split_rolling_taf_exact_join(join)
+                entry = {
+                    key: value
+                    for key, value in split.items()
+                    if key not in {"fit", "transport"}
+                }
+                if split["state"] == "READY":
+                    fit_path = destination / f"{station}_rolling_taf_fit_{index:02d}.json"
+                    transport_path = (
+                        destination / f"{station}_rolling_taf_transport_{index:02d}.json"
+                    )
+                    write_bounded_json_if_changed(fit_path, split["fit"])
+                    write_bounded_json_if_changed(transport_path, split["transport"])
+                    entry["fit_output"] = str(fit_path)
+                    entry["transport_output"] = str(transport_path)
+                splits.append(entry)
             reports.append({
                 "station_id": station,
                 "state": rolling["state"],
@@ -66,6 +96,12 @@ def main() -> int:
                 "taf_exact_join_sample_count": sum(int(join["sample_count"]) for join in joins),
                 "rolling_output": str(rolling_path),
                 "exact_join_outputs": join_paths,
+                "strict_split_ready_count": sum(
+                    item["state"] == "READY" for item in splits
+                ),
+                "strict_splits": splits,
+                "skipped_scope_count": len(skipped_scopes),
+                "skipped_scopes": skipped_scopes,
             })
     identity = {
         "schema": "native_ensemble_rolling_taf_oos_build_manifest_v1",
@@ -92,6 +128,9 @@ def main() -> int:
         "station_count": len(stations),
         "ready_station_count": sum(item["state"] == "READY" for item in reports),
         "taf_exact_join_sample_count": sum(item["taf_exact_join_sample_count"] for item in reports),
+        "strict_split_ready_count": sum(
+            item["strict_split_ready_count"] for item in reports
+        ),
         "calls_order_gateway": False,
         "orders_submitted": 0,
     }, ensure_ascii=False, sort_keys=True))
