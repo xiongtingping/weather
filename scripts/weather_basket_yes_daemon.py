@@ -180,6 +180,12 @@ TARGET_NWP_SCOPES_PER_POLL = 3
 # their 30-minute retry floor, so coverage gets slower, not faster.
 TARGET_NWP_SWEEP_BUDGET_SEC = 1.0 * 3600.0
 TARGET_NWP_MAX_SCOPES_PER_POLL = 20
+# Wall clock, not a blocker count, is what the advance loop actually has to
+# respect: a poll that overruns its interval delays the next one and the sweep
+# falls behind the P0 TTL.  Guarding the clock directly lets the loop step over
+# a scope whose own source is down instead of treating "blocked" as a proxy for
+# "expensive" -- most blocked scopes fail on a single fast HTTP response.
+TARGET_NWP_ADVANCE_BUDGET_SEC = TARGET_NWP_POLL_INTERVAL_SEC * 0.5
 
 
 def _nwp_scopes_per_poll(catalog_scope_count: int) -> int:
@@ -555,17 +561,54 @@ def run_target_forecast_refresh_cycle(
                 scopes_this_poll = _nwp_scopes_per_poll(
                     len(rotation.get("catalog_scope_keys") or ())
                 )
+                # Advance past a blocked scope rather than ending the poll on
+                # it.  Stopping at the first blocker silently reinstated the
+                # one-scope-per-poll sweep this budget exists to prevent, and
+                # it did so through the fallback source: each scope tries its
+                # official native packet first and only pays Open-Meteo when
+                # that is unavailable, so an exhausted Open-Meteo daily quota
+                # blocked the first such scope and ended every poll there.
+                # Official captures are kicked off inside each scope's own
+                # turn, so the scopes behind the blocker never even submitted
+                # theirs -- on 2026-08-10 the official inbox went unwritten for
+                # six hours, every packet aged past its 6h freshness, and P0
+                # and P1 both fail-closed with the root cause three layers up.
+                #
+                # The budget below is the real constraint: a poll must not
+                # overrun its interval.
+                advance_deadline = (
+                    time.monotonic() + TARGET_NWP_ADVANCE_BUDGET_SEC
+                )
+                blocked_scope_count = 0
                 for _ in range(scopes_this_poll):
                     advanced.append(refresh(as_of_utc=utc_now()))
-                    # Stop early on a fail-closed scope rather than burning the
-                    # remaining budget on the same blocker.
                     if str(advanced[-1].get("state") or "").startswith(
                         "blocked"
                     ):
+                        blocked_scope_count += 1
+                    if time.monotonic() >= advance_deadline:
                         break
-                nwp_state = advanced[-1]
+                # Once the loop steps over blockers, the last receipt is an
+                # arbitrary scope: reporting it would flap between blocked and
+                # committed on the luck of the draw.  Represent the poll by its
+                # last scope that got somewhere, so a blocked state means the
+                # whole poll achieved nothing -- the condition worth paging on.
+                # The per-poll counts below keep the blocked scopes visible.
+                nwp_state = next(
+                    (
+                        receipt
+                        for receipt in reversed(advanced)
+                        if not str(receipt.get("state") or "").startswith(
+                            "blocked"
+                        )
+                    ),
+                    advanced[-1],
+                )
                 nwp_state["scopes_advanced_this_poll"] = len(advanced)
                 nwp_state["scopes_per_poll_target"] = scopes_this_poll
+                nwp_state["blocked_scope_count_this_poll"] = (
+                    blocked_scope_count
+                )
             else:
                 nwp_state = {
                     "state": "not_configured",

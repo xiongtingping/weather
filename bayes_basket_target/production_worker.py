@@ -1485,6 +1485,23 @@ def _utc_date(value: str) -> date:
     ).date()
 
 
+def _is_republisher_daily_quota_exhausted(exc: BaseException) -> bool:
+    """Whether this failure means the republisher is spent for the UTC day.
+
+    A per-request 429 is transient and worth retrying on the next scope; a
+    daily cap is not, and re-asking once per scope for the rest of the day is
+    both pointless and rude to the provider.  Matched on the provider's own
+    wording because the transport surfaces it verbatim and the two cases share
+    a status code.
+    """
+
+    text = f"{exc}"
+    return (
+        "open_meteo_ensemble_rate_limited" in text
+        and "daily api request limit exceeded" in text.lower()
+    )
+
+
 def _event_date_or_none(value: str) -> date | None:
     try:
         return date.fromisoformat(str(value).strip())
@@ -3244,6 +3261,48 @@ class TargetProductionWorker:
             and str(row.get("event_date") or "")
             == native_event_date
         ]
+        if (
+            getattr(self, "_republisher_quota_exhausted_utc_date", None)
+            == _utc_date(as_of_utc)
+        ):
+            # Skip the spend, keep the turn.  The scope still advances and its
+            # official native capture was already kicked off above; only the
+            # republisher fallback is withheld, and only until the quota day
+            # rolls over.  This is not a blocked state: nothing failed here,
+            # and reporting it as blocked would hide whether anything else is
+            # wrong with the sweep.
+            rotation_receipt = self._persist_nwp_rotation(
+                station_ids=station_allowlist,
+                scopes=scopes,
+                selected_scopes=[native_scope],
+                outcomes=[{
+                    "scope_key": nwp_rotation_scope_key(native_scope),
+                    "state": "REPUBLISHER_QUOTA_EXHAUSTED",
+                    "candidate_only": False,
+                    "reason": "republisher_daily_quota_exhausted",
+                }],
+                as_of_utc=as_of_utc,
+            )
+            return {
+                "schema": (
+                    "bayes_basket_target_resident_native_ensemble_cycle_v1"
+                ),
+                "state": "republisher_quota_exhausted",
+                "reason": "republisher_daily_quota_exhausted",
+                "station_id": native_station,
+                "event_date": native_event_date,
+                "source_role": "official_native",
+                "official_packet_reused": False,
+                "republisher_fallback_used": False,
+                "official_probe_reason": official_probe_reason,
+                "official_native_capture": official_capture,
+                **rotation_receipt,
+                "writes_target_database": False,
+                "calls_order_gateway": False,
+                "places_orders": False,
+                "live_submit_authorized": False,
+                "orders_submitted": 0,
+            }
         try:
             coordinates = station_coordinates(native_station)
             native_packet = capture_open_meteo_ensemble_scope(
@@ -3449,6 +3508,15 @@ class TargetProductionWorker:
                 "orders_submitted": 0,
             }
         except Exception as exc:
+            # A daily quota is a property of the day, not of this scope.  Once
+            # the republisher says the day is spent, remember it so the rest of
+            # the sweep stops paying a network round trip per scope to be told
+            # again -- the scopes still advance, which is what lets their
+            # official native captures start.
+            if _is_republisher_daily_quota_exhausted(exc):
+                self._republisher_quota_exhausted_utc_date = _utc_date(
+                    as_of_utc
+                )
             # The cursor advanced before this scope failed.  Persisting here is
             # what stops the next sweep from replaying the same failing scope
             # forever after a restart.
