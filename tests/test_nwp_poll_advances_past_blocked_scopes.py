@@ -23,7 +23,9 @@ import pytest
 
 from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.production_worker import (
+    NATIVE_P0_COMPILE_FRESH_SECONDS,
     _is_republisher_daily_quota_exhausted,
+    _native_forward_packet_is_stale,
 )
 from scripts import weather_basket_yes_daemon as daemon
 
@@ -144,6 +146,41 @@ def test_only_a_daily_cap_suppresses_the_republisher_for_the_day(
     assert _is_republisher_daily_quota_exhausted(
         ContractError(message)
     ) is exhausted
+
+
+@pytest.mark.parametrize(
+    ("captured_at", "stale"),
+    [
+        pytest.param(
+            "2026-08-10T01:57:00Z", True, id="older_than_the_compile_window"
+        ),
+        pytest.param(
+            "2026-08-10T07:57:00Z", False, id="inside_the_compile_window"
+        ),
+        pytest.param("", False, id="no_timestamp_is_the_compilers_call"),
+        pytest.param("not-a-time", False, id="unreadable_is_the_compilers_call"),
+    ],
+)
+def test_a_packet_too_old_to_compile_counts_as_absent(
+    captured_at: str, stale: bool
+) -> None:
+    """Presence used to be the whole probe, which is how the inbox aged out.
+
+    A packet past the compile window satisfied the probe, so the scope took
+    the reuse path, failed to compile, and never requested a fresh capture --
+    nothing could replace what nothing would refetch.
+    """
+
+    assert _native_forward_packet_is_stale(
+        {"received_at_utc": captured_at},
+        as_of_utc="2026-08-10T08:57:00Z",
+    ) is stale
+
+
+def test_the_probe_uses_the_compilers_own_freshness_window() -> None:
+    """If the two disagree the probe either re-downloads early or ages out."""
+
+    assert NATIVE_P0_COMPILE_FRESH_SECONDS == 6 * 60 * 60
 
 
 @pytest.mark.parametrize(

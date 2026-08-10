@@ -137,6 +137,7 @@ from .native_ensemble_oos import (
     persist_native_ensemble_oos,
 )
 from .native_ensemble_p0 import (
+    DEFAULT_FRESH_SECONDS as NATIVE_P0_COMPILE_FRESH_SECONDS,
     compile_native_ensemble_p0,
     persist_native_ensemble_forward_prediction,
 )
@@ -1483,6 +1484,36 @@ def _utc_date(value: str) -> date:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
         timezone.utc
     ).date()
+
+
+def _native_forward_packet_is_stale(
+    packet: Mapping[str, Any],
+    *,
+    as_of_utc: str,
+) -> bool:
+    """Whether the compiler would reject this packet for age.
+
+    Mirrors the compiler's own window against the same capture timestamp, so
+    the probe and the compile agree on what is usable.  An unreadable or
+    missing timestamp is not called stale here: the compiler owns that
+    judgement and rejects it with a precise reason, which is more useful than
+    this quietly deciding to re-download.
+    """
+
+    captured_at = str(packet.get("received_at_utc") or "").strip()
+    if not captured_at:
+        return False
+    try:
+        captured = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+        decision = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    if captured.tzinfo is None or decision.tzinfo is None:
+        return False
+    age_seconds = (
+        decision.astimezone(timezone.utc) - captured.astimezone(timezone.utc)
+    ).total_seconds()
+    return age_seconds >= NATIVE_P0_COMPILE_FRESH_SECONDS
 
 
 def _is_republisher_daily_quota_exhausted(exc: BaseException) -> bool:
@@ -3057,7 +3088,7 @@ class TargetProductionWorker:
                     error_code="official_native_forward_inbox_invalid",
                 )
                 for candidate in official_packets:
-                    if (
+                    if not (
                         str(candidate.get("schema") or "")
                         == OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
                         and str(candidate.get("station_id") or "")
@@ -3067,9 +3098,23 @@ class TargetProductionWorker:
                         and str(candidate.get("event_date") or "")
                         == native_event_date
                     ):
-                        official_packet = candidate
-                        official_probe_reason = "official_native_packet_found"
-                        break
+                        continue
+                    # Presence is not usability.  A packet the compiler will
+                    # reject as stale still satisfied this probe, so the scope
+                    # took the reuse path, failed to compile, and never asked
+                    # for a fresh capture -- leaving the inbox to age out with
+                    # nothing able to replace it.  Treating a too-old packet as
+                    # absent is what lets the capture below run.
+                    if _native_forward_packet_is_stale(
+                        candidate, as_of_utc=as_of_utc
+                    ):
+                        official_probe_reason = (
+                            "official_native_packet_stale"
+                        )
+                        continue
+                    official_packet = candidate
+                    official_probe_reason = "official_native_packet_found"
+                    break
             except Exception as exc:
                 official_probe_reason = (
                     "official_native_packet_unavailable:"
