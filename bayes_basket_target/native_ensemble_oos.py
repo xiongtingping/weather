@@ -19,6 +19,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
+from .cross_consensus import (
+    CONSENSUS_BRIDGE_METHOD_TAG,
+    bridged_cross_probability,
+)
 from .dwd_icon_eps_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
     SUPPORTED_LEAD_DAYS as _ICON_LEADS,
@@ -1562,6 +1566,7 @@ def _evaluate_system(
     predictions = []
     for case in holdout:
         probability = _apply_parameters(case["values"], parameters)
+        day_values = [float(value) for value in case["values"]]
         predictions.append({
             "event_date": case["event_date"],
             "decision_at_utc": case["aggregator_snapshot_at_utc"],
@@ -1573,6 +1578,14 @@ def _evaluate_system(
                 case.get("historical_oos_contract_ids") or []
             ),
             "probability": probability,
+            # The day's calibrated center, for the cross consensus bridge:
+            # the bridge recenters this system's histogram from here onto the
+            # weighted cross center, so it needs the center the histogram was
+            # actually built around, not a train-window average.
+            "calibrated_center_c": (
+                sum(day_values) / len(day_values)
+                + float(parameters["bias_c"])
+            ),
             "actual_tmax_c": float(case["actual_tmax_c"]),
             "metrics": _metrics(
                 probability,
@@ -2118,18 +2131,31 @@ def build_native_ensemble_oos(
                 set(predictions_by_system[system][day]["probability"])
                 for system in weights
             ))
-            probability = {
-                key: sum(
-                    weights[system]
-                    * float(
-                        predictions_by_system[system][day][
-                            "probability"
-                        ].get(key, 0.0)
-                    )
-                    for system in weights
+            ordered_keys = sorted(keys, key=lambda key: int(key))
+            day_centers = {
+                system: float(
+                    predictions_by_system[system][day][
+                        "calibrated_center_c"
+                    ]
                 )
-                for key in keys
+                for system in weights
             }
+            # The bridged blend is what P0 will serve under this artifact, so
+            # the holdout has to score the bridged blend: a gate that measures
+            # the plain mixture while the live path serves the bridge would be
+            # certifying math nobody runs.
+            probability, _bridge_receipt = bridged_cross_probability(
+                system_probabilities={
+                    system: predictions_by_system[system][day][
+                        "probability"
+                    ]
+                    for system in weights
+                },
+                system_weights=weights,
+                system_centers_c=day_centers,
+                ordered_keys=ordered_keys,
+                key_centers_c=[float(int(key)) for key in ordered_keys],
+            )
             actual = float(
                 predictions_by_system[
                     next(iter(weights))
@@ -3142,6 +3168,11 @@ def persist_native_ensemble_oos(
                     + str(candidate["run_cycle_scope"])
                     + "::run_cycle_by_system_sha256="
                     + str(candidate["run_cycle_by_system_sha256"])
+                    # The holdout above scored the bridged blend, so the
+                    # artifact says so; P0 keys its own bridging on this tag,
+                    # which is what keeps the served math identical to the
+                    # gated math while pre-bridge artifacts roll off.
+                    + "::" + CONSENSUS_BRIDGE_METHOD_TAG
                 ),
                 "family_weight_caps_json": _json(
                     candidate["family_weight_caps"]

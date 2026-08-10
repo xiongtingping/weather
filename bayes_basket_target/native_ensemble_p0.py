@@ -11,6 +11,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .cross_consensus import (
+    CONSENSUS_BRIDGE_METHOD_TAG,
+    bridged_cross_probability,
+)
 from .future_temperature_curve import (
     build_native_family_temperature_curve,
     build_root_future_temperature_curve,
@@ -312,6 +316,32 @@ def _ordered_buckets(
     if len(ordered) != len(set(ordered)):
         raise ContractError("native_ensemble_p0_bucket_duplicate")
     return ordered
+
+
+def _bucket_centers(
+    intervals: Mapping[str, Sequence[float | None]],
+    ordered: Sequence[str],
+) -> list[float]:
+    """A representative temperature per bucket, for histogram shifting.
+
+    Interior buckets take their midpoint.  An open edge bucket has no
+    midpoint, so it takes the point half a degree beyond its finite bound --
+    the same 1C pitch as its neighbours -- which only matters as the anchor
+    the consensus shift measures distances against.
+    """
+
+    centers: list[float] = []
+    for bucket in ordered:
+        lower, upper = intervals[str(bucket)]
+        if lower is None and upper is None:
+            raise ContractError("native_ensemble_p0_bucket_interval_invalid")
+        if lower is None:
+            centers.append(float(upper) - 0.5)
+        elif upper is None:
+            centers.append(float(lower) + 0.5)
+        else:
+            centers.append((float(lower) + float(upper)) / 2.0)
+    return centers
 
 
 def _bucket_for_value(
@@ -1121,7 +1151,8 @@ def compile_native_ensemble_p0(
         "SELECT ensemble_system_ids_json,ensemble_system_count,"
         "independent_family_count,selection_evidence_sha256,"
         "family_weight_caps_json,content_sha256,"
-        "run_cycle_by_system_json,run_cycle_by_system_sha256 "
+        "run_cycle_by_system_json,run_cycle_by_system_sha256,"
+        "combination_method "
         "FROM calibration_cross_native_ensemble_artifact "
         "WHERE cross_ensemble_artifact_id=? "
         "AND probability_pathway=? AND valid_from_utc<=? "
@@ -1432,20 +1463,36 @@ def compile_native_ensemble_p0(
         },
         family_weight_caps=family_caps,
     )
-    probability = {
-        str(bucket): sum(
-            system_weights[system]
-            * system_probabilities[system][str(bucket)]
-            for system in system_ids
-        )
-        for bucket in intervals_raw
-    }
-    total = sum(probability.values())
-    probability = {
-        bucket: value / total
-        for bucket, value in probability.items()
-    }
     ordered = _ordered_buckets(intervals_raw)
+    # The bridge is applied exactly when this artifact's holdout was scored
+    # with it (the combination_method carries the tag).  Serving bridged math
+    # under a pre-bridge artifact would put live probabilities outside what
+    # the OOS gate measured; the plain mixture remains byte-identical for
+    # those artifacts until the resident OOS rotation regenerates them.
+    artifact_combination_method = str(artifact[8] or "")
+    if CONSENSUS_BRIDGE_METHOD_TAG in artifact_combination_method:
+        probability, consensus_bridge_receipt = bridged_cross_probability(
+            system_probabilities=system_probabilities,
+            system_weights=system_weights,
+            system_centers_c=calibrated_system_centers_c,
+            ordered_keys=ordered,
+            key_centers_c=_bucket_centers(intervals_raw, ordered),
+        )
+    else:
+        consensus_bridge_receipt = None
+        probability = {
+            str(bucket): sum(
+                system_weights[system]
+                * system_probabilities[system][str(bucket)]
+                for system in system_ids
+            )
+            for bucket in intervals_raw
+        }
+        total = sum(probability.values())
+        probability = {
+            bucket: value / total
+            for bucket, value in probability.items()
+        }
     # The basket anchor is where the models actually point, not whichever
     # bucket holds the most mass.  An open-ended edge bucket ("35°C or higher")
     # covers an unbounded interval, so it accumulates the entire upper tail of
@@ -1833,6 +1880,11 @@ def compile_native_ensemble_p0(
         ),
         "model_center_bucket": model_center_bucket,
         "model_center_c": f"{model_center_c:.12g}",
+        # What the consensus bridge did to this packet, or absent when the
+        # serving artifact predates the bridge and the plain mixture ran.
+        **({"consensus_bridge_json": json.dumps(
+            consensus_bridge_receipt, sort_keys=True
+        )} if consensus_bridge_receipt is not None else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
