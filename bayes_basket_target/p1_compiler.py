@@ -199,11 +199,16 @@ def _fallback_trajectory_artifact(
     maturity_bin: str,
     as_of_utc: str,
 ) -> MetarTrajectoryLikelihoodArtifact:
-    """Create an offline hard-bound-only replay artifact.
+    """Create the hard-bound-only identity-LR artifact.
 
-    Production callers must resolve a formally promoted trajectory artifact
-    before invoking the compiler; this identity-LR fallback is retained only
-    for explicit offline diagnostics and historical replay.
+    This is the incumbent P1 behaviour while no formally promoted trajectory
+    artifact exists for the scope: likelihood one everywhere, so the update
+    claims nothing it has not learned, while the official running high still
+    hard-excludes the buckets the day's observations have ruled out.  Demanding
+    a promoted successor before any P1 could run was tried in August 2026 and
+    silenced the stage for nine days -- taking the hard bound down with it,
+    since P1 is that bound's only writer into the atomic chain.  A promoted
+    artifact supersedes this the moment one resolves.
     """
 
     return build_metar_trajectory_likelihood_artifact({
@@ -246,6 +251,28 @@ def _fallback_trajectory_artifact(
         "activated": False,
         "method_version": METAR_TRAJECTORY_METHOD_VERSION,
     })
+
+
+def p1_trajectory_mode(
+    trajectory_artifact: MetarTrajectoryLikelihoodArtifact | None,
+    *,
+    hourly_curve_method_version: str,
+) -> str:
+    """Name the trajectory authority this P1 compile runs under.
+
+    The stage runs in every case -- that is the cutover rule this function
+    exists to pin.  Requiring the hourly-curve successor before any P1 could
+    run was tried in August 2026 and silenced the stage for nine days, taking
+    the reported-high hard bound with it, because the successor's own gate
+    needs twenty effective folds that could not exist yet.  The mode is
+    recorded in receipts so a scope running degraded is visible, not inferred.
+    """
+
+    if trajectory_artifact is None:
+        return "HARD_BOUND_ONLY_FALLBACK"
+    if trajectory_artifact.method_version == hourly_curve_method_version:
+        return "PROMOTED_HOURLY_CURVE"
+    return "PROMOTED_PRE_CURVE"
 
 
 def compile_station_p1_packets(

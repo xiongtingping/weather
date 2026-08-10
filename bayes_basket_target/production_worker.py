@@ -87,6 +87,7 @@ from .metar_trajectory import (
 )
 from .p1_compiler import (
     compile_station_p1_packets,
+    p1_trajectory_mode as p1_trajectory_mode_for_artifact,
     select_p1_replay_base,
 )
 from .resident_canonical import (
@@ -5965,17 +5966,31 @@ class TargetProductionWorker:
                         trajectory_row["artifact"]
                     )
                 )
-                if trajectory_artifact is None:
-                    raise ContractError(
-                        "resident_p1_formal_metar_trajectory_artifact_missing"
-                    )
-                if (
-                    trajectory_artifact.method_version
-                    != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
-                ):
-                    raise ContractError(
-                        "resident_p1_conditional_hourly_curve_artifact_required"
-                    )
+                # A missing or pre-curve artifact degrades P1, it does not
+                # stop it.  Requiring the hourly-curve successor before any
+                # P1 could run inverted the codebase's own cutover rule --
+                # the incumbent stays active until the successor passes its
+                # gate -- and the arithmetic made the outage open-ended: the
+                # gate needs 20 effective folds, curve-bearing roots exist
+                # only from 2026-08-03, and folds need settled truth, so no
+                # station could promote before late August.  P1 emitted
+                # nothing after 2026-08-01.
+                #
+                # The cost was not just the learned update.  P1 is the only
+                # writer of the reported-high hard bound into the atomic
+                # chain, so while it was dark the system kept pricing buckets
+                # the day's own observations had already excluded.  The
+                # compiler's identity-LR fallback prices nothing it cannot
+                # defend -- likelihood one everywhere, official running high
+                # still hard -- which is exactly the incumbent production ran
+                # on through 2026-08-01.  A promoted curve artifact takes
+                # over the moment one exists.
+                p1_trajectory_mode = p1_trajectory_mode_for_artifact(
+                    trajectory_artifact,
+                    hourly_curve_method_version=(
+                        METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+                    ),
+                )
                 packets = compile_station_p1_packets(
                     predecessor=predecessor,
                     prediction_root=prediction_root,
@@ -6008,6 +6023,7 @@ class TargetProductionWorker:
                         "state": "NO_NEW_REPORTED_HIGH",
                         "observation_count": len(observations),
                         "p1_update_count": 0,
+                        "trajectory_mode": p1_trajectory_mode,
                     })
                     continue
                 final_envelope = ProbabilityEnvelope.from_mapping(
@@ -6088,6 +6104,7 @@ class TargetProductionWorker:
                     ),
                     "observation_count": len(observations),
                     "p1_update_count": write_count,
+                    "trajectory_mode": p1_trajectory_mode,
                     "p0_rebase": rebasing,
                     "current_consumable": current_consumable,
                     "replay_cursor_only": not current_consumable,
