@@ -8,6 +8,8 @@ import pytest
 from bayes_basket_target import ContractError
 from bayes_basket_target import rolling_native_taf_oos
 from bayes_basket_target.contracts import content_sha256
+from bayes_basket_target.taf_calibration import MIN_TAF_CALIBRATION_SAMPLE_N
+from bayes_basket_target.taf_nwp_transport_oos import MIN_TRANSPORT_SAMPLE_N
 from bayes_basket_target.rolling_native_taf_oos import (
     EXACT_JOIN_SCHEMA,
     SOURCE_CLASS,
@@ -23,32 +25,38 @@ def _days(count: int) -> list[str]:
     return [(start + timedelta(days=index)).isoformat() for index in range(count)]
 
 
-def test_three_rolling_blocks_require_44_unique_common_days() -> None:
-    plan = plan_non_overlapping_rolling_blocks(_days(44))
+def test_four_rolling_blocks_require_52_unique_common_days() -> None:
+    """One series must carry both windows an artifact needs, so it takes four.
+
+    Three blocks cap the series at 24 samples, and the fit window plus the
+    strictly later window it is gated on cannot share that.
+    """
+
+    plan = plan_non_overlapping_rolling_blocks(_days(52))
 
     assert plan["state"] == "READY"
-    assert plan["block_count"] == 3
-    assert [block["train_case_count"] for block in plan["blocks"]] == [20, 28, 36]
+    assert plan["block_count"] == 4
+    assert [block["train_case_count"] for block in plan["blocks"]] == [20, 28, 36, 44]
     holdouts = [day for block in plan["blocks"] for day in block["holdout_dates"]]
-    assert len(holdouts) == 24
-    assert len(set(holdouts)) == 24
-    assert plan["blocks"][0]["holdout_dates"] == _days(44)[20:28]
-    assert plan["blocks"][2]["holdout_dates"] == _days(44)[36:44]
+    assert len(holdouts) == 32
+    assert len(set(holdouts)) == 32
+    assert plan["blocks"][0]["holdout_dates"] == _days(52)[20:28]
+    assert plan["blocks"][3]["holdout_dates"] == _days(52)[44:52]
 
 
-def test_29_days_remain_fail_closed_and_report_the_15_day_gap() -> None:
+def test_29_days_remain_fail_closed_and_report_the_gap() -> None:
     plan = plan_non_overlapping_rolling_blocks(_days(29))
 
     assert plan["state"] == "ACCUMULATING"
     assert plan["block_count"] == 1
-    assert plan["missing_common_case_count"] == 15
+    assert plan["missing_common_case_count"] == 23
 
 
 def test_rolling_plan_rejects_duplicate_or_weakened_window() -> None:
     with pytest.raises(ContractError, match="event_dates_not_unique"):
-        plan_non_overlapping_rolling_blocks(_days(43) + [_days(1)[0]])
+        plan_non_overlapping_rolling_blocks(_days(51) + [_days(1)[0]])
     with pytest.raises(ContractError, match="window_contract_invalid"):
-        plan_non_overlapping_rolling_blocks(_days(44), min_train_days=19)
+        plan_non_overlapping_rolling_blocks(_days(52), min_train_days=19)
 
 
 def _series_join(day_count: int) -> dict[str, object]:
@@ -132,8 +140,8 @@ def test_split_hands_the_gate_a_window_the_fit_never_saw() -> None:
     split = split_rolling_taf_exact_join(_series_join(56))
 
     assert split["state"] == "READY"
-    assert split["fit_sample_count"] >= 24
-    assert split["transport_sample_count"] >= 24
+    assert split["fit_sample_count"] >= MIN_TAF_CALIBRATION_SAMPLE_N
+    assert split["transport_sample_count"] >= MIN_TRANSPORT_SAMPLE_N
     # The days between the windows are decided before the fit's truth closes,
     # so they belong to neither half.
     assert split["dropped_boundary_sample_count"] == 2
@@ -207,24 +215,26 @@ def test_artifact_fitted_on_one_half_can_be_gated_on_the_other() -> None:
 
 
 def test_split_stays_accumulating_at_one_windows_worth_of_evidence() -> None:
-    split = split_rolling_taf_exact_join(_series_join(24))
+    # Below one fit window plus one gate window there is nothing to cut.
+    split = split_rolling_taf_exact_join(_series_join(16))
 
     assert split["state"] == "ACCUMULATING"
     assert split["fit"] is None and split["transport"] is None
-    assert split["required_sample_count"] == 48
-    assert split["missing_sample_count"] == 24
+    assert split["required_sample_count"] == (
+        MIN_TAF_CALIBRATION_SAMPLE_N + MIN_TRANSPORT_SAMPLE_N
+    )
 
 
 def test_split_refuses_a_caller_supplied_minimum_below_either_gate() -> None:
     with pytest.raises(ContractError, match="split_minimum_below_gate"):
-        split_rolling_taf_exact_join(_series_join(56), min_fit_sample_n=12)
+        split_rolling_taf_exact_join(_series_join(56), min_fit_sample_n=4)
     with pytest.raises(ContractError, match="split_minimum_below_gate"):
-        split_rolling_taf_exact_join(_series_join(56), min_transport_sample_n=12)
+        split_rolling_taf_exact_join(_series_join(56), min_transport_sample_n=2)
 
 
 def _cases(system_id: str) -> list[dict[str, object]]:
     rows = []
-    for index, event_date in enumerate(_days(44)):
+    for index, event_date in enumerate(_days(52)):
         day = date.fromisoformat(event_date)
         actual = 20.0 + float(index % 4)
         rows.append({
@@ -244,7 +254,7 @@ def _cases(system_id: str) -> list[dict[str, object]]:
     return rows
 
 
-def test_rolling_builder_emits_three_disjoint_20x8_candidates(
+def test_rolling_builder_emits_four_disjoint_20x8_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cases = {
@@ -278,22 +288,22 @@ def test_rolling_builder_emits_three_disjoint_20x8_candidates(
     )
 
     assert report["state"] == "READY"
-    assert len(report["candidates"]) == 3
+    assert len(report["candidates"]) == 4
     assert [
         candidate["rolling_origin_block"]["block_index"]
         for candidate in report["candidates"]
-    ] == [0, 1, 2]
+    ] == [0, 1, 2, 3]
     assert all(candidate["state"] == "PRODUCTION_NO_LIVE_OOS_PASS" for candidate in report["candidates"])
     prediction_days = [
         prediction["event_date"]
         for candidate in report["candidates"]
         for prediction in candidate["predictions"]
     ]
-    assert len(prediction_days) == 24
-    assert len(set(prediction_days)) == 24
+    assert len(prediction_days) == 32
+    assert len(set(prediction_days)) == 32
 
 
-def test_rolling_exact_join_combines_three_blocks_without_promoting_awc(
+def test_rolling_exact_join_combines_all_blocks_without_promoting_awc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cases = {
@@ -347,7 +357,7 @@ def test_rolling_exact_join_combines_three_blocks_without_promoting_awc(
     joins = build_rolling_taf_exact_joins(object(), report)
 
     assert len(joins) == 1
-    assert joins[0]["sample_count"] == 24
+    assert joins[0]["sample_count"] == 32
     assert {
         key: joins[0][key]
         for key in (
@@ -362,7 +372,7 @@ def test_rolling_exact_join_combines_three_blocks_without_promoting_awc(
         "settlement_definition": "official_daily_tmax_c",
         "settlement_timezone": "Etc/UTC",
     }
-    assert len({row["event_date"] for row in joins[0]["samples"]}) == 24
+    assert len({row["event_date"] for row in joins[0]["samples"]}) == 32
     assert all(row["taf_lineage"]["enters_p1"] is False for row in joins[0]["samples"])
     assert all(row["taf_lineage"]["enters_hard_no"] is False for row in joins[0]["samples"])
 

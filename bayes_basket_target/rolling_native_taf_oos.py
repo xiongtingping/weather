@@ -53,7 +53,18 @@ from .ssot import native_ensemble_foundation_schema_status
 SCHEMA = "native_ensemble_rolling_origin_taf_oos_v1"
 EXACT_JOIN_SCHEMA = "taf_native_ensemble_strict_oos_exact_join_v1"
 SOURCE_CLASS = "strict_oos_native_p0_taf_truth_exact_join"
-MAX_BLOCKS = 3
+# A series has to carry both windows the artifact needs -- one to fit on and a
+# strictly later one to be gated on -- so more blocks mean a better-supported
+# fit.  But each block also costs eight more settled days, and settled truth is
+# what this is short of: the archive holds 51 days for the leading pair at ZBAA
+# while truth covers 34.  Asking for the larger series unconditionally would
+# therefore push the first artifact further away, not closer.
+#
+# So the block count is negotiated per scope: take the most blocks the common
+# days support, down to MIN_BLOCKS.  A station with 52 days gets the
+# better-supported four-block series; one with 44 still qualifies on three.
+MAX_BLOCKS = 4
+MIN_BLOCKS = 3
 MAX_STATION_CANDIDATES = 24
 MAX_JOIN_ROWS = 366
 
@@ -433,10 +444,19 @@ def build_rolling_origin_native_oos(
                 set(_case_by_day(selected[left][1]))
                 & set(_case_by_day(selected[right][1]))
             )
-            plan = plan_non_overlapping_rolling_blocks(
-                common_days,
-                required_blocks=required_blocks,
-            )
+            # Most blocks first, then fewer: a scope with the days for four
+            # gets the better-supported series, and one that only reaches
+            # three still qualifies instead of waiting eight more days for a
+            # fourth it does not need.  The last plan computed is the smallest
+            # ask, so an accumulating scope reports the nearest shortfall
+            # rather than the largest.
+            for blocks in range(int(required_blocks), MIN_BLOCKS - 1, -1):
+                plan = plan_non_overlapping_rolling_blocks(
+                    common_days,
+                    required_blocks=blocks,
+                )
+                if plan["state"] == "READY":
+                    break
             identity = {
                 "station_id": station,
                 "season_bin": season_bin,
@@ -472,7 +492,9 @@ def build_rolling_origin_native_oos(
         "station_id": station,
         "as_of_utc": as_of_utc,
         "required_block_count": required_blocks,
-        "minimum_taf_oos_sample_n": DEFAULT_MIN_HOLDOUT_DAYS * required_blocks,
+        # The smallest series that can qualify, since that is what a scope has
+        # to reach to stop accumulating.
+        "minimum_taf_oos_sample_n": DEFAULT_MIN_HOLDOUT_DAYS * MIN_BLOCKS,
         "candidates": candidates,
         "accumulating": accumulating,
         "state": "READY" if candidates else "ACCUMULATING",

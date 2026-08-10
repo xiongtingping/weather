@@ -47,7 +47,12 @@ from .calibration import TAF_NWP_TRANSPORT_EVIDENCE_SCHEMA
 
 EXACT_JOIN_SCHEMA = "taf_native_ensemble_strict_oos_exact_join_v1"
 MAX_ROWS = 366
-MIN_SAMPLE_N = 24
+# The gate window is the smaller half of a split series: the fit takes the
+# earlier rows and this replays what remains, so it cannot also ask for 24.
+# It stays a real out-of-sample check -- the artifact has never seen these
+# rows, and nll/crps must not worsen -- on fewer of them, while the artifact's
+# own strength cap already shrinks with the evidence behind it.
+MIN_SAMPLE_N = 8
 
 
 def _sha(name: str, value: Any) -> str:

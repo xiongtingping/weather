@@ -9,7 +9,10 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from bayes_basket_target.contracts import ContractError, content_sha256
-from bayes_basket_target.taf_calibration import fit_taf_revision_artifact
+from bayes_basket_target.taf_calibration import (
+    MIN_TAF_CALIBRATION_SAMPLE_N,
+    fit_taf_revision_artifact,
+)
 from scripts import capture_bayes_basket_target_awc_taf_calibration as awc_capture
 from scripts import backfill_awc_taf_calibration_multistation as awc_multistation
 from scripts import fit_bayes_basket_target_taf_revision as taf_fit_cli
@@ -512,9 +515,11 @@ def test_taf_fit_cli_rejects_ambiguous_pipeline_station_selection() -> None:
 
 
 def test_fit_taf_revision_artifact_rejects_too_few_samples() -> None:
+    # One below whatever the gate currently is, so the test tracks the gate
+    # instead of pinning a number that has to be edited alongside it.
     with pytest.raises(ContractError, match="sample_n_below_min"):
         fit_taf_revision_artifact(
-            _samples(23),
+            _samples(MIN_TAF_CALIBRATION_SAMPLE_N - 1),
             artifact_id="too-small",
             activation_id="too-small-activation",
             season_bin="summer",

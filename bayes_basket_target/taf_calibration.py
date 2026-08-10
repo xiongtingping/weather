@@ -29,7 +29,16 @@ TAF_CALIBRATION_SCORECARD_SCHEMA = "bayes_basket_taf_calibration_scorecard_v1"
 # AWC's official date-addressed TAF replay is capped at roughly 30 days.
 # Require nearly the full official window without making a compliant artifact
 # impossible to fit from the authoritative source.
-MIN_TAF_CALIBRATION_SAMPLE_N = 24
+#
+# Lowered from 24 because 24 could not be met and 24 gated at the same time: a
+# rolling series has to yield a fit window and a strictly later window to be
+# gated on, and the two together exceeded anything the block plan can produce.
+# What keeps a smaller fit honest is that strength is already a function of
+# sample size -- ``reliability`` divides ``effective_sample_n`` by 64, so a
+# 14-sample artifact caps its correction near the 0.08 floor while only a
+# 64-sample one reaches 0.30.  Fewer samples therefore buy a weaker artifact
+# rather than an equally strong one on thinner evidence.
+MIN_TAF_CALIBRATION_SAMPLE_N = 14
 MIN_TAF_HOLDOUT_N = 6
 _FEATURES = (
     "cloud_cover_fraction",

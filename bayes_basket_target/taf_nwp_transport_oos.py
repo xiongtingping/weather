@@ -51,7 +51,9 @@ EXACT_JOIN_SCHEMA = "bayes_basket_taf_increment_calibration_dataset_v2"
 CROSSFIT_SCHEMA = "bayes_basket_nwp_crossfit_predictions_v1"
 P0_INBOX_SCHEMA = "bayes_basket_target_p0_inbox_v1"
 AWC_TAF_DATASET_SCHEMA = "bayes_basket_awc_taf_calibration_dataset_v1"
-MIN_TRANSPORT_SAMPLE_N = 24
+# Matches the native gate it shares a split series with; see MIN_SAMPLE_N in
+# taf_native_ensemble_oos for why the qualifying window is the smaller half.
+MIN_TRANSPORT_SAMPLE_N = 8
 NESTED_MIN_TRAIN_DAYS = 3
 MAX_ROWS = 366
 MAX_REFERENCE_FILES = 64

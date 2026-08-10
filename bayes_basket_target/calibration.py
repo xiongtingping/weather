@@ -396,7 +396,16 @@ def bind_taf_artifact_to_live_nwp_compatibility(
         raise ContractError(
             "taf_nwp_transport_oos_evidence_sample_invalid"
         ) from exc
-    if sample_n < 24 or effective_n <= 0.0 or effective_n > sample_n:
+    # Read from the gate that produced this evidence rather than restated: a
+    # second copy of the number silently rejects everything the gate accepts
+    # the moment the two drift apart.
+    from .taf_nwp_transport_oos import MIN_TRANSPORT_SAMPLE_N
+
+    if (
+        sample_n < MIN_TRANSPORT_SAMPLE_N
+        or effective_n <= 0.0
+        or effective_n > sample_n
+    ):
         raise ContractError("taf_nwp_transport_oos_evidence_sample_invalid")
     baseline = transport_oos_evidence.get("baseline_oos_metrics")
     transported = transport_oos_evidence.get("transport_oos_metrics")
