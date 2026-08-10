@@ -103,11 +103,20 @@ def _hour_lead_bucket(
     P0 has to ask for weights under the same key they were fitted under, and
     that key is derived here from the runs the packet actually carries.
 
-    ``None`` means no single hour bucket describes this packet -- either the
-    runs are not stated, or the systems were issued far enough apart to fall in
-    different groups.  A cross-ensemble artifact holds systems that all share
-    one bucket, so a split packet cannot match one, and saying so is different
-    from guessing which half to believe.
+    ``None`` means no single hour bucket describes this packet -- either no run
+    is stated at all, or the systems that state one were issued far enough
+    apart to fall in different groups.  A cross-ensemble artifact holds systems
+    that all share one bucket, so a genuinely split packet cannot match one,
+    and saying so is different from guessing which half to believe.
+
+    A system with no run initialisation is skipped rather than treated as a
+    split.  It cannot be in a cross-ensemble artifact -- that requires a native
+    run -- so it has no bucket to disagree about, and letting it veto the
+    others made a bystander decide their key.  ZUUU carried ECCC as observed
+    while excluding it for having no exact OOS activation; ECCC states no run,
+    and the two systems actually used were both issued 22h ahead, yet the
+    packet fell back to the calendar label and asked for weights under a key
+    nothing is fitted under any more.
     """
 
     if not run_init_utc_by_system or not observed_system_ids:
@@ -122,7 +131,7 @@ def _hour_lead_bucket(
     for system_id in observed_system_ids:
         raw = str(run_init_utc_by_system.get(system_id) or "").strip()
         if not raw:
-            return None
+            continue
         try:
             run_init = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:

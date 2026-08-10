@@ -222,3 +222,38 @@ def test_no_hour_bucket_when_the_packet_does_not_support_one(
         run_init_utc_by_system=run_init_utc_by_system,
         observed_system_ids=SYSTEMS,
     ) is None
+
+
+def test_a_system_stating_no_run_does_not_veto_the_others() -> None:
+    """An excluded bystander must not decide the key the others ask under.
+
+    A system with no run initialisation cannot be in a cross-ensemble artifact
+    -- that requires a native run -- so it has no bucket to disagree about.
+    ZUUU carried ECCC as observed while excluding it for having no exact OOS
+    activation; treating its silence as a straddle sent the packet back to the
+    calendar label, under which nothing is fitted any more.
+    """
+
+    assert _hour_lead_bucket(
+        event_date="2026-08-10",
+        timezone_name="Asia/Shanghai",
+        run_init_utc_by_system={
+            "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-08T18:00:00Z",
+            "NOAA_GEFS_05": "2026-08-08T18:00:00Z",
+        },
+        observed_system_ids=["ECCC_GEM_GLOBAL_ENS", *SYSTEMS],
+    ) == "h12_24"
+
+
+def test_a_real_straddle_is_still_refused_when_a_bystander_is_present() -> None:
+    # Skipping the silent system must not soften the guard for the ones that
+    # do state a run.
+    assert _hour_lead_bucket(
+        event_date="2026-08-11",
+        timezone_name="America/New_York",
+        run_init_utc_by_system={
+            "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-09T18:00:00Z",
+            "NOAA_GEFS_05": "2026-08-10T12:00:00Z",
+        },
+        observed_system_ids=["ECCC_GEM_GLOBAL_ENS", *SYSTEMS],
+    ) is None
