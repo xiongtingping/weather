@@ -289,6 +289,45 @@ def test_awc_capture_rejects_retired_amsc_lane(
         )
 
 
+def test_awc_capture_anchor_offset_stays_inside_the_settlement_day() -> None:
+    """An anchor at or past the day's close would replay with hindsight.
+
+    The offset exists so several anchors can cover the several decisions made
+    against one day, not so a capture can reach the moment its own truth
+    became observable.
+    """
+
+    for offset in (0, 24, -1):
+        with pytest.raises(ContractError, match="decision_anchor_offset_invalid"):
+            capture(
+                station_id="RKPK",
+                timezone_name="Asia/Seoul",
+                start_date="2026-07-01",
+                end_date="2026-07-01",
+                timeout_sec=5,
+                request_interval_sec=0.0,
+                decision_anchor_offset_hours=offset,
+            )
+
+
+def test_multistation_backfill_rejects_an_out_of_day_anchor_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "backfill",
+            "--start-date", "2026-07-01",
+            "--end-date", "2026-07-02",
+            "--output-dir", "/tmp/awc-anchor-scope",
+            "--decision-anchor-hour", "1",
+            "--decision-anchor-hour", "24",
+        ],
+    )
+    with pytest.raises(RuntimeError, match="decision_anchor_scope_invalid"):
+        awc_multistation.main()
+
+
 def test_multistation_scope_prefers_awc_over_retired_amsc() -> None:
     conn = sqlite3.connect(":memory:")
     conn.execute(

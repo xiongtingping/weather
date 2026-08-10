@@ -809,7 +809,24 @@ def _run_retention(conn: sqlite3.Connection, args: argparse.Namespace, as_of_et:
             continue
         deleted_total = 0
         while True:
-            deleted = _delete_batch(conn, rule.table, where, params, args.batch_size)
+            try:
+                deleted = _delete_batch(
+                    conn, rule.table, where, params, args.batch_size
+                )
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) and "busy" not in str(exc):
+                    raise
+                # The resident writer holds this database continuously, so a
+                # contended batch is the normal case for a pass that runs while
+                # the service is up -- not a failure.  Everything committed so
+                # far stands, this table resumes on the next run, and the
+                # remaining tables still get their turn.  Aborting instead left
+                # the later rules unrun every time the writer was busy.
+                conn.rollback()
+                print(
+                    f"{rule.table}: deferred_locked deleted_total={deleted_total}"
+                )
+                break
             conn.commit()
             deleted_total += deleted
             if deleted <= 0:

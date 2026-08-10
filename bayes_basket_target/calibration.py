@@ -261,6 +261,7 @@ def bind_taf_artifact_to_live_nwp_compatibility(
         TAF_NWP_CROSSFIT_ARTIFACT_KIND,
         TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
         TafRevisionArtifact,
+        taf_scope_lead_bucket,
     )
     from .native_ensemble_contract import (
         TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA,
@@ -295,7 +296,7 @@ def bind_taf_artifact_to_live_nwp_compatibility(
     if (
         str(live_fingerprint.get("station_id") or "").upper(),
         str(live_fingerprint.get("season_bin") or ""),
-        str(live_fingerprint.get("lead_bucket") or ""),
+        taf_scope_lead_bucket(live_fingerprint),
         str(live_fingerprint.get("run_cycle") or ""),
         str(live_fingerprint.get("settlement_definition") or ""),
     ) != (

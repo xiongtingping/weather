@@ -6,6 +6,16 @@ latest TAF available at a fixed settlement-relative decision anchor and the
 official AWC METAR/SPECI rows inside that market's settlement window.  The
 script writes one compact research artifact only; it never opens production
 SQLite, starts a service, or calls an order gateway.
+
+The anchor offset is a parameter because one anchor per day is not one
+decision per day.  A TAF confirmation is usable only when the bulletin arrived
+*after* the prediction it revises, and several predictions are made against
+the same day at different leads; an archive captured at a single anchor can
+only ever answer for decisions made before that anchor.  Measured against the
+densely polled forward lane, the default +1h anchor leaves the shortest lead
+with no usable bulletin at all at some stations.  Running the capture once per
+anchor keeps each artifact a fixed-anchor replay -- no bulletin is ever chosen
+with hindsight -- while together they cover the day's decisions.
 """
 
 from __future__ import annotations
@@ -590,11 +600,19 @@ def capture(
     request_interval_sec: float,
     source_lane: str = "AWC",
     existing: Mapping[str, Any] | None = None,
+    decision_anchor_offset_hours: int = 1,
 ) -> dict[str, Any]:
     first = date.fromisoformat(start_date)
     last = date.fromisoformat(end_date)
     if first > last:
         raise ContractError("awc_taf_calibration_date_range_invalid")
+    # Inside the settlement day and never at its close: an anchor at the end of
+    # the day would admit a bulletin issued once the truth it predicts was
+    # already observable.
+    if not 0 < int(decision_anchor_offset_hours) < 24:
+        raise ContractError(
+            "awc_taf_calibration_decision_anchor_offset_invalid"
+        )
     count = (last - first).days + 1
     if count > MAX_DAYS:
         raise ContractError("awc_taf_calibration_date_range_too_large")
@@ -751,7 +769,7 @@ def capture(
         if end > now:
             raise ContractError("awc_taf_calibration_open_truth_day_forbidden")
         # Fixed decision anchor prevents choosing a later TAF with hindsight.
-        anchor = start + timedelta(hours=1)
+        anchor = start + timedelta(hours=int(decision_anchor_offset_hours))
         # AWC's historical date filter is minute addressed.  Query one minute
         # before the anchor so a TAF issued at the boundary (but arriving a
         # few seconds later) cannot hide the prior valid bulletin.
@@ -935,6 +953,10 @@ def capture(
         "truth_authority": authority,
         "start_date": start_date,
         "end_date": end_date,
+        # Self-describing: an artifact is a valid replay only for decisions
+        # made at or after its own anchor, and several anchors now coexist for
+        # the same station and window.
+        "decision_anchor_offset_hours": int(decision_anchor_offset_hours),
         "sample_count": len(samples),
         "samples": samples,
         "truth_only_sample_count": len(truth_only_samples),
@@ -981,6 +1003,12 @@ def main() -> int:
     parser.add_argument("--source-lane", choices=("AWC",), default="AWC")
     parser.add_argument("--timeout-sec", type=int, default=20)
     parser.add_argument("--request-interval-sec", type=float, default=MIN_REQUEST_INTERVAL_SEC)
+    parser.add_argument(
+        "--decision-anchor-offset-hours",
+        type=int,
+        default=1,
+        help="Anchor hours after the local settlement day start; in (0,24).",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--resume",
@@ -1011,10 +1039,12 @@ def main() -> int:
         request_interval_sec=args.request_interval_sec,
         source_lane=args.source_lane,
         existing=existing,
+        decision_anchor_offset_hours=args.decision_anchor_offset_hours,
     )
     write_bounded_json(output, result, limit=MAX_OUTPUT_BYTES)
     print(json.dumps({
         "schema": result["schema"],
+        "decision_anchor_offset_hours": result["decision_anchor_offset_hours"],
         "sample_count": result["sample_count"],
         "excluded_sample_count": result["excluded_sample_count"],
         "blocker_count": len(result["blockers"]),

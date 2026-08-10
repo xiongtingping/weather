@@ -49,6 +49,30 @@ _PHYSICAL_FEATURES = (
 )
 
 
+def taf_scope_lead_bucket(scope: Mapping[str, Any]) -> str:
+    """The lead vocabulary this chain joins a TAF artifact on.
+
+    Two different questions have shared the name "lead".  ``lead_bucket`` is
+    the calendar label -- how many days before the event day a decision was
+    made -- and station policy, preselection and the operator-facing scope are
+    keyed by it.  ``training_lead_bucket`` is the group the P0 weights were
+    actually fitted in, measured in hours to the station's own local day, and
+    it is what makes two predictions comparable: the calendar groups overlap
+    badly enough that d1 and d2 both contain runs issued 18-31h ahead.
+
+    A TAF revision is fitted from a series of P0 predictions, so its scope is
+    the grouping that made those predictions homogeneous -- the training one.
+    Roots compiled before that field existed carry only the calendar label, and
+    for them it remains the answer, so an artifact fitted under the old
+    vocabulary keeps matching exactly the roots it always did.
+    """
+
+    if not isinstance(scope, Mapping):
+        return ""
+    training = str(scope.get("training_lead_bucket") or "").strip()
+    return training or str(scope.get("lead_bucket") or "").strip()
+
+
 def _text(name: str, value: Any) -> str:
     result = str(value or "").strip()
     if not result:
@@ -991,7 +1015,6 @@ def compile_taf_revision_proof(
         raise ContractError("taf_revision_not_available_asof")
     scope = {
         "season_bin": governed.season_bin,
-        "lead_bucket": governed.lead_bucket,
         "run_cycle": governed.run_cycle,
         "settlement_definition": governed.settlement_definition,
     }
@@ -1001,6 +1024,14 @@ def compile_taf_revision_proof(
             raise ContractError(f"taf_p0_root_{key}_missing")
         if actual != expected:
             raise ContractError(f"taf_artifact_{key}_mismatch")
+    # Read through the same resolver the selection used, so an artifact can
+    # never be chosen under one lead vocabulary and then rejected under the
+    # other.
+    root_lead_bucket = taf_scope_lead_bucket(root.lineage)
+    if not root_lead_bucket:
+        raise ContractError("taf_p0_root_lead_bucket_missing")
+    if root_lead_bucket != governed.lead_bucket:
+        raise ContractError("taf_artifact_lead_bucket_mismatch")
 
     if not isinstance(bucket_centers_c, Mapping) or set(bucket_centers_c) != set(
         root.probabilities
@@ -1357,5 +1388,6 @@ __all__ = [
     "TafRevisionArtifact",
     "TafRevisionProof",
     "compile_taf_revision_proof",
+    "taf_scope_lead_bucket",
     "validate_taf_revision_proof",
 ]

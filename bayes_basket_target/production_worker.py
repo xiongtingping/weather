@@ -175,6 +175,7 @@ from .taf_artifact_registry import (
 from .taf_revision import (
     TafRevisionArtifact,
     compile_taf_revision_proof,
+    taf_scope_lead_bucket,
 )
 from .delta_v2_training import FACT_SCHEMA, delta_v2_decision_scope_key
 from .delta_v2_settlement_label import (
@@ -469,6 +470,47 @@ METAR_TRAJECTORY_TRAINING_DEADLINE_SEC = 600.0
 # anchor-to-first-report variant is a separate decision.
 METAR_TRAJECTORY_TRAINING_BUCKETS = ("MORNING", "AFTERNOON", "EVENING")
 METAR_TRAJECTORY_ARTIFACT_VALID_DAYS = 14
+# TAF revision training is the same shape as the trajectory pass -- one due
+# station per cycle, offline scripts, a gate this worker does not get to
+# override -- but its evidence is the rolling strict-OOS native series rather
+# than settled folds.  The chain writes no SSOT row at all: its only product is
+# the registry file the resident P0-M stage reads, assembled by the validated
+# builder from artifacts that already carry a bound live-compatibility proof.
+TAF_REVISION_TRAINING_RETRY_SEC = 6 * 3600.0
+TAF_REVISION_TRAINING_DEADLINE_SEC = 900.0
+TAF_REVISION_ARTIFACT_VALID_DAYS = 30
+# The AWC date-addressed endpoint serves 30 days and no more; past that it
+# answers 400 with "Data is available for up to 30 days for date".  A day not
+# captured while it is inside that window is gone for good, so this cannot be
+# a backfill run when someone needs the evidence -- it has to be a standing
+# daily pass.
+#
+# One anchor per day is also not one decision per day.  A TAF confirms a
+# prediction only if it arrived after it, and predictions are made against the
+# same day at several leads, so a single anchor answers only for decisions made
+# before it.  These four are the settlement-relative offsets that match TAF's
+# roughly six-hourly issue cycle.
+# Corrected reports arrive continuously, and each one raises a halt that the
+# settled-truth gate will not clear without a review receipt.  The policy that
+# resolves them has existed since the last outage but was only ever run by
+# hand, so the halts simply accumulated again -- six stations stopped settling
+# and nothing said why.  Running it on a schedule is what makes the clearing
+# automatic rather than a thing someone has to remember.
+CORRECTION_AUTO_CLEAR_RETRY_SEC = 6 * 3600.0
+CORRECTION_AUTO_CLEAR_DEADLINE_SEC = 900.0
+# Far enough back to pick up a halt raised while the pass was down, without
+# reopening months of settled history on every run.
+CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 21
+HISTORICAL_TAF_CAPTURE_RETRY_SEC = 24 * 3600.0
+HISTORICAL_TAF_CAPTURE_DEADLINE_SEC = 3600.0
+HISTORICAL_TAF_DECISION_ANCHOR_HOURS = (1, 7, 13, 19)
+# Two days back, not one: the settlement day has to be closed in the station's
+# own timezone before its truth can be read, and the capture refuses an open
+# day outright.
+HISTORICAL_TAF_CAPTURE_LAG_DAYS = 2
+# Enough overlap that a few days of downtime still heal, while staying far
+# inside the retention window.
+HISTORICAL_TAF_CAPTURE_WINDOW_DAYS = 7
 # Open-Meteo supplies UKMO, GOOGLE_WEATHERNEXT and NOAA_AIGEFS -- three
 # independence families with no official native archive, so this republisher is
 # their only route to a d2 member set.  Like ICON it is forward-only: members
@@ -503,6 +545,13 @@ DEFAULT_TARGET_TAF_ARTIFACT = (
 DEFAULT_TARGET_TAF_INBOX = (
     Path(__file__).resolve().parents[1]
     / "data" / "bayes_basket_target_taf_revision_inbox.json"
+)
+# Bound artifacts are kept beside the registry they are assembled into, not in
+# the worker's runtime scratch: the registry is a lossless envelope around
+# them, so losing the members would leave a file no builder could rebuild.
+DEFAULT_TARGET_TAF_BOUND_ARTIFACT_ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "config" / "artifacts" / "bayes_basket_target_taf_revision_bound"
 )
 DEFAULT_TARGET_P0_INBOX = (
     Path(__file__).resolve().parents[1]
@@ -1589,6 +1638,7 @@ class TargetProductionWorker:
         canonical_source_db_path: Path | None = None,
         taf_artifact_path: Path | None = None,
         taf_inbox_path: Path | None = None,
+        taf_bound_artifact_root: Path | None = None,
         p0_inbox_path: Path | None = None,
         nwp_runtime_root: Path | None = None,
         cash_phase_forward_store_path: Path | None = None,
@@ -1655,6 +1705,13 @@ class TargetProductionWorker:
             or os.environ.get(
                 "PM_TARGET_TAF_INBOX",
                 str(DEFAULT_TARGET_TAF_INBOX),
+            )
+        ).expanduser().resolve()
+        self.taf_bound_artifact_root = Path(
+            taf_bound_artifact_root
+            or os.environ.get(
+                "PM_TARGET_TAF_BOUND_ARTIFACT_ROOT",
+                str(DEFAULT_TARGET_TAF_BOUND_ARTIFACT_ROOT),
             )
         ).expanduser().resolve()
         self.p0_inbox_path = Path(
@@ -2438,6 +2495,871 @@ class TargetProductionWorker:
             **boundary,
         }
 
+    def _run_correction_auto_clear(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Resolve pending correction halts by standing policy, on a schedule.
+
+        The decision each correction gets follows from the report itself and is
+        checked against the stored evidence, so this schedules an existing
+        policy rather than deciding anything here.  It runs as a subprocess
+        because the receipts belong in the canonical archive, which this worker
+        holds read-only by design.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if self.canonical_source_db_path is None:
+            return {"state": "NOT_CONFIGURED", **boundary}
+        inflight = getattr(self, "_correction_auto_clear_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {"state": "IN_FLIGHT", **boundary}
+        now_mono = time.monotonic()
+        last_attempt = getattr(self, "_correction_auto_clear_last_mono", None)
+        if (
+            last_attempt is not None
+            and now_mono - last_attempt < CORRECTION_AUTO_CLEAR_RETRY_SEC
+        ):
+            return {
+                "state": "THROTTLED",
+                "retry_in_seconds": round(
+                    CORRECTION_AUTO_CLEAR_RETRY_SEC - (now_mono - last_attempt),
+                    1,
+                ),
+                **boundary,
+            }
+        self._correction_auto_clear_last_mono = now_mono
+        since = (
+            datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            .date()
+            - timedelta(days=CORRECTION_AUTO_CLEAR_WINDOW_DAYS)
+        ).isoformat()
+        command = [
+            sys.executable,
+            str(
+                ROOT / "scripts" / "auto_clear_pending_correction_reviews.py"
+            ),
+            "--archive-db", str(self.canonical_source_db_path),
+            "--target-db", str(self.db_path),
+            "--since", since,
+            "--as-of-utc", as_of_utc,
+            "--commit",
+        ]
+
+        def _run() -> dict[str, Any]:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=CORRECTION_AUTO_CLEAR_DEADLINE_SEC,
+                )
+            except Exception as exc:
+                result = {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+                self._correction_auto_clear_last_result = result
+                return result
+            summary: dict[str, Any] = {}
+            try:
+                summary = json.loads(
+                    (completed.stdout or "").strip().splitlines()[-1]
+                )
+            except Exception:
+                pass
+            result = {
+                "state": "CLEARED" if completed.returncode == 0 else "PARTIAL",
+                "since": since,
+                "candidate_scope_count": summary.get("candidate_scope_count"),
+                "cleared_scope_count": summary.get("cleared_scope_count"),
+                "cleared_observation_count": summary.get(
+                    "cleared_observation_count"
+                ),
+                "skipped_count": summary.get("skipped_count"),
+                "stderr": (completed.stderr or "").strip()[-200:],
+            }
+            self._correction_auto_clear_last_result = result
+            return result
+
+        pool = getattr(self, "_correction_auto_clear_pool", None)
+        if pool is None:
+            self._correction_auto_clear_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="correction-auto-clear",
+            )
+            pool = self._correction_auto_clear_pool
+        self._correction_auto_clear_inflight = pool.submit(_run)
+        return {
+            "state": "SUBMITTED",
+            "since": since,
+            "last_completed": dict(
+                getattr(self, "_correction_auto_clear_last_result", {}) or {}
+            ),
+            **boundary,
+        }
+
+    def _historical_taf_capture_stations(self) -> list[str]:
+        """The allowlisted stations whose TAF has ever carried a TX group.
+
+        ``TX``/``TN`` are optional in a TAF and a large part of the network --
+        every US station among them -- simply never publishes them.  Those
+        stations cannot produce a calibration sample no matter how often they
+        are captured, and the AWC response budget is shared, so spending it on
+        them takes it from the stations that can.
+
+        Derived from what the archive has actually yielded rather than from a
+        hardcoded list, so a station that starts publishing TX is picked up.
+        Before anything has been captured the question cannot be answered yet,
+        and the whole allowlist is tried once.
+        """
+
+        allowlist = list(getattr(self, "station_allowlist", ()) or ())
+        read_conn = getattr(self, "conn", None) or self.commit_conn
+        if read_conn is None or not allowlist:
+            return allowlist
+        try:
+            rows = read_conn.execute(
+                "SELECT DISTINCT station_id "
+                "FROM calibration_historical_taf_capture "
+                "WHERE tx_c IS NOT NULL"
+            ).fetchall()
+        except Exception:
+            return allowlist
+        yielded = {str(row[0]).strip().upper() for row in rows}
+        if not yielded:
+            return allowlist
+        return [station for station in allowlist if station in yielded]
+
+    def _capture_historical_taf_daily(
+        self, *, as_of_utc: str
+    ) -> dict[str, Any]:
+        """Re-capture the closed days still inside AWC's 30-day window.
+
+        Offline evidence only: the pass writes bounded archive files and a
+        receipt, and never opens the target database or an order gateway.
+        Committing those archives stays a separate, explicit step.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        stations = self._historical_taf_capture_stations()
+        if not stations:
+            return {"state": "NOT_CONFIGURED", **boundary}
+        inflight = getattr(self, "_historical_taf_capture_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {"state": "IN_FLIGHT", **boundary}
+        now_mono = time.monotonic()
+        last_attempt = getattr(self, "_historical_taf_capture_last_mono", None)
+        if (
+            last_attempt is not None
+            and now_mono - last_attempt < HISTORICAL_TAF_CAPTURE_RETRY_SEC
+        ):
+            return {
+                "state": "THROTTLED",
+                "retry_in_seconds": round(
+                    HISTORICAL_TAF_CAPTURE_RETRY_SEC
+                    - (now_mono - last_attempt),
+                    1,
+                ),
+                **boundary,
+            }
+        self._historical_taf_capture_last_mono = now_mono
+        as_of_day = datetime.fromisoformat(
+            as_of_utc.replace("Z", "+00:00")
+        ).astimezone(timezone.utc).date()
+        end_date = as_of_day - timedelta(days=HISTORICAL_TAF_CAPTURE_LAG_DAYS)
+        start_date = end_date - timedelta(
+            days=HISTORICAL_TAF_CAPTURE_WINDOW_DAYS - 1
+        )
+        capture_root = self.nwp_runtime_root / "historical_taf_multianchor"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        receipt_path = capture_root / "receipt.json"
+        command = [
+            sys.executable,
+            str(
+                ROOT
+                / "scripts"
+                / "backfill_awc_taf_calibration_multistation.py"
+            ),
+            "--db", str(self.db_path),
+            "--start-date", start_date.isoformat(),
+            "--end-date", end_date.isoformat(),
+            "--output-dir", str(capture_root),
+            # Days already complete are kept and only the transport failures
+            # are retried, so the overlapping window costs little after the
+            # first pass.
+            "--resume",
+            "--max-workers", "2",
+            "--request-interval-sec", "0.5",
+            "--timeout-sec", "30",
+            "--receipt", str(receipt_path),
+        ]
+        for station in stations:
+            command.extend(["--station-id", station])
+        for anchor in HISTORICAL_TAF_DECISION_ANCHOR_HOURS:
+            command.extend(["--decision-anchor-hour", str(anchor)])
+        # AWC is reached directly.  The service is public, and the ambient
+        # proxy this host exports is for a different lane entirely -- routed
+        # through it the capture dies in CONNECT tunnel failures rather than
+        # returning bulletins.
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {
+                "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
+                "AWC_HTTP_PROXY",
+            }
+        }
+
+        def _run_capture() -> dict[str, Any]:
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=HISTORICAL_TAF_CAPTURE_DEADLINE_SEC,
+                    env=environment,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "state": "DEADLINE_EXCEEDED",
+                    "reason": (
+                        "historical_taf_capture_exceeded_"
+                        f"{HISTORICAL_TAF_CAPTURE_DEADLINE_SEC:.0f}s"
+                    ),
+                }
+            except Exception as exc:
+                return {
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            summary: dict[str, Any] = {}
+            try:
+                summary = json.loads(
+                    (completed.stdout or "").strip().splitlines()[-1]
+                )
+            except Exception:
+                pass
+            # A nonzero exit here means some station-anchor run failed, which
+            # on this lane is ordinary: AWC drops connections and the next
+            # day's pass resumes the same window.
+            result = {
+                "state": "CAPTURED" if completed.returncode == 0 else "PARTIAL",
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "station_count": len(stations),
+                "decision_anchor_offset_hours": list(
+                    HISTORICAL_TAF_DECISION_ANCHOR_HOURS
+                ),
+                "sample_count": summary.get("sample_count"),
+                "completed_run_count": summary.get("completed_run_count"),
+                "failed_run_count": summary.get("failed_run_count"),
+                "stderr": (completed.stderr or "").strip()[-200:],
+            }
+            self._historical_taf_capture_last_result = result
+            return result
+
+        pool = getattr(self, "_historical_taf_capture_pool", None)
+        if pool is None:
+            self._historical_taf_capture_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="historical-taf-capture",
+            )
+            pool = self._historical_taf_capture_pool
+        self._historical_taf_capture_inflight = pool.submit(_run_capture)
+        return {
+            "state": "SUBMITTED",
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "station_count": len(stations),
+            "last_completed": dict(
+                getattr(self, "_historical_taf_capture_last_result", {}) or {}
+            ),
+            **boundary,
+        }
+
+    def _taf_registry_artifacts(self) -> list[TafRevisionArtifact]:
+        """Read the registry the resident P0-M stage selects from.
+
+        Unreadable is treated as uncovered rather than raised: this is the
+        training lane's coverage question, and a registry that cannot be parsed
+        is exactly the case where a station needs an artifact built.  The
+        stage's own read still fails closed on the same file.
+        """
+
+        try:
+            raw = load_bounded_json(self.taf_artifact_path)
+        except Exception:
+            return []
+        if not isinstance(raw, Mapping):
+            return []
+        try:
+            if raw.get("schema") == TAF_ARTIFACT_REGISTRY_SCHEMA:
+                return validate_taf_artifact_registry(raw)
+            return [TafRevisionArtifact.from_mapping(raw)]
+        except Exception:
+            return []
+
+    def _taf_revision_training_due(
+        self, *, station_id: str, as_of_utc: str
+    ) -> tuple[bool, dict[str, str], str]:
+        """Whether this station's live P0 scope has no active TAF artifact.
+
+        Coverage is judged against the scope the live P0 root actually stamps,
+        because that is the equality the resident stage selects on: an artifact
+        for any other season, lead or cycle is not a weaker match, it is no
+        match at all.  Unlike the trajectory lane this cannot ask for coverage
+        through the newest settled day -- the artifact is trained through the
+        end of its fit window and the transport window that qualifies it sits
+        after that, so demanding it would make every station due forever.  An
+        artifact is current while its own validity window covers now.
+        """
+
+        read_conn = getattr(self, "conn", None) or self.commit_conn
+        if read_conn is None:
+            return False, {}, "target_read_connection_missing"
+        row = read_conn.execute(
+            "SELECT settlement_timezone, lineage_json "
+            "FROM basket_probability_envelope "
+            "WHERE station_id=? AND stage='P0' AND state='COMMITTED' "
+            "ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id,),
+        ).fetchone()
+        if row is None:
+            return False, {}, "no_committed_p0_root"
+        try:
+            lineage = json.loads(str(row[1] or ""))
+        except (TypeError, ValueError):
+            return False, {}, "p0_root_lineage_unreadable"
+        if not isinstance(lineage, Mapping):
+            return False, {}, "p0_root_lineage_unreadable"
+        scope = {
+            "station_id": station_id,
+            "settlement_timezone": str(row[0] or ""),
+            "season_bin": str(lineage.get("season_bin") or ""),
+            # The training grouping when the root carries one: that is what
+            # the rolling series is keyed by, and what the resident stage
+            # selects an artifact on.
+            "lead_bucket": taf_scope_lead_bucket(lineage),
+            "calendar_lead_bucket": str(lineage.get("lead_bucket") or ""),
+            "run_cycle": str(lineage.get("run_cycle") or ""),
+            "settlement_definition": str(
+                lineage.get("settlement_definition") or ""
+            ),
+        }
+        if not all(scope.values()):
+            return False, {}, "p0_root_scope_incomplete"
+        truth = read_conn.execute(
+            "SELECT MAX(local_date) FROM calibration_station_daily_high_truth "
+            "WHERE station_id=? AND qc_status='ACCEPTED'",
+            (station_id,),
+        ).fetchone()
+        scope["latest_truth_day"] = str((truth or [""])[0] or "")
+        for artifact in self._taf_registry_artifacts():
+            if (
+                artifact.station_id,
+                artifact.settlement_timezone,
+                artifact.season_bin,
+                artifact.lead_bucket,
+                artifact.run_cycle,
+            ) != (
+                station_id,
+                scope["settlement_timezone"],
+                scope["season_bin"],
+                scope["lead_bucket"],
+                scope["run_cycle"],
+            ):
+                continue
+            if (
+                artifact.valid_from_utc
+                <= as_of_utc
+                < artifact.valid_until_utc
+            ):
+                return False, scope, "active_artifact_covers_live_scope"
+            return True, scope, "artifact_validity_window_lapsed"
+        return True, scope, "no_artifact_for_live_p0_scope"
+
+    @staticmethod
+    def _taf_rolling_accumulation(
+        rolling_path: Path,
+        *,
+        season_bin: str,
+        lead_bucket: str,
+    ) -> dict[str, Any]:
+        """The best-covered system pair at the live scope, and its shortfall.
+
+        Reported from the pair with the most common settled days, because that
+        is the one that will qualify first; the rest are further behind and
+        would only make the shortfall look larger than it is.
+        """
+
+        try:
+            rolling = load_bounded_json(rolling_path)
+        except Exception:
+            return {}
+        best: Mapping[str, Any] | None = None
+        offered: set[str] = set()
+        for item in (rolling or {}).get("accumulating") or []:
+            if not isinstance(item, Mapping):
+                continue
+            if str(item.get("season_bin") or "") != season_bin:
+                continue
+            offered.add(str(item.get("lead_bucket") or ""))
+            if str(item.get("lead_bucket") or "") != lead_bucket:
+                continue
+            plan = item.get("plan")
+            if not isinstance(plan, Mapping):
+                continue
+            if best is None or int(plan.get("common_case_count") or 0) > int(
+                (best.get("plan") or {}).get("common_case_count") or 0
+            ):
+                best = item
+        if best is None:
+            # Training groups runs by lead in hours while P0 lineage still
+            # names calendar-day leads, so a station can have plenty of
+            # evidence under a bucket no live root will ever ask for.  Say
+            # which buckets exist rather than reporting an absence.
+            return {
+                "reason": (
+                    "live_lead_bucket_absent_from_training_vocabulary"
+                    if offered
+                    else "no_system_pair_at_live_scope"
+                ),
+                "live_lead_bucket": lead_bucket,
+                "training_lead_buckets": sorted(offered),
+            }
+        plan = best["plan"]
+        return {
+            "selected_system_ids": list(best.get("selected_system_ids") or []),
+            "common_case_count": int(plan.get("common_case_count") or 0),
+            "required_common_case_count": int(
+                plan.get("required_common_case_count") or 0
+            ),
+            "missing_common_case_count": int(
+                plan.get("missing_common_case_count") or 0
+            ),
+        }
+
+    def _run_taf_revision_training(
+        self, *, as_of_utc: str
+    ) -> dict[str, Any]:
+        """Run the rolling-OOS -> fit -> gate -> bind -> registry chain once.
+
+        One due station per cycle, rotated, on its own single-worker pool --
+        the same shape as the trajectory pass.  Every step is an existing
+        offline script run as a subprocess; the only durable products are the
+        bound artifact files and the registry the builder assembles from them.
+        This lane writes no SSOT row and reaches no order gateway.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if (
+            (getattr(self, "conn", None) is None and self.commit_conn is None)
+            or not self.station_allowlist
+            or not self.p0_inbox_path.is_file()
+        ):
+            return {"state": "NOT_CONFIGURED", **boundary}
+        inflight = getattr(self, "_taf_revision_inflight", None)
+        if inflight is not None and not inflight.done():
+            return {"state": "IN_FLIGHT", **boundary}
+        cursor = int(getattr(self, "_taf_revision_station_cursor", 0))
+        throttle: dict[str, float] = getattr(
+            self, "_taf_revision_attempts", None
+        ) or {}
+        self._taf_revision_attempts = throttle
+        now_mono = time.monotonic()
+        chosen: tuple[str, dict[str, str]] | None = None
+        for offset in range(len(self.station_allowlist)):
+            station = self.station_allowlist[
+                (cursor + offset) % len(self.station_allowlist)
+            ]
+            last = throttle.get(station)
+            if (
+                last is not None
+                and now_mono - last < TAF_REVISION_TRAINING_RETRY_SEC
+            ):
+                continue
+            try:
+                due, scope, _reason = self._taf_revision_training_due(
+                    station_id=station,
+                    as_of_utc=as_of_utc,
+                )
+            except Exception:
+                continue
+            if due:
+                chosen = (station, scope)
+                self._taf_revision_station_cursor = (
+                    cursor + offset + 1
+                ) % len(self.station_allowlist)
+                break
+        if chosen is None:
+            self._taf_revision_station_cursor = (
+                cursor + 1
+            ) % len(self.station_allowlist)
+            return {"state": "NOT_DUE", **boundary}
+        station, scope = chosen
+        throttle[station] = now_mono
+        target_db = str(self.db_path)
+        live_inbox = str(self.p0_inbox_path)
+        work_root = self.nwp_runtime_root / "taf_revision_training"
+        work = work_root / station
+        work.mkdir(parents=True, exist_ok=True)
+        bound_root = Path(self.taf_bound_artifact_root)
+        bound_root.mkdir(parents=True, exist_ok=True)
+        registry_path = self.taf_artifact_path
+
+        def _run(script: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / script), *arguments],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=TAF_REVISION_TRAINING_DEADLINE_SEC,
+            )
+
+        def _summary(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+            try:
+                return json.loads((completed.stdout or "").strip().splitlines()[-1])
+            except Exception:
+                return {}
+
+        def _train() -> dict[str, Any]:
+            steps: list[dict[str, Any]] = []
+            result: dict[str, Any] = {
+                "schema": "bayes_basket_target_taf_revision_training_receipt_v1",
+                "station_id": station,
+                "as_of_utc": as_of_utc,
+                "live_p0_scope": dict(scope),
+                "state": "BLOCKED_EVIDENCE",
+                "steps": steps,
+                "registry_path": str(registry_path),
+                "writes_target_ssot": False,
+                **boundary,
+            }
+
+            def _finish(state: str) -> dict[str, Any]:
+                result["state"] = state
+                self._taf_revision_last_result = result
+                try:
+                    write_bounded_json_if_changed(work / "receipt.json", result)
+                except Exception as exc:
+                    result["receipt_write_error"] = f"{type(exc).__name__}:{exc}"
+                return result
+
+            rolling = _run(
+                "build_native_ensemble_rolling_taf_oos.py",
+                [
+                    "--db", target_db,
+                    "--station-id", station,
+                    "--output-dir", str(work),
+                ],
+            )
+            # Exit 2 is this builder's "not enough disjoint blocks yet", which
+            # is the expected state for every station whose settled days have
+            # not caught up.  Only a missing manifest is a real failure.
+            steps.append({
+                "step": "rolling_native_taf_oos",
+                "returncode": rolling.returncode,
+                "summary": _summary(rolling),
+                "stderr": (rolling.stderr or "").strip()[-200:],
+            })
+            try:
+                manifest = load_bounded_json(work / "manifest.json")
+            except Exception as exc:
+                steps[-1]["state"] = "ROLLING_FAILED"
+                steps[-1]["reason"] = f"{type(exc).__name__}:{exc}"
+                return _finish("BLOCKED_EVIDENCE")
+            reports = [
+                item
+                for item in (manifest.get("reports") or [])
+                if isinstance(item, Mapping)
+                and str(item.get("station_id") or "") == station
+            ]
+            splits = [
+                item
+                for report in reports
+                for item in (report.get("strict_splits") or [])
+                if isinstance(item, Mapping)
+            ]
+            exact = [
+                item
+                for item in splits
+                if (
+                    str(item.get("season_bin") or ""),
+                    str(item.get("lead_bucket") or ""),
+                    str(item.get("run_cycle") or ""),
+                ) == (
+                    scope["season_bin"],
+                    scope["lead_bucket"],
+                    scope["run_cycle"],
+                )
+            ]
+            ready = [item for item in exact if item.get("state") == "READY"]
+            steps[-1]["state"] = "READY" if ready else "ACCUMULATING"
+            steps[-1]["series_scopes"] = [
+                {
+                    "season_bin": str(item.get("season_bin") or ""),
+                    "lead_bucket": str(item.get("lead_bucket") or ""),
+                    "run_cycle": str(item.get("run_cycle") or ""),
+                    "state": str(item.get("state") or ""),
+                    "series_sample_count": int(item.get("series_sample_count") or 0),
+                }
+                for item in splits
+            ]
+            if not ready:
+                # Name the two ways this ends short: no series at the live
+                # scope at all, or a series that has not reached one fit plus
+                # one strictly later transport window.
+                steps[-1]["reason"] = (
+                    "rolling_series_missing_for_live_p0_scope"
+                    if not exact
+                    else "rolling_series_below_fit_plus_transport_minimum"
+                )
+                if exact:
+                    steps[-1]["missing_sample_count"] = int(
+                        exact[0].get("missing_sample_count") or 0
+                    )
+                else:
+                    # Without a single READY block there is no series to
+                    # describe, and the receipt would say only that nothing
+                    # matched.  Carry the builder's own arithmetic instead, so
+                    # the wait is a number of settled days rather than a
+                    # mystery.
+                    steps[-1]["accumulation"] = self._taf_rolling_accumulation(
+                        work / f"{station}_rolling_native_oos.json",
+                        season_bin=scope["season_bin"],
+                        lead_bucket=scope["lead_bucket"],
+                    )
+                return _finish("BLOCKED_EVIDENCE")
+            if len(ready) != 1:
+                steps[-1]["state"] = "AMBIGUOUS"
+                steps[-1]["reason"] = "rolling_series_exact_scope_ambiguous"
+                return _finish("BLOCKED_EVIDENCE")
+            selected = ready[0]
+            fit_path = Path(str(selected["fit_output"]))
+            transport_path = Path(str(selected["transport_output"]))
+            try:
+                transport_join = load_bounded_json(transport_path)
+                fit_join = load_bounded_json(fit_path)
+                valid_from = max(
+                    str(row["settlement_window"]["end_utc"])
+                    for row in transport_join["samples"]
+                )
+                fit_sha = str(fit_join["content_sha256"])
+            except Exception as exc:
+                steps.append({
+                    "step": "strict_split_read",
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{exc}",
+                })
+                return _finish("BLOCKED_EVIDENCE")
+            # Anchored to the evidence rather than to the clock, so rerunning
+            # an unchanged station rebuilds an identical artifact and the
+            # registry write is a no-op instead of six-hourly churn.
+            valid_until = (
+                datetime.fromisoformat(valid_from.replace("Z", "+00:00"))
+                + timedelta(days=TAF_REVISION_ARTIFACT_VALID_DAYS)
+            ).astimezone(timezone.utc).isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z")
+            artifact_id = "-".join([
+                "taf",
+                station.lower(),
+                scope["season_bin"].lower(),
+                scope["lead_bucket"].lower(),
+                scope["run_cycle"].lower(),
+                fit_sha[:12],
+            ])
+            fitted_path = work / f"{artifact_id}_artifact.json"
+            fit = _run(
+                "fit_bayes_basket_target_taf_revision.py",
+                [
+                    "--dataset", str(fit_path),
+                    "--artifact-output", str(fitted_path),
+                    "--scorecard-output", str(work / f"{artifact_id}_scorecard.json"),
+                    "--artifact-id", artifact_id,
+                    "--activation-id", f"{artifact_id}-activation",
+                    "--station-id", station,
+                    "--season-bin", scope["season_bin"],
+                    "--lead-bucket", scope["lead_bucket"],
+                    "--run-cycle", scope["run_cycle"],
+                    "--settlement-definition", scope["settlement_definition"],
+                    "--valid-from-utc", valid_from,
+                    "--valid-until-utc", valid_until,
+                ],
+            )
+            steps.append({
+                "step": "fit_taf_revision",
+                "state": "FITTED" if fit.returncode == 0 else "GATE_REJECTED",
+                "returncode": fit.returncode,
+                "artifact_id": artifact_id,
+                "summary": _summary(fit),
+                "stderr": (fit.stderr or "").strip()[-200:],
+            })
+            if fit.returncode != 0:
+                return _finish("BLOCKED_EVIDENCE")
+            report_path = work / f"{artifact_id}_transport_oos.json"
+            gate = _run(
+                "build_taf_native_ensemble_oos.py",
+                [
+                    "--exact-join", str(transport_path),
+                    "--live-p0-inbox", live_inbox,
+                    "--taf-artifact", str(fitted_path),
+                    "--station-id", station,
+                    "--season-bin", scope["season_bin"],
+                    "--lead-bucket", scope["lead_bucket"],
+                    "--run-cycle", scope["run_cycle"],
+                    "--output", str(report_path),
+                ],
+            )
+            gate_summary = _summary(gate)
+            steps.append({
+                "step": "native_ensemble_transport_oos",
+                "state": str(gate_summary.get("state") or "FAILED"),
+                "returncode": gate.returncode,
+                "validated": bool(gate_summary.get("validated")),
+                "sample_n": gate_summary.get("sample_n"),
+                "stderr": (gate.stderr or "").strip()[-200:],
+            })
+            if gate.returncode != 0 or not gate_summary.get("validated"):
+                return _finish("BLOCKED_EVIDENCE")
+            # One file per exact scope: a refit replaces its own scope in
+            # place, which is what keeps the registry free of the duplicate
+            # scopes its builder rejects.
+            bound_path = bound_root / (
+                "_".join([
+                    station,
+                    scope["season_bin"],
+                    scope["lead_bucket"],
+                    scope["run_cycle"],
+                ]).replace("/", "-")
+                + ".json"
+            )
+            bind = _run(
+                "bind_bayes_basket_target_taf_live_compatibility.py",
+                [
+                    "--taf-artifact", str(fitted_path),
+                    "--transport-oos-report", str(report_path),
+                    "--output", str(bound_path),
+                ],
+            )
+            steps.append({
+                "step": "bind_live_compatibility",
+                "state": "BOUND" if bind.returncode == 0 else "FAILED",
+                "returncode": bind.returncode,
+                "summary": _summary(bind),
+                "stderr": (bind.stderr or "").strip()[-200:],
+            })
+            if bind.returncode != 0:
+                return _finish("BLOCKED_EVIDENCE")
+            # Only artifacts whose own validity still covers now.  The registry
+            # is capped at 45 members, so carrying every scope a station has
+            # ever run under would eventually make each build fail and freeze
+            # the file -- and an expired member is one the P0-M stage would
+            # reject anyway.  Lapsed files stay on disk as the audit trail.
+            members: list[Path] = []
+            lapsed = 0
+            for path in sorted(bound_root.glob("*.json")):
+                if not path.is_file():
+                    continue
+                try:
+                    member = TafRevisionArtifact.from_mapping(
+                        load_bounded_json(path)
+                    )
+                except Exception:
+                    lapsed += 1
+                    continue
+                if member.valid_from_utc <= as_of_utc < member.valid_until_utc:
+                    members.append(path)
+                else:
+                    lapsed += 1
+            arguments: list[str] = []
+            for path in members:
+                arguments.extend(["--artifact", str(path)])
+            arguments.extend([
+                "--output", str(registry_path),
+                "--receipt-output", str(work / "registry_receipt.json"),
+            ])
+            registry = _run(
+                "build_bayes_basket_target_taf_artifact_registry.py",
+                arguments,
+            )
+            registry_summary = _summary(registry)
+            steps.append({
+                "step": "build_artifact_registry",
+                "state": str(registry_summary.get("state") or "FAILED"),
+                "returncode": registry.returncode,
+                "artifact_count": registry_summary.get("artifact_count"),
+                "member_count": len(members),
+                "lapsed_member_count": lapsed,
+                "stderr": (registry.stderr or "").strip()[-200:],
+            })
+            if registry.returncode != 0:
+                return _finish("BLOCKED_EVIDENCE")
+            result["artifact_id"] = artifact_id
+            result["bound_artifact_path"] = str(bound_path)
+            return _finish("PROMOTED")
+
+        def _train_guarded() -> dict[str, Any]:
+            # Nothing retrieves this future's result, so an exception raised
+            # inside the chain would be discarded silently and the lane would
+            # look merely quiet.  The receipt on disk is the only place anyone
+            # sees this pass at all -- launchd captures nothing -- so a crash
+            # has to land there too.
+            try:
+                return _train()
+            except Exception as exc:
+                failure = {
+                    "schema": "bayes_basket_target_taf_revision_training_receipt_v1",
+                    "station_id": station,
+                    "as_of_utc": as_of_utc,
+                    "live_p0_scope": dict(scope),
+                    "state": "FAILED",
+                    "reason": f"{type(exc).__name__}:{exc}",
+                    "steps": [],
+                    "writes_target_ssot": False,
+                    **boundary,
+                }
+                self._taf_revision_last_result = failure
+                try:
+                    write_bounded_json_if_changed(work / "receipt.json", failure)
+                except Exception:
+                    pass
+                return failure
+
+        pool = getattr(self, "_taf_revision_pool", None)
+        if pool is None:
+            self._taf_revision_pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="taf-revision-training",
+            )
+            pool = self._taf_revision_pool
+        self._taf_revision_inflight = pool.submit(_train_guarded)
+        return {
+            "state": "SUBMITTED",
+            "station_id": station,
+            "live_p0_scope": dict(scope),
+            "last_completed": dict(
+                getattr(self, "_taf_revision_last_result", {}) or {}
+            ),
+            **boundary,
+        }
+
     def _capture_icon_daily(self, *, as_of_utc: str) -> dict[str, Any]:
         """Take today's ICON run for all 45 stations, once, in the background.
 
@@ -2813,6 +3735,29 @@ class TargetProductionWorker:
             as_of_utc=as_of_utc
         )
         del metar_trajectory_training
+        # And the same for the TAF revision chain, which is what the resident
+        # P0-M stage has been waiting on: it consumes only the registry file
+        # this lane's builder writes.
+        taf_revision_training = self._run_taf_revision_training(
+            as_of_utc=as_of_utc
+        )
+        del taf_revision_training
+        # And the evidence that lane trains on.  AWC serves 30 days, so a
+        # closed day not captured while it is still inside that window can
+        # never be captured at all -- this belongs with ICON among the passes
+        # whose skipped day is lost rather than merely late.
+        historical_taf_capture = self._capture_historical_taf_daily(
+            as_of_utc=as_of_utc
+        )
+        del historical_taf_capture
+        # Corrected reports halt settled truth until reviewed, and the review
+        # policy only ever ran by hand -- so the halts piled up again and six
+        # stations quietly stopped settling.  Scheduling it is the difference
+        # between a policy that exists and one that runs.
+        correction_auto_clear = self._run_correction_auto_clear(
+            as_of_utc=as_of_utc
+        )
+        del correction_auto_clear
 
         read_conn = getattr(self, "commit_conn", None) or getattr(
             self, "conn", None
@@ -6374,7 +7319,7 @@ class TargetProductionWorker:
                         == item.settlement_timezone
                         and str(root.lineage.get("season_bin") or "")
                         == item.season_bin
-                        and str(root.lineage.get("lead_bucket") or "")
+                        and taf_scope_lead_bucket(root.lineage)
                         == item.lead_bucket
                         and str(root.lineage.get("run_cycle") or "")
                         == item.run_cycle
@@ -7632,6 +8577,7 @@ class TargetProductionWorker:
                             scope,
                             set(),
                         ).add(str(row[2] or "").strip())
+                    settled_scopes: list[tuple[str, str]] = []
                     for scope, timezone_names in sorted(
                         timezone_by_scope.items()
                     ):
@@ -7649,9 +8595,34 @@ class TargetProductionWorker:
                             ).replace("Z", "+00:00")
                         ).astimezone(timezone.utc)
                         if closed_at <= as_of:
-                            additional_scopes.append(scope)
-                        if len(additional_scopes) >= 45:
-                            break
+                            settled_scopes.append(scope)
+                    # Rotate rather than always taking the first page of a
+                    # station-sorted list.  The candidate set is routinely
+                    # larger than one page, and cutting it at a fixed offset
+                    # meant the same alphabetical prefix was served every
+                    # cycle: stations late in the alphabet were never asked
+                    # about at all.  They did not fail any gate -- a read-only
+                    # replay of their scopes reaches the write -- they simply
+                    # never got a turn, which is indistinguishable from a
+                    # source outage in every receipt.
+                    if settled_scopes:
+                        page = min(45, len(settled_scopes))
+                        start = int(
+                            getattr(
+                                self,
+                                "_delta_v2_truth_bootstrap_cursor",
+                                0,
+                            )
+                        ) % len(settled_scopes)
+                        additional_scopes = [
+                            settled_scopes[
+                                (start + offset) % len(settled_scopes)
+                            ]
+                            for offset in range(page)
+                        ]
+                        self._delta_v2_truth_bootstrap_cursor = (
+                            start + page
+                        ) % len(settled_scopes)
                 truth_kwargs: dict[str, Any] = {
                     "as_of_utc": as_of_utc,
                     "max_scopes": 45,

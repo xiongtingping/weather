@@ -556,7 +556,9 @@ def build_awc_observation_contract(
             and halt
             and halt.get("state") == "cleared"
             and reviews
-            and reviews[-1].get("decision") == "CLEAR_REFERENCE_ONLY"
+            and reviews[-1].get("decision") in {
+                "CLEAR_REFERENCE_ONLY", "CLEAR_WITH_REPLACEMENT"
+            }
             and reviews[-1].get("triggering_observation_id")
             == halt.get("triggering_observation_id")
         )

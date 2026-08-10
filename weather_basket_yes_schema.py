@@ -412,7 +412,11 @@ CREATE TABLE IF NOT EXISTS reported_trajectory_station_halt_reviews (
   event_date TEXT NOT NULL,
   triggering_observation_id TEXT NOT NULL,
   decision TEXT NOT NULL CHECK(
-    decision IN ('CLEAR_REFERENCE_ONLY','QUARANTINE_STATION_DAY')
+    decision IN (
+      'CLEAR_REFERENCE_ONLY',
+      'CLEAR_WITH_REPLACEMENT',
+      'QUARANTINE_STATION_DAY'
+    )
   ),
   reviewer TEXT NOT NULL,
   rationale TEXT NOT NULL,

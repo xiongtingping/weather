@@ -14,8 +14,25 @@ from .settlement_time import settlement_day_window
 
 SCHEMA = "reported_trajectory_station_halt_review_v1"
 CLEAR_REFERENCE_ONLY = "CLEAR_REFERENCE_ONLY"
+# The replacement contract the on-hour guard has been waiting for.  An on-hour
+# report is eligible truth input, so demoting a corrected one to reference-only
+# would silently drop a reading the day's maximum is entitled to -- which is
+# why ``CLEAR_REFERENCE_ONLY`` is refused there.  This decision says the
+# opposite and states it explicitly: the corrected report stands in for what it
+# corrected and is counted normally.
+#
+# It may only be recorded when nothing at that valid time contradicts it, which
+# is checked against the stored reports at append time rather than asserted by
+# the reviewer.  The downstream contradiction guard is unchanged and remains
+# the last word: two reports disagreeing on temperature for one valid time
+# still fail closed as settlement_truth_hourly_revision_ambiguous.
+CLEAR_WITH_REPLACEMENT = "CLEAR_WITH_REPLACEMENT"
 QUARANTINE_STATION_DAY = "QUARANTINE_STATION_DAY"
-DECISIONS = frozenset({CLEAR_REFERENCE_ONLY, QUARANTINE_STATION_DAY})
+DECISIONS = frozenset({
+    CLEAR_REFERENCE_ONLY,
+    CLEAR_WITH_REPLACEMENT,
+    QUARANTINE_STATION_DAY,
+})
 MAX_CORRECTIONS_PER_SCOPE = 16
 MAX_REVIEWS_PER_SCOPE = 64
 MAX_EVIDENCE_JSON_BYTES = 65_536
@@ -45,6 +62,22 @@ def _text(name: str, value: Any) -> str:
     result = str(value or "").strip()
     if not result:
         raise ContractError(f"{name}_missing")
+    return result
+
+
+def _finite_temperature(value: Any) -> float:
+    """One reported temperature, or refuse to compare against it."""
+
+    if isinstance(value, bool) or value is None:
+        raise ContractError("correction_review_observation_temperature_invalid")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ContractError(
+            "correction_review_observation_temperature_invalid"
+        ) from exc
+    if result != result or result in (float("inf"), float("-inf")):
+        raise ContractError("correction_review_observation_temperature_invalid")
     return result
 
 
@@ -145,7 +178,7 @@ def append_correction_review(
         raise ContractError("correction_review_scope_or_decision_invalid")
     observation = conn.execute(
         "SELECT source_lane,station_id,valid_at,raw_sha256,"
-        "canonical_committed_at,correction_suspected "
+        "canonical_committed_at,correction_suspected,reported_temperature_c "
         "FROM reported_trajectory_observations WHERE observation_id=?",
         (observation_id,),
     ).fetchone()
@@ -193,14 +226,40 @@ def append_correction_review(
     reviewed = _instant("correction_review_reviewed_at", reviewed_at)
     if reviewed < committed_at:
         raise ContractError("correction_review_precedes_observation")
-    if (
-        resolved_decision == CLEAR_REFERENCE_ONLY
-        and valid_at.minute == 0
-        and valid_at.second == 0
-    ):
+    on_hour = valid_at.minute == 0 and valid_at.second == 0
+    if resolved_decision == CLEAR_REFERENCE_ONLY and on_hour:
         raise ContractError(
             "correction_review_hourly_clear_requires_replacement_contract"
         )
+    if resolved_decision == CLEAR_WITH_REPLACEMENT:
+        if not on_hour:
+            # Off-hour reports are not truth input to begin with, so there is
+            # nothing for a replacement to stand in for.
+            raise ContractError(
+                "correction_review_replacement_requires_hourly_observation"
+            )
+        # The contract is only defensible when the corrected report agrees with
+        # everything else recorded for that instant.  Verified here against the
+        # stored reports, so a reviewer -- policy or person -- cannot assert it
+        # into being over a genuine disagreement.
+        peers = conn.execute(
+            "SELECT reported_temperature_c FROM reported_trajectory_observations "
+            "WHERE source_lane=? AND station_id=? AND valid_at=? "
+            "AND observation_id<>? LIMIT ?",
+            (
+                lane,
+                station,
+                str(observation[2]),
+                observation_id,
+                MAX_REVIEWS_PER_SCOPE,
+            ),
+        ).fetchall()
+        corrected_temperature = _finite_temperature(observation[6])
+        for (peer_temperature,) in peers:
+            if _finite_temperature(peer_temperature) != corrected_temperature:
+                raise ContractError(
+                    "correction_review_replacement_contradicts_peer_report"
+                )
     latest = conn.execute(
         "SELECT review_id,decision,reviewer,rationale,reviewed_at,"
         "evidence_sha256 "
@@ -313,6 +372,13 @@ AUTOMATIC_RATIONALE = (
     "on temperature for one valid time still fail closed as "
     "settlement_truth_hourly_revision_ambiguous."
 )
+AUTOMATIC_REPLACEMENT_RATIONALE = (
+    "Automatic CLEAR_WITH_REPLACEMENT: an on-hour corrected report is eligible "
+    "truth input, so it stands in for the report it corrected rather than "
+    "being demoted to reference. Recorded only where nothing else at that "
+    "valid time disagrees on temperature, checked against the stored reports. "
+    "The contradiction guard downstream is unchanged."
+)
 
 
 def auto_clear_station_day_corrections(
@@ -345,7 +411,7 @@ def auto_clear_station_day_corrections(
     day = _text("correction_review_event_date", event_date)
     as_of = _stamp(_instant("correction_review_as_of_utc", as_of_utc))
     pending = conn.execute(
-        "SELECT o.observation_id FROM reported_trajectory_observations AS o "
+        "SELECT o.observation_id,o.valid_at FROM reported_trajectory_observations AS o "
         "WHERE o.source_lane=? AND o.station_id=? AND o.correction_suspected=1 "
         "AND julianday(o.valid_at)>=julianday(?) "
         "AND julianday(o.valid_at)<julianday(?) "
@@ -365,18 +431,46 @@ def auto_clear_station_day_corrections(
     if len(pending) > MAX_CORRECTIONS_PER_SCOPE:
         raise ContractError("correction_review_scope_cap_exceeded")
     cleared: list[str] = []
-    for (observation_id,) in pending:
-        append_correction_review(
-            conn,
-            source_lane=lane,
-            station_id=station,
-            event_date=day,
-            triggering_observation_id=str(observation_id),
-            decision=CLEAR_REFERENCE_ONLY,
-            reviewer=AUTOMATIC_REVIEWER,
-            rationale=AUTOMATIC_RATIONALE,
-            reviewed_at=as_of,
+    contested: list[dict[str, str]] = []
+    for observation_id, valid_at_raw in pending:
+        valid_at = _instant(
+            "correction_review_observation_valid_at", valid_at_raw
         )
+        # Which contract applies follows from the report itself.  Off-hour
+        # reports are not truth input, so reference-only states the truth about
+        # them; an on-hour report is eligible input, so the only honest way to
+        # clear it is to say the correction replaces what it corrected.
+        on_hour = valid_at.minute == 0 and valid_at.second == 0
+        decision = (
+            CLEAR_WITH_REPLACEMENT if on_hour else CLEAR_REFERENCE_ONLY
+        )
+        try:
+            append_correction_review(
+                conn,
+                source_lane=lane,
+                station_id=station,
+                event_date=day,
+                triggering_observation_id=str(observation_id),
+                decision=decision,
+                reviewer=AUTOMATIC_REVIEWER,
+                rationale=(
+                    AUTOMATIC_REPLACEMENT_RATIONALE
+                    if on_hour
+                    else AUTOMATIC_RATIONALE
+                ),
+                reviewed_at=as_of,
+            )
+        except ContractError as exc:
+            if str(exc) != "correction_review_replacement_contradicts_peer_report":
+                raise
+            # A real disagreement about the temperature at one instant is not
+            # something standing policy gets to settle.  Leave it pending so it
+            # stays visible, and let the rest of the scope clear.
+            contested.append({
+                "observation_id": str(observation_id),
+                "reason": str(exc),
+            })
+            continue
         cleared.append(str(observation_id))
     return {
         "schema": SCHEMA,
@@ -385,6 +479,8 @@ def auto_clear_station_day_corrections(
         "event_date": day,
         "cleared_count": len(cleared),
         "cleared_observation_ids": cleared,
+        "contested_count": len(contested),
+        "contested": contested,
     }
 
 
@@ -470,7 +566,14 @@ def assert_station_day_corrections_resolved(
                 "correction_review_quarantines_station_day:"
                 f"{str(observation_id)}"
             )
-        if valid_at.minute == 0 and valid_at.second == 0:
+        if (
+            valid_at.minute == 0
+            and valid_at.second == 0
+            and review["decision"] != CLEAR_WITH_REPLACEMENT
+        ):
+            # An on-hour correction clears only under the replacement
+            # contract, whose own preconditions were checked when it was
+            # recorded.  Reference-only would drop an eligible reading.
             raise ContractError(
                 "correction_review_hourly_clear_requires_replacement_contract"
             )
@@ -485,9 +588,11 @@ def assert_station_day_corrections_resolved(
 
 
 __all__ = [
+    "AUTOMATIC_REPLACEMENT_RATIONALE",
     "AUTOMATIC_REVIEWER",
     "auto_clear_station_day_corrections",
     "CLEAR_REFERENCE_ONLY",
+    "CLEAR_WITH_REPLACEMENT",
     "DECISIONS",
     "MAX_CORRECTIONS_PER_SCOPE",
     "QUARANTINE_STATION_DAY",

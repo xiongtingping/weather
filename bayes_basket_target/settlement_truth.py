@@ -46,7 +46,15 @@ CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1 = (
 )
 SOURCE_ROLE = CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
 MAX_TRUTH_SCOPES = 45
-MAX_OBSERVATIONS_PER_SCOPE = 64
+# A settlement day holds 24 routine hourly reports; everything above that is
+# SPECI, which a station issues as conditions demand rather than on a schedule.
+# 64 was below what an ordinary busy day produces at the stations that report
+# most often -- LTAC reached 90 and RCSS 79 over six weeks -- and because the
+# cap fails the scope closed rather than trimming it, those station-days could
+# never settle at all, at any later time.  This is a resource bound, not a
+# statement about how many reports a day may contain, so it is set clear of
+# observed traffic while still refusing a runaway scope.
+MAX_OBSERVATIONS_PER_SCOPE = 256
 
 
 def _utc(name: str, value: Any) -> datetime:

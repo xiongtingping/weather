@@ -1548,6 +1548,12 @@ def compile_native_ensemble_p0(
         "station_id": station_id,
         "season_bin": season_bin,
         "lead_bucket": lead_bucket,
+        # Both leads, for the same reason the lineage carries both: the
+        # calendar label identifies the decision to an operator, while a TAF
+        # artifact is scoped by the grouping its evidence was fitted in.  A
+        # fingerprint naming only the calendar label could never bind an
+        # artifact trained under the hour buckets.
+        "training_lead_bucket": training_lead_bucket,
         "run_cycle": run_cycle,
         "run_cycle_scope": active_run_cycle_scope,
         "run_cycle_by_system": native_forward_lineage[

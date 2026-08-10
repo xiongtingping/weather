@@ -604,15 +604,64 @@ def _taf_truth_for_prediction(
     return truth, taf, day_end.isoformat().replace("+00:00", "Z")
 
 
+#: Outcomes that mean "this series has no complete evidence yet", as opposed
+#: to a violated contract.  A day whose truth has not settled and a decision
+#: with no bulletin after it are both states the archive grows out of; the
+#: bucket contract is missing for scopes the archive never captured at all.
+SCOPE_EVIDENCE_GAPS = frozenset({
+    "rolling_native_taf_canonical_truth_missing",
+    "rolling_native_taf_exact_taf_missing",
+    "rolling_native_taf_historical_bucket_missing",
+})
+
+
+def _scope_evidence_gap(
+    conn: sqlite3.Connection,
+    candidates: Sequence[Mapping[str, Any]],
+) -> str | None:
+    """The first incomplete-evidence reason in this series, if any."""
+
+    first = candidates[0]
+    try:
+        _bucket_intervals_for_candidate(conn, first)
+        for candidate in candidates:
+            for prediction in candidate.get("predictions") or []:
+                _taf_truth_for_prediction(
+                    conn,
+                    station_id=str(first["station_id"]),
+                    event_date=str(prediction.get("event_date") or ""),
+                    settlement_timezone=str(first["settlement_timezone"]),
+                    settlement_definition=str(first["settlement_definition"]),
+                    decision_at_utc=str(prediction["decision_at_utc"]),
+                )
+    except ContractError as exc:
+        if str(exc) in SCOPE_EVIDENCE_GAPS:
+            return str(exc)
+        raise
+    return None
+
+
 def build_rolling_taf_exact_joins(
     conn: sqlite3.Connection,
     rolling_manifest: Mapping[str, Any],
+    *,
+    skipped_scopes: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Join each complete rolling native series to later historical AWC TAF.
 
-    Returned joins use the existing exact-join schema, so the regular TAF
+    Returned joins use the existing exact-history schema, so the regular TAF
     fitter performs its unchanged 24-sample and lineage validation.  Only
     formal global-AWC TAF lineage can enter the joined series.
+
+    A series whose evidence is incomplete -- a day whose truth has not settled,
+    or one with no bulletin arriving after the prediction -- is dropped whole
+    rather than partially: the blocks are non-overlapping by construction and
+    silently shortening one would break the independence the sample count is
+    counted against.  Dropping it must not take the station's other series with
+    it, though.  Lead buckets differ in whether a bulletin can arrive after
+    their decision at all, so one structurally unservable bucket used to abort
+    every usable bucket at the same station.  Pass ``skipped_scopes`` to
+    receive what was dropped and why.
     """
 
     if rolling_manifest.get("schema") != SCHEMA:
@@ -638,6 +687,24 @@ def build_rolling_taf_exact_joins(
         actual_blocks = [int((item.get("rolling_origin_block") or {}).get("block_index", -1)) for item in candidates]
         if actual_blocks != expected_blocks:
             raise ContractError("rolling_native_taf_block_sequence_invalid")
+        # Ask for this series' evidence before building it.  Only the two
+        # incomplete-evidence outcomes are answered here; a contract violation
+        # still aborts, because that is corruption rather than a series that is
+        # merely unservable.
+        incomplete = _scope_evidence_gap(conn, candidates)
+        if incomplete is not None:
+            if skipped_scopes is not None:
+                skipped_scopes.append({
+                    "station_id": str(first["station_id"]),
+                    "season_bin": str(first["season_bin"]),
+                    "lead_bucket": str(first["lead_bucket"]),
+                    "run_cycle": str(first["run_cycle"]),
+                    "selected_system_ids": [
+                        str(value) for value in first["selected_system_ids"]
+                    ],
+                    "reason": incomplete,
+                })
+            continue
         intervals = _bucket_intervals_for_candidate(conn, first)
         samples = []
         prediction_shas: list[str] = []
@@ -756,6 +823,130 @@ def build_rolling_taf_exact_joins(
     return joins
 
 
+def split_rolling_taf_exact_join(
+    join: Mapping[str, Any],
+    *,
+    min_fit_sample_n: int | None = None,
+    min_transport_sample_n: int | None = None,
+) -> dict[str, Any]:
+    """Cut one rolling series into a fit window and a strictly later one.
+
+    A TAF revision artifact cannot be qualified on the rows it was fitted on.
+    The fit stamps ``trained_through_utc`` at the last truth close it consumed,
+    and the native transport gate requires that instant to precede every
+    evaluated row's decision -- so an artifact replayed on its own join fails
+    ``taf_native_strict_asof_violation`` on the first row.  Handing the gate a
+    freshly built join does not help either: the artifact carries the crossfit
+    digest of the dataset it was fitted from, and a differently-built join
+    carries its own, which is ``taf_native_artifact_crossfit_mismatch``.
+
+    Both halves returned here quote the series' own
+    ``nwp_crossfit_prediction_artifact_sha256``, which
+    :func:`build_rolling_taf_exact_joins` already computes over every candidate
+    in the scope rather than over one sample subset.  The fit and the gate
+    therefore agree on the NWP combination that produced both windows while
+    remaining disjoint in time.
+
+    Rows falling between the two windows are dropped rather than assigned:
+    with a two-day lead the day after the fit window is decided before that
+    window's truth has closed, so keeping it would leak.  Neither the 24-sample
+    fit minimum nor the 24-sample transport minimum is relaxed to compensate.
+    """
+
+    from .taf_calibration import MIN_TAF_CALIBRATION_SAMPLE_N
+    from .taf_nwp_transport_oos import MIN_TRANSPORT_SAMPLE_N
+
+    fit_minimum = int(
+        MIN_TAF_CALIBRATION_SAMPLE_N
+        if min_fit_sample_n is None
+        else min_fit_sample_n
+    )
+    transport_minimum = int(
+        MIN_TRANSPORT_SAMPLE_N
+        if min_transport_sample_n is None
+        else min_transport_sample_n
+    )
+    if fit_minimum < MIN_TAF_CALIBRATION_SAMPLE_N or transport_minimum < MIN_TRANSPORT_SAMPLE_N:
+        raise ContractError("rolling_native_taf_split_minimum_below_gate")
+    if join.get("schema") != EXACT_JOIN_SCHEMA or join.get("source_class") != SOURCE_CLASS:
+        raise ContractError("rolling_native_taf_split_join_schema_invalid")
+    _verify_hash(join, name="split_join")
+    rows = join.get("samples")
+    if not isinstance(rows, list) or int(join.get("sample_count", -1)) != len(rows):
+        raise ContractError("rolling_native_taf_split_samples_invalid")
+    ordered = sorted(rows, key=lambda item: str(item.get("event_date") or ""))
+    if len({str(item.get("event_date") or "") for item in ordered}) != len(ordered):
+        raise ContractError("rolling_native_taf_split_event_date_duplicate")
+
+    def _document(selected: Sequence[Mapping[str, Any]], *, role: str) -> dict[str, Any]:
+        identity = {
+            str(key): value
+            for key, value in join.items()
+            if key not in {"content_sha256", "samples", "sample_count"}
+        }
+        identity["series_role"] = role
+        identity["series_content_sha256"] = str(join["content_sha256"])
+        identity["sample_count"] = len(selected)
+        identity["samples"] = [dict(item) for item in selected]
+        return {**identity, "content_sha256": content_sha256(identity)}
+
+    largest_fit = len(ordered) - transport_minimum
+    for fit_count in range(largest_fit, fit_minimum - 1, -1):
+        fit_rows = ordered[:fit_count]
+        boundary = max(
+            _utc("split_truth_closed", item.get("settlement_window", {}).get("end_utc"))
+            for item in fit_rows
+        )
+        transport_rows = [
+            item
+            for item in ordered[fit_count:]
+            if _utc(
+                "split_decision_at",
+                item.get("native_p0", {}).get("decision_at_utc"),
+            ) > boundary
+        ]
+        if len(transport_rows) < transport_minimum:
+            continue
+        return {
+            "state": "READY",
+            "station_id": str(join.get("station_id") or ""),
+            "season_bin": str(join.get("season_bin") or ""),
+            "lead_bucket": str(join.get("lead_bucket") or ""),
+            "run_cycle": str(join.get("run_cycle") or ""),
+            "series_sample_count": len(ordered),
+            "fit_sample_count": len(fit_rows),
+            "transport_sample_count": len(transport_rows),
+            "dropped_boundary_sample_count": (
+                len(ordered) - len(fit_rows) - len(transport_rows)
+            ),
+            "strict_boundary_utc": boundary.isoformat().replace("+00:00", "Z"),
+            "minimum_fit_sample_n": fit_minimum,
+            "minimum_transport_sample_n": transport_minimum,
+            "fit": _document(fit_rows, role="TAF_ARTIFACT_FIT"),
+            "transport": _document(transport_rows, role="TAF_TRANSPORT_OOS"),
+        }
+    return {
+        "state": "ACCUMULATING",
+        "station_id": str(join.get("station_id") or ""),
+        "season_bin": str(join.get("season_bin") or ""),
+        "lead_bucket": str(join.get("lead_bucket") or ""),
+        "run_cycle": str(join.get("run_cycle") or ""),
+        "series_sample_count": len(ordered),
+        "fit_sample_count": 0,
+        "transport_sample_count": 0,
+        "dropped_boundary_sample_count": 0,
+        "strict_boundary_utc": "",
+        "minimum_fit_sample_n": fit_minimum,
+        "minimum_transport_sample_n": transport_minimum,
+        "required_sample_count": fit_minimum + transport_minimum,
+        "missing_sample_count": max(
+            0, fit_minimum + transport_minimum - len(ordered)
+        ),
+        "fit": None,
+        "transport": None,
+    }
+
+
 __all__ = [
     "EXACT_JOIN_SCHEMA",
     "MAX_BLOCKS",
@@ -763,4 +954,5 @@ __all__ = [
     "build_rolling_origin_native_oos",
     "build_rolling_taf_exact_joins",
     "plan_non_overlapping_rolling_blocks",
+    "split_rolling_taf_exact_join",
 ]

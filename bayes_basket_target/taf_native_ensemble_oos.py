@@ -41,7 +41,7 @@ from .taf_oos_contract import (
     HISTORICAL_OOS_TEMPORAL_SCOPE,
     assert_historical_taf_oos,
 )
-from .taf_revision import TafRevisionArtifact
+from .taf_revision import TafRevisionArtifact, taf_scope_lead_bucket
 from .calibration import TAF_NWP_TRANSPORT_EVIDENCE_SCHEMA
 
 
@@ -143,7 +143,7 @@ def resolve_native_live_contract(
         if (
             envelope.station_id.upper(),
             str(lineage.get("season_bin") or ""),
-            str(lineage.get("lead_bucket") or ""),
+            taf_scope_lead_bucket(lineage),
             str(lineage.get("run_cycle") or ""),
         ) != (
             station_id.upper(),
