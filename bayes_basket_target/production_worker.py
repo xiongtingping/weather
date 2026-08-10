@@ -2696,9 +2696,11 @@ class TargetProductionWorker:
     ) -> dict[str, Any]:
         """Re-capture the closed days still inside AWC's 30-day window.
 
-        Offline evidence only: the pass writes bounded archive files and a
-        receipt, and never opens the target database or an order gateway.
-        Committing those archives stays a separate, explicit step.
+        The capture subprocess writes bounded archive files and a receipt;
+        the pass then ingests them into the calibration table, batched under
+        the ingest CLI's archive cap.  Ingest is a frozen-fact replay, so the
+        rolling window's unchanged days verify rather than duplicate.  No
+        order gateway is ever touched.
         """
 
         boundary = {
@@ -2806,6 +2808,45 @@ class TargetProductionWorker:
                 )
             except Exception:
                 pass
+            # Captured archives are ingested in the same pass.  This lane
+            # originally left committing "a separate, explicit step", which is
+            # the same shape that froze every other system's training archive
+            # at the last day a person ran the manual step; an archive on disk
+            # that never reaches the table does not exist as far as the fit is
+            # concerned.  Ingest is a frozen-fact replay, so re-ingesting the
+            # rolling window's unchanged days verifies rather than duplicates.
+            archives = sorted(capture_root.glob("AWC_TAF_*.json"))
+            ingested = 0
+            ingest_failures: list[str] = []
+            for start in range(0, len(archives), 40):
+                batch = archives[start:start + 40]
+                ingest_command = [
+                    sys.executable,
+                    str(ROOT / "scripts" / "ingest_awc_taf_calibration.py"),
+                    "--db", str(self.db_path),
+                    "--commit",
+                ]
+                for archive_path in batch:
+                    ingest_command.extend(["--archive", str(archive_path)])
+                try:
+                    ingest_run = subprocess.run(
+                        ingest_command,
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=HISTORICAL_TAF_CAPTURE_DEADLINE_SEC,
+                    )
+                except Exception as exc:
+                    ingest_failures.append(
+                        f"{type(exc).__name__}:{str(exc)[:120]}"
+                    )
+                    continue
+                if ingest_run.returncode == 0:
+                    ingested += len(batch)
+                else:
+                    ingest_failures.append(
+                        (ingest_run.stderr or "").strip()[-120:]
+                    )
             # A nonzero exit here means some station-anchor run failed, which
             # on this lane is ordinary: AWC drops connections and the next
             # day's pass resumes the same window.
@@ -2820,6 +2861,8 @@ class TargetProductionWorker:
                 "sample_count": summary.get("sample_count"),
                 "completed_run_count": summary.get("completed_run_count"),
                 "failed_run_count": summary.get("failed_run_count"),
+                "ingested_archive_count": ingested,
+                "ingest_failures": ingest_failures[:3],
                 "stderr": (completed.stderr or "").strip()[-200:],
             }
             self._historical_taf_capture_last_result = result
