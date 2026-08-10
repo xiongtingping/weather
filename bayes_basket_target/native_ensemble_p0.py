@@ -25,7 +25,8 @@ from .native_archive_lead import lead_hour_bucket_for_run
 from .native_ensemble_authority import (
     NativeOosSnapshot,
     pointer_activation_mismatch_reasons,
-    pointer_for_station,
+    pointer_for_scope,
+    station_has_pointer,
     validate_native_oos_snapshot_manifest,
 )
 from .open_meteo_ensemble import (
@@ -618,7 +619,8 @@ def compile_native_ensemble_p0(
         raise ContractError("native_ensemble_p0_decision_timestamp_invalid")
     decision = decision.astimezone(timezone.utc)
     official_snapshot = packet_schema == OFFICIAL_FORWARD_PACKET_SCHEMA
-    native_pointer_binding: Mapping[str, Any] | None = None
+    native_pointer_snapshot: NativeOosSnapshot | None = None
+    station_attested = False
     if official_snapshot:
         official_identity = {
             key: value
@@ -766,12 +768,17 @@ def compile_native_ensemble_p0(
                 if isinstance(native_oos_snapshot, NativeOosSnapshot)
                 else validate_native_oos_snapshot_manifest(native_oos_snapshot)
             )
-            native_pointer_binding = pointer_for_station(snapshot, station_id)
+            # The scope is not known yet -- it depends on the run this packet
+            # carries -- so only establish here that the station is attested at
+            # all.  The binding for the scope in hand is resolved per candidate
+            # activation below, once the lead is settled.
+            native_pointer_snapshot = snapshot
+            station_attested = station_has_pointer(snapshot, station_id)
         except ContractError as exc:
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_oos_snapshot_manifest_invalid"
             ) from exc
-        if native_pointer_binding is None:
+        if not station_attested:
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_current_pointer_binding_missing"
             )
@@ -883,7 +890,22 @@ def compile_native_ensemble_p0(
     ] = []
     rejected_or_unproven_activation_seen = False
     for row in activation_rows:
-        if native_pointer_binding is not None:
+        if station_attested:
+            # Resolve the attestation for this activation's own scope.  The
+            # pointer names one activation by id and content hash, so it can
+            # only speak for the scope that activation was fitted in; a
+            # station attested at another lead has nothing to say about this
+            # one, and treating its pointer as authoritative here rejected
+            # every correctly calibrated candidate.
+            native_pointer_binding = pointer_for_scope(
+                native_pointer_snapshot,
+                station_id,
+                season_bin=season_bin,
+                lead_bucket=training_lead_bucket,
+                run_cycle=str(row[8] or ""),
+            )
+            if native_pointer_binding is None:
+                continue
             pointer_mismatches = pointer_activation_mismatch_reasons(
                 native_pointer_binding,
                 activation_id=str(row[0]),
@@ -982,7 +1004,7 @@ def compile_native_ensemble_p0(
     )
     activations = compatible_activations[:2]
     if not activations:
-        if native_pointer_binding is not None:
+        if station_attested:
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_current_pointer_not_bound"
             )

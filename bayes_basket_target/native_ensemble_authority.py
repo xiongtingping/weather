@@ -94,10 +94,18 @@ def _validate_pointer(pointer: Mapping[str, Any], *, station_id: str) -> dict[st
 
 @dataclass(frozen=True)
 class NativeOosSnapshot:
-    """Validated immutable view of one native-P0 cutoff snapshot."""
+    """Validated immutable view of one native-P0 cutoff snapshot.
+
+    Bindings are indexed by the scope they attest -- station, season, lead
+    bucket and run cycle -- rather than by station alone.  One binding per
+    station meant one attested lead per station: a station pinned at d2/18Z
+    could never price its own d1 or d0 packet, however well calibrated, and
+    every artifact trained at another lead was unreachable by construction.
+    Skill is a property of the lead, so the attestation has to be too.
+    """
 
     payload: Mapping[str, Any]
-    bindings_by_station: Mapping[str, Mapping[str, Any]]
+    bindings_by_scope: Mapping[tuple[str, str, str, str], Mapping[str, Any]]
     path: Path | None = None
 
     @property
@@ -106,7 +114,7 @@ class NativeOosSnapshot:
 
     @property
     def station_ids(self) -> tuple[str, ...]:
-        return tuple(sorted(self.bindings_by_station))
+        return tuple(sorted({scope[0] for scope in self.bindings_by_scope}))
 
 
 def validate_native_oos_snapshot_manifest(
@@ -176,13 +184,28 @@ def validate_native_oos_snapshot_manifest(
     except (TypeError, ValueError) as exc:
         raise ContractError("native_oos_snapshot_binding_count_invalid") from exc
 
-    bindings_by_station: dict[str, Mapping[str, Any]] = {}
+    bindings_by_scope: dict[
+        tuple[str, str, str, str], Mapping[str, Any]
+    ] = {}
     for item in raw_bindings:
         if not isinstance(item, Mapping):
             raise ContractError("native_oos_snapshot_binding_row_invalid")
         station = str(item.get("station_id") or "").strip().upper()
-        if not station or station in bindings_by_station:
-            raise ContractError("native_oos_snapshot_binding_duplicate_station")
+        if not station:
+            raise ContractError("native_oos_snapshot_binding_row_invalid")
+        # A station may be attested at several leads, but each scope names
+        # exactly one activation: two bindings for the same scope would leave
+        # the pointer ambiguous, which is the thing it exists to prevent.
+        scope = (
+            station,
+            str(item.get("season_bin") or "").strip(),
+            str(item.get("lead_bucket") or "").strip(),
+            str(item.get("run_cycle") or "").strip(),
+        )
+        if not all(scope):
+            raise ContractError("native_oos_snapshot_binding_scope_incomplete")
+        if scope in bindings_by_scope:
+            raise ContractError("native_oos_snapshot_binding_duplicate_scope")
         pointer = item.get("artifact_pointer")
         if not isinstance(pointer, Mapping):
             raise ContractError("native_oos_snapshot_pointer_missing")
@@ -207,12 +230,12 @@ def validate_native_oos_snapshot_manifest(
             "run_cycle_by_system_sha256": cycle_sha,
             "artifact_pointer": pointer_copy,
         }
-        bindings_by_station[station] = normalized
-    if set(station_ids) != set(bindings_by_station):
+        bindings_by_scope[scope] = normalized
+    if set(station_ids) != {scope[0] for scope in bindings_by_scope}:
         raise ContractError("native_oos_snapshot_binding_station_set_mismatch")
     return NativeOosSnapshot(
         payload=payload,
-        bindings_by_station=bindings_by_station,
+        bindings_by_scope=bindings_by_scope,
         path=path,
     )
 
@@ -235,36 +258,77 @@ def load_native_oos_snapshot_manifest(
     return validate_native_oos_snapshot_manifest(value, path=resolved)
 
 
-def pointer_for_station(
+def _binding_rows(
     snapshot: NativeOosSnapshot | Mapping[str, Any] | None,
-    station_id: str,
-) -> Mapping[str, Any] | None:
-    """Return one validated binding row for a station, if present."""
+) -> list[Mapping[str, Any]]:
+    """Every validated binding row, whatever shape the caller holds."""
 
     if snapshot is None:
-        return None
-    station = str(station_id or "").strip().upper()
+        return []
     if isinstance(snapshot, NativeOosSnapshot):
-        row = snapshot.bindings_by_station.get(station)
-    else:
-        # Accept a validated mapping-shaped adapter for callers that already
-        # materialized the binding projection.  Never infer a pointer from a
-        # station name or from SQLite rows here.
-        rows = snapshot.get("native_p0_binding")
-        if not isinstance(rows, Mapping):
-            return None
-        row = next(
-            (
-                item
-                for item in rows.get("bindings") or []
-                if isinstance(item, Mapping)
-                and str(item.get("station_id") or "").strip().upper() == station
-            ),
-            None,
-        )
-    if not isinstance(row, Mapping):
-        return None
-    return row
+        return list(snapshot.bindings_by_scope.values())
+    # Accept a validated mapping-shaped adapter for callers that already
+    # materialized the binding projection.  Never infer a pointer from a
+    # station name or from SQLite rows here.
+    rows = snapshot.get("native_p0_binding")
+    if not isinstance(rows, Mapping):
+        return []
+    return [
+        item for item in rows.get("bindings") or [] if isinstance(item, Mapping)
+    ]
+
+
+def station_has_pointer(
+    snapshot: NativeOosSnapshot | Mapping[str, Any] | None,
+    station_id: str,
+) -> bool:
+    """Whether this station is attested at any scope at all.
+
+    Separate from resolving a scope because the two failures mean different
+    things to an operator: a station with no binding was never attested, while
+    a station attested at other leads simply has nothing for the lead in hand.
+    """
+
+    station = str(station_id or "").strip().upper()
+    return any(
+        str(item.get("station_id") or "").strip().upper() == station
+        for item in _binding_rows(snapshot)
+    )
+
+
+def pointer_for_scope(
+    snapshot: NativeOosSnapshot | Mapping[str, Any] | None,
+    station_id: str,
+    *,
+    season_bin: str,
+    lead_bucket: str,
+    run_cycle: str,
+) -> Mapping[str, Any] | None:
+    """Return the binding attesting exactly this scope, if there is one.
+
+    The pointer names one activation by id and content hash, so it can only
+    speak for the scope that activation was fitted in.  Asking by station
+    alone returned whichever lead happened to be attested and then rejected
+    every activation from any other -- which read as "no artifact" when the
+    truth was "no attestation for this lead".
+    """
+
+    station = str(station_id or "").strip().upper()
+    scope = (station, str(season_bin or ""), str(lead_bucket or ""), str(run_cycle or ""))
+    return next(
+        (
+            item
+            for item in _binding_rows(snapshot)
+            if (
+                str(item.get("station_id") or "").strip().upper(),
+                str(item.get("season_bin") or "").strip(),
+                str(item.get("lead_bucket") or "").strip(),
+                str(item.get("run_cycle") or "").strip(),
+            )
+            == scope
+        ),
+        None,
+    )
 
 
 def pointer_activation_mismatch_reasons(
@@ -336,6 +400,7 @@ __all__ = [
     "SNAPSHOT_SCHEMA",
     "load_native_oos_snapshot_manifest",
     "pointer_activation_mismatch_reasons",
-    "pointer_for_station",
+    "pointer_for_scope",
+    "station_has_pointer",
     "validate_native_oos_snapshot_manifest",
 ]
