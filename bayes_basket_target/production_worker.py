@@ -2126,6 +2126,14 @@ class TargetProductionWorker:
             "--inbox-output", str(staging_inbox),
             "--station-id", station_id,
             "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
+            # Every capture also lands in the historical member table.  The
+            # rotation was downloading these systems daily and then discarding
+            # the member values once the inbox packet was built, so the
+            # training archive only ever advanced when someone ran a manual
+            # backfill -- ECMWF, GEFS and ECCC all froze at 2026-08-07, the
+            # last day a person did.  ICON never froze because its daily lane
+            # commits, and this makes the other three behave like it.
+            "--commit",
         ]
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (

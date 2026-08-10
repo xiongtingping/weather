@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -23,22 +24,27 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.ecmwf_ifs_archive import (  # noqa: E402
     capture_ecmwf_station_days,
+    ingest_ecmwf_station_days,
 )
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
 )
 from bayes_basket_target.noaa_gefs_archive import (  # noqa: E402
     capture_gefs_station_days,
+    ingest_gefs_station_days,
 )
 from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
     capture_geps_station_days,
+    ingest_geps_station_days,
 )
 from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
     capture_icon_eps_station_days,
 )
 from bayes_basket_target.resource_bounds import (  # noqa: E402
+    assert_connection_target_capacity,
     assert_process_memory_budget,
     load_bounded_json,
     write_bounded_json_if_changed,
@@ -498,6 +504,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--station-id", action="append", default=[])
     parser.add_argument("--timeout-seconds", type=float, default=45.0)
+    parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help=(
+            "Also ingest the captured archives into the historical member "
+            "table.  Without this the capture only feeds the forward inbox, "
+            "and the training archive's high-water mark stays wherever the "
+            "last manual backfill left it: every system except ICON froze at "
+            "2026-08-07 that way, because ICON's daily lane was the only one "
+            "that committed what it captured."
+        ),
+    )
     parser.add_argument(
         "--eccc-geps-archive",
         type=Path,
@@ -542,6 +561,51 @@ def main(argv: Sequence[str] | None = None) -> int:
             "live_submit_authorized": False,
         }, ensure_ascii=False, sort_keys=True))
         return 2
+    if args.commit:
+        # The capture stays DB-free; the written archives are re-read and
+        # ingested here so the training history advances with every capture
+        # instead of waiting for someone to run a backfill.  Ingest is a
+        # frozen-fact replay: rows already present are verified, not repeated,
+        # and a conflicting re-read fails closed.
+        ingest_by_path = [
+            (args.gefs_output, ingest_gefs_station_days),
+            (args.ecmwf_output, ingest_ecmwf_station_days),
+            (args.eccc_output, ingest_geps_station_days),
+        ]
+        database = args.db.expanduser().resolve(strict=True)
+        ingress: dict[str, Any] = {}
+        with sqlite3.connect(database, timeout=60.0) as conn:
+            conn.execute("PRAGMA busy_timeout=60000")
+            assert_connection_target_capacity(
+                conn, recover_oversized_wal=True
+            )
+            for path, ingest in ingest_by_path:
+                if path is None:
+                    continue
+                resolved = path.expanduser().resolve()
+                if not resolved.is_file():
+                    continue
+                archive = load_bounded_json(resolved)
+                # A retained file can hold an older event's capture when this
+                # event reused nothing; ingesting it would be harmless replay,
+                # but skipping keeps each receipt about this event only.
+                if archive.get("event_date") != str(args.event_date):
+                    continue
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    outcome = ingest(conn, archive)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                ingress[str(archive.get("ensemble_system_id"))] = {
+                    "state": outcome["state"],
+                    "station_count": outcome["station_count"],
+                    "member_run_wrote_count": outcome[
+                        "member_run_wrote_count"
+                    ],
+                }
+        result = {**result, "historical_ingress": ingress}
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
