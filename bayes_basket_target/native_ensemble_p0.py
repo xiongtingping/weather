@@ -271,8 +271,25 @@ def _calibrated_system_probability(
         raise ContractError(
             "native_ensemble_p0_calibration_parameters_invalid"
         )
+    # The correction form is the artifact's recorded choice, made on a
+    # validation tail at fit time.  The affine form corrects by an amount
+    # that tracks the forecast level -- what a station-local regime shift
+    # usually is -- while an artifact without the field keeps the constant
+    # path byte-identical.  Serving a form the artifact does not record
+    # would split evaluation from serving, so the parameters are the only
+    # authority here.
+    if str(bias_parameters.get("correction_form") or "constant") == "affine":
+        slope = float(bias_parameters["affine_slope"])
+        intercept = float(bias_parameters["affine_intercept_c"])
+        if not 0.3 <= slope <= 1.7 or not -40.0 <= intercept <= 40.0:
+            raise ContractError(
+                "native_ensemble_p0_calibration_parameters_invalid"
+            )
+        center = intercept + slope * mean
+    else:
+        center = mean + bias
     corrected = [
-        mean + bias + spread * (value - mean)
+        center + spread * (value - mean)
         for value in current
     ]
     member_probability = _interval_probability(corrected, intervals)
@@ -1443,11 +1460,22 @@ def compile_native_ensemble_p0(
                 reliability_parameters=reliability_parameters,
             )
         )
-        calibrated_system_centers_c[system_id] = (
+        raw_center = (
             sum(float(member["raw_tmax_c"]) for member in members)
             / len(members)
-            + float(bias_parameters["bias_c"])
         )
+        if (
+            str(bias_parameters.get("correction_form") or "constant")
+            == "affine"
+        ):
+            calibrated_system_centers_c[system_id] = (
+                float(bias_parameters["affine_intercept_c"])
+                + float(bias_parameters["affine_slope"]) * raw_center
+            )
+        else:
+            calibrated_system_centers_c[system_id] = (
+                raw_center + float(bias_parameters["bias_c"])
+            )
         system_bias_c[system_id] = float(bias_parameters["bias_c"])
         system_artifact_shas[system_id] = str(system_artifact[3])
         system_activation_shas[system_id] = str(

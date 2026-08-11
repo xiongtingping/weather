@@ -279,6 +279,45 @@ def _mean_metrics(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
     }
 
 
+# Station-local "drift" is often not a function of time but of state: at ZUUU
+# the ECMWF residual moved from -0.25C to -1.92C between July and August, yet
+# regressed against the forecast level the shift mostly disappears -- the
+# model is wrong by an amount that tracks how hot it says the day will be.
+# Time-weighted fixes were tried and rejected by the chronological holdout
+# (they amplified late-window noise); a level-dependent correction is stable
+# across the episode and does not overcorrect once it ends.
+#
+# Both correction forms are fitted and the winner is chosen per scope on a
+# time-ordered validation tail inside the train window, so a station whose
+# bias really is constant keeps the constant form.  The holdout never takes
+# part in the choice; it stays the untouched judge.
+AFFINE_SLOPE_MIN = 0.3
+AFFINE_SLOPE_MAX = 1.7
+FIT_VALIDATION_TAIL_DAYS = 6
+
+
+def _affine_coefficients(
+    pairs: Sequence[tuple[float, float]],
+) -> tuple[float, float] | None:
+    """OLS of truth on forecast center, or None when it is not estimable."""
+
+    if len(pairs) < 8:
+        return None
+    mean_x = sum(x for x, _y in pairs) / len(pairs)
+    mean_y = sum(y for _x, y in pairs) / len(pairs)
+    var_x = sum((x - mean_x) ** 2 for x, _y in pairs)
+    if var_x <= 1e-9:
+        return None
+    slope = sum(
+        (x - mean_x) * (y - mean_y) for x, y in pairs
+    ) / var_x
+    if not AFFINE_SLOPE_MIN <= slope <= AFFINE_SLOPE_MAX:
+        # A slope outside physical plausibility is a small-sample artefact;
+        # serving it would swing corrections violently at the range edges.
+        return None
+    return mean_y - slope * mean_x, slope
+
+
 def _fit_parameters(
     cases: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -287,9 +326,13 @@ def _fit_parameters(
     errors: list[float] = []
     spreads: list[float] = []
     climate_samples: list[float] = []
+    centers: list[float] = []
+    actuals: list[float] = []
     for case in cases:
         values = [float(value) for value in case["values"]]
         mean = sum(values) / len(values)
+        centers.append(mean)
+        actuals.append(float(case["actual_tmax_c"]))
         errors.append(float(case["actual_tmax_c"]) - mean)
         spreads.append(math.sqrt(
             sum((value - mean) ** 2 for value in values) / len(values)
@@ -303,14 +346,77 @@ def _fit_parameters(
         max(0.5, rmse / max(mean_spread, 0.1)),
     )
     reliability_weight = len(cases) / (len(cases) + 10.0)
-    return {
+    parameters = {
         "bias_c": bias,
         "spread_factor": spread_factor,
         "reliability_weight": reliability_weight,
         "climate_samples_c": climate_samples[-180:],
         "train_rmse_c": rmse,
         "train_mean_spread_c": mean_spread,
+        "correction_form": "constant",
     }
+    # Cases arrive chronological; the last few train days validate the form
+    # choice.  Both forms are fitted on the earlier part only, judged on the
+    # tail, and the winner is refitted on the full train window.
+    tail = FIT_VALIDATION_TAIL_DAYS
+    if len(cases) >= tail + 10:
+        fit_pairs = list(zip(centers[:-tail], actuals[:-tail]))
+        affine = _affine_coefficients(fit_pairs)
+        if affine is not None:
+            head_bias = (
+                sum(a - c for c, a in fit_pairs) / len(fit_pairs)
+            )
+            intercept, slope = affine
+            constant_err = sum(
+                (a - (c + head_bias)) ** 2
+                for c, a in zip(centers[-tail:], actuals[-tail:])
+            )
+            affine_err = sum(
+                (a - (intercept + slope * c)) ** 2
+                for c, a in zip(centers[-tail:], actuals[-tail:])
+            )
+            # A six-day tail is small enough to prefer the wrong form by
+            # luck, and the cost is asymmetric: the constant form is the
+            # simpler prior, so leaving it needs decisive evidence.  The
+            # margin keeps a genuine regime response (ZUUU's tail error
+            # roughly halves) while ignoring coin-flip differences.
+            if affine_err < 0.8 * constant_err:
+                refit = _affine_coefficients(list(zip(centers, actuals)))
+                if refit is not None:
+                    parameters["correction_form"] = "affine"
+                    parameters["affine_intercept_c"] = refit[0]
+                    parameters["affine_slope"] = refit[1]
+                    affine_errors = [
+                        a - (refit[0] + refit[1] * c)
+                        for c, a in zip(centers, actuals)
+                    ]
+                    # The RMSE that feeds cross weights describes the form
+                    # actually served, not the runner-up.
+                    parameters["train_rmse_c"] = math.sqrt(
+                        sum(e * e for e in affine_errors)
+                        / len(affine_errors)
+                    )
+    return parameters
+
+
+def _corrected_center(
+    mean: float,
+    parameters: Mapping[str, Any],
+) -> float:
+    """Where the calibrated distribution centers, under either form.
+
+    The affine form corrects by an amount that tracks the forecast level --
+    what a station-local regime shift usually is -- and the constant form is
+    the level-independent special case.  Which one runs is the artifact's
+    recorded choice, so evaluation and serving cannot disagree about it.
+    """
+
+    if str(parameters.get("correction_form") or "constant") == "affine":
+        return (
+            float(parameters["affine_intercept_c"])
+            + float(parameters["affine_slope"]) * mean
+        )
+    return mean + float(parameters["bias_c"])
 
 
 def _apply_parameters(
@@ -319,10 +425,10 @@ def _apply_parameters(
 ) -> dict[str, float]:
     current = [float(value) for value in values]
     mean = sum(current) / len(current)
-    bias = float(parameters["bias_c"])
+    center = _corrected_center(mean, parameters)
     spread_factor = float(parameters["spread_factor"])
     corrected = [
-        mean + bias + spread_factor * (value - mean)
+        center + spread_factor * (value - mean)
         for value in current
     ]
     member_probability = _probabilities(corrected)
@@ -1582,9 +1688,8 @@ def _evaluate_system(
             # the bridge recenters this system's histogram from here onto the
             # weighted cross center, so it needs the center the histogram was
             # actually built around, not a train-window average.
-            "calibrated_center_c": (
-                sum(day_values) / len(day_values)
-                + float(parameters["bias_c"])
+            "calibrated_center_c": _corrected_center(
+                sum(day_values) / len(day_values), parameters
             ),
             "actual_tmax_c": float(case["actual_tmax_c"]),
             "metrics": _metrics(
