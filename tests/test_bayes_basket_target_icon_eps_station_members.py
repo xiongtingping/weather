@@ -178,3 +178,64 @@ def test_expected_official_grid_is_bounded_matching_r03b06() -> None:
     assert icon_eps_members.EXPECTED_OFFICIAL_GRID_CELL_COUNT == 737_280
     assert icon_eps_members.MAX_OFFICIAL_GRID_BYTES >= icon_eps_members.EXPECTED_OFFICIAL_GRID_BYTES
     assert icon_eps_members.MAX_CUMULATIVE_RAW_BYTES > icon_eps_members.MAX_OFFICIAL_GRID_BYTES
+
+
+def _grid_receipt(receipt_path: Path, raw_path: Path) -> None:
+    identity = {
+        "schema": icon_eps_members.GRID_CAPTURE_SCHEMA,
+        "state": "OFFICIAL_DWD_R03B06_GRID_CAPTURED",
+        "source_url": icon_eps_members.OFFICIAL_GRID_URL,
+        "grid_filename": icon_eps_members.OFFICIAL_GRID_FILENAME,
+        "grid_uuid": "ae487d14fe2e11e4af85e50a2a56a360",
+        "grid_cell_count": icon_eps_members.EXPECTED_OFFICIAL_GRID_CELL_COUNT,
+        "raw_object_ref": str(raw_path),
+        "raw_sha256": "0" * 64,
+        "response_bytes": 1,
+    }
+    receipt_path.write_text(
+        json.dumps({**identity, "content_sha256": content_sha256(identity)}),
+        encoding="utf-8",
+    )
+
+
+def test_cold_archived_grid_body_is_re_downloaded_instead_of_failing_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The static grid is a cache, so retention may discard its body."""
+
+    receipt_path = tmp_path / "grid_receipt.json"
+    _grid_receipt(receipt_path, tmp_path / "grid_root" / "raw" / f"{'0' * 64}.nc.bz2")
+    downloaded: list[Path] = []
+
+    def _fake_download(*, destination: Path, timeout_sec: float) -> tuple[dict, int]:
+        downloaded.append(destination)
+        raise ContractError("stopped_after_download_was_reached")
+
+    monkeypatch.setattr(icon_eps_members, "_curl_grid_download", _fake_download)
+
+    with pytest.raises(ContractError, match="stopped_after_download_was_reached"):
+        icon_eps_members.capture_official_grid(
+            output_root=tmp_path / "grid_root", receipt_path=receipt_path
+        )
+
+    assert len(downloaded) == 1
+
+
+def test_present_grid_body_that_fails_a_receipt_check_still_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_path = tmp_path / "grid_root" / "raw" / f"{'0' * 64}.nc.bz2"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"present-but-wrong")
+    _grid_receipt(tmp_path / "grid_receipt.json", raw_path)
+
+    def _never(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a present body must not trigger a download")
+
+    monkeypatch.setattr(icon_eps_members, "_curl_grid_download", _never)
+
+    with pytest.raises(ContractError, match="grid_size_mismatch"):
+        icon_eps_members.capture_official_grid(
+            output_root=tmp_path / "grid_root",
+            receipt_path=tmp_path / "grid_receipt.json",
+        )

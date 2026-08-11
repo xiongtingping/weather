@@ -33,11 +33,13 @@
          that has not written its packet yet. -->
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS</key>
     <string>2</string>
-    <!-- Twelve root-owned 0600 files under data/research would otherwise make
-         the fail-closed reference scan refuse every pass.  Drop this back to
-         0 once their ownership is repaired. -->
+    <!-- Left at 0 deliberately.  A reference document this user cannot read
+         cannot prove a body is garbage, so the pass refuses rather than
+         guesses; twelve root-owned 0600 files under data/research currently
+         trip it, and the log names them.  Repair their ownership rather than
+         setting this to 1. -->
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_ALLOW_UNREADABLE_REFS</key>
-    <string>1</string>
+    <string>0</string>
   </dict>
   <key>RunAtLoad</key>
   <false/>

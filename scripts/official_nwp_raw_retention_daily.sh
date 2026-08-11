@@ -26,10 +26,9 @@ COMMON=(
   --lane native
   --min-age-days "$MIN_AGE_DAYS"
 )
-# Twelve root-owned 0600 leftovers under data/research make the fail-closed
-# reference scan refuse the whole pass.  Until their ownership is repaired
-# (`sudo chown xiong:staff ...`), the opt-out keeps disk hygiene running and
-# records every skipped document in the plan.
+# A reference document this user cannot read cannot prove a body is garbage,
+# so the scan refuses the whole pass by default.  The opt-out exists only for
+# a deliberate operator decision and records every skipped document.
 if [ "${PM_OFFICIAL_NWP_NATIVE_RETENTION_ALLOW_UNREADABLE_REFS:-0}" = "1" ]; then
   COMMON+=(--allow-unreadable-reference-documents)
 fi
@@ -38,7 +37,38 @@ echo "=== official NWP native raw retention ==="
 echo "时间: $(date '+%Y-%m-%d %H:%M:%S')  min_age_days=${MIN_AGE_DAYS}"
 
 echo "【dry-run 计划】"
-"$PY" "${COMMON[@]}" --audit-output "$PLAN" >/dev/null
+if ! "$PY" "${COMMON[@]}" --audit-output "$PLAN" >/dev/null 2>"$PLAN.err"; then
+  if grep -q "reference_unreadable" "$PLAN.err"; then
+    echo "阻断：引用扫描 fail-closed，有读不到的引用文档，本次不删除任何东西。"
+    echo "读不到的文档（修好属主后本任务自动恢复）："
+    "$PY" - <<'PYBLOCK'
+import os
+import sys
+
+ROOT = "/Users/xiong/weather"
+blocked = []
+for reference_root in ("output/audits", "data/research", "data/runtime"):
+    for current, _directories, files in os.walk(os.path.join(ROOT, reference_root)):
+        for name in files:
+            if not name.lower().endswith((".json", ".jsonl")):
+                continue
+            path = os.path.join(current, name)
+            try:
+                with open(path, "rb") as handle:
+                    handle.read(1)
+            except OSError as exc:
+                blocked.append(f"  {path}  ({exc.strerror})")
+print("\n".join(blocked) if blocked else "  （已无阻断文档，请重跑）")
+print(f"  共 {len(blocked)} 个。修复：sudo chown {os.environ.get('USER', 'xiong')}:staff <路径>")
+PYBLOCK
+    rm -f "$PLAN.err"
+    exit 1
+  fi
+  cat "$PLAN.err" >&2
+  rm -f "$PLAN.err"
+  exit 1
+fi
+rm -f "$PLAN.err"
 "$PY" - "$PLAN" <<'PYSUMMARY'
 import json, sys
 plan = json.load(open(sys.argv[1], encoding="utf-8"))

@@ -87,7 +87,12 @@ MAX_MEMBER_RECORDS = EXPECTED_STATION_COUNT * len(EXPECTED_MEMBERS)
 MAX_CAPTURE_RECEIPT_BYTES = 4 * 1024 * 1024
 DEFAULT_CAPTURE = ROOT / "output/audits/icon_global_eps_official_raw_capture_20260801.json"
 DEFAULT_OUTPUT = ROOT / "output/audits/icon_global_eps_station_members_r03b06_20260801.json"
-DEFAULT_GRID_ROOT = ROOT / "data/research/bayes_basket_target/model_arrivals/icon_global_eps_official/grid_r03b06"
+# The R03B06 grid is a static public coordinate asset, not a model arrival:
+# one 206 MiB file that is identical for every run and is still served by DWD
+# years after publication.  It lives beside the other icon_eps support caches
+# rather than under model_arrivals, whose byte budget bounds per-run raw
+# growth (MAX_TARGET_RESEARCH_RAW_BYTES) and which it alone pushed 20% over.
+DEFAULT_GRID_ROOT = ROOT / "data/runtime/official_nwp_sources/icon_eps/grid_r03b06"
 DEFAULT_GRID_RECEIPT = ROOT / "output/audits/icon_global_eps_official_grid_r03b06_capture_latest.json"
 
 
@@ -386,7 +391,19 @@ def capture_official_grid(
     receipt_path = receipt_path.expanduser().resolve()
     receipt_to_rebuild: dict[str, Any] | None = None
     if receipt_path.is_file():
-        existing_receipt = _validated_grid_receipt(receipt_path)
+        try:
+            existing_receipt = _validated_grid_receipt(receipt_path)
+        except ContractError as exc:
+            # The grid is a static public asset, so its body is a cache and
+            # retention may cold-archive it.  Only a body that is simply gone
+            # earns a re-download; a body that is present but fails any of the
+            # receipt's checks is still a hard contract failure.
+            if str(exc) != "icon_eps_station_raw_missing":
+                raise
+            existing_receipt = None
+    else:
+        existing_receipt = None
+    if existing_receipt is not None:
         object_count = existing_receipt.get("object_download_request_count")
         metadata_count = existing_receipt.get("metadata_request_count")
         total_count = existing_receipt.get("network_request_count")

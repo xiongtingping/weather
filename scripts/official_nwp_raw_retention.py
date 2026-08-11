@@ -71,6 +71,10 @@ DEFAULT_NATIVE_REFERENCE_ROOTS = (
     ROOT / "data/research",
     ROOT / "data/runtime",
 )
+try:
+    from bayes_basket_target.resource_bounds import MAX_TARGET_RESEARCH_RAW_BYTES
+except ImportError:  # pragma: no cover - the budget lane is then explicit-only
+    MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * 1024 * 1024
 RAW_STORE_DIR_NAME = "raw"
 REFERENCE_DOCUMENT_SUFFIXES = (".json", ".jsonl")
 # A capture stores the body first and writes its packet at the end of the
@@ -595,11 +599,18 @@ def _native_bodies(stores: Iterable[Path]) -> tuple[dict[str, list[dict[str, Any
             scanned += 1
             if scanned > NATIVE_BODY_SCAN_LIMIT:
                 raise RuntimeError("official_nwp_native_retention_body_scan_limit")
+            stat = path.stat()
             token = path.name.split(".", 1)[0].lower()
             if not RAW_HASH.fullmatch(token):
-                evidence.append({"path": str(path), "reason": "not_content_addressed"})
+                evidence.append(
+                    {
+                        "store": str(store),
+                        "path": str(path),
+                        "size_bytes": stat.st_size,
+                        "reason": "not_content_addressed",
+                    }
+                )
                 continue
-            stat = path.stat()
             row = {
                 "store": str(store),
                 "path": str(path),
@@ -726,9 +737,11 @@ def build_native_plan(
         allow_unreadable=allow_unreadable_references,
     )
     referenced: set[str] = index["referenced"]
+    referenced_outside_store: set[str] = index["referenced_outside_store"]
 
     unreferenced: list[dict[str, Any]] = []
     withheld_young: list[dict[str, Any]] = []
+    cold_archive_candidates: list[dict[str, Any]] = []
     store_rows: list[dict[str, Any]] = []
     root_rows: list[dict[str, Any]] = []
     for root in roots:
@@ -743,8 +756,10 @@ def build_native_plan(
                 for row in token_rows
                 if row["store"] == store_text
             ]
+            relative = _native_store_key(root, store)
             for row in rows:
                 row["provider"] = provider
+                row["store_key"] = relative
                 row["source_root"] = str(root)
             store_unreferenced = [
                 row for row in rows if row["sha256_name"] not in referenced
@@ -757,13 +772,23 @@ def build_native_plan(
             ]
             unreferenced.extend(eligible)
             withheld_young.extend(young)
+            # Eligible for the budget lane only: still named, but named from
+            # outside its own store, so discarding the body leaves the receipt
+            # that proves what it was.
+            cold_archive_candidates.extend(
+                row
+                for row in rows
+                if row["sha256_name"] in referenced_outside_store
+                and row["mtime_epoch"] < age_cutoff
+            )
             root_bytes += sum(row["size_bytes"] for row in rows)
             root_unreferenced_bytes += sum(row["size_bytes"] for row in eligible)
             store_rows.append(
                 {
                     "source_root": str(root),
                     "store": store_text,
-                    "provider": _native_provider(root, store),
+                    "store_key": relative,
+                    "provider": provider,
                     "body_count": len(rows),
                     "body_bytes": sum(row["size_bytes"] for row in rows),
                     "unreferenced_count": len(eligible),
@@ -815,7 +840,9 @@ def build_native_plan(
         "withheld_young_count": len(withheld_young),
         "withheld_young_bytes": sum(row["size_bytes"] for row in withheld_young),
         "in_store_evidence_count": len(evidence),
-        "in_store_evidence_files": evidence[:200],
+        "in_store_evidence_files": evidence,
+        "cold_archive_candidates": cold_archive_candidates,
+        "cold_archive_candidate_count": len(cold_archive_candidates),
         "active_capture_processes": active_processes,
         "apply_allowed": not active_processes,
         "production_dependency": False,
@@ -828,11 +855,190 @@ def build_native_plan(
     }
 
 
+def plan_budget_cold_archive(
+    plan: Mapping[str, Any],
+    *,
+    budget_root: Path,
+    budget_bytes: int,
+    store_keys: Iterable[str],
+) -> dict[str, Any]:
+    """Select the fewest re-obtainable bodies that bring a root under budget.
+
+    This is the one place that may discard a body something still names, and
+    it is deliberately narrow.  A candidate must sit in a named store --
+    the operator asserts that store's bodies are re-obtainable --
+    and must be named by a document *outside* the store, so the receipt that
+    proves what the body was survives the body itself.  Selection is
+    oldest-first and stops the moment the root fits, so the pass never
+    discards more than the budget actually requires.
+
+    Nothing here runs by default: ``build_native_plan`` alone never proposes a
+    referenced body, and the caller must name both the root and the stores.
+    """
+
+    root = Path(budget_root).expanduser().resolve()
+    wanted = {str(value).strip() for value in store_keys if str(value).strip()}
+    if not wanted:
+        raise RuntimeError("official_nwp_native_retention_cold_archive_stores_required")
+    stores_in_root = {
+        str(row["store"])
+        for row in plan.get("store_rows") or []
+        if Path(str(row["source_root"])) == root
+    }
+    total = sum(
+        int(row["body_bytes"])
+        for row in plan.get("store_rows") or []
+        if str(row["store"]) in stores_in_root
+    )
+    # The budget bounds every byte under the root, including the receipts and
+    # in-store evidence that retention must never touch.
+    evidence_bytes = sum(
+        int(row.get("size_bytes") or 0)
+        for row in plan.get("in_store_evidence_files") or []
+        if str(row.get("store") or "") in stores_in_root
+    )
+    observed = _tree_bytes(root)
+    candidates = [
+        row
+        for row in plan.get("cold_archive_candidates") or []
+        if str(row["store"]) in stores_in_root
+        and _store_key_selected(str(row.get("store_key") or ""), wanted)
+    ]
+    candidates.sort(key=lambda row: (row["mtime_epoch"], row["path"]))
+    selected: list[dict[str, Any]] = []
+    remaining = observed
+    for row in candidates:
+        if remaining <= int(budget_bytes):
+            break
+        selected.append(row)
+        remaining -= int(row["size_bytes"])
+    return {
+        "schema": "official_nwp_native_raw_budget_cold_archive_plan_v1",
+        "budget_root": str(root),
+        "budget_bytes": int(budget_bytes),
+        "observed_bytes": observed,
+        "body_bytes": total,
+        "in_store_evidence_bytes": evidence_bytes,
+        "cold_archive_store_keys": sorted(wanted),
+        "candidate_count": len(candidates),
+        "candidate_bytes": sum(int(row["size_bytes"]) for row in candidates),
+        "selected_files": selected,
+        "selected_count": len(selected),
+        "selected_bytes": sum(int(row["size_bytes"]) for row in selected),
+        "projected_bytes": remaining,
+        "fits_budget": remaining <= int(budget_bytes),
+        "evidence_survives_outside_store": True,
+        "selection": "oldest_first_minimum_to_fit",
+    }
+
+
+def _tree_bytes(root: Path) -> int:
+    total = 0
+    for current, directories, files in os.walk(root, followlinks=False):
+        directories[:] = [
+            name for name in directories if not (Path(current) / name).is_symlink()
+        ]
+        for name in files:
+            path = Path(current) / name
+            if path.is_symlink():
+                continue
+            try:
+                total += path.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def apply_budget_cold_archive(
+    plan: Mapping[str, Any], selection: Mapping[str, Any]
+) -> dict[str, Any]:
+    if plan.get("active_capture_processes"):
+        raise RuntimeError("official_nwp_native_retention_capture_active")
+    root = Path(str(selection["budget_root"]))
+    recorded_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in selection.get("selected_files") or []:
+        path = Path(str(raw.get("path") or ""))
+        if str(path) in seen:
+            continue
+        seen.add(str(path))
+        if not path.is_file() or path.is_symlink():
+            continue
+        expected = str(raw.get("sha256_name") or "").lower()
+        actual = _sha256(path)
+        if expected != actual:
+            raise RuntimeError(f"official_nwp_native_retention_hash_mismatch:{path}")
+        rows.append(
+            {
+                "schema": "official_nwp_raw_cold_archive_entry_v1",
+                "state": "body_discarded",
+                "recorded_at": recorded_at,
+                "path": str(path),
+                "sha256": actual,
+                "size_bytes": path.stat().st_size,
+                "provider": str(raw.get("provider") or ""),
+                "store": str(raw.get("store") or ""),
+                "mtime": str(raw.get("mtime") or ""),
+                "deletion_reason": "referenced_body_cold_archived_to_hold_root_budget",
+                "budget_root": str(root),
+                "budget_bytes": int(selection["budget_bytes"]),
+                "lane": "native",
+                "production_dependency": False,
+                "strict_replay_body_available": False,
+                "receipt_retained_outside_store": True,
+            }
+        )
+    _append_archive_manifest(root, rows)
+    deleted: list[dict[str, Any]] = []
+    for row in rows:
+        path = Path(str(row["path"]))
+        if not path.is_file():
+            continue
+        path.unlink()
+        deleted.append(
+            {
+                "path": str(path),
+                "sha256": str(row["sha256"]),
+                "size_bytes": int(row["size_bytes"]),
+            }
+        )
+    return {
+        "cold_archived": deleted[:500],
+        "cold_archived_count": len(deleted),
+        "cold_archived_bytes": sum(item["size_bytes"] for item in deleted),
+        "budget_root_bytes_after": _tree_bytes(root),
+        "archive_manifest_path": str(_archive_manifest_path(root)),
+    }
+
+
 def _native_provider(source_root: Path, store: Path) -> str:
     try:
         return store.relative_to(source_root).parts[0]
     except (ValueError, IndexError):
         return ""
+
+
+def _native_store_key(source_root: Path, store: Path) -> str:
+    """Path of a store relative to its source root, e.g. ``gefs/raw``.
+
+    One provider can own several stores that differ completely in what they
+    hold -- ``icon_global_eps_official`` has the member bodies under ``raw``
+    but also the static R03B06 grid and the remap weights -- so budget
+    selection has to be addressable per store, not per provider.
+    """
+
+    try:
+        return store.relative_to(source_root).as_posix()
+    except ValueError:
+        return store.as_posix()
+
+
+def _store_key_selected(store_key: str, wanted: Iterable[str]) -> bool:
+    for value in wanted:
+        if store_key == value or store_key.startswith(f"{value}/"):
+            return True
+    return False
 
 
 def _native_manifest_root(plan: Mapping[str, Any], path: Path) -> Path:
@@ -922,6 +1128,18 @@ def _run_native_lane(args: argparse.Namespace) -> dict[str, Any]:
         min_age_days=max(0, args.min_age_days),
         allow_unreadable_references=args.allow_unreadable_reference_documents,
     )
+    if args.cold_archive_to_budget:
+        if args.budget_root is None:
+            return {**plan, "state": "blocked_budget_root_missing", "apply_allowed": False}
+        plan = {
+            **plan,
+            "budget_cold_archive": plan_budget_cold_archive(
+                plan,
+                budget_root=args.budget_root,
+                budget_bytes=args.budget_bytes,
+                store_keys=args.cold_archive_store or (),
+            ),
+        }
     if not args.apply:
         return plan
     if not args.purge_unreferenced:
@@ -933,6 +1151,9 @@ def _run_native_lane(args: argparse.Namespace) -> dict[str, Any]:
         "state": "retention_apply_started",
         **apply_native_unreferenced(plan),
     }
+    selection = plan.get("budget_cold_archive")
+    if selection:
+        plan = {**plan, **apply_budget_cold_archive(plan, selection)}
     plan["state"] = "retention_apply_complete"
     return plan
 
@@ -971,6 +1192,24 @@ def main() -> int:
         action="store_true",
         help="native lane; continue past reference documents this user cannot "
         "read and record them in the plan, instead of refusing the pass",
+    )
+    parser.add_argument(
+        "--cold-archive-to-budget",
+        action="store_true",
+        help="native lane; additionally discard the fewest still-referenced "
+        "bodies needed to bring --budget-root under --budget-bytes, oldest "
+        "first, restricted to --cold-archive-store stores whose bodies the "
+        "operator asserts are re-obtainable",
+    )
+    parser.add_argument("--budget-root", type=Path)
+    parser.add_argument(
+        "--budget-bytes", type=int, default=MAX_TARGET_RESEARCH_RAW_BYTES
+    )
+    parser.add_argument(
+        "--cold-archive-store",
+        action="append",
+        help="native lane; store path relative to its source root, e.g. "
+        "icon_global_official/raw or icon_global_eps_official/grid_r03b06",
     )
     parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
     parser.add_argument("--retain-latest-runs", type=int, default=DEFAULT_RETAIN_LATEST_RUNS)

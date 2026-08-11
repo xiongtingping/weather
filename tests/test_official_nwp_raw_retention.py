@@ -11,10 +11,12 @@ import pytest
 import scripts.official_nwp_raw_retention as retention_module
 from scripts.official_nwp_raw_retention import (
     acknowledge_missing_references,
+    apply_budget_cold_archive,
     apply_native_unreferenced,
     apply_unreferenced,
     build_native_plan,
     build_plan,
+    plan_budget_cold_archive,
 )
 
 
@@ -300,3 +302,91 @@ def test_native_lane_ignores_its_own_audit_output_under_a_reference_root(tmp_pat
     assert second["skipped_self_plan_documents"] == [
         str(audits / "official_nwp_native_raw_retention_plan_latest.json")
     ]
+
+
+def test_budget_lane_takes_the_fewest_oldest_bodies_that_fit_the_root(tmp_path: Path) -> None:
+    source_root = tmp_path / "model_arrivals"
+    store = source_root / "icon_global_official" / "raw"
+    audits = tmp_path / "audits"
+    audits.mkdir()
+    bodies = []
+    for index in range(4):
+        body = _native_body(store, b"x" * 1000 + str(index).encode(), age_days=30 - index)
+        bodies.append(body)
+    (audits / "packet.json").write_text(
+        json.dumps([path.name.split(".", 1)[0] for path in bodies]), encoding="utf-8"
+    )
+
+    plan = build_native_plan([source_root], reference_roots=[audits])
+    assert plan["unreferenced_count"] == 0
+    assert plan["cold_archive_candidate_count"] == 4
+
+    total = sum(path.stat().st_size for path in bodies)
+    selection = plan_budget_cold_archive(
+        plan,
+        budget_root=source_root,
+        budget_bytes=total - bodies[0].stat().st_size,
+        store_keys=["icon_global_official/raw"],
+    )
+
+    assert selection["fits_budget"] is True
+    # Oldest first, and only as many as the budget actually requires.
+    assert [row["path"] for row in selection["selected_files"]] == [str(bodies[0])]
+
+    apply_budget_cold_archive(plan, selection)
+
+    assert not bodies[0].exists()
+    assert all(path.is_file() for path in bodies[1:])
+    manifest = json.loads((source_root / "raw_cold_archive_manifest.jsonl").read_text().strip())
+    assert manifest["deletion_reason"] == "referenced_body_cold_archived_to_hold_root_budget"
+    assert manifest["receipt_retained_outside_store"] is True
+
+
+def test_budget_lane_only_touches_the_stores_it_was_given(tmp_path: Path) -> None:
+    source_root = tmp_path / "model_arrivals"
+    audits = tmp_path / "audits"
+    audits.mkdir()
+    named = _native_body(source_root / "icon_global_official" / "raw", b"named", age_days=40)
+    spared = _native_body(source_root / "ecmwf_ifs025_official" / "raw", b"spared", age_days=99)
+    (audits / "packet.json").write_text(
+        json.dumps([named.name.split(".", 1)[0], spared.name.split(".", 1)[0]]),
+        encoding="utf-8",
+    )
+
+    plan = build_native_plan([source_root], reference_roots=[audits])
+    selection = plan_budget_cold_archive(
+        plan,
+        budget_root=source_root,
+        budget_bytes=0,
+        store_keys=["icon_global_official/raw"],
+    )
+
+    # ecmwf is older and would be taken first by age alone, but it was not named.
+    assert [row["path"] for row in selection["selected_files"]] == [str(named)]
+    assert selection["fits_budget"] is False
+
+
+def test_budget_lane_never_takes_a_body_named_only_from_inside_its_own_store(
+    tmp_path: Path,
+) -> None:
+    """A body whose only receipt sits beside it loses its evidence if dropped."""
+
+    source_root = tmp_path / "model_arrivals"
+    store = source_root / "gem_gdps_official" / "raw"
+    body = _native_body(store, b"body", age_days=40)
+    digest = body.name.split(".", 1)[0]
+    (store / f"{digest}.receipt.json").write_text(
+        json.dumps({"raw_sha256": digest}), encoding="utf-8"
+    )
+
+    plan = build_native_plan([source_root], reference_roots=[source_root])
+
+    assert plan["referenced_hash_count"] == 1
+    assert plan["cold_archive_candidate_count"] == 0
+    selection = plan_budget_cold_archive(
+        plan,
+        budget_root=source_root,
+        budget_bytes=0,
+        store_keys=["gem_gdps_official/raw"],
+    )
+    assert selection["selected_files"] == []
