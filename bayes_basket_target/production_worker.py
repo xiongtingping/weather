@@ -24,6 +24,7 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from datetime import time as dt_time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
@@ -2028,7 +2029,12 @@ class TargetProductionWorker:
         # first hold the throttle and the concurrency slot for all three, so d1
         # and d0 would keep being deferred behind a d2 capture that is already
         # done.
-        scope_key = (station_id, event_date, int(lead_days))
+        #
+        # That reasoning inverted once the run ladder moved run choice to
+        # capture time: the three lead-labelled scopes of one station-day now
+        # all resolve to the same "newest covering run", so keying them apart
+        # would download that run three times.  One key per station-day.
+        scope_key = (station_id, event_date)
         now_mono = time.monotonic()
 
         # Reap finished captures so their scopes free a concurrency slot, and
@@ -2045,7 +2051,6 @@ class TargetProductionWorker:
             self._official_native_capture_last_result = {
                 "station_id": key[0],
                 "event_date": key[1],
-                "lead_days": key[2],
                 **outcome,
             }
 
@@ -2100,17 +2105,15 @@ class TargetProductionWorker:
         # timeouts do not bound total wall time -- several archive reads plus an
         # inbox build ran well past two minutes in production -- and only a
         # child can be killed outright when it overruns; a thread cannot.
-        command = [
+        base_command = [
             sys.executable,
             str(ROOT / "scripts" / "capture_official_native_ensemble_forward.py"),
             "--event-date", event_date,
-            "--lead-days", str(lead_days),
             "--market-registry", str(registry_path),
             # Retained archives are shared across scopes and reused within
             # their TTL, so a second station on the same day costs no extra
             # download.
-            "--gefs-output", str(capture_root / f"gefs_{event_date}_d{lead_days}.json"),
-            "--ecmwf-output", str(capture_root / f"ecmwf_{event_date}_d{lead_days}.json"),
+
             # ECCC is captured on the same rotation rather than left to operator
             # commands.  Its history is what admits a third independent family
             # to the cross-ensemble candidate set; a system whose archive stops
@@ -2122,7 +2125,6 @@ class TargetProductionWorker:
             # stations instead -- see ``_capture_icon_daily``.  Its objects are
             # global fields rather than per-station extracts, so one pass of
             # this rotation would pull the same ~543MiB once per station.
-            "--eccc-output", str(capture_root / f"eccc_{event_date}_d{lead_days}.json"),
             "--inbox-output", str(staging_inbox),
             "--station-id", station_id,
             "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
@@ -2135,14 +2137,39 @@ class TargetProductionWorker:
             # commits, and this makes the other three behave like it.
             "--commit",
         ]
-        # At d1 the default cycle is the run day's 00Z, but that day's 18Z is
-        # eighteen hours fresher and no lead maps to it -- so the rotation kept
-        # serving a day-old initial field while a newer one sat unused.  Try
-        # the fresher cycle first and fall back to the default, since the
-        # newest run is the last to finish uploading and a 404 there is
-        # ordinary rather than a fault.  d2 already reads 18Z and d0 reads the
-        # event day's own 00Z, so neither has a fresher option to try.
-        preferred_cycle_hour = 18 if int(lead_days) == 1 else None
+        # The scope names an event; which run serves it is decided here, at
+        # capture time, by freshness.  The lead label on the scope used to
+        # decide the run outright -- d1 meant "the run day's 00Z" no matter
+        # what had been published since -- so a rotation could serve a P0 from
+        # a 30-hour-old field while a 6-hour-old one sat unread.  The ladder
+        # walks the runs both lanes publish, newest first, skipping any not
+        # yet due by the clock; the capture's own grid-coverage check still
+        # rejects a run that cannot cover a station's local day, so falling
+        # through the ladder is exactly the "newest covering run" the training
+        # side already speaks (its hour buckets never cared about d-labels).
+        # A failure on the freshest rung is ordinary -- the newest run is the
+        # last to finish uploading -- and the next rung answers instead.
+        event_day = date.fromisoformat(event_date)
+        now_dt = datetime.fromisoformat(
+            as_of_utc.replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        run_ladder: list[tuple[int, int | None, datetime]] = []
+        for rung_lead, rung_cycle in ((0, None), (1, 18), (1, None), (2, None)):
+            cycle_hour = (
+                {2: 18, 1: 0, 0: 0}[rung_lead]
+                if rung_cycle is None else rung_cycle
+            )
+            run_init = datetime.combine(
+                event_day - timedelta(days=rung_lead),
+                dt_time(hour=cycle_hour),
+                tzinfo=timezone.utc,
+            )
+            if run_init < now_dt:
+                run_ladder.append((rung_lead, rung_cycle, run_init))
+        run_ladder.sort(key=lambda rung: rung[2], reverse=True)
+        # Bounded: the two freshest rungs are the ones worth spending the
+        # deadline on; anything older is yesterday's capture already retained.
+        run_ladder = run_ladder[:3]
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -2159,16 +2186,24 @@ class TargetProductionWorker:
         }
 
         def _run_capture() -> dict[str, Any]:
-            attempts: list[list[str]] = []
-            if preferred_cycle_hour is not None:
-                attempts.append(
-                    command + ["--run-cycle-hour", str(preferred_cycle_hour)]
-                )
-            attempts.append(command)
-            captured_cycle_hour: int | None = None
+            captured_run_init: str | None = None
             try:
                 completed = None
-                for index, attempt in enumerate(attempts):
+                for rung_lead, rung_cycle, rung_run_init in run_ladder:
+                    attempt = base_command + [
+                        "--lead-days", str(rung_lead),
+                        "--gefs-output", str(
+                            capture_root / f"gefs_{event_date}_d{rung_lead}.json"
+                        ),
+                        "--ecmwf-output", str(
+                            capture_root / f"ecmwf_{event_date}_d{rung_lead}.json"
+                        ),
+                        "--eccc-output", str(
+                            capture_root / f"eccc_{event_date}_d{rung_lead}.json"
+                        ),
+                    ]
+                    if rung_cycle is not None:
+                        attempt += ["--run-cycle-hour", str(rung_cycle)]
                     completed = subprocess.run(
                         attempt,
                         cwd=str(ROOT),
@@ -2178,18 +2213,17 @@ class TargetProductionWorker:
                         env=capture_env,
                     )
                     if completed.returncode == 0:
-                        captured_cycle_hour = (
-                            preferred_cycle_hour
-                            if index == 0 and preferred_cycle_hour is not None
-                            else None
+                        captured_run_init = (
+                            rung_run_init.isoformat().replace("+00:00", "Z")
                         )
                         break
                 if completed is None or completed.returncode != 0:
                     return {
                         "state": "FAILED",
                         "reason": (
-                            f"capture_exit_{completed.returncode}:"
-                            f"{(completed.stderr or '').strip()[:200]}"
+                            "run_ladder_exhausted:"
+                            f"capture_exit_{completed.returncode if completed is not None else 'none'}:"
+                            f"{((completed.stderr if completed is not None else '') or '').strip()[:200]}"
                         ),
                     }
             except subprocess.TimeoutExpired:
@@ -2237,13 +2271,9 @@ class TargetProductionWorker:
                 "state": "CAPTURED",
                 "inbox_packet_count": merged["packet_count"],
                 "pruned_packet_count": merged["pruned"],
-                # Which run this scope actually got, so a reader can tell the
-                # fresher cycle from the fallback without re-deriving it.
-                "run_cycle_hour": (
-                    captured_cycle_hour
-                    if captured_cycle_hour is not None
-                    else "lead_default"
-                ),
+                # Which run this scope actually got, so a reader can tell a
+                # fresh rung from a fallback without re-deriving the ladder.
+                "captured_run_init_utc": captured_run_init,
             }
 
         future = self._official_native_capture_pool.submit(_run_capture)
@@ -4160,10 +4190,9 @@ class TargetProductionWorker:
                 event_date=native_event_date,
                 as_of_utc=as_of_utc,
                 inbox_path=official_inbox_path,
-                # The scope names the lead; capturing at a fixed d2 would
-                # ignore it.  Read without an ``or`` fallback, because d0 is a
-                # legitimate lead and a falsy-test would silently rewrite it to
-                # d2 -- the exact staleness this rotation exists to remove.
+                # The lead is advisory now: the capture's run ladder picks the
+                # newest published run that covers the local day, so scopes
+                # that only differ in lead label share one capture.
                 lead_days=(
                     2
                     if native_scope.get("lead_days") is None
