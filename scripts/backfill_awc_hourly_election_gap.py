@@ -70,6 +70,15 @@ def main() -> int:
         help="pause between per-station requests to stay polite to AWC",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--date-anchor",
+        default=None,
+        help=(
+            "Read the window ending at this UTC instant instead of now; "
+            "how a day deeper in AWC's 30-day retention is reached past "
+            "the 400-report response cap."
+        ),
+    )
     args = parser.parse_args()
 
     hours = max(1.0, min(MAX_LOOKBACK_HOURS, float(args.hours)))
@@ -89,7 +98,10 @@ def main() -> int:
         for index, station in enumerate(stations):
             request_started_at = utc_now()
             poll = dict(
-                fetch_awc_temperature_reports([station], hours=hours, timeout=20.0)
+                fetch_awc_temperature_reports(
+                    [station], hours=hours, timeout=20.0,
+                    date_anchor=args.date_anchor,
+                )
             )
             poll["source_lane"] = "awc"
             response_completed_at = utc_now()

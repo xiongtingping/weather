@@ -9,7 +9,7 @@ probability, TAF, prices, orders, or a gateway.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import math
 import sqlite3
@@ -354,6 +354,36 @@ def materialize_settled_station_truth(
         hourly.append(item)
     if not hourly or any(not item["observation_id"] for item in hourly):
         raise ContractError("settlement_truth_hourly_observation_missing")
+
+    # Reports must cover the hours the maximum can occur in, or the "max over
+    # what exists" is the max of the wrong part of the day.  LTAC 2026-08-01
+    # settled at 17C from ten night reports -- the day's only evidence after a
+    # capture outage -- while the model consensus stood eleven degrees higher;
+    # neighbouring days read 26 and 32.  Nothing about the value was
+    # implausible per report, so no per-report check can catch it: the defect
+    # is the shape of the evidence, a day whose warm hours are simply absent.
+    # Three formal reports across the local 10:00-19:00 window is lenient for
+    # every reporting cadence in the network (hourly and half-hourly stations
+    # carry 9-18); a day that cannot meet it stays open and settles when the
+    # gap backfills inside AWC's retention, or never -- unsettled is the
+    # honest answer to an unobserved afternoon.
+    warm_start = _utc(
+        "settlement_truth_warm_window_start",
+        window["target_day_start_utc"],
+    ) + timedelta(hours=10)
+    warm_end = warm_start + timedelta(hours=9)
+    warm_count = sum(
+        1
+        for item in hourly
+        if warm_start <= _utc(
+            "settlement_truth_warm_window_probe", item["valid_at_utc"]
+        ) < warm_end
+    )
+    if warm_count < 3:
+        raise ContractError(
+            "settlement_truth_daytime_coverage_insufficient:"
+            f"warm_window_reports={warm_count}"
+        )
 
     evidence = {
         "schema": "settlement_truth_source_evidence_v1",

@@ -483,8 +483,17 @@ def _awc_one(stations: Sequence[str], *, hours: float, timeout: float) -> dict[s
 
 
 def fetch_awc_temperature_reports(
-    station_ids: Sequence[str], *, hours: float, timeout: float = 6.0, batch_size: int = 10, max_workers: int = 6
+    station_ids: Sequence[str], *, hours: float, timeout: float = 6.0, batch_size: int = 10, max_workers: int = 6,
+    date_anchor: str | None = None,
 ) -> dict[str, Any]:
+    """``date_anchor`` reads the window ending at that instant, not at now.
+
+    Without it, AWC looks back from the present and the 400-report response
+    cap decides how far back that reaches -- for a half-hourly station about
+    eight days, silently.  An anchored request is how a day deeper inside
+    AWC's 30-day retention stays reachable at all.
+    """
+
     stations = sorted({str(value).strip().upper() for value in station_ids if str(value).strip()})
     raw_api_error = ""
     try:
@@ -494,6 +503,8 @@ def fetch_awc_temperature_reports(
             "taf": "false",
             "hours": f"{float(hours):g}",
         }
+        if date_anchor:
+            params["date"] = str(date_anchor)
         url = AWC_ENDPOINT + "?" + urllib.parse.urlencode(params)
         request = urllib.request.Request(
             url,

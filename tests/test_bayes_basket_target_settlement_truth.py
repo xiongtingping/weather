@@ -532,6 +532,24 @@ def test_closed_day_yields_truth_for_a_cadence_that_never_lands_on_the_hour() ->
     )
     _observation(
         source,
+        observation_id="0warmfill",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="1warmfill",
+        valid_at="2026-07-28T06:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="2warmfill",
+        valid_at="2026-07-28T07:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
         observation_id="b-fifty",
         valid_at="2026-07-28T03:50:00Z",
         temperature_c=33,
@@ -586,6 +604,24 @@ def test_truth_writer_excludes_amsc_and_legacy_role_revisions() -> None:
         valid_at="2026-07-28T03:00:00Z",
         temperature_c=35.0,
         committed_at="2026-07-28T03:01:00Z",
+    )
+    _observation(
+        source,
+        observation_id="0warmfill",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="1warmfill",
+        valid_at="2026-07-28T06:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="2warmfill",
+        valid_at="2026-07-28T07:00:00Z",
+        temperature_c=10,
     )
 
     result = materialize_settled_station_truth(
@@ -747,6 +783,24 @@ def test_identical_replay_is_idempotent_and_late_hourly_observation_revises() ->
         temperature_c=34,
         committed_at="2026-07-28T03:05:00Z",
     )
+    _observation(
+        source,
+        observation_id="0warmfill",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="1warmfill",
+        valid_at="2026-07-28T06:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="2warmfill",
+        valid_at="2026-07-28T07:00:00Z",
+        temperature_c=10,
+    )
     first = materialize_settled_station_truth(
         target,
         source,
@@ -871,6 +925,24 @@ def test_truth_batch_bootstraps_scope_before_basket_training_fact() -> None:
         temperature_c=31,
         committed_at="2026-07-28T00:00:10Z",
     )
+    _observation(
+        source,
+        observation_id="0warmfill",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="1warmfill",
+        valid_at="2026-07-28T06:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="2warmfill",
+        valid_at="2026-07-28T07:00:00Z",
+        temperature_c=10,
+    )
 
     result = materialize_settled_training_truths(
         target,
@@ -905,6 +977,24 @@ def test_truth_batch_commits_unrelated_scope_when_one_station_is_halted() -> Non
         valid_at="2026-07-28T00:00:00Z",
         temperature_c=31,
         committed_at="2026-07-28T00:00:10Z",
+    )
+    _observation(
+        source,
+        observation_id="0warmfill",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="1warmfill",
+        valid_at="2026-07-28T06:00:00Z",
+        temperature_c=10,
+    )
+    _observation(
+        source,
+        observation_id="2warmfill",
+        valid_at="2026-07-28T07:00:00Z",
+        temperature_c=10,
     )
     source.execute(
         "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
@@ -1055,6 +1145,14 @@ def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage()
         (
             "hourly-35", "METAR", "2026-07-28T03:00:00Z",
             35, "a" * 64, "METAR RKPK", 0,
+        ),
+        (
+            "warmfill-0130", "METAR", "2026-07-28T01:30:00Z",
+            10, "c" * 64, "METAR RKPK WF0", 0,
+        ),
+        (
+            "warmfill-0230", "METAR", "2026-07-28T02:30:00Z",
+            10, "d" * 64, "METAR RKPK WF1", 0,
         ),
         (
             "cor-0315", "SPECI", "2026-07-28T03:15:00Z",
