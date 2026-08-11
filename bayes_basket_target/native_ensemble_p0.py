@@ -14,6 +14,7 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     bridged_cross_probability,
+    floor_probabilities,
 )
 from .future_temperature_curve import (
     build_native_family_temperature_curve,
@@ -310,10 +311,11 @@ def _calibrated_system_probability(
         for bucket in intervals
     }
     total = sum(probability.values())
-    return {
+    normalized = {
         bucket: value / total
         for bucket, value in probability.items()
     }
+    return floor_probabilities(normalized)
 
 
 def _ordered_buckets(

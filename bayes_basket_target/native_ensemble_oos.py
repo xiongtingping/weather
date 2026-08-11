@@ -22,6 +22,7 @@ from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     bridged_cross_probability,
+    floor_probabilities,
 )
 from .dwd_icon_eps_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
@@ -187,6 +188,16 @@ OFFICIAL_FORWARD_REQUIRED_SYSTEM_IDS = frozenset({
     "NOAA_GEFS_05",
 })
 EPS = 1e-12
+# Brier only scores the bucket that settled, so a candidate that is sharper
+# across the whole distribution can still lose it by a rounding-scale margin
+# while winning CRPS and NLL outright.  Requiring both of the other scoring
+# rules to improve by a real margin keeps that from becoming a way in for
+# genuinely worse candidates: over the rejected history this channel admits
+# about 6% of them, and NLL alone rejects half of what Brier-plus-CRPS would
+# have let through.  A station whose candidates keep losing all three still
+# stays rejected and keeps serving its last passing weights.
+BRIER_TOLERANCE_MAX_RELATIVE_LOSS = 0.02
+BRIER_TOLERANCE_MIN_RELATIVE_GAIN = 0.05
 VALID_NATIVE_RUN_CYCLES = frozenset({
     "00Z",
     "06Z",
@@ -268,6 +279,71 @@ def _metrics(
         observed_cdf = 1.0 if int(actual_bucket) <= bucket else 0.0
         crps += (forecast_cdf - observed_cdf) ** 2
     return {"brier": brier, "nll": nll, "crps": crps}
+
+
+def _cross_oos_gate(
+    cross_metrics: Mapping[str, float],
+    climate_metrics: Mapping[str, float],
+) -> dict[str, Any]:
+    """Decide the gate and record which path decided it.
+
+    The strict path is unchanged: beat climatology on Brier and CRPS.  The
+    tolerance path exists because Brier can be lost by a rounding-scale
+    margin on a candidate that is better everywhere else, and it demands a
+    real margin on both remaining scoring rules in exchange.  The returned
+    record is stored with the evaluation so a later review can separate
+    tolerance admissions from strict ones without re-deriving them.
+    """
+
+    strict_pass = (
+        float(cross_metrics["brier"])
+        <= float(climate_metrics["brier"]) + EPS
+        and float(cross_metrics["crps"])
+        <= float(climate_metrics["crps"]) + EPS
+    )
+    gate: dict[str, Any] = {
+        "path": "STRICT" if strict_pass else "REJECTED",
+        "pass": strict_pass,
+        "brier_tolerance_max_relative_loss": (
+            BRIER_TOLERANCE_MAX_RELATIVE_LOSS
+        ),
+        "tolerance_min_relative_gain": BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
+    }
+    if strict_pass:
+        return gate
+
+    climate_brier = float(climate_metrics["brier"])
+    climate_crps = float(climate_metrics["crps"])
+    climate_nll = float(climate_metrics.get("nll", 0.0))
+    if climate_brier <= EPS or climate_crps <= EPS or climate_nll <= EPS:
+        # Relative margins are meaningless against a zero baseline, and a
+        # perfect climatology is not something to be admitted around.
+        gate["tolerance_available"] = False
+        return gate
+
+    brier_relative_loss = (
+        float(cross_metrics["brier"]) - climate_brier
+    ) / climate_brier
+    crps_relative_gain = (
+        climate_crps - float(cross_metrics["crps"])
+    ) / climate_crps
+    nll_relative_gain = (
+        climate_nll - float(cross_metrics.get("nll", climate_nll))
+    ) / climate_nll
+    tolerance_pass = (
+        brier_relative_loss <= BRIER_TOLERANCE_MAX_RELATIVE_LOSS
+        and crps_relative_gain >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
+        and nll_relative_gain >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
+    )
+    gate.update({
+        "tolerance_available": True,
+        "brier_relative_loss": brier_relative_loss,
+        "crps_relative_gain": crps_relative_gain,
+        "nll_relative_gain": nll_relative_gain,
+        "path": "CRPS_NLL_TOLERANCE" if tolerance_pass else "REJECTED",
+        "pass": tolerance_pass,
+    })
+    return gate
 
 
 def _mean_metrics(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
@@ -449,13 +525,14 @@ def _apply_parameters(
     total = sum(result.values())
     if total <= 0:
         raise ContractError("native_ensemble_oos_probability_empty")
-    return {
+    normalized = {
         key: value / total
         for key, value in sorted(
             result.items(),
             key=lambda item: int(item[0]),
         )
     }
+    return floor_probabilities(normalized)
 
 
 def _cycle_mapping_for_rows(
@@ -2344,12 +2421,9 @@ def build_native_ensemble_oos(
                     [residuals[left][day] for day in days],
                     [residuals[right][day] for day in days],
                 )
-        oos_pass = (
-            cross_metrics["brier"]
-            <= climate_metrics["brier"] + EPS
-            and cross_metrics["crps"]
-            <= climate_metrics["crps"] + EPS
-        )
+        oos_gate = _cross_oos_gate(cross_metrics, climate_metrics)
+        oos_pass = bool(oos_gate["pass"])
+        cross_metrics = {**cross_metrics, "gate": oos_gate}
         # Activations are unique on
         # (kind, station, system, season, lead, run_cycle, set_hash,
         # generation) and the per-system cycle mapping is not part of that key.

@@ -174,3 +174,30 @@ def bridged_cross_probability(
         "consensus_center_c": round(consensus_center_c, 6),
     }
     return blended, receipt
+
+
+# A finite ensemble cannot resolve probabilities below one over its member
+# count, and the climate blend only reaches buckets its own ~35 days visited,
+# so a bucket beyond both was served as exactly zero.  Zero is not a small
+# number: settled truth landed in a zero bucket 20 times across 511 committed
+# envelopes -- the system called an event impossible and it happened.  Two
+# percent of mass spread uniformly is the confession that no 30-day window
+# rules anything out; it costs the modal bucket a fiftieth of its mass and
+# caps the log penalty of a tail surprise at a finite number.
+PROBABILITY_FLOOR_UNIFORM_SHARE = 0.02
+
+
+def floor_probabilities(
+    probability: Mapping[str, float],
+) -> dict[str, float]:
+    """Blend with the uniform distribution so no bucket is ever zero."""
+
+    keys = list(probability)
+    if not keys:
+        return {}
+    uniform = 1.0 / len(keys)
+    share = PROBABILITY_FLOOR_UNIFORM_SHARE
+    return {
+        key: (1.0 - share) * float(probability[key]) + share * uniform
+        for key in keys
+    }
