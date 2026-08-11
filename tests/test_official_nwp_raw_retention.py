@@ -276,3 +276,27 @@ def test_native_lane_ignores_its_own_cold_archive_manifest(tmp_path: Path) -> No
     plan = build_native_plan([source_root], reference_roots=[source_root])
 
     assert [row["path"] for row in plan["unreferenced_files"]] == [str(body)]
+
+
+def test_native_lane_ignores_its_own_audit_output_under_a_reference_root(tmp_path: Path) -> None:
+    """The plan lands in output/audits, which is itself a reference root."""
+
+    source_root = tmp_path / "official_nwp_sources"
+    store = source_root / "ecmwf_pf50" / "raw"
+    body = _native_body(store, b"orphan")
+    audits = tmp_path / "audits"
+    audits.mkdir()
+
+    first = build_native_plan([source_root], reference_roots=[audits])
+    assert [row["path"] for row in first["unreferenced_files"]] == [str(body)]
+
+    (audits / "official_nwp_native_raw_retention_plan_latest.json").write_text(
+        json.dumps(first), encoding="utf-8"
+    )
+    second = build_native_plan([source_root], reference_roots=[audits])
+
+    assert second["referenced_hash_count"] == 0
+    assert [row["path"] for row in second["unreferenced_files"]] == [str(body)]
+    assert second["skipped_self_plan_documents"] == [
+        str(audits / "official_nwp_native_raw_retention_plan_latest.json")
+    ]

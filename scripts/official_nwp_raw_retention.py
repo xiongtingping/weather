@@ -82,6 +82,15 @@ DEFAULT_NATIVE_MIN_AGE_DAYS = 2
 NATIVE_BODY_SCAN_LIMIT = 500_000
 NATIVE_REFERENCE_DOCUMENT_LIMIT = 200_000
 NATIVE_HEX64 = re.compile(rb"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
+# This worker's own audit output lands under output/audits, which is also a
+# reference root, and it lists the hash of every body it plans to discard.
+# Reading it back would mark those bodies referenced and quietly disable
+# retention from the second run onwards.  Recognise the plan by its schema so
+# a renamed or wrapped copy is skipped too.
+SELF_PLAN_MARKERS = (
+    b'"official_nwp_native_raw_retention_plan_v1"',
+    b'"official_nwp_raw_retention_plan_v2"',
+)
 # Historical backfills store bodies across a whole multi-hour run and can
 # therefore straddle the age floor, so an active one blocks the pass.
 #
@@ -626,6 +635,7 @@ def build_native_reference_index(
     referenced: set[str] = set()
     referenced_outside_store: set[str] = set()
     unreadable: list[dict[str, str]] = []
+    self_plans: list[str] = []
     documents = 0
     document_bytes = 0
     scanned_roots: list[str] = []
@@ -671,6 +681,9 @@ def build_native_reference_index(
                             f"official_nwp_native_retention_reference_unreadable:{path}"
                         ) from exc
                     continue
+                if any(marker in payload for marker in SELF_PLAN_MARKERS):
+                    self_plans.append(str(path))
+                    continue
                 document_bytes += len(payload)
                 found = {
                     match.group(0) for match in NATIVE_HEX64.finditer(payload)
@@ -688,6 +701,7 @@ def build_native_reference_index(
         "reference_document_count": documents,
         "reference_document_bytes": document_bytes,
         "unreadable_reference_documents": unreadable,
+        "skipped_self_plan_documents": sorted(self_plans),
     }
 
 
@@ -791,6 +805,7 @@ def build_native_plan(
         "unreadable_reference_document_count": len(
             index["unreadable_reference_documents"]
         ),
+        "skipped_self_plan_documents": index["skipped_self_plan_documents"],
         "body_hash_count": len(bodies),
         "referenced_hash_count": len(referenced),
         "unreferenced_files": unreferenced,
