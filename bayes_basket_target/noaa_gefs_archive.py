@@ -65,10 +65,41 @@ DEFAULT_LEAD_DAYS = 2
 # short and the capture is rejected outright.  Shorter leads take the day's
 # first cycle instead; GEFS publishes 00/06/12/18Z, so 00Z is available.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
+# GEFS publishes four cycles; these are the two this lane reads.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 18)
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 
-def extraction_version_for_lead(lead_days: int) -> str:
+def resolve_run_cycle_hour(
+    lead_days: int,
+    run_cycle_hour: int | None = None,
+) -> int:
+    """The cycle this capture reads, defaulting to the lead's own mapping.
+
+    The mapping exists because a cycle has to leave enough forecast hours to
+    cover the target local day.  It is a safe default, not the only safe
+    choice: for a UTC+8 station the previous day's 18Z run covers 22 of the
+    24 local hours and is published six hours before the day's own 00Z, so it
+    is strictly fresher than what ``d0`` can offer while still reaching the
+    afternoon maximum.  No lead maps to it, so it was unreachable.
+
+    An explicit cycle is therefore allowed, and the grid coverage check
+    downstream stays exactly as it was: a cycle that genuinely comes up short
+    for a station is still rejected outright rather than silently truncated.
+    """
+
+    if run_cycle_hour is None:
+        return RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    hour = int(run_cycle_hour)
+    if hour not in SUPPORTED_RUN_CYCLE_HOURS:
+        raise ContractError("noaa_gefs_archive_run_cycle_hour_invalid")
+    return hour
+
+
+def extraction_version_for_lead(
+    lead_days: int,
+    run_cycle_hour: int | None = None,
+) -> str:
     """Extraction identity is specific to the lead *and* to its cycle.
 
     A d1 row read the same way as a d2 row is still different evidence, drawn
@@ -82,7 +113,7 @@ def extraction_version_for_lead(lead_days: int) -> str:
     other while both disagreed with the object that was downloaded.
     """
 
-    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
     return (
         f"noaa_gefs_pds_0p50_{cycle_hour:02d}z_"
         f"d{int(lead_days)}_station_tmax_v2"
@@ -497,14 +528,16 @@ def capture_gefs_station_day(
     archive_query_at_utc: str,
     timeout_seconds: float = 30.0,
     lead_days: int = DEFAULT_LEAD_DAYS,
+    run_cycle_hour: int | None = None,
 ) -> dict[str, Any]:
     if lead_days not in SUPPORTED_LEAD_DAYS:
         raise ContractError("noaa_gefs_archive_lead_days_invalid")
+    cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
     station = str(station_id or "").strip().upper()
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
+        time(hour=cycle_hour),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -867,16 +900,18 @@ def capture_gefs_station_days(
     archive_query_at_utc: str,
     timeout_seconds: float = 30.0,
     lead_days: int = DEFAULT_LEAD_DAYS,
+    run_cycle_hour: int | None = None,
 ) -> dict[str, Any]:
     """Download each global GEFS field once and decode every scoped station."""
 
     if lead_days not in SUPPORTED_LEAD_DAYS:
         raise ContractError("noaa_gefs_archive_lead_days_invalid")
+    cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
     lead_bucket = f"d{lead_days}"
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
+        time(hour=cycle_hour),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -1147,7 +1182,7 @@ def ingest_gefs_station_day(
     # constants would relabel a shorter-lead capture as d2 at the moment it
     # lands, which is where such a mislabelling becomes permanent and silently
     # contaminates d2's training set.
-    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+    capture_lead_days, capture_lead_bucket, capture_run_init, capture_run_cycle = (
         capture_lead_and_run(
             capture,
             supported_lead_days=SUPPORTED_LEAD_DAYS,
@@ -1155,7 +1190,16 @@ def ingest_gefs_station_day(
             error_code="noaa_gefs_archive_lead_days_invalid",
         )
     )
-    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
+    # The version is rebuilt from the run this capture actually carries, not
+    # from the lead's default cycle.  A capture may read a non-default cycle
+    # when that run covers the local day better than the default, and
+    # recomputing from the default would reject it for disagreeing with
+    # itself.  ``capture_lead_and_run`` has already refused any capture whose
+    # stated lead and stated run disagree, so this hour is trustworthy.
+    capture_extraction_version = extraction_version_for_lead(
+        capture_lead_days,
+        capture_run_init.hour,
+    )
     identity = {
         key: value
         for key, value in capture.items()

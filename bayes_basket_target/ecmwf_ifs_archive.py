@@ -64,10 +64,36 @@ DEFAULT_LEAD_DAYS = 2
 # already begun in the far east -- Auckland gets five 3-hour periods instead of
 # eight -- so the shorter leads take the day's first cycle instead.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
+# ECMWF open data publishes four cycles; these are the two this lane reads.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 18)
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 
-def extraction_version_for_lead(lead_days: int) -> str:
+def resolve_run_cycle_hour(
+    lead_days: int,
+    run_cycle_hour: int | None = None,
+) -> int:
+    """The cycle this capture reads, defaulting to the lead's own mapping.
+
+    See ``noaa_gefs_archive.resolve_run_cycle_hour``: the default exists to
+    guarantee the run covers the target local day, but for eastern stations
+    the previous day's 18Z covers more of that day than the day's own 00Z and
+    is published earlier, and no lead maps to it.  The grid coverage check is
+    unchanged and still rejects a cycle that genuinely comes up short.
+    """
+
+    if run_cycle_hour is None:
+        return RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    hour = int(run_cycle_hour)
+    if hour not in SUPPORTED_RUN_CYCLE_HOURS:
+        raise ContractError("ecmwf_archive_run_cycle_hour_invalid")
+    return hour
+
+
+def extraction_version_for_lead(
+    lead_days: int,
+    run_cycle_hour: int | None = None,
+) -> str:
     """Extraction identity is specific to the lead *and* to its cycle.
 
     A d1 row read the same way as a d2 row is still different evidence: it
@@ -83,7 +109,7 @@ def extraction_version_for_lead(lead_days: int) -> str:
     while both disagreed with the object that was downloaded.
     """
 
-    cycle_hour = RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+    cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
     return (
         "ecmwf_open_data_ifs_0p25_enfo_pf50_mx2t3_"
         f"{cycle_hour:02d}z_d{int(lead_days)}_v1"
@@ -753,16 +779,18 @@ def capture_ecmwf_station_days(
     archive_query_at_utc: str,
     timeout_seconds: float = 45.0,
     lead_days: int = DEFAULT_LEAD_DAYS,
+    run_cycle_hour: int | None = None,
 ) -> dict[str, Any]:
     if BASE_URL not in ALLOWED_TRANSPORT_BASE_URLS:
         raise ContractError("ecmwf_archive_transport_base_url_invalid")
     if lead_days not in SUPPORTED_LEAD_DAYS:
         raise ContractError("ecmwf_archive_lead_days_invalid")
     lead_bucket = f"d{lead_days}"
+    cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
     target = date.fromisoformat(event_date)
     run_init = datetime.combine(
         target - timedelta(days=lead_days),
-        time(hour=RUN_CYCLE_HOUR_BY_LEAD[lead_days]),
+        time(hour=cycle_hour),
         tzinfo=timezone.utc,
     )
     query_at = datetime.fromisoformat(
@@ -1133,7 +1161,7 @@ def ingest_ecmwf_station_day(
     # only a fallback for archives written before leads other than d2 existed.
     # Reading the constants here would relabel a d1 capture as d2 at the moment
     # it lands, which is exactly where a mislabelling becomes permanent.
-    capture_lead_days, capture_lead_bucket, _run_init, capture_run_cycle = (
+    capture_lead_days, capture_lead_bucket, capture_run_init, capture_run_cycle = (
         capture_lead_and_run(
             capture,
             supported_lead_days=SUPPORTED_LEAD_DAYS,
@@ -1141,7 +1169,13 @@ def ingest_ecmwf_station_day(
             error_code="ecmwf_archive_lead_days_invalid",
         )
     )
-    capture_extraction_version = extraction_version_for_lead(capture_lead_days)
+    # Rebuilt from the run the capture carries rather than the lead's default
+    # cycle, so a non-default cycle is not rejected for disagreeing with
+    # itself; the lead/run agreement was already enforced above.
+    capture_extraction_version = extraction_version_for_lead(
+        capture_lead_days,
+        capture_run_init.hour,
+    )
     station = str(capture["station_id"])
     event_date = str(capture["event_date"])
     existing = conn.execute(

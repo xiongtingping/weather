@@ -288,6 +288,7 @@ def capture_official_native_forward(
     # P0 follows the freshest run issued for the event date, so the caller
     # states which lead this pass is for.  Two is the historical default.
     lead_days: int = 2,
+    run_cycle_hour: int | None = None,
 ) -> dict[str, Any]:
     """Capture and materialize a formally admissible official-native inbox."""
 
@@ -357,6 +358,7 @@ def capture_official_native_forward(
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
             lead_days=int(lead_days),
+            run_cycle_hour=run_cycle_hour,
         )
     if ecmwf is None:
         assert_process_memory_budget()
@@ -366,6 +368,7 @@ def capture_official_native_forward(
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
             lead_days=int(lead_days),
+            run_cycle_hour=run_cycle_hour,
         )
     if eccc_output is not None and eccc is None:
         assert_process_memory_budget()
@@ -481,6 +484,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event-date", required=True)
     parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
+    parser.add_argument(
+        "--run-cycle-hour",
+        type=int,
+        default=None,
+        choices=[0, 18],
+        help=(
+            "Read this cycle instead of the lead's default.  ECCC has only "
+            "00Z and is unaffected; a cycle that does not cover a station's "
+            "local day is still rejected by the coverage check."
+        ),
+    )
     parser.add_argument("--market-registry", type=Path, default=DEFAULT_REGISTRY)
     parser.add_argument("--gefs-output", type=Path, default=DEFAULT_GEFS_OUTPUT)
     parser.add_argument("--ecmwf-output", type=Path, default=DEFAULT_ECMWF_OUTPUT)
@@ -547,7 +561,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             eccc_geps_archive=args.eccc_geps_archive,
             eccc_output=args.eccc_output,
             icon_output=args.icon_output,
-        lead_days=args.lead_days,
+            lead_days=args.lead_days,
+            run_cycle_hour=args.run_cycle_hour,
             eccc_station_ids=args.eccc_station_id,
         )
     except (ContractError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:

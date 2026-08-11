@@ -2135,6 +2135,14 @@ class TargetProductionWorker:
             # commits, and this makes the other three behave like it.
             "--commit",
         ]
+        # At d1 the default cycle is the run day's 00Z, but that day's 18Z is
+        # eighteen hours fresher and no lead maps to it -- so the rotation kept
+        # serving a day-old initial field while a newer one sat unused.  Try
+        # the fresher cycle first and fall back to the default, since the
+        # newest run is the last to finish uploading and a 404 there is
+        # ordinary rather than a fault.  d2 already reads 18Z and d0 reads the
+        # event day's own 00Z, so neither has a fresher option to try.
+        preferred_cycle_hour = 18 if int(lead_days) == 1 else None
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -2151,16 +2159,32 @@ class TargetProductionWorker:
         }
 
         def _run_capture() -> dict[str, Any]:
-            try:
-                completed = subprocess.run(
-                    command,
-                    cwd=str(ROOT),
-                    capture_output=True,
-                    text=True,
-                    timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
-                    env=capture_env,
+            attempts: list[list[str]] = []
+            if preferred_cycle_hour is not None:
+                attempts.append(
+                    command + ["--run-cycle-hour", str(preferred_cycle_hour)]
                 )
-                if completed.returncode != 0:
+            attempts.append(command)
+            captured_cycle_hour: int | None = None
+            try:
+                completed = None
+                for index, attempt in enumerate(attempts):
+                    completed = subprocess.run(
+                        attempt,
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
+                        env=capture_env,
+                    )
+                    if completed.returncode == 0:
+                        captured_cycle_hour = (
+                            preferred_cycle_hour
+                            if index == 0 and preferred_cycle_hour is not None
+                            else None
+                        )
+                        break
+                if completed is None or completed.returncode != 0:
                     return {
                         "state": "FAILED",
                         "reason": (
@@ -2213,6 +2237,13 @@ class TargetProductionWorker:
                 "state": "CAPTURED",
                 "inbox_packet_count": merged["packet_count"],
                 "pruned_packet_count": merged["pruned"],
+                # Which run this scope actually got, so a reader can tell the
+                # fresher cycle from the fallback without re-deriving it.
+                "run_cycle_hour": (
+                    captured_cycle_hour
+                    if captured_cycle_hour is not None
+                    else "lead_default"
+                ),
             }
 
         future = self._official_native_capture_pool.submit(_run_capture)
