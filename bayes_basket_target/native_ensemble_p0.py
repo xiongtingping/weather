@@ -14,7 +14,6 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     bridged_cross_probability,
-    floor_probabilities,
 )
 from .future_temperature_curve import (
     build_native_family_temperature_curve,
@@ -213,39 +212,75 @@ def _interval_probability(
     values: Sequence[float],
     intervals: Mapping[str, Sequence[float | None]],
 ) -> dict[str, float]:
+    """Integrate a kernel-dressed sample over the bucket contract.
+
+    A histogram of a few dozen discrete values serves zeros even beside its
+    own mean: truth once settled at a calibrated center of 30.0C while the
+    30C bucket held no member and was served as impossible.  Dressing each
+    value with a normal kernel makes mass decay with distance the way the
+    sample's own shape says it should -- a far bucket is small because the
+    model puts little there, never zero because the sample is finite.  The
+    open edge buckets integrate their whole tails, so the contract still
+    receives exactly the full unit of mass.
+    """
+
     if not values:
         raise ContractError("native_ensemble_p0_values_missing")
-    counts = {str(bucket): 0 for bucket in intervals}
+    current: list[float] = []
     for raw_value in values:
         value = float(raw_value)
         if not math.isfinite(value):
             raise ContractError("native_ensemble_p0_value_invalid")
-        matches = []
-        for bucket, bounds in intervals.items():
-            if (
-                not isinstance(bounds, Sequence)
-                or isinstance(bounds, (str, bytes, bytearray))
-                or len(bounds) != 2
-            ):
-                raise ContractError(
-                    "native_ensemble_p0_bucket_interval_invalid"
-                )
-            lower = bounds[0]
-            upper = bounds[1]
-            if (
-                (lower is None or value >= float(lower))
-                and (upper is None or value < float(upper))
-            ):
-                matches.append(str(bucket))
-        if len(matches) != 1:
+        current.append(value)
+    count = len(current)
+    mean = sum(current) / count
+    if count > 1:
+        std = math.sqrt(
+            sum((v - mean) ** 2 for v in current) / count
+        )
+    else:
+        std = 0.0
+    # Half a degree: the discreteness scale, not a smoothing choice --
+    # Silverman-sized bandwidths were rejected by the holdout for widening
+    # what the calibration had already sized.  Deviations shrink so sample
+    # variance plus kernel variance reproduces the original: dressing may
+    # not change the width the calibration chose, only make it smooth.
+    bandwidth = 0.5
+    if std > bandwidth:
+        shrink = math.sqrt(1.0 - (bandwidth / std) ** 2)
+        current = [mean + shrink * (v - mean) for v in current]
+    sqrt2 = math.sqrt(2.0)
+
+    def _cdf(x: float) -> float:
+        return sum(
+            0.5 * (1.0 + math.erf((x - mu) / (bandwidth * sqrt2)))
+            for mu in current
+        ) / count
+
+    probability: dict[str, float] = {}
+    for bucket, bounds in intervals.items():
+        if (
+            not isinstance(bounds, Sequence)
+            or isinstance(bounds, (str, bytes, bytearray))
+            or len(bounds) != 2
+        ):
             raise ContractError(
-                "native_ensemble_p0_bucket_contract_not_exhaustive"
+                "native_ensemble_p0_bucket_interval_invalid"
             )
-        counts[matches[0]] += 1
-    total = len(values)
+        lower, upper = bounds
+        upper_mass = 1.0 if upper is None else _cdf(float(upper))
+        lower_mass = 0.0 if lower is None else _cdf(float(lower))
+        probability[str(bucket)] = max(0.0, upper_mass - lower_mass)
+    total = sum(probability.values())
+    if not 0.999 <= total <= 1.001:
+        # The intervals no longer partition the line; a histogram would have
+        # caught this per value, the integral catches it in aggregate.
+        raise ContractError(
+            "native_ensemble_p0_bucket_contract_not_exhaustive"
+        )
     return {
-        bucket: count / total
-        for bucket, count in counts.items()
+        bucket: value / total
+        for bucket, value in probability.items()
     }
 
 
@@ -311,11 +346,10 @@ def _calibrated_system_probability(
         for bucket in intervals
     }
     total = sum(probability.values())
-    normalized = {
+    return {
         bucket: value / total
         for bucket, value in probability.items()
     }
-    return floor_probabilities(normalized)
 
 
 def _ordered_buckets(
@@ -1905,6 +1939,17 @@ def compile_native_ensemble_p0(
         "native_formal_p0_eligible": "false",
         "model_envelope_lower_bucket": model_envelope_lower_bucket,
         "model_envelope_upper_bucket": model_envelope_upper_bucket,
+        # The basket keys the envelope boundary on ordinals and treats a
+        # missing pair as "this stage publishes no envelope" rather than as an
+        # error, so emitting only the bucket names silently collapses the
+        # candidate boundary onto the probability core and the dispersion
+        # widening never runs.  Both keys are required together.
+        "model_envelope_lower_ordinal": str(
+            ordered.index(model_envelope_lower_bucket)
+        ),
+        "model_envelope_upper_ordinal": str(
+            ordered.index(model_envelope_upper_bucket)
+        ),
         "model_envelope_span_c": (
             f"{upper_center_c - lower_center_c:.12g}"
         ),

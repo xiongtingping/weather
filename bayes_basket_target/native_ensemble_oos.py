@@ -22,7 +22,6 @@ from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     bridged_cross_probability,
-    floor_probabilities,
 )
 from .dwd_icon_eps_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
@@ -231,21 +230,61 @@ def _temperature_bucket(value: float) -> str:
     return str(math.floor(float(value) + 0.5))
 
 
+# Half a degree: the discreteness scale of the sample, not a smoothing
+# choice.  Dressing exists to stop a few dozen discrete values from serving
+# zeros between and beside themselves; Silverman-sized bandwidths were tried
+# and rejected by the holdout (CRPS worsened on 16 of 24 scopes) because
+# they also widened the distribution the calibration had already sized.
+KERNEL_BANDWIDTH_C = 0.5
+
+
 def _probabilities(values: Sequence[float]) -> dict[str, float]:
+    """Bucket probabilities from a kernel-dressed sample, not a histogram.
+
+    A histogram of a few dozen discrete values serves zeros even beside its
+    own mean -- settled truth landed at a calibrated center of 30.0C while
+    the 30C bucket held no member and was served as impossible.  Each value
+    is dressed with a normal kernel instead, so mass decays with distance
+    the way the sample's own shape says it should; a bucket far from every
+    member is small because the model puts little there, not zero because
+    the sample is finite.
+    """
+
     if not values:
         raise ContractError("native_ensemble_oos_values_missing")
-    counts: dict[str, int] = {}
+    current = []
     for value in values:
         if not math.isfinite(float(value)):
             raise ContractError("native_ensemble_oos_value_invalid")
-        bucket = _temperature_bucket(float(value))
-        counts[bucket] = counts.get(bucket, 0) + 1
-    total = len(values)
+        current.append(float(value))
+    bandwidth = KERNEL_BANDWIDTH_C
+    # Variance-preserving: shrink deviations so sample variance plus kernel
+    # variance reproduces the original.  The calibration already chose the
+    # distribution's width; dressing may not change it, only make it smooth.
+    mean = sum(current) / len(current)
+    std = math.sqrt(
+        sum((v - mean) ** 2 for v in current) / len(current)
+    )
+    if std > bandwidth:
+        shrink = math.sqrt(1.0 - (bandwidth / std) ** 2)
+        current = [mean + shrink * (v - mean) for v in current]
+    lo = math.floor(min(current) - 4.0 * bandwidth)
+    hi = math.ceil(max(current) + 4.0 * bandwidth)
+    def _cdf(x: float, mu: float) -> float:
+        return 0.5 * (1.0 + math.erf((x - mu) / (bandwidth * math.sqrt(2.0))))
+    result: dict[str, float] = {}
+    for bucket in range(int(lo), int(hi) + 1):
+        mass = sum(
+            _cdf(bucket + 0.5, mu) - _cdf(bucket - 0.5, mu)
+            for mu in current
+        ) / len(current)
+        if mass > 0.0:
+            result[str(bucket)] = mass
+    total = sum(result.values())
     return {
-        bucket: count / total
-        for bucket, count in sorted(
-            counts.items(),
-            key=lambda item: int(item[0]),
+        bucket: value / total
+        for bucket, value in sorted(
+            result.items(), key=lambda item: int(item[0])
         )
     }
 
@@ -525,14 +564,13 @@ def _apply_parameters(
     total = sum(result.values())
     if total <= 0:
         raise ContractError("native_ensemble_oos_probability_empty")
-    normalized = {
+    return {
         key: value / total
         for key, value in sorted(
             result.items(),
             key=lambda item: int(item[0]),
         )
     }
-    return floor_probabilities(normalized)
 
 
 def _cycle_mapping_for_rows(
