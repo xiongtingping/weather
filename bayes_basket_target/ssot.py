@@ -3063,6 +3063,224 @@ def _migrate_native_historical_source_contract(
         )
 
 
+RETIRED_HISTORICAL_TAF_TRUTH_LABEL = "TEMPORARY_AWC_CALIBRATION_LABEL"
+
+# The formal replacement row was re-captured from the same historical TAF, so
+# every payload column must match byte for byte; only the sample envelope
+# hashes may differ because the label participates in them.
+_HISTORICAL_TAF_TWIN_PAYLOAD_COLUMNS = (
+    "station_id",
+    "event_date",
+    "settlement_timezone",
+    "decision_anchor_utc",
+    "issued_at_utc",
+    "provider_available_at_utc",
+    "tx_c",
+    "tx_valid_at_utc",
+    "cloud_cover_fraction",
+    "precipitation_probability",
+    "wind_speed_mps",
+    "raw_taf_sha256",
+)
+
+
+def _historical_taf_capture_canonical_ddl_statements() -> list[str]:
+    statements: list[str] = []
+    statement = ""
+    for line in DDL.splitlines(keepends=True):
+        statement += line
+        if not sqlite3.complete_statement(statement):
+            continue
+        sql = statement.strip()
+        statement = ""
+        if sql and "calibration_historical_taf_capture" in sql:
+            statements.append(sql)
+    if len(statements) != 4:  # table, scope index, two append-only triggers
+        raise RuntimeError("historical_taf_capture_canonical_ddl_incomplete")
+    return statements
+
+
+def _retire_historical_taf_temporary_awc_rows(
+    conn: sqlite3.Connection,
+) -> dict[str, int]:
+    """Archive the since-retired temporary-AWC label rows off the hot table.
+
+    Eight Chinese stations (2026-07-01..2026-07-29) were calibrated against
+    AWC truth under a one-off, since-retired authorization while their AMSC
+    history was unavailable.  The mandated rebuild re-captured every affected
+    station day under ``FORMAL_STATION_LANE_TRUTH``, but the append-only
+    triggers kept the retired rows in place, so the canonical FORMAL-only
+    CHECK could never be installed.  Move the retired rows into an immutable
+    archive table and rebuild the capture table on the canonical DDL — only
+    after proving each retired row has a payload-identical formal
+    replacement, so nothing here guesses legacy semantics.
+    """
+
+    table = "calibration_historical_taf_capture"
+    retired = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE truth_label_authority=?",
+            (RETIRED_HISTORICAL_TAF_TRUTH_LABEL,),
+        ).fetchone()[0]
+    )
+    if retired == 0:
+        return {"retired_rows_quarantined": 0}
+    unlabelled = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM {table} "
+            "WHERE truth_label_authority IS NULL"
+        ).fetchone()[0]
+    )
+    if unlabelled > 0:
+        # NULL rows cannot survive the canonical NOT NULL rebuild; their
+        # capture must be rebuilt first, exactly as the column migration
+        # already demands.
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_unlabelled_rows_block_rebuild"
+        )
+    twin_match = " AND ".join(
+        f"f.{column}=t.{column}"
+        for column in _HISTORICAL_TAF_TWIN_PAYLOAD_COLUMNS
+    )
+    unreplaced = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM {table} t "
+            "WHERE t.truth_label_authority=? "
+            f"AND NOT EXISTS (SELECT 1 FROM {table} f "
+            "WHERE f.truth_label_authority='FORMAL_STATION_LANE_TRUTH' "
+            f"AND {twin_match})",
+            (RETIRED_HISTORICAL_TAF_TRUTH_LABEL,),
+        ).fetchone()[0]
+    )
+    if unreplaced > 0:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_rows_unreplaced"
+        )
+    legacy = f"{table}_retired_temporary_awc_v1"
+    collision = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (legacy,),
+    ).fetchone()
+    if collision is not None:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_legacy_collision"
+        )
+    conn.execute(
+        f"""
+        CREATE TABLE {legacy} (
+          historical_taf_capture_id TEXT PRIMARY KEY,
+          station_id TEXT NOT NULL,
+          event_date TEXT NOT NULL,
+          settlement_timezone TEXT NOT NULL,
+          decision_anchor_utc TEXT NOT NULL,
+          issued_at_utc TEXT NOT NULL,
+          provider_available_at_utc TEXT NOT NULL,
+          tx_c REAL NOT NULL,
+          tx_valid_at_utc TEXT NOT NULL,
+          cloud_cover_fraction REAL NOT NULL
+            CHECK(cloud_cover_fraction>=0 AND cloud_cover_fraction<=1),
+          precipitation_probability REAL NOT NULL
+            CHECK(precipitation_probability>=0 AND
+                  precipitation_probability<=1),
+          wind_speed_mps REAL NOT NULL CHECK(wind_speed_mps>=0),
+          raw_taf_sha256 TEXT NOT NULL CHECK(length(raw_taf_sha256)=64),
+          taf_response_sha256 TEXT NOT NULL
+            CHECK(length(taf_response_sha256)=64),
+          source_sample_sha256 TEXT NOT NULL
+            CHECK(length(source_sample_sha256)=64),
+          source_class TEXT NOT NULL CHECK(
+            source_class='official_date_addressed_historical_replay'
+          ),
+          truth_label_authority TEXT NOT NULL CHECK(
+            truth_label_authority='TEMPORARY_AWC_CALIBRATION_LABEL'
+          ),
+          authority_scope TEXT NOT NULL CHECK(
+            authority_scope='CALIBRATION_TRAIN_ONLY'
+          ),
+          content_sha256 TEXT NOT NULL UNIQUE
+            CHECK(length(content_sha256)=64),
+          CHECK(issued_at_utc<=provider_available_at_utc),
+          CHECK(provider_available_at_utc<=decision_anchor_utc),
+          UNIQUE(station_id,event_date,source_sample_sha256)
+        )
+        """
+    )
+    legacy_columns = [
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({legacy})")
+    ]
+    column_list = ",".join(legacy_columns)
+    conn.execute(
+        f"INSERT INTO {legacy}({column_list}) "
+        f"SELECT {column_list} FROM {table} "
+        "WHERE truth_label_authority=?",
+        (RETIRED_HISTORICAL_TAF_TRUTH_LABEL,),
+    )
+    moved = int(
+        conn.execute(f"SELECT COUNT(*) FROM {legacy}").fetchone()[0]
+    )
+    if moved != retired:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_copy_count_mismatch"
+        )
+    conn.execute(
+        f"CREATE TRIGGER {legacy}_no_update BEFORE UPDATE ON {legacy} "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    conn.execute(
+        f"CREATE TRIGGER {legacy}_no_delete BEFORE DELETE ON {legacy} "
+        "BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    formal = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM {table} "
+            "WHERE truth_label_authority='FORMAL_STATION_LANE_TRUTH'"
+        ).fetchone()[0]
+    )
+    total = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    if formal + retired != total:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_row_partition_mismatch"
+        )
+    pre_rebuild = f"{table}_pre_temporary_awc_retirement"
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (pre_rebuild,),
+    ).fetchone() is not None:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_rebuild_collision"
+        )
+    # ALTER..RENAME keeps trigger and index names bound to the renamed
+    # table, which would make the canonical IF NOT EXISTS statements no-ops
+    # and leave the rebuilt table unguarded.  Drop them first.
+    conn.execute(f"DROP TRIGGER IF EXISTS {table}_no_update")
+    conn.execute(f"DROP TRIGGER IF EXISTS {table}_no_delete")
+    conn.execute(f"DROP INDEX IF EXISTS {table}_scope_idx")
+    conn.execute(f"ALTER TABLE {table} RENAME TO {pre_rebuild}")
+    for sql in _historical_taf_capture_canonical_ddl_statements():
+        conn.execute(sql)
+    canonical_columns = [
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+    ]
+    canonical_list = ",".join(canonical_columns)
+    conn.execute(
+        f"INSERT INTO {table}({canonical_list}) "
+        f"SELECT {canonical_list} FROM {pre_rebuild} "
+        "WHERE truth_label_authority='FORMAL_STATION_LANE_TRUTH'"
+    )
+    rebuilt = int(
+        conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    )
+    if rebuilt != formal:
+        raise RuntimeError(
+            "historical_taf_retired_temporary_awc_rebuild_count_mismatch"
+        )
+    conn.execute(f"DROP TABLE {pre_rebuild}")
+    return {
+        "retired_rows_quarantined": moved,
+        "formal_rows_rebuilt": rebuilt,
+    }
+
+
 def _migrate_historical_taf_truth_label_authority(
     conn: sqlite3.Connection,
 ) -> dict[str, int]:
@@ -3087,6 +3305,7 @@ def _migrate_historical_taf_truth_label_authority(
             f"ALTER TABLE {table} ADD COLUMN truth_label_authority TEXT"
         )
         added = 1
+    retirement = _retire_historical_taf_temporary_awc_rows(conn)
     invalid = conn.execute(
         f"SELECT COUNT(*) FROM {table} "
         "WHERE truth_label_authority IS NOT NULL "
@@ -3100,6 +3319,9 @@ def _migrate_historical_taf_truth_label_authority(
     return {
         "column_added": added,
         "unlabelled_rows": int(unlabelled[0]) if unlabelled is not None else 0,
+        "retired_temporary_awc_rows_quarantined": (
+            retirement["retired_rows_quarantined"]
+        ),
     }
 
 
