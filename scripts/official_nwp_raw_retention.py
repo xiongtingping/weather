@@ -107,7 +107,6 @@ NATIVE_ACTIVE_CAPTURE_MARKERS = (
     "backfill_ecmwf_ifs_multistation_archive.py",
     "backfill_noaa_gefs_archive.py",
     "backfill_noaa_gefs_multistation_archive.py",
-    "capture_icon_eps_daily_all_stations.py",
     "capture_native_ensemble_pilot_et.py",
 )
 
