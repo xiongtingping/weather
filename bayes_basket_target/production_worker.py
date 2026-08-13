@@ -28,10 +28,11 @@ from datetime import time as dt_time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .activation import assert_target_database_owner, load_target_activation
 from .atomic_ledger import (
+    AtomicLedgerError,
     commit_blocked_scope_decision,
     commit_preliminary_scope_decision,
 )
@@ -43,13 +44,6 @@ from .contracts import (
 )
 from .cash_phase_forward_observation import (
     build_forward_observation_packet,
-)
-from .dwd_icon_eps_archive import (
-    EXTRACTION_VERSION as _ICON_EXTRACTION_VERSION,
-    RUN_CYCLE as _ICON_RUN_CYCLE,
-    RUN_CYCLE_HOUR_BY_LEAD as ICON_CYCLE_HOUR_BY_LEAD,
-    extraction_version_for_lead as icon_extraction_version_for_lead,
-    SYSTEM_ID as _ICON_SYSTEM_ID,
 )
 from .event_contracts import ForecastRevision, validate_forecast_revision_chain
 from .database import (
@@ -134,6 +128,8 @@ from .native_ensemble_contract import P0_PROBABILITY_PATHWAY
 from .native_ensemble_oos import (
     DEFAULT_MIN_HOLDOUT_DAYS,
     DEFAULT_MIN_TRAIN_DAYS,
+    FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS,
+    FORWARD_ACCUMULATION_MIN_TRAIN_DAYS,
     build_native_ensemble_oos,
     persist_native_ensemble_oos,
 )
@@ -148,8 +144,25 @@ from .native_ensemble_authority import (
     load_native_oos_snapshot_manifest,
 )
 from .native_ensemble_store import ingest_forward_packet
+from .metar_physical_forward import project_metar_physical_member_runs
 from .native_ensemble_training_facts import ingest_forward_taf_inbox
+from .portfolio_inventory import (
+    build_portfolio_inventory,
+    load_portfolio_capital_policy,
+    persist_portfolio_inventory,
+)
+from .portfolio_allocator import (
+    allocate_portfolio_quota,
+    derive_minimum_bankroll,
+    load_regional_blocks,
+    persist_portfolio_allocation,
+)
+from .shadow_objective import (
+    build_shadow_objective_score,
+    persist_shadow_objective_score,
+)
 from .p0_preselection import (
+    UNPERSISTED_MARKET_SNAPSHOT_KEY,
     commit_p0_preselection,
     compile_p0_preselection,
     latest_visible_p0_station_ids,
@@ -201,6 +214,45 @@ from .forward_observation_store import (
 SCHEMA = "bayes_basket_target_production_worker_v2"
 PRODUCTION_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
+# Measured on 1022 observed station-days: the daily high landed inside these
+# local hours 80% of the time.  It peaks at 15:00 but only 17.6% there, so
+# the useful signal is the window rather than a distance from any one hour.
+# The measured distribution of when the daily high is actually set, as the
+# share of 1022 observed station-days whose high landed in each local hour.
+# It is not flat and it is not symmetric: 15:00 carries seven times 10:00's
+# share, and the afternoon tail is fatter than the morning approach.  Using
+# it directly is what keeps stations inside the window ordered against each
+# other, instead of tying at a plateau and falling through to the alphabet.
+_WARM_HOUR_SHARE: tuple[tuple[float, float], ...] = (
+    (0.0, 0.034), (1.0, 0.006), (7.0, 0.004), (8.0, 0.008),
+    (9.0, 0.023), (10.0, 0.026), (11.0, 0.043), (12.0, 0.093),
+    (13.0, 0.127), (14.0, 0.158), (15.0, 0.176), (16.0, 0.106),
+    (17.0, 0.118), (18.0, 0.044), (19.0, 0.017), (20.0, 0.004),
+    (21.0, 0.001), (22.0, 0.003), (23.0, 0.010),
+)
+_WARM_HOUR_PEAK_SHARE = max(share for _hour, share in _WARM_HOUR_SHARE)
+
+
+def _warm_hour_share(hour: float) -> float:
+    """Interpolate the measured share of daily highs at a local hour."""
+
+    clamped = min(max(float(hour), 0.0), 24.0)
+    previous_hour, previous_share = _WARM_HOUR_SHARE[0]
+    for current_hour, current_share in _WARM_HOUR_SHARE:
+        if clamped <= current_hour:
+            if current_hour == previous_hour:
+                return current_share
+            span = current_hour - previous_hour
+            weight = (clamped - previous_hour) / span
+            return previous_share + weight * (current_share - previous_share)
+        previous_hour, previous_share = current_hour, current_share
+    return previous_share
+# How far a scope's score may be lifted by waiting.  Twelve hours is enough
+# for the quietest station to outrank a busy one, and bounded so that a scope
+# left behind by an outage cannot accumulate unbounded priority and then
+# monopolise the rotation when service resumes.
+ROTATION_AGEING_CAP_HOURS = 12.0
+
 MAX_FORWARD_P0_STATIONS = 45
 # Packets kept in the republisher forward inbox.  This has to stay under what
 # ``MAX_JSON_OUTPUT_BYTES`` permits, not merely be "a large number": each
@@ -411,52 +463,15 @@ ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 # ~140s, so this leaves roughly a 1.7x margin.  It sits on the background capture
 # pool and no longer blocks the rotation, which is what makes a ceiling this
 # large safe; a wedged child still gets killed and frees its slot.
-# Four archives now share one capture.  The first scope of an event date pays
-# every download (GEFS ~50s, ECCC ~220s, ICON ~45s, plus ECMWF); later scopes
-# reuse the retained archives within their TTL and finish in seconds.  Sized so
-# that first scope can complete rather than being killed just short of it, and
-# capped at one poll interval so a wedged child still frees its pool slot.
-OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 600.0
-# ICON runs once per day over all 45 stations instead of joining the per-station
-# rotation above.  Its objects are global fields -- one file per lead holding
-# every member -- so the rotation would re-download the same ~543MiB for each
-# station, and the retained-archive reuse check keys on the exact station set,
-# so it would not deduplicate them either.
-#
-# The deadline is larger than the rotation's because this pass is inherently
-# whole-archive: 15 leads at ~36MiB measured at ~4 minutes end to end, leaving
-# roughly a 3x margin for a slow day.
-# Sized to the measured pass rather than to a guess.  One capture pulls ~543MiB
-# (15 leads at ~36MiB) and DWD sustains 0.59 MB/s at 16 workers, so the download
-# alone needs ~15 minutes before decode and ingest.  The previous 780s could
-# never contain that at the old 3-worker rate (~2.5h), which meant every daily
-# ICON capture ran to the deadline and was killed with nothing to show.
-#
-# This runs on its own single-worker pool, so a long pass costs the per-station
-# rotation nothing.
-ICON_DAILY_CAPTURE_DEADLINE_SEC = 1800.0
-# DWD keeps one run per cycle, so a day missed here is unrecoverable -- unlike
-# ECMWF/GEFS/ECCC, which expose rolling archives.  That asymmetry justifies a
-# much tighter retry floor than the rotation's 1800s: there is no later chance.
-# Longer than the deadline above: a floor shorter than the pass it guards would
-# expire while that pass is still running.  The in-flight future prevents a
-# duplicate submission either way, but keeping the floor above the deadline
-# makes the retry cadence mean what it says.
-ICON_DAILY_CAPTURE_RETRY_SEC = 2400.0
-# ICON's d2 target is two days out from the run day.
-ICON_DAILY_CAPTURE_LEAD_DAYS = 2
-# P0 is recomputed as the models update, so ICON is taken at every lead the
-# collector supports rather than d2 alone.  The run behind each differs: d2
-# reads the 12Z run of the day two before, while d1 and d0 read the 00Z run --
-# d1 the one issued the day before its target, d0 the one issued that morning.
-#
-# This costs two extra passes of ~543MiB a day, and d1 and d0 currently pull
-# the same 00Z object twice because the collector emits one event date per
-# download.  Collapsing them into a single multi-target pass is worth doing and
-# is not done here: it changes the archive schema, whereas skipping the leads
-# loses them permanently -- DWD keeps only the newest run per cycle, so a lead
-# not taken on the day its run publishes cannot be backfilled later.
-ICON_DAILY_CAPTURE_LEADS = (2, 1, 0)
+# Four archives share one capture, and that capture now reads a whole model run
+# for every station the day lists rather than one station at a time.  The bytes
+# barely move -- global fields are downloaded once either way, and only the
+# union of local-day forecast steps widens -- but the per-station extraction and
+# decode do add up across forty-five stations, and a run that is captured once
+# has no second attempt to fall back on within the cycle.  Sized for the whole
+# pass to finish rather than be killed just short of it; a wedged child still
+# gets killed and frees its pool slot.
+OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 2400.0
 # METAR trajectory training is fold-driven: a station gains at most one fold
 # per settled day, so sweeping more often than a few times a day only reruns a
 # gate against unchanged evidence.  The chain stays as offline scripts --
@@ -531,12 +546,6 @@ REGISTRY_EXPORT_MAX_AGE_SEC = 1800.0
 OPEN_METEO_D2_EXTRACTION_VERSION = (
     "open_meteo_forward_d2_daily_tmax_member_v1"
 )
-# Imported from the collector rather than restated, so the idempotence check
-# cannot drift from what the capture actually writes and re-download the same
-# day forever (or, worse, accept a superseded extraction as done).
-ICON_SYSTEM_ID = _ICON_SYSTEM_ID
-ICON_RUN_CYCLE = _ICON_RUN_CYCLE
-ICON_EXTRACTION_VERSION = _ICON_EXTRACTION_VERSION
 CANONICAL_TARGET_STATIONS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
@@ -1326,6 +1335,85 @@ def _resolve_target_remaining_budget() -> float:
     return float(runtime_config["target_remaining_budget_usdc"])
 
 
+def _merge_scope_manifests(
+    manifests: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Fuse one event day's scope manifests into a single ingress document.
+
+    The ingress has always taken a station list; what forced one station per
+    cycle was this bridge handing it one scope at a time.  Merging is a
+    union of the per-token books and registries with the station allowlist
+    widened -- no quote is fetched, recomputed or reinterpreted, so a station
+    reads exactly as it would have on its own turn.
+
+    Refuses to merge across event days.  Downstream reads a single
+    ``event_date`` off the merged document and would silently attribute one
+    day's books to another; a mixed set is a programming error here, not
+    something to paper over.
+    """
+
+    usable = [dict(item) for item in manifests if isinstance(item, Mapping)]
+    if not usable:
+        raise ContractError("resident_target_ws_sweep_manifest_empty")
+    if len(usable) == 1:
+        return usable[0]
+    event_dates = {str(item.get("event_date") or "") for item in usable}
+    day_states = {str(item.get("event_day_state") or "") for item in usable}
+    if len(event_dates) != 1 or len(day_states) != 1:
+        raise ContractError("resident_target_ws_sweep_scope_not_one_day")
+
+    base = dict(usable[0])
+    stations: list[str] = []
+    quotes: dict[str, Any] = {}
+    side_state: dict[str, Any] = {}
+    markets: dict[str, Any] = {}
+    scope_keys: list[str] = []
+    for item in usable:
+        for station in _manifest_station_allowlist(item):
+            if station not in stations:
+                stations.append(station)
+        scope_keys.append(str(item.get("scope_key") or ""))
+        for key, value in (item.get("quotes_by_token") or {}).items():
+            quotes[str(key)] = value
+        for key, value in (
+            item.get("quote_side_state_by_token") or {}
+        ).items():
+            side_state[str(key)] = value
+        registry = item.get("market_registry_scope")
+        if isinstance(registry, Mapping):
+            for key, value in (
+                registry.get("markets_by_token") or {}
+            ).items():
+                markets[str(key)] = value
+
+    base["station_scope"] = {
+        **(base.get("station_scope") or {}),
+        "mode": "allowlist",
+        "station_ids": sorted(stations),
+    }
+    base["quotes_by_token"] = quotes
+    base["quote_side_state_by_token"] = side_state
+    base["market_registry_scope"] = {
+        **(base.get("market_registry_scope") or {}),
+        "markets_by_token": markets,
+    }
+    base["subscribed_token_count"] = len(quotes)
+    base["materialized_token_count"] = len(quotes)
+    base["received_book_token_count"] = len(quotes)
+    # The merged document is a different thing from any scope it came from,
+    # so it says so rather than wearing one member's identity.
+    base["scope_key"] = "SWEEP|" + str(base.get("event_date") or "")
+    base["swept_scope_keys"] = sorted(key for key in scope_keys if key)
+    base.pop("target_timezone", None)
+    base.pop("snapshot_sha256", None)
+    base["snapshot_sha256"] = content_sha256({
+        key: value
+        for key, value in base.items()
+        if key != "snapshot_sha256"
+    })
+    return base
+
+
 def _manifest_station_allowlist(root: Mapping[str, Any]) -> tuple[str, ...]:
     """Preserve an explicit one-shot WS station scope during materialization."""
 
@@ -1536,6 +1624,50 @@ def _utc_date(value: str) -> date:
     ).date()
 
 
+def _official_native_run_ladder(
+    *, event_date: str, as_of_utc: str
+) -> list[tuple[int, int | None, datetime]]:
+    """Published runs that could serve this event date, newest first.
+
+    The scope names an event; which run serves it is decided at capture time,
+    by freshness.  The lead label on the scope used to decide the run outright
+    -- d1 meant "the run day's 00Z" no matter what had been published since --
+    so a rotation could serve a P0 from a 30-hour-old field while a 6-hour-old
+    one sat unread.  This walks the runs the lanes publish, newest first,
+    skipping any not yet due by the clock; the capture's own grid-coverage
+    check still rejects a run that cannot cover a station's local day, so
+    falling through the ladder is exactly the "newest covering run" the
+    training side already speaks (its hour buckets never cared about d-labels).
+    A failure on the freshest rung is ordinary -- the newest run is the last to
+    finish uploading -- and the next rung answers instead.
+
+    Resolved before any download, so the caller can ask the cheaper question
+    first: whether the newest published run is one this date already holds.
+    """
+
+    event_day = date.fromisoformat(event_date)
+    now_dt = datetime.fromisoformat(
+        as_of_utc.replace("Z", "+00:00")
+    ).astimezone(timezone.utc)
+    ladder: list[tuple[int, int | None, datetime]] = []
+    for rung_lead, rung_cycle in ((0, None), (1, 18), (1, None), (2, None)):
+        cycle_hour = (
+            {2: 18, 1: 0, 0: 0}[rung_lead]
+            if rung_cycle is None else rung_cycle
+        )
+        run_init = datetime.combine(
+            event_day - timedelta(days=rung_lead),
+            dt_time(hour=cycle_hour),
+            tzinfo=timezone.utc,
+        )
+        if run_init < now_dt:
+            ladder.append((rung_lead, rung_cycle, run_init))
+    ladder.sort(key=lambda rung: rung[2], reverse=True)
+    # Bounded: the freshest rungs are the ones worth spending the deadline on;
+    # anything older is yesterday's capture already retained.
+    return ladder[:3]
+
+
 def _native_forward_packet_is_stale(
     packet: Mapping[str, Any],
     *,
@@ -1720,7 +1852,21 @@ class TargetProductionWorker:
             or str(os.environ.get("PM_TARGET_EXECUTION_MODE", "") or "").strip()
             == PRODUCTION_EXECUTION_MODE
         )
-        if production_no_live_runtime:
+        # A pointer snapshot only speaks for the stations it attests.  This
+        # one is a hand-generated audit artifact: it froze 5 of 45 stations on
+        # 2026-08-03, and every selection sha has moved since, so it rejected
+        # the 40 stations it never covered outright and mis-bound the 5 it
+        # did.  Fail-closed is right when the snapshot is the authority; it is
+        # not an authority once it has stopped tracking the fleet, and the
+        # append-only activation rows it was guarding carry their own OOS gate,
+        # authority scope and generation order.  Opt in by path, so a replay
+        # can still pin a snapshot deliberately and nothing loads a stale one
+        # by default.
+        snapshot_requested = bool(
+            native_oos_snapshot_path
+            or os.environ.get("PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST")
+        )
+        if production_no_live_runtime and snapshot_requested:
             try:
                 self.native_oos_snapshot = load_native_oos_snapshot_manifest(
                     self.native_oos_snapshot_path
@@ -2004,16 +2150,28 @@ class TargetProductionWorker:
         """
 
 
-        throttle: dict[tuple[str, str, int], float] = getattr(
+        throttle: dict[tuple[str, ...], float] = getattr(
             self, "_official_native_capture_attempts", None
         ) or {}
         self._official_native_capture_attempts = throttle
-        inflight: dict[tuple[str, str, int], Any] = getattr(
+        inflight: dict[tuple[str, ...], Any] = getattr(
             self, "_official_native_capture_inflight", None
         )
         if inflight is None:
             inflight = {}
             self._official_native_capture_inflight = inflight
+        # Which run each event date has already been captured from.  These
+        # families publish on a fixed daily cycle, so a run that has been read
+        # once has nothing further to give: re-reading it re-downloads the same
+        # immutable objects.  The clock-based retry floor below only governs
+        # *failed* attempts; a success is retired by run identity instead, and
+        # the next download waits for the next cycle to publish.
+        captured_runs: dict[str, str] = getattr(
+            self, "_official_native_capture_runs", None
+        )
+        if captured_runs is None:
+            captured_runs = {}
+            self._official_native_capture_runs = captured_runs
         if getattr(self, "_official_native_capture_pool", None) is None:
             # Small, bounded, and lazily created so a worker that never
             # captures (tests, --once paths) starts no threads at all.  The
@@ -2023,18 +2181,19 @@ class TargetProductionWorker:
                 thread_name_prefix="official-native-capture",
             )
             self._official_native_capture_merge_lock = threading.Lock()
-        # The lead is part of the scope identity.  A station-day is captured
-        # once per lead, and each lead is a different run of the same archives;
-        # keying only on the station-day would let whichever lead was attempted
-        # first hold the throttle and the concurrency slot for all three, so d1
-        # and d0 would keep being deferred behind a d2 capture that is already
-        # done.
+        # What gets downloaded is a model run, not a station.  Every family
+        # here publishes whole global fields on a fixed cycle; a station is an
+        # extraction from those fields, so forty-five stations of one event
+        # date cost one download, not forty-five.  Keying this on the station
+        # was what made them cost forty-five: retained archives are matched on
+        # the exact station set, so one station's archive never served the
+        # next, and each scope re-fetched the same objects.
         #
-        # That reasoning inverted once the run ladder moved run choice to
-        # capture time: the three lead-labelled scopes of one station-day now
-        # all resolve to the same "newest covering run", so keying them apart
-        # would download that run three times.  One key per station-day.
-        scope_key = (station_id, event_date)
+        # The key is therefore the event date alone.  The lead does not belong
+        # in it either: the run ladder resolves all three lead-labelled scopes
+        # of a day to the same "newest covering run", so keying them apart
+        # would download that run three times.
+        scope_key = (event_date,)
         now_mono = time.monotonic()
 
         # Reap finished captures so their scopes free a concurrency slot, and
@@ -2049,10 +2208,13 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
                 }
             self._official_native_capture_last_result = {
-                "station_id": key[0],
-                "event_date": key[1],
+                "event_date": key[0],
                 **outcome,
             }
+            if str(outcome.get("state") or "") == "CAPTURED":
+                captured_runs[key[0]] = str(
+                    outcome.get("captured_run_init_utc") or ""
+                )
 
         if scope_key in inflight:
             return {
@@ -2068,6 +2230,34 @@ class TargetProductionWorker:
                 "station_id": station_id,
                 "event_date": event_date,
                 "in_flight": len(inflight),
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        # Resolve the run before deciding to spend anything.  These families
+        # publish on a fixed cycle, so "is there a newer run than the one this
+        # date already holds" is the whole question -- if there is not, the
+        # answer is to download nothing at all and wait for the next cycle.
+        run_ladder = _official_native_run_ladder(
+            event_date=event_date, as_of_utc=as_of_utc
+        )
+        if not run_ladder:
+            return {
+                "state": "SKIPPED",
+                "reason": "no_published_run_covers_event_date",
+                "station_id": station_id,
+                "event_date": event_date,
+                "calls_order_gateway": False,
+                "places_orders": False,
+            }
+        newest_run_init = (
+            run_ladder[0][2].isoformat().replace("+00:00", "Z")
+        )
+        if captured_runs.get(event_date) == newest_run_init:
+            return {
+                "state": "RUN_ALREADY_CAPTURED",
+                "station_id": station_id,
+                "event_date": event_date,
+                "captured_run_init_utc": newest_run_init,
                 "calls_order_gateway": False,
                 "places_orders": False,
             }
@@ -2100,7 +2290,7 @@ class TargetProductionWorker:
             }
         capture_root = self.nwp_runtime_root / "official_native_capture"
         capture_root.mkdir(parents=True, exist_ok=True)
-        staging_inbox = capture_root / f"{station_id}_{event_date}_inbox.json"
+        staging_inbox = capture_root / f"run_{event_date}_inbox.json"
         # The capture runs as a child process, not in-process.  Its per-request
         # timeouts do not bound total wall time -- several archive reads plus an
         # inbox build ran well past two minutes in production -- and only a
@@ -2110,23 +2300,28 @@ class TargetProductionWorker:
             str(ROOT / "scripts" / "capture_official_native_ensemble_forward.py"),
             "--event-date", event_date,
             "--market-registry", str(registry_path),
-            # Retained archives are shared across scopes and reused within
-            # their TTL, so a second station on the same day costs no extra
-            # download.
-
+            # The whole day, not the one station the rotation happens to be
+            # pointing at.  Every family below ships global fields on a fixed
+            # cycle, and a station is an extraction from them: measured on this
+            # lane, forty-five stations cost 517MiB of ECMWF against 259MiB for
+            # one, and 70MiB of GEFS against 41MiB.  Twice the bytes for
+            # forty-five times the coverage.  Asking per station instead turned
+            # that into forty-five separate full downloads, because retained
+            # archives are matched on the exact station set and one station's
+            # archive never satisfied the next.
+            #
+            # Stations whose market has not opened for the day are skipped
+            # rather than fatal: an event date three days out legitimately
+            # lists 29 of 45, and the run still has to be read for those 29.
+            "--registry-scope-stations",
+            #
             # ECCC is captured on the same rotation rather than left to operator
             # commands.  Its history is what admits a third independent family
             # to the cross-ensemble candidate set; a system whose archive stops
             # growing can never cover the holdout cohort and is silently
             # excluded, which is how per-station model selection ended up with a
             # candidate set of exactly two.
-            #
-            # ICON is deliberately absent here and runs once per day over all 45
-            # stations instead -- see ``_capture_icon_daily``.  Its objects are
-            # global fields rather than per-station extracts, so one pass of
-            # this rotation would pull the same ~543MiB once per station.
             "--inbox-output", str(staging_inbox),
-            "--station-id", station_id,
             "--timeout-seconds", str(OFFICIAL_NATIVE_CAPTURE_TIMEOUT_SEC),
             # Every capture also lands in the historical member table.  The
             # rotation was downloading these systems daily and then discarding
@@ -2137,39 +2332,6 @@ class TargetProductionWorker:
             # commits, and this makes the other three behave like it.
             "--commit",
         ]
-        # The scope names an event; which run serves it is decided here, at
-        # capture time, by freshness.  The lead label on the scope used to
-        # decide the run outright -- d1 meant "the run day's 00Z" no matter
-        # what had been published since -- so a rotation could serve a P0 from
-        # a 30-hour-old field while a 6-hour-old one sat unread.  The ladder
-        # walks the runs both lanes publish, newest first, skipping any not
-        # yet due by the clock; the capture's own grid-coverage check still
-        # rejects a run that cannot cover a station's local day, so falling
-        # through the ladder is exactly the "newest covering run" the training
-        # side already speaks (its hour buckets never cared about d-labels).
-        # A failure on the freshest rung is ordinary -- the newest run is the
-        # last to finish uploading -- and the next rung answers instead.
-        event_day = date.fromisoformat(event_date)
-        now_dt = datetime.fromisoformat(
-            as_of_utc.replace("Z", "+00:00")
-        ).astimezone(timezone.utc)
-        run_ladder: list[tuple[int, int | None, datetime]] = []
-        for rung_lead, rung_cycle in ((0, None), (1, 18), (1, None), (2, None)):
-            cycle_hour = (
-                {2: 18, 1: 0, 0: 0}[rung_lead]
-                if rung_cycle is None else rung_cycle
-            )
-            run_init = datetime.combine(
-                event_day - timedelta(days=rung_lead),
-                dt_time(hour=cycle_hour),
-                tzinfo=timezone.utc,
-            )
-            if run_init < now_dt:
-                run_ladder.append((rung_lead, rung_cycle, run_init))
-        run_ladder.sort(key=lambda rung: rung[2], reverse=True)
-        # Bounded: the two freshest rungs are the ones worth spending the
-        # deadline on; anything older is yesterday's capture already retained.
-        run_ladder = run_ladder[:3]
         horizon = _utc_date(as_of_utc) - timedelta(days=1)
         republisher_inbox = (
             self.nwp_runtime_root / "native_ensemble_forward_inbox.json"
@@ -2200,6 +2362,18 @@ class TargetProductionWorker:
                         ),
                         "--eccc-output", str(
                             capture_root / f"eccc_{event_date}_d{rung_lead}.json"
+                        ),
+                        # ICON belongs with the others now.  It was held out
+                        # while this lane asked per station, because its objects
+                        # are whole global fields and a per-station rotation
+                        # pulled the same ~543MiB once for each of them.  That
+                        # was a property of the dispatch, not of the family:
+                        # the pass now reads one run for every station the day
+                        # lists, which is exactly what the separate daily lane
+                        # was doing, so there is no longer a second lane to be
+                        # separate from.
+                        "--icon-output", str(
+                            capture_root / f"icon_{event_date}_d{rung_lead}.json"
                         ),
                     ]
                     if rung_cycle is not None:
@@ -2292,54 +2466,6 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
-    def _icon_daily_target_date(
-        self, *, as_of_utc: str, lead_days: int = ICON_DAILY_CAPTURE_LEAD_DAYS
-    ) -> str:
-        """The event date whose run publishes today at this lead.
-
-        A run issued today serves d2 two days ahead, d1 tomorrow and d0 today;
-        the lead is what picks which of those this pass is for.
-        """
-
-        return (
-            _utc_date(as_of_utc) + timedelta(days=int(lead_days))
-        ).isoformat()
-
-    def _icon_daily_already_captured(
-        self,
-        *,
-        target_date: str,
-        lead_days: int = ICON_DAILY_CAPTURE_LEAD_DAYS,
-    ) -> bool:
-        """Whether this lead's ICON run is already canonical for all 45 stations.
-
-        Keyed on the cycle and extraction version the lead is read at, so a
-        change in how the run is read does not let a superseded capture satisfy
-        the day -- and so d2's rows cannot satisfy d1, which comes from a
-        different run entirely.
-        """
-
-        if self.conn is None:
-            return False
-        try:
-            row = self.conn.execute(
-                "SELECT COUNT(DISTINCT station_id) "
-                "FROM calibration_native_ensemble_historical_member_run "
-                "WHERE ensemble_system_id=? AND target_local_date=? "
-                "  AND archive_lead_bucket=? "
-                "  AND run_cycle=? AND extraction_version=?",
-                (
-                    ICON_SYSTEM_ID,
-                    target_date,
-                    f"d{int(lead_days)}",
-                    f"{ICON_CYCLE_HOUR_BY_LEAD[int(lead_days)]:02d}Z",
-                    icon_extraction_version_for_lead(int(lead_days)),
-                ),
-            ).fetchone()
-        except Exception:
-            return False
-        return int((row or [0])[0]) >= len(CANONICAL_TARGET_STATIONS)
-
     def _metar_trajectory_training_due(
         self, *, station_id: str
     ) -> tuple[bool, str, str]:
@@ -2353,12 +2479,11 @@ class TargetProductionWorker:
         construction.
         """
 
-        # The read-only handle, mirroring ``_icon_daily_already_captured``:
-        # this runs on the network-prefetch worker, which deliberately holds no
-        # write connection to the target SSOT.  Requiring ``commit_conn`` here
-        # silently reported NOT_CONFIGURED on every cycle and the pass never
-        # fired.  All queries in this method are reads; the only write in the
-        # chain is the fit subprocess's own gated commit.
+        # The read-only handle: this runs on the network-prefetch worker, which
+        # deliberately holds no write connection to the target SSOT.  Requiring
+        # ``commit_conn`` here silently reported NOT_CONFIGURED on every cycle
+        # and the pass never fired.  All queries in this method are reads; the
+        # only write in the chain is the fit subprocess's own gated commit.
         read_conn = getattr(self, "conn", None) or self.commit_conn
         if read_conn is None:
             return False, "", ""
@@ -3019,6 +3144,19 @@ class TargetProductionWorker:
         }
         if not all(scope.values()):
             return False, {}, "p0_root_scope_incomplete"
+        # The systems this root is actually mixing.  A TAF artifact carries a
+        # live-compatibility fingerprint bound to the serving model set, so an
+        # artifact fitted on any other pair is refused at serve time no matter
+        # how well it scored -- which makes the serving pair the only one whose
+        # accumulation shortfall describes when P0-M returns.
+        scope["live_ensemble_system_ids"] = ",".join(sorted(
+            str(value)
+            for value in (
+                json.loads(str(lineage.get("ensemble_system_ids_json") or "[]"))
+                if str(lineage.get("ensemble_system_ids_json") or "").strip()
+                else []
+            )
+        ))
         truth = read_conn.execute(
             "SELECT MAX(local_date) FROM calibration_station_daily_high_truth "
             "WHERE station_id=? AND qc_status='ACCEPTED'",
@@ -3055,12 +3193,17 @@ class TargetProductionWorker:
         *,
         season_bin: str,
         lead_bucket: str,
+        live_system_ids: str = "",
     ) -> dict[str, Any]:
-        """The best-covered system pair at the live scope, and its shortfall.
+        """The serving system pair's shortfall at the live scope.
 
-        Reported from the pair with the most common settled days, because that
-        is the one that will qualify first; the rest are further behind and
-        would only make the shortfall look larger than it is.
+        Qualifying first is not the same as being able to serve: the artifact
+        carries a live-compatibility fingerprint bound to the P0 root's model
+        set, so a pair the root does not mix is refused at serve time however
+        far ahead its evidence runs.  Report the serving pair when the builder
+        offers it, and say so when falling back to the best-covered one, so a
+        shortfall in the receipt is a wait for P0-M rather than for an artifact
+        that could never be used.
         """
 
         try:
@@ -3068,22 +3211,33 @@ class TargetProductionWorker:
         except Exception:
             return {}
         best: Mapping[str, Any] | None = None
+        serving: Mapping[str, Any] | None = None
         offered: set[str] = set()
+        serving_pair_leads: set[str] = set()
         for item in (rolling or {}).get("accumulating") or []:
             if not isinstance(item, Mapping):
                 continue
             if str(item.get("season_bin") or "") != season_bin:
                 continue
             offered.add(str(item.get("lead_bucket") or ""))
+            item_pair = ",".join(sorted(
+                str(value)
+                for value in (item.get("selected_system_ids") or [])
+            ))
+            if live_system_ids and item_pair == live_system_ids:
+                serving_pair_leads.add(str(item.get("lead_bucket") or ""))
             if str(item.get("lead_bucket") or "") != lead_bucket:
                 continue
             plan = item.get("plan")
             if not isinstance(plan, Mapping):
                 continue
+            if live_system_ids and item_pair == live_system_ids:
+                serving = item
             if best is None or int(plan.get("common_case_count") or 0) > int(
                 (best.get("plan") or {}).get("common_case_count") or 0
             ):
                 best = item
+        best = serving or best
         if best is None:
             # Training groups runs by lead in hours while P0 lineage still
             # names calendar-day leads, so a station can have plenty of
@@ -3100,6 +3254,24 @@ class TargetProductionWorker:
             }
         plan = best["plan"]
         return {
+            "is_live_serving_pair": bool(serving is not None),
+            "live_ensemble_system_ids": live_system_ids,
+            # A shortfall counted against a pair the root does not mix is not
+            # the wait for P0-M.  When the serving pair has series under other
+            # lead buckets only, the block is the lead vocabulary rather than
+            # missing days, and no number of settled days will clear it --
+            # another pair holding an entry at the live bucket would otherwise
+            # hide that behind a plausible-looking countdown.
+            **(
+                {
+                    "serving_pair_reason": (
+                        "serving_pair_only_under_other_lead_buckets"
+                    ),
+                    "serving_pair_lead_buckets": sorted(serving_pair_leads),
+                }
+                if serving is None and serving_pair_leads
+                else {}
+            ),
             "selected_system_ids": list(best.get("selected_system_ids") or []),
             "common_case_count": int(plan.get("common_case_count") or 0),
             "required_common_case_count": int(
@@ -3304,6 +3476,9 @@ class TargetProductionWorker:
                         work / f"{station}_rolling_native_oos.json",
                         season_bin=scope["season_bin"],
                         lead_bucket=scope["lead_bucket"],
+                        live_system_ids=scope.get(
+                            "live_ensemble_system_ids", ""
+                        ),
                     )
                 return _finish("BLOCKED_EVIDENCE")
             if len(ready) != 1:
@@ -3520,150 +3695,6 @@ class TargetProductionWorker:
             **boundary,
         }
 
-    def _capture_icon_daily(self, *, as_of_utc: str) -> dict[str, Any]:
-        """Take today's ICON run for all 45 stations, once, in the background.
-
-        Separate from the per-station rotation because ICON objects are global
-        fields: the rotation would pull the same archive once per station and
-        its retained-archive reuse keys on the exact station set, so nothing
-        would be deduplicated.
-
-        This is also the only family whose history cannot be backfilled -- DWD
-        keeps one run per cycle -- so a day skipped here is lost outright rather
-        than merely delayed.
-        """
-
-        # One lead per call, longest first.  d2 leads because its run has been
-        # complete on the object store the longest; d0's has only just landed.
-        # Taking a single lead per call keeps the pass bounded -- each is a
-        # separate ~543MiB download -- and the single-worker pool serialises
-        # them across successive cycles rather than within one.
-        pending = [
-            (lead, self._icon_daily_target_date(
-                as_of_utc=as_of_utc, lead_days=lead
-            ))
-            for lead in ICON_DAILY_CAPTURE_LEADS
-        ]
-        outstanding = [
-            (lead, day)
-            for lead, day in pending
-            if not self._icon_daily_already_captured(
-                target_date=day, lead_days=lead
-            )
-        ]
-        if not outstanding:
-            return {
-                "state": "ALREADY_CAPTURED",
-                "target_local_dates": [day for _lead, day in pending],
-                "orders_submitted": 0,
-                "calls_order_gateway": False,
-            }
-        lead_days, target_date = outstanding[0]
-        inflight = getattr(self, "_icon_daily_capture_inflight", None)
-        if inflight is not None and not inflight.done():
-            return {
-                "state": "IN_FLIGHT",
-                "target_local_date": target_date,
-                "lead_days": lead_days,
-                "orders_submitted": 0,
-                "calls_order_gateway": False,
-            }
-        now_mono = time.monotonic()
-        last_attempt = getattr(self, "_icon_daily_capture_last_mono", None)
-        if (
-            last_attempt is not None
-            and now_mono - last_attempt < ICON_DAILY_CAPTURE_RETRY_SEC
-        ):
-            return {
-                "state": "THROTTLED",
-                "target_local_date": target_date,
-                "lead_days": lead_days,
-                "retry_in_seconds": round(
-                    ICON_DAILY_CAPTURE_RETRY_SEC - (now_mono - last_attempt), 1
-                ),
-                "orders_submitted": 0,
-                "calls_order_gateway": False,
-            }
-        self._icon_daily_capture_last_mono = now_mono
-
-        capture_root = self.nwp_runtime_root / "official_native_capture"
-        capture_root.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable,
-            str(ROOT / "scripts" / "capture_icon_eps_daily_all_stations.py"),
-            "--event-date", target_date,
-            "--lead-days", str(lead_days),
-            # The lead is part of the filename: the same event date is captured
-            # at three leads from three different runs, and one path would let
-            # the last pass overwrite the evidence for the other two.
-            "--output", str(
-                capture_root / f"icon_{target_date}_d{lead_days}.json"
-            ),
-            "--commit",
-        ]
-
-        def _run_icon_capture() -> dict[str, Any]:
-            try:
-                completed = subprocess.run(
-                    command,
-                    cwd=str(ROOT),
-                    capture_output=True,
-                    text=True,
-                    timeout=ICON_DAILY_CAPTURE_DEADLINE_SEC,
-                )
-            except subprocess.TimeoutExpired:
-                return {
-                    "state": "DEADLINE_EXCEEDED",
-                    "reason": (
-                        f"icon_capture_exceeded_"
-                        f"{ICON_DAILY_CAPTURE_DEADLINE_SEC:.0f}s"
-                    ),
-                }
-            except Exception as exc:
-                return {
-                    "state": "FAILED",
-                    "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
-                }
-            if completed.returncode != 0:
-                return {
-                    "state": "FAILED",
-                    "reason": (
-                        f"icon_capture_exit_{completed.returncode}:"
-                        f"{(completed.stderr or '').strip()[:200]}"
-                    ),
-                }
-            return {
-                "state": "CAPTURED",
-                "target_local_date": target_date,
-                "lead_days": lead_days,
-            }
-
-        # A dedicated single-worker pool rather than the shared capture pool.
-        # ICON is one ~543MiB pass per day; the shared pool serves the
-        # per-station rotation that must sweep the whole catalog every hour.
-        # Letting a multi-minute download hold one of its four slots -- for up
-        # to the 780s deadline -- steals a quarter of the rotation's capacity
-        # for something that gains nothing from running there.  One worker is
-        # enough because the call is idempotent and runs once per day.
-        pool = getattr(self, "_icon_daily_capture_pool", None)
-        if pool is None:
-            self._icon_daily_capture_pool = ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="icon-daily-capture",
-            )
-            pool = self._icon_daily_capture_pool
-        self._icon_daily_capture_inflight = pool.submit(_run_icon_capture)
-        return {
-            "state": "SUBMITTED",
-            "target_local_date": target_date,
-            "lead_days": lead_days,
-            "outstanding_leads": [lead for lead, _day in outstanding],
-            "orders_submitted": 0,
-            "calls_order_gateway": False,
-            "places_orders": False,
-            "live_submit_authorized": False,
-        }
-
     def _registry_export_is_stale(
         self, path: Path, *, as_of_utc: str
     ) -> bool:
@@ -3809,6 +3840,122 @@ class TargetProductionWorker:
             "live_submit_authorized": False,
         }
 
+    def _drain_fresh_official_native_arrivals(
+        self,
+        read_conn: sqlite3.Connection,
+        *,
+        as_of_utc: str,
+    ) -> dict[str, Any]:
+        """Compile every fresh, unconsumed official packet before the cursor.
+
+        The packet TTL and the rotation period are independent quantities, and
+        nothing kept them ordered: a packet that lands just after the cursor
+        passes its scope waits a full sweep, and when the sweep is longer than
+        the TTL the packet dies in the inbox without ever becoming a P0.  This
+        drain restores the invariant the architecture already claims -- P0 is
+        driven by each model update -- by consuming arrivals on the cycle after
+        they land, regardless of where the cursor happens to be.
+
+        Consumption is deduplicated on the packet's ``snapshot_content_sha256``:
+        a compile is content-addressed and its persistence idempotent, so the
+        in-memory ledger only avoids repeat work, never correctness.  Failures
+        are recorded and the sha is *not* marked consumed, so a transient
+        rejection is retried on the next cycle while the packet is still
+        fresh.
+        """
+
+        consumed: dict[tuple[str, str], str] = getattr(
+            self, "_official_native_arrival_consumed", None
+        ) or {}
+        self._official_native_arrival_consumed = consumed
+        official_inbox_path = (
+            self.nwp_runtime_root
+            / "official_native_ensemble_forward_inbox.json"
+        )
+        receipt: dict[str, Any] = {
+            "schema": "official_native_arrival_drain_v1",
+            "compiled_count": 0,
+            "rejected": [],
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if not official_inbox_path.is_file():
+            return receipt
+        try:
+            packets = _load_native_forward_inbox(
+                official_inbox_path,
+                error_code="official_native_forward_inbox_invalid",
+            )
+        except Exception as exc:
+            receipt["rejected"].append(
+                f"inbox:{type(exc).__name__}:{str(exc)[:120]}"
+            )
+            return receipt
+        compiled_packets: list[dict[str, Any]] = []
+        for candidate in packets:
+            if (
+                str(candidate.get("schema") or "")
+                != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+            ):
+                continue
+            station = str(
+                candidate.get("station_id") or ""
+            ).strip().upper()
+            event_date = str(candidate.get("event_date") or "")
+            snapshot_sha = str(
+                candidate.get("snapshot_content_sha256") or ""
+            )
+            if not station or not event_date or not snapshot_sha:
+                continue
+            if consumed.get((station, event_date)) == snapshot_sha:
+                continue
+            if _native_forward_packet_is_stale(
+                candidate, as_of_utc=as_of_utc
+            ):
+                continue
+            try:
+                compiled = _compile_native_ensemble_p0_runtime(
+                    read_conn,
+                    forward_packet=candidate,
+                    decision_at_utc=as_of_utc,
+                    native_oos_snapshot=self.native_oos_snapshot,
+                )
+            except Exception as exc:
+                receipt["rejected"].append(
+                    f"{station}|{event_date}:"
+                    f"{type(exc).__name__}:{str(exc)[:120]}"
+                )
+                continue
+            if not (
+                isinstance(compiled, Mapping)
+                and compiled.get("schema")
+                == "calibrated_native_cross_ensemble_p0_packet_v1"
+            ):
+                receipt["rejected"].append(
+                    f"{station}|{event_date}:compile_rejected"
+                )
+                continue
+            compiled = dict(compiled)
+            if self.commit_conn is not None:
+                compiled[
+                    "forward_prediction_persistence"
+                ] = persist_native_ensemble_forward_prediction(
+                    self.commit_conn,
+                    compiled,
+                )
+            compiled_packets.append(compiled)
+            consumed[(station, event_date)] = snapshot_sha
+            receipt["compiled_count"] += 1
+        if compiled_packets and self.commit_conn is not None:
+            receipt["p0_inbox_merge"] = _upsert_native_p0_inbox(
+                self.p0_inbox_path,
+                compiled_packets=compiled_packets,
+                generated_at_utc=as_of_utc,
+            )
+        return receipt
+
     def _persist_nwp_rotation(
         self,
         *,
@@ -3881,13 +4028,14 @@ class TargetProductionWorker:
         P0 inbox may change.
         """
 
-        # Kick ICON before anything else can fail-closed and return early.
-        # Every other family can be backfilled from a rolling archive; ICON
-        # cannot, so a poll that exits before reaching this line costs a day of
-        # the fourth independence family permanently.  The call is idempotent
-        # and throttled, and it never blocks -- it submits to the background
-        # pool and returns.
-        icon_daily = self._capture_icon_daily(as_of_utc=as_of_utc)
+        # ICON no longer has a lane of its own.  It was given one because its
+        # objects are whole global fields and the native capture asked per
+        # station, which would have pulled the same run once for each of them;
+        # that capture now reads one run for every station the day lists, so
+        # the separate pass was downloading a second copy of what the shared
+        # one already had.  Its irreplaceability -- DWD keeps one run, and a
+        # skipped day is gone -- now rests on the same capture the other three
+        # families depend on.
         open_meteo_d2 = self._capture_open_meteo_d2_daily(as_of_utc=as_of_utc)
         # Same fire-and-forget shape: the trajectory chain runs for at most one
         # due station per cycle and persists through its own gated commit.
@@ -4120,6 +4268,20 @@ class TargetProductionWorker:
         # Open-Meteo as an explicit ``aggregator_republisher`` no-live
         # fallback.  This prevents duplicate ECMWF/native downloads while
         # preserving strict lineage and historical-OOS gates.
+        #
+        # Fresh arrivals are drained before the cursor moves.  A captured
+        # packet used to wait in the inbox for the rotation to come back
+        # around -- but a sweep is 270 scopes at 20 a poll, and the packet's
+        # own compile window is six hours, so tail-of-catalog stations kept
+        # losing the race: ZUUU 2026-08-13's 00Z packet landed at 00:54Z and
+        # expired unconsumed at 06:54Z while every P1 of the day stayed
+        # chained to a two-system root a day and a half old.  A model update
+        # drives P0; it must not also have to win a queue position.
+        arrival_drain = self._drain_fresh_official_native_arrivals(
+            read_conn,
+            as_of_utc=as_of_utc,
+        )
+        self._official_native_arrival_drain_last = arrival_drain
         native_scope_index = (
             int(getattr(self, "_native_ensemble_scope_cursor", 0))
             % len(scopes)
@@ -4169,6 +4331,19 @@ class TargetProductionWorker:
                             "official_native_packet_stale"
                         )
                         continue
+                    # A fresh TAF issuance arrived for this scope after the
+                    # retained packet was built.  Reusing the packet would
+                    # serve the superseded issuance for hours; treating it
+                    # as absent sends the scope through the capture below,
+                    # which reuses the retained model archives and only
+                    # refreshes the TAF entry.
+                    if (native_station, native_event_date) in getattr(
+                        self, "_taf_arrival_pending", ()
+                    ):
+                        official_probe_reason = (
+                            "taf_arrival_recompile_pending"
+                        )
+                        continue
                     official_packet = candidate
                     official_probe_reason = "official_native_packet_found"
                     break
@@ -4199,6 +4374,15 @@ class TargetProductionWorker:
                     else int(native_scope["lead_days"])
                 ),
             )
+            if official_capture.get("state") in {
+                "CAPTURED", "SUBMITTED", "IN_FLIGHT",
+            }:
+                # The refresh is on its way (or done): the pending flag has
+                # served its purpose.  Deferred/throttled admissions keep the
+                # flag so the next pass retries the arrival-triggered refresh.
+                getattr(self, "_taf_arrival_pending", set()).discard(
+                    (native_station, native_event_date)
+                )
             if official_capture.get("state") == "CAPTURED":
                 try:
                     for candidate in _load_native_forward_inbox(
@@ -4284,6 +4468,7 @@ class TargetProductionWorker:
                         "schema": "bayes_basket_target_resident_nwp_cycle_v1",
                         "state": "official_native_reused",
                         "reason": "official_native_precedence",
+                        "arrival_drain": arrival_drain,
                         **rotation_receipt,
                         "station_id": native_station,
                         "event_date": native_event_date,
@@ -4339,6 +4524,7 @@ class TargetProductionWorker:
                 "reason": (
                     "official_native_precedence_no_republisher_spend"
                 ),
+                "arrival_drain": arrival_drain,
                 **rotation_receipt,
                 "station_id": native_station,
                 "event_date": native_event_date,
@@ -5019,6 +5205,49 @@ class TargetProductionWorker:
                 reasons.add(text)
         return sorted(reasons) or ["target_candidate_blocked"]
 
+    def _standing_blocker_matches(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        reason_codes: Sequence[str],
+    ) -> str | None:
+        """When this exact blocker started standing, or None if it is new.
+
+        Compares against the scope's most recent decision only.  Anything
+        else -- a blocker that lifted and returned, a different set of codes,
+        a decision that was not blocked -- is a transition and has to be
+        recorded, so only an unbroken repeat of the standing blocker is
+        suppressed.
+
+        Read failures return None, which writes.  Losing a transition costs
+        the audit trail; writing one extra row costs a row.
+        """
+
+        try:
+            row = self.commit_conn.execute(
+                "SELECT decided_state,reason_codes_json,created_at "
+                "FROM auto_trade_decisions "
+                "WHERE station_id=? AND event_date=? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (station_id, event_date),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        if row is None or str(row[0]) != "blocked":
+            return None
+        try:
+            standing = json.loads(str(row[1]))
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(standing, list):
+            return None
+        if [str(value) for value in standing] != [
+            str(value) for value in reason_codes
+        ]:
+            return None
+        return str(row[2])
+
     def _commit_blocked_scope(
         self,
         *,
@@ -5028,7 +5257,26 @@ class TargetProductionWorker:
         details: Mapping[str, Any] | None,
         created_at_utc: str,
     ) -> dict[str, Any]:
-        """Write only the authoritative blocker; never manufacture inputs."""
+        """Write only the authoritative blocker; never manufacture inputs.
+
+        A blocker that has not changed is not a new fact.  Every swept scope
+        used to append a cycle, a decision and a version vector whatever it
+        concluded, so 29,566 of 29,910 cycles -- 98.85% -- were empty shells
+        recording that nothing had happened again, and the decision table
+        alone reached 0.365 GiB of them.  That write amplification, not the
+        quote snapshots, is what put the store into its size ceiling and
+        stopped the whole chain today.
+
+        So the first occurrence of a blocker is written, every change of
+        blocker is written, and a repeat of the one already standing is not.
+        What that costs is the ability to say what the book looked like on
+        the 47th identical scan; what it keeps is every transition, which is
+        what an audit of "when did this start, and why" actually reads --
+        today's own three outages were diagnosed from exactly that sequence.
+        The sweep receipt below records that the scope was evaluated at all,
+        so "scanned and unchanged" stays distinguishable from "never
+        scanned", which it was not before.
+        """
 
         if self.commit_conn is None:
             return {
@@ -5059,6 +5307,25 @@ class TargetProductionWorker:
                 raise RuntimeError(
                     "target_scope_settlement_timezone_not_unique"
                 )
+            unchanged = self._standing_blocker_matches(
+                station_id=station_id,
+                event_date=event_date,
+                reason_codes=reason_codes,
+            )
+            if unchanged:
+                return {
+                    "state": "unchanged_blocker_not_rewritten",
+                    "reason": "auto_trade_decisions_blocked_authority",
+                    "writes_target_ledger": False,
+                    "standing_blocker": list(reason_codes),
+                    "standing_since_utc": unchanged,
+                    "intent_count": 0,
+                    "reserved_amount_usdc": 0.0,
+                    "orders_submitted": 0,
+                    "places_orders": False,
+                    "calls_order_gateway": False,
+                    "live_submit_authorized": False,
+                }
             receipt = commit_blocked_scope_decision(
                 self.commit_conn,
                 station_id=station_id,
@@ -5178,7 +5445,28 @@ class TargetProductionWorker:
             supersession = retained
         elif retained is not None:
             return retained
-        facts = target_atomic_facts_from_cycle(candidate)
+        # P0 opens on the model ensemble and P0-M re-confirms on the TAF
+        # revision.  Neither has an observed METAR to root on, so the P1-shaped
+        # observation facts simply do not exist for them.  The ledger already
+        # picks its chain head from the stage, so hand it nothing here rather
+        # than a hollow observation that would let a forecast pose as a
+        # settled fact.
+        plan = candidate.get("plan")
+        plan_lineage = plan.get("lineage") if isinstance(plan, Mapping) else None
+        candidate_stage = (
+            str(plan_lineage.get("probability_stage") or "").strip().upper()
+            if isinstance(plan_lineage, Mapping)
+            else ""
+        )
+        facts = (
+            {
+                "awc_observation_contract": None,
+                "truth_observation_revision_content_sha256": "",
+                "bound": None,
+            }
+            if candidate_stage in {"P0", "P0-M"}
+            else target_atomic_facts_from_cycle(candidate)
+        )
         market_snapshot = candidate.get("production_market_snapshot")
         if not isinstance(market_snapshot, Mapping):
             raise RuntimeError("production_market_snapshot_missing_for_atomic_commit")
@@ -6767,6 +7055,43 @@ class TargetProductionWorker:
             "evidence_cache": evidence_cache,
         }
 
+    @staticmethod
+    def _ws_scope_catalog_summary(
+        catalog: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Name every scope the actionable filter drops, and why.
+
+        The filter that selects actionable scopes is a silent one: a scope
+        that fails it simply does not appear downstream, so a station whose
+        probability expired is indistinguishable from one that was never
+        published.  This is the only place those scopes are reported.
+        """
+
+        blocked: list[dict[str, str]] = []
+        for item in catalog:
+            fresh = item.get("probability_evidence_fresh") is True
+            blocker = str(item.get("scope_blocker") or "")
+            if fresh and not blocker:
+                continue
+            blocked.append({
+                "scope_key": str(item.get("scope_key") or ""),
+                "station_id": str(item.get("station_id") or ""),
+                "event_date": str(item.get("event_date") or ""),
+                "event_day_state": str(item.get("event_day_state") or ""),
+                "probability_stage": str(item.get("probability_stage") or ""),
+                "reason": (
+                    blocker or "resident_target_ws_probability_stale"
+                ),
+            })
+        return {
+            "scope_count": len(catalog),
+            "actionable_scope_count": len(catalog) - len(blocked),
+            "blocked_scope_count": len(blocked),
+            "blocked_scopes": sorted(
+                blocked, key=lambda row: row["scope_key"]
+            ),
+        }
+
     def _resident_ws_scope_catalog(self) -> list[dict[str, Any]]:
         """Verify and expose each bounded resident WS scope in memory."""
 
@@ -6904,6 +7229,20 @@ class TargetProductionWorker:
                 scope_blocker = (
                     "resident_target_ws_open_scope_pre_p1_probability_stale"
                 )
+            if (
+                day_state == "open"
+                and stage == "P1"
+                and probability_evidence_fresh is not True
+            ):
+                # A stale open P1 is excluded by the freshness test either
+                # way, but without a blocker it left no trace at all: it is
+                # not a not-started scope, so it raises no preliminary
+                # decision, and the actionable filter drops it silently.  A
+                # station whose P1 expired then looks identical to one that
+                # was never scanned.
+                scope_blocker = (
+                    "resident_target_ws_open_scope_p1_probability_stale"
+                )
             seen.add(scope_key)
             catalog.append({
                 "scope_key": scope_key,
@@ -6917,11 +7256,274 @@ class TargetProductionWorker:
             })
         return sorted(catalog, key=lambda item: item["scope_key"])
 
+    @staticmethod
+    def _scope_input_fingerprint(scope: Mapping[str, Any]) -> tuple[str, str]:
+        """What this scope's answer depends on: its probability and its book.
+
+        Returned as a pair so the two can be compared separately -- a new
+        envelope changes the answer, a moved book only may -- rather than as
+        one hash that would make every quote tick look like new evidence.
+        """
+
+        nested = scope.get("manifest")
+        if not isinstance(nested, Mapping):
+            return ("", "")
+        envelope_id = str(
+            (nested.get("probability_authority") or {}).get("envelope_id")
+            or ""
+        )
+        observed = ""
+        quotes = nested.get("quotes_by_token")
+        if isinstance(quotes, Mapping):
+            observed = max(
+                (
+                    str(quote.get("book_observed_at") or "")
+                    for quote in quotes.values()
+                    if isinstance(quote, Mapping)
+                ),
+                default="",
+            )
+        return (envelope_id, observed)
+
+    @staticmethod
+    def _warm_window_weight(
+        scope: Mapping[str, Any],
+        *,
+        as_of_utc: str,
+    ) -> float:
+        """How likely this station-day's high is still being set right now.
+
+        Measured, not assumed: across 1022 observed station-days the daily
+        high landed between 10:00 and 17:00 local 80% of the time, peaking at
+        15:00 but only 17.6% there -- so the signal is the window, not a
+        distance from any one hour.  Inside it an arriving observation can
+        still change the answer and the weight is 1; outside it decays with
+        hours from the nearest edge and reaches almost nothing overnight.
+
+        An unreadable timezone weighs low rather than raising: the rotation
+        orders work, and refusing to order one scope would hold up every
+        scope behind it.
+        """
+
+        nested = scope.get("manifest")
+        timezone_name = (
+            str(nested.get("target_timezone") or "")
+            if isinstance(nested, Mapping)
+            else ""
+        )
+        if not timezone_name:
+            return 0.05
+        try:
+            local = datetime.fromisoformat(
+                str(as_of_utc).replace("Z", "+00:00")
+            ).astimezone(ZoneInfo(timezone_name))
+        except (ValueError, KeyError, ZoneInfoNotFoundError):
+            return 0.05
+        hour = local.hour + local.minute / 60.0
+        # Not a flat window.  A plateau gave every station between 10:00 and
+        # 17:00 the identical score, so thirty-one of them tied at 1.0 and
+        # the ordering fell through to the tie-break, which is the scope key
+        # -- the alphabet, again, with a station at 10:09 ahead of one at
+        # 15:09.  The measured distribution is not flat either: of 1022
+        # observed station-days the high landed at 15:00 seven times more
+        # often than at 10:00, so the hour's own share of highs is the
+        # weight, interpolated between the measured points and floored so a
+        # quiet station still has a score for ageing to lift.
+        share = _warm_hour_share(hour)
+        return max(0.05, share / _WARM_HOUR_PEAK_SHARE)
+
+    @classmethod
+    def _scope_rotation_key(
+        cls,
+        scope: Mapping[str, Any],
+        *,
+        as_of_utc: str,
+        last_served: Mapping[str, Any] | None,
+        quota_usdc: float | None,
+    ) -> tuple[int, float, float, str]:
+        """Order scopes by what recompiling one now is actually worth.
+
+        The rotation hands out scarce compute, and every serve costs a
+        compile plus the SQLite writes behind it -- the store crossed its
+        size ceiling once already today -- so the ordering is by expected
+        value of the recompute, not by name.  It was the scope key, which is
+        the ICAO code: on a live catalog all thirteen stations then inside
+        their warm window sorted to positions 13-27 because Asia's codes
+        begin with R, W and Z, while the small hours took positions 0-8.
+
+        One ordering above the score, because it is not tradable against
+        anything: the event day under way precedes the day not started.  A
+        day being decided now cannot wait for one being planned.
+
+        A market never compiled is not a tier -- see below -- it is maximal
+        new evidence, which is what it actually is.
+
+        Within a tier, the score multiplies what would be gained:
+
+        - *new evidence*: a fresh probability envelope changes the answer, a
+          moved book may, and neither means the recompute reproduces the plan
+          it already has.  This is the term that matters most, because it is
+          the one that makes the rotation skip stations with nothing to say.
+        - *warm window*: whether the high is still being set locally.
+        - *actionable capital*: a station the allocator funded can act on
+          what it finds; one it could not fund to a whole basket cannot.
+
+        Ties break to the longest unserved, which is also why the caller
+        tracks serve times per station rather than advancing a cursor over
+        positions -- the ordering is recomputed every cycle, so a positional
+        cursor visits positions, not stations.
+        """
+
+        day_state = str(scope.get("event_day_state") or "")
+        # The day being decided leads the day being planned; that is the only
+        # ordering strong enough to override the score.  "Never compiled" is
+        # deliberately *not* a tier of its own: at a cold start every scope
+        # is unseen, so a tier would flatten them all and hand the ordering
+        # straight back to the scope key -- the alphabetical behaviour this
+        # replaced.  It enters the score instead, as maximal new evidence,
+        # which is exactly what it is.
+        tier = 0 if day_state == "open" else 1
+
+        envelope_id, observed_at = cls._scope_input_fingerprint(scope)
+        if last_served is None:
+            evidence = 1.0
+        elif envelope_id and envelope_id != str(
+            last_served.get("envelope_id") or ""
+        ):
+            evidence = 1.0
+        elif observed_at and observed_at > str(
+            last_served.get("book_observed_at") or ""
+        ):
+            evidence = 0.5
+        else:
+            # Nothing moved.  Recompiling reproduces the same plan and pays
+            # the full write cost for it; keep it possible, not preferred.
+            evidence = 0.1
+
+        actionable = (
+            1.0
+            if quota_usdc is None or float(quota_usdc) > 0.0
+            else 0.2
+        )
+        # Ageing is multiplicative, and it is what makes "nobody starves" a
+        # guarantee rather than a hope.  Breaking ties by serve time does
+        # nothing here because the scores are continuous and almost never
+        # equal: a station inside its warm window scored 0.1 against 0.027
+        # for one at dawn, and simply kept winning.  Growing the score with
+        # time waited means a quiet station rises until it is served -- in
+        # roughly three hours at that ratio -- so a position there is still
+        # revisited even on a day when nothing about it changes.
+        waited_hours = 0.0
+        served_at = str((last_served or {}).get("served_at_utc") or "")
+        if served_at:
+            try:
+                waited_hours = max(
+                    0.0,
+                    (
+                        datetime.fromisoformat(
+                            str(as_of_utc).replace("Z", "+00:00")
+                        )
+                        - datetime.fromisoformat(
+                            served_at.replace("Z", "+00:00")
+                        )
+                    ).total_seconds()
+                    / 3600.0,
+                )
+            except ValueError:
+                waited_hours = 0.0
+        ageing = 1.0 + min(waited_hours, ROTATION_AGEING_CAP_HOURS)
+        score = (
+            evidence
+            * cls._warm_window_weight(scope, as_of_utc=as_of_utc)
+            * actionable
+            * ageing
+        )
+        # Ascending sort: lower tier first, then higher score.  The scope key
+        # only ever settles an exact tie, so the ordering stays deterministic
+        # without the alphabet deciding anything that matters.
+        return (tier, -score, 0.0, str(scope.get("scope_key") or ""))
+
+    def _sweep_scope_manifests(
+        self,
+        open_scopes: Sequence[Mapping[str, Any]],
+        *,
+        selected: Mapping[str, Any],
+        as_of_utc: str,
+    ) -> list[Mapping[str, Any]]:
+        """The scope manifests this cycle should ingest, best first.
+
+        All of them, in the priority order, bounded only by the sweep cap.
+        The cap is not a throughput choice -- 45 stations of inline books is
+        a bounded document either way -- it is the same fail-closed habit as
+        every other resource guard here: a catalog that somehow grew past the
+        station-day ceiling should stop, not swell the write.
+
+        Priority still decides, but now it decides who is ingested first
+        within one cycle rather than who waits minutes for a turn.  The
+        selected scope leads regardless, because the code downstream reads
+        its stage and freshness to decide how much to materialize.
+        """
+
+        ordered = [dict(selected)]
+        seen = {str(selected.get("scope_key") or "")}
+        quotas = (
+            getattr(self, "_portfolio_allocation_last", None) or {}
+        ).get("quota_usdc_by_station")
+        served = getattr(self, "_resident_scope_served", None) or {}
+        for scope in sorted(
+            (dict(item) for item in open_scopes),
+            key=lambda item: self._scope_rotation_key(
+                item,
+                as_of_utc=as_of_utc,
+                last_served=served.get(str(item.get("scope_key") or "")),
+                quota_usdc=(
+                    quotas.get(str(item.get("station_id") or ""))
+                    if isinstance(quotas, Mapping)
+                    else None
+                ),
+            ),
+        ):
+            key = str(scope.get("scope_key") or "")
+            if key in seen:
+                continue
+            if str(scope.get("event_date") or "") != str(
+                selected.get("event_date") or ""
+            ):
+                # One event day per ingress; a scope from another day waits
+                # for a cycle whose selection lands on that day.
+                continue
+            seen.add(key)
+            ordered.append(scope)
+            if len(ordered) >= MAX_FORWARD_P0_STATION_DAYS:
+                break
+        return [
+            item["manifest"]
+            for item in ordered
+            if isinstance(item.get("manifest"), Mapping)
+        ]
+
     def _select_resident_open_ws_scope(
         self,
         open_scopes: Sequence[Mapping[str, Any]],
+        *,
+        as_of_utc: str | None = None,
     ) -> dict[str, Any] | None:
-        """Round-robin one open scope per cycle without starving stations."""
+        """Serve the station-day closest to deciding, without starving any.
+
+        The rotation used to be the scope key's alphabetical order, which is
+        the ICAO code, which has nothing to do with when a station-day is
+        settled.  Measured on a live catalog it was actively perverse: every
+        one of the thirteen stations then within three hours of its warmest
+        hour sorted into positions 13-27, because they are the Asian codes and
+        Asia begins with R, W and Z -- while positions 0-8 went to stations at
+        one and two in the morning, thirteen hours from anything happening.
+
+        The basket is a bet on the day's high, so information arrives while a
+        station is warming and is nearly worthless before that.  Scopes are
+        therefore ordered by how close local time is to the warm hours, and
+        the cursor still advances through the whole ordering, so a station
+        that is far from its peak is served later rather than never.
+        """
 
         if not open_scopes:
             return None
@@ -6929,16 +7531,43 @@ class TargetProductionWorker:
             raise ContractError(
                 "resident_target_ws_open_scope_station_day_cap_exceeded"
             )
-        ordered = sorted(
+        as_of = as_of_utc or utc_now()
+        served = getattr(self, "_resident_scope_served", None)
+        if served is None:
+            served = {}
+            self._resident_scope_served = served
+        quotas = (
+            getattr(self, "_portfolio_allocation_last", None) or {}
+        ).get("quota_usdc_by_station")
+        selected = min(
             (dict(item) for item in open_scopes),
-            key=lambda item: str(item.get("scope_key") or ""),
+            key=lambda item: self._scope_rotation_key(
+                item,
+                as_of_utc=as_of,
+                last_served=served.get(str(item.get("scope_key") or "")),
+                quota_usdc=(
+                    quotas.get(str(item.get("station_id") or ""))
+                    if isinstance(quotas, Mapping)
+                    else None
+                ),
+            ),
         )
-        selected = ordered[
-            self._resident_open_scope_cursor % len(ordered)
-        ]
-        self._resident_open_scope_cursor = (
-            self._resident_open_scope_cursor + 1
-        ) % len(ordered)
+        envelope_id, observed_at = self._scope_input_fingerprint(selected)
+        # Recorded per scope, not as a position: the ordering is rebuilt from
+        # current time and current evidence every cycle, so a positional
+        # cursor would march through positions while the stations under them
+        # changed.  Remembering what each scope was last served with is what
+        # makes "nothing moved since" answerable at all.
+        served[str(selected.get("scope_key") or "")] = {
+            "served_at_utc": as_of,
+            "envelope_id": envelope_id,
+            "book_observed_at": observed_at,
+        }
+        if len(served) > MAX_FORWARD_P0_STATION_DAYS * 2:
+            for key in sorted(
+                served, key=lambda k: str(served[k].get("served_at_utc") or "")
+            )[: len(served) - MAX_FORWARD_P0_STATION_DAYS]:
+                served.pop(key, None)
         return selected
 
     @contextmanager
@@ -7186,10 +7815,81 @@ class TargetProductionWorker:
                     maturity_bin=maturity_bin,
                 )
                 if not packets:
+                    # No new reported high, so the distribution has nothing
+                    # to change -- but the *staleness gate* measures time
+                    # since evidence was last examined, not time since the
+                    # answer last moved.  On a hot night the midnight report
+                    # can stand as the day's high for ten hours (ZUUU
+                    # 2026-08-13: 31C at 00:06 local, ten morning reports
+                    # under it), and in hard-bound-only mode nothing else
+                    # re-rolls P1, so a perfectly current envelope aged past
+                    # its grace and the event morning went unservable.  When
+                    # the newest P1 has lapsed its own cadence and newer
+                    # observations were examined without beating the high,
+                    # append a reaffirmation: identical probabilities, new
+                    # decision clock, lineage naming what was examined.  At
+                    # most one per freshness window, and only ever off real
+                    # observations -- an empty morning reaffirms nothing.
+                    reaffirmed = False
+                    if (
+                        predecessor is not None
+                        and getattr(predecessor, "stage", None) == "P1"
+                        and observations
+                        and not predecessor.is_fresh(as_of_utc)
+                    ):
+                        base = predecessor.to_dict()
+                        newest_obs = max(
+                            str(row.get("observation_id") or "")
+                            for row in observations
+                        )
+                        lineage = {
+                            **base.get("lineage", {}),
+                            "reaffirmation_of_checkpoint_id": (
+                                predecessor.checkpoint_id
+                            ),
+                            "reaffirmed_observation_count": str(
+                                len(observations)
+                            ),
+                            "reaffirmed_through_observation_id": newest_obs,
+                        }
+                        fresh_until = (
+                            datetime.fromisoformat(
+                                as_of_utc.replace("Z", "+00:00")
+                            )
+                            + timedelta(seconds=freshness_seconds)
+                        ).isoformat(timespec="milliseconds").replace(
+                            "+00:00", "Z"
+                        )
+                        checkpoint = "p1_" + content_sha256({
+                            "reaffirmation_of": predecessor.checkpoint_id,
+                            "through_observation": newest_obs,
+                            "decision_at_utc": as_of_utc,
+                        })[:32]
+                        envelope = ProbabilityEnvelope.from_mapping({
+                            **base,
+                            "checkpoint_id": checkpoint,
+                            "decision_at_utc": as_of_utc,
+                            "fresh_until_utc": fresh_until,
+                            "lineage": lineage,
+                        })
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="resident_p1_reaffirm",
+                        ):
+                            write = insert_probability_envelope(
+                                self.commit_conn,
+                                envelope,
+                                created_at_utc=as_of_utc,
+                            )
+                        reaffirmed = bool(write.get("wrote"))
                     receipts.append({
                         "station_id": station,
                         "event_date": day,
-                        "state": "NO_NEW_REPORTED_HIGH",
+                        "state": (
+                            "REAFFIRMED_NO_NEW_HIGH"
+                            if reaffirmed
+                            else "NO_NEW_REPORTED_HIGH"
+                        ),
                         "observation_count": len(observations),
                         "p1_update_count": 0,
                         "trajectory_mode": p1_trajectory_mode,
@@ -7205,7 +7905,7 @@ class TargetProductionWorker:
                 # cycle.  Persist the deterministic cursor; the independent
                 # stage selector still rejects stale P1 for basket decisions
                 # and cannot silently downgrade to P0.
-                current_consumable = final_envelope.is_fresh(as_of_utc)
+                current_consumable = final_envelope.is_servable(as_of_utc)
                 with _writer_transaction(
                     self.commit_conn,
                     savepoint="resident_p1_scope",
@@ -7358,6 +8058,68 @@ class TargetProductionWorker:
                 self.commit_conn,
                 inbox,
             )
+            # A genuinely new issuance should reach the basket now, not at
+            # the next scheduled capture.  Clearing the capture throttle for
+            # the named scopes lets the next production pass rebuild their
+            # packets immediately -- the model archives are reused from the
+            # retained files within TTL, so the rebuild only refreshes the
+            # TAF entry and recompiles P0 on it.
+            taf_arrival_wakes = []
+            capture_attempts = getattr(
+                self, "_official_native_capture_attempts", None
+            )
+            pending = getattr(self, "_taf_arrival_pending", None)
+            if pending is None:
+                pending = set()
+                self._taf_arrival_pending = pending
+            for scope in taf_fact_ingress.get("fresh_scopes") or ():
+                scope_key = (
+                    str(scope.get("station_id") or ""),
+                    str(scope.get("event_date") or ""),
+                )
+                pending.add(scope_key)
+                taf_arrival_wakes.append(scope_key)
+                if capture_attempts is not None:
+                    capture_attempts.pop(scope_key, None)
+            taf_fact_ingress = {
+                **taf_fact_ingress,
+                "arrival_recompile_wakes": [
+                    {"station_id": station, "event_date": day}
+                    for station, day in taf_arrival_wakes
+                ],
+            }
+            # The sibling point system rides the same stage.  Its lane is
+            # forward-only accumulation -- each pass projects whichever noon
+            # anchors have newly passed, and settled days become OOS folds on
+            # their own -- so a failure here is one missed pass, never a
+            # reason to block the TAF ingest it shares the stage with.
+            try:
+                if self.canonical_source_conn is None:
+                    projection_receipt: dict[str, Any] = {
+                        "state": "not_attempted",
+                        "reason": "canonical_source_conn_missing",
+                    }
+                else:
+                    with _writer_transaction(
+                        self.commit_conn,
+                        savepoint="metar_physical_projection",
+                    ):
+                        projection_receipt = (
+                            project_metar_physical_member_runs(
+                                self.commit_conn,
+                                archive_conn=self.canonical_source_conn,
+                                as_of_utc=as_of_utc,
+                            )
+                        )
+            except Exception as exc:  # noqa: BLE001 - stage isolation
+                projection_receipt = {
+                    "state": "failed",
+                    "reason": f"{type(exc).__name__}:{exc}"[:200],
+                }
+            taf_fact_ingress = {
+                **taf_fact_ingress,
+                "metar_physical_projection": projection_receipt,
+            }
         except ContractError as exc:
             if str(exc) != "forward_taf_capture_content_conflict":
                 raise
@@ -8289,6 +9051,162 @@ class TargetProductionWorker:
                 return None
         return None
 
+    def _portfolio_quota(
+        self,
+        *,
+        stations: Sequence[str],
+        fallback_budget_usdc: float,
+        as_of_utc: str,
+    ) -> dict[str, float]:
+        """Per-station quota from the one bankroll, or the old flat budget.
+
+        Each station's edge and curve spread are measured from its own most
+        recent committed plan -- what a dollar bought it last time -- and the
+        atomic basket minimum comes from the activated clip grid.  A station
+        with no such history is left out of the split and keeps the flat
+        budget, so introducing the allocator cannot silently stop a station
+        that has never traded from trying.
+
+        Failure is not fatal here: the receipt is evidence, not authority,
+        and a book that cannot be split still plans at the configured budget.
+        """
+
+        try:
+            blocks_by_station, blocks_sha = load_regional_blocks()
+            policy, _policy_sha = load_portfolio_capital_policy()
+            # What the book already holds decides whether it may hold more.
+            # A breached Tier-1 bound stops new baskets and leaves open ones
+            # to settle; closing them would realize the loss it is reacting
+            # to, at whatever price the book happens to show.
+            inventory = build_portfolio_inventory(
+                self.commit_conn,
+                as_of_utc=as_of_utc,
+                blocks_by_station=blocks_by_station,
+                policy=policy,
+            )
+            persist_portfolio_inventory(
+                self.commit_conn, inventory, created_at_utc=as_of_utc
+            )
+            self._portfolio_inventory_last = {
+                "open_notional_usdc": inventory["open_notional_usdc"],
+                "portfolio_hhi": inventory["portfolio_hhi"],
+                "breaches": inventory["breaches"],
+                "new_intents_allowed": inventory["new_intents_allowed"],
+                "drawdown": inventory["drawdown"],
+            }
+            if not inventory["new_intents_allowed"]:
+                self._portfolio_allocation_last = {
+                    "state": "PORTFOLIO_BOUND_BREACHED",
+                    "breaches": inventory["breaches"],
+                    "new_intents_allowed": False,
+                }
+                return {station: 0.0 for station in stations}
+            pool = self.commit_conn.execute(
+                "SELECT balance_usdc FROM basket_target_capital_pool "
+                "ORDER BY pool_id LIMIT 1"
+            ).fetchone()
+            bankroll = float(pool[0]) if pool else 0.0
+            clip_row = self.conn.execute(
+                "SELECT artifact_json FROM basket_delta_v2_policy_artifact "
+                "ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            minimum_clip = min(
+                json.loads(str(clip_row[0]))["cash_clip_grid"]
+            ) if clip_row else 0.0
+            edges = self._station_edge_evidence(
+                stations=stations, minimum_clip_usdc=float(minimum_clip)
+            )
+            if not edges or bankroll <= 0.0:
+                return {}
+            allocation = allocate_portfolio_quota(
+                station_edges=edges,
+                blocks_by_station=blocks_by_station,
+                bankroll_usdc=bankroll,
+                risk_fraction=float(policy["portfolio_risk_fraction"]),
+                station_cap_fraction=float(policy["station_cap_fraction"]),
+            )
+            persist_portfolio_allocation(
+                self.commit_conn,
+                allocation,
+                as_of_utc=as_of_utc,
+                blocks_content_sha256=blocks_sha,
+                created_at_utc=as_of_utc,
+            )
+            self._portfolio_allocation_last = {
+                "funded_station_count": allocation["funded_station_count"],
+                "station_count": allocation["station_count"],
+                "allocated_usdc": allocation["allocated_usdc"],
+                "bankroll_usdc": allocation["bankroll_usdc"],
+                "portfolio_sigma_usdc": allocation["portfolio_sigma_usdc"],
+                "naive_sigma_usdc": allocation["naive_sigma_usdc"],
+                "minimum_bankroll": derive_minimum_bankroll(
+                    station_edges=edges
+                ),
+            }
+            return dict(allocation["quota_usdc_by_station"])
+        except (ContractError, sqlite3.Error, ValueError, KeyError) as exc:
+            self._portfolio_allocation_last = {
+                "state": "ALLOCATION_UNAVAILABLE",
+                "reason": f"{type(exc).__name__}:{exc}",
+                "fallback_budget_usdc": float(fallback_budget_usdc),
+            }
+            return {}
+
+    def _station_edge_evidence(
+        self,
+        *,
+        stations: Sequence[str],
+        minimum_clip_usdc: float,
+    ) -> list[dict[str, Any]]:
+        """What a dollar bought each station, from its own last plan."""
+
+        rows: list[dict[str, Any]] = []
+        for station_id in stations:
+            record = self.conn.execute(
+                "SELECT plan_json FROM basket_p0_preselection_plan "
+                "WHERE station_id=? ORDER BY rowid DESC LIMIT 1",
+                (station_id,),
+            ).fetchone()
+            if record is None:
+                continue
+            compiled = (
+                json.loads(str(record[0])).get("compiled_plan") or {}
+            )
+            plan = compiled.get("plan") or {}
+            solution = plan.get("target_solution") or {}
+            probabilities = (
+                compiled.get("probability_envelope") or {}
+            ).get("probabilities") or {}
+            shares = solution.get("target_shares_by_bucket") or {}
+            support = plan.get("final_support") or []
+            cost = sum(
+                float(value)
+                for value in (
+                    solution.get("target_cost_by_bucket") or {}
+                ).values()
+            )
+            if not shares or not probabilities or not support or cost <= 0.0:
+                continue
+            scenario = {
+                bucket: float(shares.get(bucket) or 0.0) - cost
+                for bucket in probabilities
+            }
+            mean = sum(
+                float(probabilities[bucket]) * value
+                for bucket, value in scenario.items()
+            )
+            variance = sum(
+                float(probabilities[bucket]) * (value - mean) ** 2
+                for bucket, value in scenario.items()
+            )
+            rows.append({
+                "station_id": station_id,
+                "edge_per_usdc": mean / cost,
+                "sigma_per_usdc": (variance ** 0.5) / cost,
+                "minimum_basket_usdc": minimum_clip_usdc * len(support),
+            })
+        return rows
+
     def materialize_forward_p0_preselections(
         self,
         *,
@@ -8351,8 +9269,24 @@ class TargetProductionWorker:
             raise RuntimeError("forward_p0_station_scope_cap_exceeded")
         assert_process_memory_budget()
         planning_budget_usdc = _resolve_target_remaining_budget()
+        # The bankroll is one book.  Handing every station the whole of it --
+        # which is what the configured budget did, forty-five times over the
+        # same 20 USDC -- only failed to over-commit because almost nothing
+        # traded.  The allocator splits it, charging stations under one air
+        # mass as a single position, and a station it cannot fund to a whole
+        # atomic basket gets nothing rather than an amount that buys nothing.
+        quota_by_station = self._portfolio_quota(
+            stations=stations,
+            fallback_budget_usdc=planning_budget_usdc,
+            as_of_utc=evaluation_at_utc,
+        )
         compiled = []
         for station_id in stations:
+            station_budget = float(
+                quota_by_station.get(station_id, planning_budget_usdc)
+            )
+            if station_budget <= 0.0:
+                continue
             compiled.append(compile_p0_preselection(
                 self.conn,
                 station_id=station_id,
@@ -8365,7 +9299,7 @@ class TargetProductionWorker:
                 maturity_bin=str(scope["maturity_bin"]),
                 liquidity_bin=str(scope["liquidity_bin"]),
                 strategy_version=str(scope["strategy_version"]),
-                planning_budget_usdc=planning_budget_usdc,
+                planning_budget_usdc=station_budget,
             ))
             assert_process_memory_budget()
         assert_connection_target_capacity(
@@ -8385,6 +9319,113 @@ class TargetProductionWorker:
                     created_at_utc=evaluation_at_utc,
                 )
                 receipts.append(preselection_receipt)
+                # Shadow-score the approved log-wealth objective next to the
+                # committed plan: same buckets, same prices, same budget, no
+                # authority.  Its own savepoint -- a scoring defect must never
+                # cost a preselection.
+                try:
+                    self.commit_conn.execute(
+                        "SAVEPOINT shadow_objective_score"
+                    )
+                    try:
+                        shadow_compiled = item["compiled_plan"]
+                        bankroll_row = self.commit_conn.execute(
+                            "SELECT balance_usdc FROM "
+                            "basket_target_capital_pool LIMIT 1"
+                        ).fetchone()
+                        shadow_score = build_shadow_objective_score(
+                            station_id=str(item["station_id"]),
+                            event_date=str(item["event_date"]),
+                            probability_stage=str(
+                                item["probability_stage"]
+                            ),
+                            checkpoint_id=str(item["checkpoint_id"]),
+                            decision_at_utc=str(item["decision_at_utc"]),
+                            candidate_rows=(
+                                shadow_compiled.get(
+                                    "order_sizing_decisions"
+                                ) or []
+                            ),
+                            probabilities_by_bucket=(
+                                shadow_compiled.get(
+                                    "probability_envelope", {}
+                                ).get("probabilities") or {}
+                            ),
+                            budget_usdc=float(
+                                item.get("planning_budget_usdc") or 0.0
+                            ),
+                            bankroll_usdc=float(
+                                bankroll_row[0]
+                            ) if bankroll_row else 0.0,
+                            created_at_utc=evaluation_at_utc,
+                        )
+                        if shadow_score is not None:
+                            persist_shadow_objective_score(
+                                self.commit_conn, shadow_score
+                            )
+                            preselection_receipt["shadow_objective"] = {
+                                "growth_actual": shadow_score[
+                                    "actual_curve"
+                                ]["expected_log_growth"],
+                                "growth_shadow": shadow_score[
+                                    "shadow_curve"
+                                ]["expected_log_growth"],
+                            }
+                        self.commit_conn.execute(
+                            "RELEASE shadow_objective_score"
+                        )
+                    except Exception as exc:  # noqa: BLE001 -- observational
+                        self.commit_conn.execute(
+                            "ROLLBACK TO shadow_objective_score"
+                        )
+                        self.commit_conn.execute(
+                            "RELEASE shadow_objective_score"
+                        )
+                        preselection_receipt["shadow_objective"] = {
+                            "state": "SCORING_FAILED",
+                            "error": f"{type(exc).__name__}:{exc}",
+                        }
+                except sqlite3.Error:
+                    pass
+                # P0 is the opening stage: a forward day is precisely when the
+                # ensemble has something to say that the tape does not yet.
+                # The quotes here come from the resident official WS book
+                # sliced to this scope, so an opening intent is priced against
+                # the live market, not a stale forward cache.  Plans that are
+                # not compile-ready keep the preliminary no-execution record.
+                market_snapshot = item.get(
+                    UNPERSISTED_MARKET_SNAPSHOT_KEY
+                )
+                compiled_plan = item.get("compiled_plan")
+                opened = None
+                if isinstance(market_snapshot, Mapping) and isinstance(
+                    compiled_plan, Mapping
+                ):
+                    # Its own savepoint: a plan that fails partway through the
+                    # bundle must leave no half-written cycle behind for the
+                    # preliminary record that follows it.
+                    try:
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="basket_target_p0_stage_open",
+                        ):
+                            opened = commit_production_candidate_atomic(
+                                self.commit_conn,
+                                compiled_plan=compiled_plan,
+                                market_snapshot=market_snapshot,
+                                awc_observation_contract=None,
+                                truth_observation_revision_content_sha256="",
+                                bound=None,
+                                created_at_utc=evaluation_at_utc,
+                            )
+                    except (ContractError, AtomicLedgerError) as exc:
+                        opened = None
+                        preselection_receipt[
+                            "stage_open_blocker"
+                        ] = f"{type(exc).__name__}:{exc}"
+                if opened is not None:
+                    decision_receipts.append(opened)
+                    continue
                 decision_receipts.append(
                     commit_preliminary_scope_decision(
                         self.commit_conn,
@@ -8411,6 +9452,12 @@ class TargetProductionWorker:
             "schema": "bayes_basket_target_worker_p0_batch_v1",
             "state": "COMMITTED",
             "event_date": event_date,
+            "portfolio_allocation": getattr(
+                self, "_portfolio_allocation_last", None
+            ),
+            "portfolio_inventory": getattr(
+                self, "_portfolio_inventory_last", None
+            ),
             "station_count": len(compiled),
             "written_count": sum(1 for item in receipts if item["wrote"]),
             "receipts": receipts,
@@ -9392,15 +10439,22 @@ class TargetProductionWorker:
                         previous_truth_signatures
                     )
                     try:
+                        # Forward-accumulation window (user decision): the
+                        # 20/8 profile ejected any family with one hole in
+                        # its latest eight settled days, which kept ECCC out
+                        # on thirty days of history and priced ICON three
+                        # weeks away.  Training still uses every settled day;
+                        # only the gate's holdout shrinks, and thin evidence
+                        # is priced by the weight ramp instead of barred.
                         oos_report = build_native_ensemble_oos(
                             self.commit_conn,
                             station_id=oos_station,
                             as_of_utc=now,
                             min_train_days=(
-                                DEFAULT_MIN_TRAIN_DAYS
+                                FORWARD_ACCUMULATION_MIN_TRAIN_DAYS
                             ),
                             min_holdout_days=(
-                                DEFAULT_MIN_HOLDOUT_DAYS
+                                FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS
                             ),
                         )
                         oos_persist = persist_native_ensemble_oos(
@@ -9682,6 +10736,9 @@ class TargetProductionWorker:
                     "forward_p0_preselections": (
                         forward_p0_preselections
                     ),
+                    "ws_scope_catalog": self._ws_scope_catalog_summary(
+                        ws_scope_catalog
+                    ),
                     "places_orders": False,
                     "calls_order_gateway": False,
                     "live_submit_authorized": False,
@@ -9709,7 +10766,8 @@ class TargetProductionWorker:
             # before a P1 update and breaks the canonical
             # P1 -> official WS -> basket ordering.
             selected_open_scope = self._select_resident_open_ws_scope(
-                open_ws_scopes
+                open_ws_scopes,
+                as_of_utc=now,
             )
             if not ws_scope_catalog or not selected_open_scope or not str(
                 selected_open_scope["probability_stage"]
@@ -9718,8 +10776,28 @@ class TargetProductionWorker:
                     activation
                 )
             else:
+                # Every open scope of this event day, not one of them.
+                # Serving a single scope per cycle meant a full pass over 33
+                # stations took five to eight minutes, while the quote lease
+                # it depends on is sixty seconds -- so a station's book had
+                # expired several times over before its turn came round
+                # again, which is where the recurring
+                # ``production_quote_expired`` came from.  P1 is the dynamic
+                # stage; at one station per cycle it was not dynamic, it was
+                # occasional.
+                #
+                # Nothing new is fetched to do this: the publisher already
+                # holds every scope's book in the manifest it rewrites every
+                # two seconds, and the ingress below has always taken a
+                # station list.  The single-scope bridge was the only thing
+                # making it one at a time.
+                sweep_scopes = self._sweep_scope_manifests(
+                    open_ws_scopes,
+                    selected=selected_open_scope,
+                    as_of_utc=now,
+                )
                 with self._temporary_scope_manifest(
-                    selected_open_scope["manifest"]
+                    _merge_scope_manifests(sweep_scopes)
                 ) as current_scope_manifest_path:
                     market_ingress = (
                         self._materialize_market_evidence_from_manifest(
@@ -9930,6 +11008,9 @@ class TargetProductionWorker:
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
+                "ws_scope_catalog": self._ws_scope_catalog_summary(
+                    ws_scope_catalog
+                ),
                 "places_orders": False,
                 "calls_order_gateway": False,
                 "live_submit_authorized": False,

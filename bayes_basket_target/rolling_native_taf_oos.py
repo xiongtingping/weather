@@ -64,7 +64,14 @@ SOURCE_CLASS = "strict_oos_native_p0_taf_truth_exact_join"
 # days support, down to MIN_BLOCKS.  A station with 52 days gets the
 # better-supported four-block series; one with 44 still qualifies on three.
 MAX_BLOCKS = 4
-MIN_BLOCKS = 3
+# Two, not three.  The negotiation above already prefers more blocks whenever
+# the days support them, so this is only the floor for a scope that would
+# otherwise produce nothing at all: at three the requirement is 20+8*3=44 days
+# and stations sat at 36 for weeks with no artifact, which is not a stricter
+# evaluation but an absent one.  Two disjoint forward windows still refuse a
+# single lucky window; a scope with the days for three or four is unaffected
+# and still gets them.
+MIN_BLOCKS = 2
 MAX_STATION_CANDIDATES = 24
 MAX_JOIN_ROWS = 366
 
@@ -154,11 +161,67 @@ def plan_non_overlapping_rolling_blocks(
     }
 
 
+def _live_run_cycle_by_system(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+) -> dict[str, str]:
+    """The cycle each system is actually serving P0 from, if a root says so.
+
+    Read rather than assumed: the artifact this evidence will support is
+    selected at serving time against the root's own per-system cycles, so a
+    tie resolved any other way trains on runs the root does not use.
+    """
+
+    # An absent or unreadable root yields no preference, never an error: this
+    # only ever breaks ties, and a caller with no committed P0 -- a replay
+    # fixture, a station before its first root -- must keep the conservative
+    # drop rather than fail the whole station's evidence build.
+    try:
+        row = conn.execute(
+            "SELECT lineage_json FROM basket_probability_envelope "
+            "WHERE station_id=? AND stage='P0' AND state='COMMITTED' "
+            "ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id,),
+        ).fetchone()
+    except Exception:
+        return {}
+    if row is None:
+        return {}
+    try:
+        lineage = json.loads(str(row[0] or "{}"))
+        mapping = json.loads(
+            str(lineage.get("run_cycle_by_system_json") or "{}")
+        )
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(mapping, Mapping):
+        return {}
+    return {
+        str(system_id): str(cycle)
+        for system_id, cycle in mapping.items()
+        if str(cycle or "").strip()
+    }
+
+
 def _scope_system_cases(
     cases_by_scope: Mapping[tuple[str, str, str, str], Sequence[Mapping[str, Any]]],
+    *,
+    live_run_cycle_by_system: Mapping[str, str] | None = None,
 ) -> dict[tuple[str, str], dict[str, tuple[str, list[dict[str, Any]]]]]:
-    """Return one native run-cycle per system and scope, fail closed on ties."""
+    """Return one native run-cycle per system and scope, fail closed on ties.
 
+    A tie is real: an hour bucket holds both the 00Z and 18Z runs of the same
+    system, and training across them would pool predictions of different age
+    into one sample while P0 serves from exactly one of them.  Dropping the
+    system outright was the conservative answer, but it is stricter than the
+    question deserves -- it discarded the pair ZUUU actually serves from,
+    leaving that scope permanently unevaluable while a scope nothing serves
+    accumulated instead.  The root names the cycle per system, so prefer it
+    and keep the drop for the case where nothing distinguishes them.
+    """
+
+    live_cycles = dict(live_run_cycle_by_system or {})
     grouped: dict[tuple[str, str], dict[str, list[tuple[str, list[dict[str, Any]]]]]] = defaultdict(lambda: defaultdict(list))
     for (system_id, season_bin, lead_bucket, run_cycle), cases in cases_by_scope.items():
         grouped[(season_bin, lead_bucket)][system_id].append((
@@ -169,9 +232,13 @@ def _scope_system_cases(
     for scope, systems in grouped.items():
         selected: dict[str, tuple[str, list[dict[str, Any]]]] = {}
         for system_id, rows in systems.items():
-            if len(rows) != 1:
+            if len(rows) == 1:
+                selected[system_id] = rows[0]
                 continue
-            selected[system_id] = rows[0]
+            served = str(live_cycles.get(system_id) or "")
+            matches = [row for row in rows if str(row[0]) == served]
+            if len(matches) == 1:
+                selected[system_id] = matches[0]
         resolved[scope] = selected
     return resolved
 
@@ -429,7 +496,12 @@ def build_rolling_origin_native_oos(
         raise ContractError("rolling_native_taf_station_required")
     systems = _load_systems(conn)
     cases_by_scope = _load_cases(conn, station_id=station, as_of_utc=as_of_utc)
-    scoped = _scope_system_cases(cases_by_scope)
+    scoped = _scope_system_cases(
+        cases_by_scope,
+        live_run_cycle_by_system=_live_run_cycle_by_system(
+            conn, station_id=station
+        ),
+    )
     candidates: list[dict[str, Any]] = []
     accumulating: list[dict[str, Any]] = []
     caps = dict(DEFAULT_FAMILY_WEIGHT_CAPS)
@@ -521,7 +593,52 @@ def _bucket_intervals_for_candidate(
 
     bucket_rows: list[tuple[Any, ...]] = []
     system_id = str(candidate["selected_system_ids"][0])
+    station_id = str(candidate["station_id"])
     for prediction in candidate.get("predictions") or []:
+        # The candidate's lead is the training group, measured in hours ahead;
+        # the archive keys its buckets by the collector's calendar label.
+        # Matching one against the other found nothing for every hour-bucket
+        # scope, which is what left a READY series with no exact join.  The
+        # calendar label for this prediction is whatever the member run that
+        # produced it was filed under, so resolve it from that run.
+        run_cycle = str(
+            (prediction.get("run_cycle_by_system") or {}).get(system_id) or ""
+        )
+        # One cycle legitimately appears under two calendar labels on the same
+        # day -- ECMWF 00Z is ``d0`` from that morning's run and ``d1`` from
+        # the previous morning's -- so the label alone is ambiguous while the
+        # run initialisation is not.  The prediction states which run it was
+        # made from, so match on that and let the label follow.
+        try:
+            calendar_leads = [
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT DISTINCT archive_lead_bucket FROM "
+                    "calibration_native_ensemble_historical_member_run "
+                    "WHERE ensemble_system_id=? AND station_id=? "
+                    "AND target_local_date=? AND run_cycle=? "
+                    "AND native_run_init_utc=? "
+                    "ORDER BY archive_lead_bucket",
+                    (
+                        system_id,
+                        station_id,
+                        str(prediction["event_date"]),
+                        run_cycle,
+                        str(prediction.get("decision_at_utc") or ""),
+                    ),
+                ).fetchall()
+            ]
+        except sqlite3.Error:
+            # The run facts are how the calendar label is resolved, not what
+            # the bucket rows are read from.  A caller holding only the bucket
+            # table keeps the original behaviour: ask for the candidate's own
+            # lead and let the bucket lookup below decide.
+            calendar_leads = [str(candidate["lead_bucket"])]
+        if len(calendar_leads) != 1:
+            # Zero means no run matches this prediction's own initialisation;
+            # more than one means one run was filed under two labels, which
+            # nothing here can resolve.  Both stay fail-closed.
+            continue
         found = conn.execute(
             "SELECT bucket_intervals_json FROM "
             "calibration_native_ensemble_historical_member_bucket "
@@ -535,9 +652,9 @@ def _bucket_intervals_for_candidate(
             "ORDER BY archive_query_at_utc LIMIT 2",
             (
                 system_id,
-                str(candidate["station_id"]),
+                station_id,
                 str(prediction["event_date"]),
-                str(candidate["lead_bucket"]),
+                calendar_leads[0],
             ),
         ).fetchall()
         if len(found) > 1:

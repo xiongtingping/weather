@@ -3408,11 +3408,20 @@ def test_stale_or_invalid_p1_never_falls_back_to_p0() -> None:
         }),
     ]
 
+    # Fifteen minutes past its cadence the P1 is still what we know, and the
+    # P0 beneath it is fresh until 15:00 -- so this is the case where crossing
+    # down would be tempting and is still wrong.  It serves the P1 instead.
+    selected = select_current_stage(envelopes, at_utc="2026-07-29T13:00:00Z")
+    assert selected.stage == "P1"
+    assert selected.checkpoint_id == "p1-stale"
+
+    # Three hours past, the P1 no longer describes the day.  The fresh P0 is
+    # still sitting right there and still does not get the authority.
     with pytest.raises(
         ContractError,
         match="latest_stage_stale_fail_closed",
     ):
-        select_current_stage(envelopes, at_utc="2026-07-29T13:00:00Z")
+        select_current_stage(envelopes, at_utc="2026-07-29T15:45:01Z")
 
 
 def test_resident_decision_scopes_exclude_closed_registry_days(tmp_path: Path) -> None:
@@ -3642,21 +3651,51 @@ def test_corrupt_nwp_rotation_state_fails_only_nwp_lane_closed(
             worker.conn.close()
 
 
-def test_open_scope_round_robin_is_deterministic_and_bounded() -> None:
-    worker = object.__new__(TargetProductionWorker)
-    worker._resident_open_scope_cursor = 0
+def test_open_scope_selection_is_deterministic_and_starves_nobody() -> None:
+    """Same catalog, same instant, same choice -- and everyone gets served.
+
+    The selection used to be alphabetical round-robin, which was
+    deterministic but ordered by ICAO code.  What has to survive the change
+    is determinism and the absence of starvation, not the alphabet: with the
+    ordering now rebuilt from current time and current evidence every cycle,
+    a scope that is never picked would be a scope never compiled at all.
+    """
+
+    from datetime import datetime, timedelta, timezone
+
     scopes = [
-        {"scope_key": "RKPK|2026-07-30", "station_id": "RKPK"},
-        {"scope_key": "EGLC|2026-07-30", "station_id": "EGLC"},
-        {"scope_key": "KATL|2026-07-30", "station_id": "KATL"},
+        _rot_scope("RKPK", "Asia/Seoul"),        # 15:20 local at the start
+        _rot_scope("EGLC", "Europe/London"),     # 07:20
+        _rot_scope("KATL", "America/New_York"),  # 02:20
     ]
+    base = datetime(2026, 8, 12, 6, 20, tzinfo=timezone.utc)
 
-    selected = [
-        worker._select_resident_open_ws_scope(scopes)["station_id"]
-        for _ in range(5)
-    ]
+    def _run(worker, cycles=14):
+        picked = []
+        for step in range(cycles):
+            at = (base + timedelta(minutes=20 * step)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            picked.append(
+                worker._select_resident_open_ws_scope(
+                    scopes, as_of_utc=at
+                )["station_id"]
+            )
+        return picked
 
-    assert selected == ["EGLC", "KATL", "RKPK", "EGLC", "KATL"]
+    selected = _run(object.__new__(TargetProductionWorker))
+
+    # The warm station leads, whatever the alphabet says.
+    assert selected[0] == "RKPK"
+    # Every station is reached: ageing lifts a quiet one until it wins, so a
+    # position held somewhere dark is still revisited.
+    assert set(selected) == {"RKPK", "EGLC", "KATL"}
+    # And the rotation follows the sun -- over these four hours London walks
+    # into its warm window while Seoul walks out of it.
+    assert selected[-1] == "EGLC"
+
+    # Same inputs, same run: a fresh worker repeats the sequence exactly.
+    assert selected == _run(object.__new__(TargetProductionWorker))
 
 
 def test_republisher_inbox_packet_cap_fits_inside_the_json_write_limit() -> None:
@@ -5043,3 +5082,464 @@ def test_target_worker_reopens_poisoned_target_connections(
     assert worker.commit_conn is new_write
     assert worker.open_error is None
     assert worker.commit_error is None
+
+
+def _rolling(tmp_path: Path, entries: list[tuple[str, list[str], int]]) -> Path:
+    path = tmp_path / "rolling.json"
+    path.write_text(
+        json.dumps({
+            "schema": "rolling_native_taf_oos_v1",
+            "accumulating": [
+                {
+                    "season_bin": "JJA",
+                    "lead_bucket": lead,
+                    "selected_system_ids": systems,
+                    "plan": {
+                        "common_case_count": common,
+                        "required_common_case_count": 44,
+                        "missing_common_case_count": 44 - common,
+                    },
+                }
+                for lead, systems, common in entries
+            ],
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
+LIVE_PAIR = "ECMWF_IFS_ENS_OPEN_PF50,NOAA_GEFS_05"
+
+
+def test_taf_accumulation_reports_the_serving_pair_over_the_faster_one(
+    tmp_path: Path,
+) -> None:
+    path = _rolling(tmp_path, [
+        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 30),
+        ("d2", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 4),
+    ])
+
+    result = TargetProductionWorker._taf_rolling_accumulation(
+        path,
+        season_bin="JJA",
+        lead_bucket="d2",
+        live_system_ids=LIVE_PAIR,
+    )
+
+    # The AI pair is 26 days ahead, and its artifact could never serve: the
+    # TAF live-compatibility fingerprint binds to the root's model set.
+    assert result["is_live_serving_pair"] is True
+    assert result["selected_system_ids"] == [
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "NOAA_GEFS_05",
+    ]
+    assert result["common_case_count"] == 4
+
+
+def test_taf_accumulation_names_a_serving_pair_stranded_by_lead_vocabulary(
+    tmp_path: Path,
+) -> None:
+    # The live RKPK shape: the serving pair has a series, but only under the
+    # hour-bucket vocabulary, while the P0 root still stamps a calendar lead.
+    # Another pair holding d2 would otherwise present this as a day countdown
+    # that no number of settled days can finish.
+    path = _rolling(tmp_path, [
+        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 1),
+        ("h00_12", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 20),
+    ])
+
+    result = TargetProductionWorker._taf_rolling_accumulation(
+        path,
+        season_bin="JJA",
+        lead_bucket="d2",
+        live_system_ids=LIVE_PAIR,
+    )
+
+    assert result["is_live_serving_pair"] is False
+    assert result["serving_pair_reason"] == (
+        "serving_pair_only_under_other_lead_buckets"
+    )
+    assert result["serving_pair_lead_buckets"] == ["h00_12"]
+
+
+def test_taf_accumulation_without_a_live_pair_keeps_the_best_covered(
+    tmp_path: Path,
+) -> None:
+    path = _rolling(tmp_path, [
+        ("d2", ["GOOGLE_WEATHERNEXT2_ENS", "NOAA_AIGEFS_025"], 30),
+        ("d2", ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"], 4),
+    ])
+
+    result = TargetProductionWorker._taf_rolling_accumulation(
+        path,
+        season_bin="JJA",
+        lead_bucket="d2",
+    )
+
+    assert result["is_live_serving_pair"] is False
+    assert "serving_pair_reason" not in result
+    assert result["common_case_count"] == 30
+
+
+def _scope(station: str, day_state: str, stage: str, fresh: bool, blocker: str = "") -> dict:
+    return {
+        "scope_key": f"{station}|2026-08-11",
+        "station_id": station,
+        "event_date": "2026-08-11",
+        "event_day_state": day_state,
+        "probability_stage": stage,
+        "probability_evidence_fresh": fresh,
+        "scope_blocker": blocker,
+    }
+
+
+def test_ws_scope_summary_names_a_stale_open_p1_that_would_vanish() -> None:
+    # A stale open P1 raises no preliminary decision (it is not a not-started
+    # scope) and is dropped by the actionable filter, so before this summary
+    # it left no trace anywhere -- indistinguishable from never scanned.
+    summary = TargetProductionWorker._ws_scope_catalog_summary([
+        _scope("EHAM", "open", "P1", True),
+        _scope(
+            "RKPK", "open", "P1", False,
+            blocker="resident_target_ws_open_scope_p1_probability_stale",
+        ),
+    ])
+
+    assert summary["scope_count"] == 2
+    assert summary["actionable_scope_count"] == 1
+    assert summary["blocked_scope_count"] == 1
+    blocked = summary["blocked_scopes"][0]
+    assert blocked["station_id"] == "RKPK"
+    assert blocked["probability_stage"] == "P1"
+    assert blocked["reason"] == (
+        "resident_target_ws_open_scope_p1_probability_stale"
+    )
+
+
+def test_ws_scope_summary_reports_a_stale_scope_even_without_a_blocker() -> None:
+    # Freshness alone is enough to drop a scope, so a stale one must be
+    # reported whether or not a blocker string was attached upstream.
+    summary = TargetProductionWorker._ws_scope_catalog_summary([
+        _scope("KSEA", "open", "P1", False),
+    ])
+
+    assert summary["blocked_scope_count"] == 1
+    assert summary["blocked_scopes"][0]["reason"] == (
+        "resident_target_ws_probability_stale"
+    )
+
+
+def test_ws_scope_summary_counts_a_fresh_catalog_as_fully_actionable() -> None:
+    summary = TargetProductionWorker._ws_scope_catalog_summary([
+        _scope("EHAM", "open", "P1", True),
+        _scope("KORD", "not_started", "P0", True),
+    ])
+
+    assert summary["actionable_scope_count"] == 2
+    assert summary["blocked_scopes"] == []
+
+
+def test_no_snapshot_is_loaded_unless_one_is_asked_for(monkeypatch, tmp_path) -> None:
+    # The default snapshot froze 5 of 45 stations on 2026-08-03.  Loading it
+    # by default rejected the 40 it never covered and mis-bound the 5 it did,
+    # which stopped P0 for the whole fleet.
+    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_no_live")
+    monkeypatch.delenv("PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST", raising=False)
+
+    worker = TargetProductionWorker(db_path=tmp_path / "target.db")
+
+    assert worker.native_oos_snapshot is None
+    assert worker.native_oos_snapshot_error is None
+
+
+def test_an_explicitly_requested_snapshot_still_fails_closed(
+    monkeypatch, tmp_path
+) -> None:
+    # Pinning a snapshot on purpose keeps the old contract: an unreadable one
+    # must leave a non-None sentinel so every compile fails closed rather than
+    # falling back to the newest append-only activation.
+    monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_no_live")
+    missing = tmp_path / "absent_snapshot.json"
+    monkeypatch.setenv(
+        "PM_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST", str(missing)
+    )
+
+    worker = TargetProductionWorker(db_path=tmp_path / "target.db")
+
+    assert worker.native_oos_snapshot is not None
+    assert worker.native_oos_snapshot_error is not None
+
+
+def _rot_scope(
+    station, timezone_name, *, day_state="open",
+    envelope_id="env-1", observed_at="2026-08-12T06:00:00Z",
+):
+    return {
+        "scope_key": f"{station}|2026-08-12",
+        "station_id": station,
+        "event_day_state": day_state,
+        "manifest": {
+            "target_timezone": timezone_name,
+            "probability_authority": {"envelope_id": envelope_id},
+            "quotes_by_token": {
+                "t1": {"book_observed_at": observed_at},
+            },
+        },
+    }
+
+
+def test_rotation_orders_by_what_recompiling_is_worth() -> None:
+    """Serve where a recompute would change something, not by ICAO code.
+
+    The old ordering was the scope key, which is alphabetical: on a live
+    catalog every station then inside its warm window sorted to positions
+    13-27, because Asia's codes begin with R, W and Z, while stations in the
+    small hours took positions 0-8.
+    """
+
+    from bayes_basket_target.production_worker import (
+        TargetProductionWorker as Worker,
+    )
+
+    as_of = "2026-08-12T06:20:00Z"   # mid-afternoon Shanghai, 01:20 Chicago
+    key = Worker._scope_rotation_key
+    served = {
+        "served_at_utc": "2026-08-12T06:00:00Z",
+        "envelope_id": "env-1",
+        "book_observed_at": "2026-08-12T06:00:00Z",
+    }
+
+    warm = _rot_scope("ZUUU", "Asia/Shanghai")
+    overnight = _rot_scope("KORD", "America/Chicago")
+    # Alphabetically the overnight station leads; that was the bug.
+    assert overnight["scope_key"] < warm["scope_key"]
+    assert key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0) < (
+        key(overnight, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    )
+
+    # A market never compiled counts as maximal new evidence, not as a tier
+    # of its own: at a cold start every scope is unseen, and a tier would
+    # flatten them all and hand the ordering back to the alphabet.  So it
+    # outranks the same station already served, but does not outrank a warm
+    # station somewhere else -- a station still in the small hours has
+    # nothing to say yet, first look or not.
+    unseen_warm = _rot_scope("ZUUU", "Asia/Shanghai")
+    assert key(
+        unseen_warm, as_of_utc=as_of, last_served=None, quota_usdc=4.0
+    ) < key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    unseen_overnight = _rot_scope("KORD", "America/Chicago")
+    assert key(
+        unseen_overnight, as_of_utc=as_of, last_served=None, quota_usdc=4.0
+    ) > key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+
+    # Tier 1 before tier 2: the day being decided beats the day being planned.
+    future = _rot_scope("ZUUU", "Asia/Shanghai", day_state="not_started")
+    assert key(overnight, as_of_utc=as_of, last_served=served, quota_usdc=4.0) < (
+        key(future, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    )
+
+    # New evidence outranks none: same station, same hour, only the envelope
+    # differs.  This is the term that lets the rotation skip a scope whose
+    # recompute would reproduce the plan it already has.
+    rolled = _rot_scope("ZUUU", "Asia/Shanghai", envelope_id="env-2")
+    assert key(rolled, as_of_utc=as_of, last_served=served, quota_usdc=4.0) < (
+        key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    )
+    # A moved book counts, but for less than a new probability.
+    moved = _rot_scope(
+        "ZUUU", "Asia/Shanghai", observed_at="2026-08-12T06:19:00Z"
+    )
+    warm_key = key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    moved_key = key(moved, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    rolled_key = key(rolled, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    assert rolled_key < moved_key < warm_key
+
+    # Capital it cannot deploy is capital it cannot act on: an unfunded
+    # station ranks below a funded one with identical evidence.
+    assert key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0) < (
+        key(warm, as_of_utc=as_of, last_served=served, quota_usdc=0.0)
+    )
+
+    # Among equals the longest unserved wins, which is the anti-starvation
+    # guarantee.
+    stale = {**served, "served_at_utc": "2026-08-12T01:00:00Z"}
+    assert key(warm, as_of_utc=as_of, last_served=stale, quota_usdc=4.0) < (
+        key(warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    )
+
+    # An unreadable timezone is ordered low, never raised: refusing to
+    # classify one scope would hold up every scope behind it.
+    broken = _rot_scope("XXXX", "Not/AZone")
+    assert Worker._warm_window_weight(broken, as_of_utc=as_of) == 0.05
+
+
+def test_warm_window_matches_where_highs_are_actually_set() -> None:
+    """10:00-17:00 local, which is where 80% of measured highs landed."""
+
+    from bayes_basket_target.production_worker import (
+        TargetProductionWorker as Worker,
+    )
+
+    def _weight(utc):
+        return Worker._warm_window_weight(
+            _rot_scope("ZUUU", "Asia/Shanghai"), as_of_utc=utc
+        )
+
+    # The window is not a plateau: a plateau tied thirty-one stations at
+    # 1.0 and handed the ordering back to the alphabet, putting 10:09 ahead
+    # of 15:09.  Weight follows the measured share of highs per hour.
+    assert _weight("2026-08-12T07:00:00Z") == pytest.approx(1.0)  # 15:00
+    assert _weight("2026-08-12T06:00:00Z") > _weight(
+        "2026-08-12T02:00:00Z"
+    )                                                 # 14:00 beats 10:00
+    assert _weight("2026-08-12T02:00:00Z") < 0.3      # 10:00 is thin
+    # The afternoon tail is fatter than the morning approach, as measured.
+    assert _weight("2026-08-12T09:00:00Z") > _weight(
+        "2026-08-12T03:00:00Z"
+    )                                                 # 17:00 beats 11:00
+    # Outside decays, and midnight is measured to the nearer edge rather
+    # than across the whole clock.
+    assert _weight("2026-08-12T11:00:00Z") < 0.2     # 19:00, thin tail
+    assert _weight("2026-08-11T18:00:00Z") <= 0.05   # 02:00, the floor
+    # Local midnight outranks 02:00 because it is measured that way: 3.4% of
+    # observed highs landed in the 00:00 hour against 0.6% at 02:00, which
+    # is stations whose warm hours straddle their own settlement boundary.
+    # A decay curve drawn from the window edges would have said the
+    # opposite, which is the reason to take the shape from the data.
+    assert _weight("2026-08-11T16:00:00Z") > _weight("2026-08-11T18:00:00Z")
+
+
+def test_standing_blocker_is_written_once_and_on_every_change() -> None:
+    """A blocker that has not changed is not a new fact.
+
+    Every swept scope used to append a cycle, a decision and a version
+    vector whatever it concluded: 29,566 of 29,910 cycles were empty shells
+    saying nothing had happened again, and that amplification -- not the
+    quote snapshots -- is what drove the store into its size ceiling.
+    """
+
+    from bayes_basket_target.production_worker import (
+        TargetProductionWorker as Worker,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions("
+        "station_id TEXT, event_date TEXT, decided_state TEXT,"
+        "reason_codes_json TEXT, created_at TEXT)"
+    )
+    worker = object.__new__(Worker)
+    worker.commit_conn = conn
+
+    def _standing(codes):
+        return worker._standing_blocker_matches(
+            station_id="ZUUU", event_date="2026-08-12", reason_codes=codes,
+        )
+
+    def _record(state, codes, at):
+        conn.execute(
+            "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?)",
+            ("ZUUU", "2026-08-12", state, json.dumps(codes), at),
+        )
+
+    # Nothing recorded yet: the first occurrence always writes.
+    assert _standing(["quote_expired"]) is None
+
+    _record("blocked", ["quote_expired"], "2026-08-12T06:00:00Z")
+    # The same blocker standing is suppressed, and says since when.
+    assert _standing(["quote_expired"]) == "2026-08-12T06:00:00Z"
+    # A different blocker is a transition and must be written.
+    assert _standing(["db_locked"]) is None
+    # So is the same set in a different order -- reason codes are ordered,
+    # and a reordering means a different compile path reached it.
+    _record("blocked", ["a", "b"], "2026-08-12T06:01:00Z")
+    assert _standing(["a", "b"]) == "2026-08-12T06:01:00Z"
+    assert _standing(["b", "a"]) is None
+
+    # A blocker that lifted and returned is a transition both ways: the
+    # latest decision is what is compared against, not any earlier one.
+    _record("prepared", [], "2026-08-12T06:02:00Z")
+    assert _standing(["a", "b"]) is None
+
+    # An unreadable ledger writes rather than suppresses: losing a
+    # transition costs the audit trail, an extra row costs a row.
+    broken = object.__new__(Worker)
+    broken.commit_conn = sqlite3.connect(":memory:")
+    assert broken._standing_blocker_matches(
+        station_id="ZUUU", event_date="2026-08-12",
+        reason_codes=["quote_expired"],
+    ) is None
+
+
+def test_sweep_merges_one_event_day_and_refuses_to_mix_days() -> None:
+    """One cycle ingests every open scope of the day, not one of them.
+
+    Serving a single scope per cycle meant a full pass over 33 stations took
+    five to eight minutes against a sixty-second quote lease, so a book had
+    expired several times over before its turn came round -- which is where
+    the recurring ``production_quote_expired`` came from.
+    """
+
+    from bayes_basket_target.production_worker import (
+        _manifest_station_allowlist,
+        _merge_scope_manifests,
+    )
+
+    def _scope_manifest(station, tokens, event_date="2026-08-12"):
+        return {
+            "scope_key": f"{station}|{event_date}",
+            "event_date": event_date,
+            "event_day_state": "open",
+            "target_timezone": "Asia/Shanghai",
+            "station_scope": {
+                "mode": "allowlist", "station_ids": [station],
+            },
+            "quotes_by_token": {
+                token: {"best_ask": 0.1} for token in tokens
+            },
+            "quote_side_state_by_token": {
+                token: "two_sided" for token in tokens
+            },
+            "market_registry_scope": {
+                "event_date": event_date,
+                "markets_by_token": {
+                    token: {"outcome": token} for token in tokens
+                },
+            },
+        }
+
+    merged = _merge_scope_manifests([
+        _scope_manifest("ZUUU", ["t1", "t2"]),
+        _scope_manifest("ZUCK", ["t3"]),
+    ])
+    # Union of stations, books and registries; nothing recomputed.
+    assert _manifest_station_allowlist(merged) == ("ZUCK", "ZUUU")
+    assert set(merged["quotes_by_token"]) == {"t1", "t2", "t3"}
+    assert set(
+        merged["market_registry_scope"]["markets_by_token"]
+    ) == {"t1", "t2", "t3"}
+    assert merged["subscribed_token_count"] == 3
+    # The merged document is its own thing, and names what went into it
+    # rather than wearing one member's identity.
+    assert merged["scope_key"] == "SWEEP|2026-08-12"
+    assert merged["swept_scope_keys"] == [
+        "ZUCK|2026-08-12", "ZUUU|2026-08-12",
+    ]
+    # A single-station sweep is passed through untouched, so the common
+    # case keeps its original identity and hash.
+    single = _scope_manifest("ZUUU", ["t1"])
+    assert _merge_scope_manifests([single]) == single
+
+    # Downstream reads one event_date off the merged document, so a mixed
+    # set would silently attribute one day's books to another.
+    with pytest.raises(
+        ContractError, match="resident_target_ws_sweep_scope_not_one_day"
+    ):
+        _merge_scope_manifests([
+            _scope_manifest("ZUUU", ["t1"]),
+            _scope_manifest("ZUCK", ["t2"], event_date="2026-08-13"),
+        ])
+    with pytest.raises(
+        ContractError, match="resident_target_ws_sweep_manifest_empty"
+    ):
+        _merge_scope_manifests([])

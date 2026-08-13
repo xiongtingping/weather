@@ -410,6 +410,22 @@ def test_stale_or_damaged_high_stage_blocks_without_lower_stage_fallback():
         **_envelope(stage="P1"),
         "probabilities": {"36": 0.2, "37": 0.5, "38": 0.4},
     }
+    # An hour past its cadence the P1 still holds authority.  The P0 here is
+    # fresh until the 27th, so this is exactly the shape where a fallback
+    # would look harmless -- and it still must not happen.  This runs on its
+    # own connection so the blocked paths below can assert that nothing at all
+    # was written.
+    with sqlite3.connect(":memory:") as held_conn:
+        apply_production_ssot_schema(held_conn)
+        held = materialize_resident_regimes(
+            held_conn,
+            envelopes=[p0, stale_p1],
+            registry_timezones=registry,
+            evaluation_at_utc="2026-07-26T19:00:00Z",
+            created_at_utc="2026-07-26T19:00:00Z",
+        )
+        assert held["selected"][0]["stage"] == "P1"
+
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)
         with pytest.raises(
@@ -420,8 +436,8 @@ def test_stale_or_damaged_high_stage_blocks_without_lower_stage_fallback():
                 conn,
                 envelopes=[p0, stale_p1],
                 registry_timezones=registry,
-                evaluation_at_utc="2026-07-26T19:00:00Z",
-                created_at_utc="2026-07-26T19:00:00Z",
+                evaluation_at_utc="2026-07-26T21:00:01Z",
+                created_at_utc="2026-07-26T21:00:01Z",
             )
         with pytest.raises(ContractError, match="probability_vector_not_normalized"):
             materialize_resident_regimes(

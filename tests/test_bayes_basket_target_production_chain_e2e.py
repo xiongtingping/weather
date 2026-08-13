@@ -733,3 +733,276 @@ def test_optimizer_hold_remains_a_compiled_no_live_decision() -> None:
     assert compiled["status"] == "hold"
     assert compiled["live_submit_authorized"] is False
     assert compiled["boundary"]["calls_order_gateway"] is False
+
+
+def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
+    """P0 opens a position on the ensemble alone: no METAR, no hard bound.
+
+    The commit must root on the stage evidence, persist that evidence in the
+    same transaction, keep every intent inside the model envelope, and stay
+    no-live end to end.
+    """
+
+    envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
+    p0_raw = envelopes[0].to_dict()
+    # A pre-observation stage may not carry observed-high lineage: the shared
+    # fixture writes the P1 shape, so the observation-borne keys are stripped
+    # rather than copied into a stage that has no observation yet.
+    observation_only = {
+        "canonical_observation_event_id",
+        "truth_observation_revision_content_sha256",
+        "canonical_observation_committed_at_utc",
+        "hard_bound_id",
+        "reported_high_c",
+        "reported_hard_lower_bound",
+        "reported_high_bucket",
+        "reported_high_ordinal",
+        "hard_excluded_buckets",
+        "source_lane",
+        "report_type",
+    }
+    p0_raw["lineage"] = {
+        key: value
+        for key, value in p0_raw["lineage"].items()
+        if key not in observation_only
+    }
+    p0_raw["lineage"].update({
+        "native_selection_evidence_sha256": "b" * 64,
+        "native_cross_activation_sha256": "c" * 64,
+        "native_cross_ensemble_artifact_sha256": "d" * 64,
+        "bucket_intervals_c_json": json.dumps({
+            "37": [36.5, 37.5],
+            "38": [37.5, 38.5],
+            "39": [38.5, None],
+        }),
+    })
+    p0 = ProbabilityEnvelope.from_mapping(p0_raw)
+    delta_raw = _delta_v2_policy().to_dict()
+    delta_raw.pop("content_sha256", None)
+    delta_raw["stage"] = "P0"
+    delta_raw["content_sha256"] = content_sha256(delta_raw)
+    delta_policy = DeltaV2PolicyArtifact.from_mapping(delta_raw)
+    # The shared fixture activations are P1-scoped; the opening stage resolves
+    # its own scope, so clone them onto P0.
+    from bayes_basket_target import PolicyArtifact, StationBasketPolicyActivation
+    p0_artifacts = {}
+    for item in artifacts.values():
+        clone = PolicyArtifact.create(
+            artifact_id=item.artifact_id,
+            family=item.family,
+            station_id=item.station_id,
+            stage="P0",
+            season_bin=item.season_bin,
+            maturity_bin=item.maturity_bin,
+            liquidity_bin=item.liquidity_bin,
+            strategy_version=item.strategy_version,
+            theta_local=dict(item.theta_local),
+            effective_sample_n=item.effective_sample_n,
+            kappa=item.kappa,
+            trained_through_utc=item.trained_through_utc,
+            valid_from_utc=item.valid_from_utc,
+            valid_until_utc=item.valid_until_utc,
+        )
+        p0_artifacts[clone.artifact_id] = clone
+    p0_activations = [
+        StationBasketPolicyActivation.create(
+            activation_id=item.activation_id,
+            station_id=item.station_id,
+            stage="P0",
+            season_bin=item.season_bin,
+            maturity_bin=item.maturity_bin,
+            liquidity_bin=item.liquidity_bin,
+            strategy_version=item.strategy_version,
+            global_prior_id=item.global_prior_id,
+            target_artifact_id=item.target_artifact_id,
+            reserve_artifact_id=item.reserve_artifact_id,
+            cadence_artifact_id=item.cadence_artifact_id,
+            fallback_families=list(item.fallback_families),
+            generation=item.generation,
+            valid_from_utc=item.valid_from_utc,
+            valid_until_utc=item.valid_until_utc,
+            activated_at_utc=item.activated_at_utc,
+        )
+        for item in activations
+    ]
+    compiled = compile_production_plan(
+        probability_envelopes=[p0],
+        market_snapshot=market,
+        policy_activations=p0_activations,
+        global_priors=priors,
+        policy_artifacts=p0_artifacts,
+        evaluation_at_utc=DECISION,
+        season_bin="summer",
+        maturity_bin="d1",
+        liquidity_bin="liquid",
+        strategy_version="target-v1",
+        base_policy={"clip_max_notional_usdc": 3.0},
+        delta_v2_policy=delta_policy,
+        delta_v2_fill_resolver=_fill_resolver,
+        regime_artifact=build_regime_artifact(p0),
+        cash_phase_policy=cash_policy,
+        cash_phase_input=_cash_input(cash_policy),
+        resource_probe_ok=True,
+    )
+    compiled["production_inputs"] = {
+        "strategy_version": "target-v1",
+        "season_bin": "summer",
+        "probability_maturity_bin": "d1",
+        "liquidity_bin": "liquid",
+        "cash_phase_policy_version": cash_policy.policy_version,
+        "cash_phase_policy_sha256": cash_policy.content_sha256,
+        "delta_v2_artifact_id": delta_policy.artifact_id,
+        "delta_v2_artifact_sha256": delta_policy.content_sha256,
+        "delta_v2_fill_distribution_artifact_sha256": (
+            delta_policy.fill_distribution_artifact_sha256
+        ),
+        "delta_v2_resolution_blocker": None,
+    }
+    assert compiled["status"] == "ready_no_live"
+    assert compiled["plan"]["lineage"]["probability_stage"] == "P0"
+    eligible_count = len([
+        row for row in compiled["order_sizing_decisions"]
+        if row["eligible"] and row["candidate_present"]
+    ])
+    assert eligible_count > 1
+
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        install_canonical_v12(conn)
+        apply_target_market_registry_schema(conn)
+        conn.execute(
+            "INSERT INTO basket_target_market_registry_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (
+                "1" * 64, "reported_trajectory_market_registry_v1",
+                "shared_live_registry_export_only", DECISION,
+                "/read-only/e2e.db", 1, DECISION, "2" * 64,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO basket_target_market_registry(
+              snapshot_sha256,slug,event_date,outcome,city_slug,station_id,
+              settlement_timezone,settlement_unit,source_lane,source_eligible,
+              source_block_reason,resolution_url,rules_sha256,yes_token,
+              no_token,market_active,market_accepting_orders,registry_json,
+              refreshed_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "1" * 64, "e2e-market", "2026-07-23", "38", "chengdu",
+                "ZUUU", "Asia/Shanghai", "C", "awc", 1, "", "",
+                "3" * 64, "yes-38", "no-38", 1, 1, "{}", DECISION,
+            ),
+        )
+        p0_stored = p0.to_dict()
+        conn.execute(
+            """
+            INSERT INTO basket_probability_envelope VALUES(
+              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            )
+            """,
+            (
+                p0.checkpoint_id, p0.stage, p0.checkpoint_id,
+                p0.station_id, p0.event_date, p0.settlement_timezone,
+                p0.decision_at_utc, p0.fresh_until_utc,
+                json.dumps(p0_stored["bucket_ordinals"]),
+                json.dumps(p0_stored["probabilities"]),
+                p0.posterior_version, p0.posterior_sha256,
+                p0.bridge_sha256, json.dumps(p0_stored["lineage"]),
+                p0.content_sha256, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+                """
+                INSERT INTO basket_official_ws_snapshot VALUES(
+                  ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                )
+                """,
+            (
+                market["snapshot_id"], market["market_id"],
+                market["station_id"], market["event_date"],
+                    market["settlement_timezone"], market["sequence"],
+                    market["observed_at"], market["quote_version"],
+                    market["quote_observed_at"], market["quote_expires_at"],
+                    "7" * 64, "OFFICIAL_CLOB_WS",
+                    market["inventory_version"], market["order_state_version"],
+                market["remaining_budget_usdc"],
+                json.dumps(market["buckets"]),
+                json.dumps(_cash_input(cash_policy).to_dict()),
+                "4" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO basket_confirmed_inventory_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "e2e-inventory-snapshot", "ZUUU", "2026-07-23",
+                market["inventory_version"], market["observed_at"], 1,
+                "{}", "5" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO basket_order_state_snapshot "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "e2e-order-state-snapshot", "ZUUU", "2026-07-23",
+                market["order_state_version"], market["observed_at"], 1,
+                "{}", "6" * 64, "COMMITTED", DECISION,
+            ),
+        )
+        initialize_capital_pool(
+            conn, balance_usdc=30.0, capital_epoch_id="e2e-capital-v1", updated_at_utc=DECISION
+        )
+
+        first = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            awc_observation_contract=None,
+            truth_observation_revision_content_sha256="",
+            bound=None,
+            created_at_utc=DECISION,
+        )
+        assert first["state"] == "committed"
+        assert first["receipt"]["intent_count"] == eligible_count
+        assert first["orders_submitted"] == 0
+        assert first["places_orders"] is False
+        assert first["calls_order_gateway"] is False
+        assert first["live_submit_authorized"] is False
+
+        # The evidence root and its soft bound were persisted atomically with
+        # the cycle, and no METAR-shaped observation fact was fabricated.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_stage_evidence_roots "
+            "WHERE probability_stage='P0' AND position_role='OPEN'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_stage_bound_facts "
+            "WHERE bound_kind='MODEL_ENVELOPE_SOFT'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_observation_facts"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents "
+            "WHERE state='prepared' AND live_submit_authorized=0"
+        ).fetchone()[0] == eligible_count
+
+        # Replaying the identical candidate must not open a second position.
+        replay = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            awc_observation_contract=None,
+            truth_observation_revision_content_sha256="",
+            bound=None,
+            created_at_utc=DECISION,
+        )
+        assert replay["receipt"]["cycle_id"] == first["receipt"]["cycle_id"]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_cycles"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_stage_evidence_roots"
+        ).fetchone()[0] == 1

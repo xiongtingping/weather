@@ -654,3 +654,388 @@ def test_official_native_p0_rejects_open_meteo_transport_forgery() -> None:
             forward_packet=forged,
             decision_at_utc="2026-07-01T13:00:00Z",
         )
+
+
+def test_taf_envelope_witness_time_precedence_and_absence() -> None:
+    """The envelope may only cite a TAF issued before the decision instant."""
+
+    from bayes_basket_target.native_ensemble_p0 import _taf_envelope_witness
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_forward_taf_capture ("
+        "station_id TEXT, event_date TEXT, tx_c REAL, issued_at_utc TEXT,"
+        "revision_sequence INTEGER, content_sha256 TEXT, revision_id TEXT)"
+    )
+    rows = [
+        ("ZUUU", "2026-08-12", 34.0, "2026-08-11T09:00:00Z", 3, "a" * 64, "r3"),
+        ("ZUUU", "2026-08-12", 35.0, "2026-08-11T21:02:00Z", 5, "b" * 64, "r5"),
+        ("ZUUU", "2026-08-12", None, "2026-08-11T23:00:00Z", 6, "c" * 64, "r6"),
+        ("KLGA", "2026-08-12", None, "2026-08-11T21:00:00Z", 1, "d" * 64, "r1"),
+    ]
+    conn.executemany(
+        "INSERT INTO calibration_forward_taf_capture VALUES(?,?,?,?,?,?,?)",
+        rows,
+    )
+    late = _taf_envelope_witness(
+        conn, station_id="ZUUU", event_date="2026-08-12",
+        decision_at_utc="2026-08-12T01:00:00Z",
+    )
+    assert late is not None and late["tx_c"] == "35"
+    assert late["capture_content_sha256"] == "b" * 64
+    early = _taf_envelope_witness(
+        conn, station_id="ZUUU", event_date="2026-08-12",
+        decision_at_utc="2026-08-11T10:00:00Z",
+    )
+    assert early is not None and early["tx_c"] == "34"
+    assert _taf_envelope_witness(
+        conn, station_id="ZUUU", event_date="2026-08-12",
+        decision_at_utc="2026-08-11T08:00:00Z",
+    ) is None
+    assert _taf_envelope_witness(
+        conn, station_id="KLGA", event_date="2026-08-12",
+        decision_at_utc="2026-08-12T01:00:00Z",
+    ) is None
+    no_table = sqlite3.connect(":memory:")
+    assert _taf_envelope_witness(
+        no_table, station_id="ZUUU", event_date="2026-08-12",
+        decision_at_utc="2026-08-12T01:00:00Z",
+    ) is None
+
+
+def test_taf_point_archive_joins_packet_with_cycle_label_waiver() -> None:
+    """A TAF point archive enters the packet under its scope label.
+
+    The label is not the issuance hour -- TAF issue instants jitter across
+    the 6h UTC grid -- so only the temporal ordering against the query time
+    is enforced for point systems, while model archives keep the strict
+    init-hour==cycle identity.
+    """
+
+    from bayes_basket_target.official_native_forward_packet import (
+        OFFICIAL_TAF_TX_MULTISTATION_SCHEMA,
+    )
+
+    models = [
+        _archive(
+            system_id="ECMWF_IFS_TEST", family_id="ECMWF",
+            schema=ECMWF_MULTISTATION_SCHEMA, run_cycle="18Z",
+            run_init_utc="2026-06-30T18:00:00Z",
+            query_at_utc="2026-07-01T02:00:00Z",
+        ),
+        _archive(
+            system_id="NOAA_GEFS_TEST", family_id="NOAA_GEFS",
+            schema=NOAA_GEFS_MULTISTATION_SCHEMA, run_cycle="18Z",
+            run_init_utc="2026-06-30T18:00:00Z",
+            query_at_utc="2026-07-01T02:00:00Z",
+        ),
+    ]
+    member = {
+        "member_id": "TX_POINT",
+        "member_role": "CONTROL",
+        "raw_tmax_c": 20.0,
+    }
+    model_intervals = models[0]["captures"][0]["bucket_intervals"]
+    capture_identity = {
+        "station_id": "TEST",
+        "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+        "independence_family_id": "HUMAN_FORECASTER",
+        "event_date": "2026-07-02",
+        "settlement_timezone": "Etc/UTC",
+        "run_cycle": "12Z",
+        "archive_lead_bucket": "d2",
+        "member_count": 1,
+        "members": [member],
+        "member_set_sha256": content_sha256([member]),
+        "bucket_intervals": model_intervals,
+        "bucket_contract_sha256": content_sha256(model_intervals),
+        "source_capture_content_sha256": "d" * 64,
+    }
+    capture = {
+        **capture_identity,
+        "content_sha256": content_sha256(capture_identity),
+    }
+    taf_identity = {
+        "schema": OFFICIAL_TAF_TX_MULTISTATION_SCHEMA,
+        "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+        "independence_family_id": "HUMAN_FORECASTER",
+        "event_date": "2026-07-02",
+        "archive_lead_bucket": "d2",
+        # The label (12Z) deliberately disagrees with the issuance hour
+        # (21:02Z): that is the exact waiver under test.
+        "run_cycle": "12Z",
+        "run_init_utc": "2026-06-30T21:02:00Z",
+        "archive_query_at_utc": "2026-07-01T02:00:00Z",
+        "member_count": 1,
+        "training_only": True,
+        "holdout_eligible": False,
+        "captures": [capture],
+    }
+    taf_archive = {
+        **taf_identity,
+        "content_sha256": content_sha256(taf_identity),
+    }
+    packet = build_official_native_forward_packet(
+        archives=[*models, taf_archive],
+        station_id="TEST",
+    )
+    assert "OFFICIAL_AIRPORT_TAF_TX" in packet["run_cycle_by_system"]
+    assert packet["run_cycle_by_system"]["OFFICIAL_AIRPORT_TAF_TX"] == "12Z"
+    assert (
+        packet["run_init_utc_by_system"]["OFFICIAL_AIRPORT_TAF_TX"]
+        == "2026-06-30T21:02:00Z"
+    )
+    taf_entries = [
+        entry for entry in packet["systems"]
+        if entry["ensemble_system_id"] == "OFFICIAL_AIRPORT_TAF_TX"
+    ]
+    assert len(taf_entries) == 1
+    assert len(taf_entries[0]["members"]) == 1
+    assert taf_entries[0]["members"][0]["raw_tmax_c"] == 20.0
+
+    # A model archive gets no such waiver: shifting its init hour off its
+    # cycle must still refuse.
+    broken_model_identity = {
+        key: value
+        for key, value in models[0].items()
+        if key != "content_sha256"
+    }
+    broken_model_identity["run_init_utc"] = "2026-06-30T21:02:00Z"
+    broken_model = {
+        **broken_model_identity,
+        "content_sha256": content_sha256(broken_model_identity),
+    }
+    with pytest.raises(
+        ContractError,
+        match="official_native_forward_run_cycle_lineage_mismatch",
+    ):
+        build_official_native_forward_packet(
+            archives=[broken_model, models[1], taf_archive],
+            station_id="TEST",
+        )
+
+
+def test_taf_projection_archives_only_final_pre_anchor_issuance() -> None:
+    """The archive keeps the FINAL pre-anchor TAF, never the first amendment.
+
+    The member archive is append-only with one row per (station, day, lead),
+    so projecting before the anchor would freeze whichever amendment arrived
+    first and later revisions would be silently ignored -- training would
+    then grade an issuance live serving never uses.
+    """
+
+    from bayes_basket_target.native_ensemble_training_facts import (
+        project_taf_point_member_runs,
+    )
+    from tests.pr12_atomic_test_support import install_canonical_v12
+    from bayes_basket_target.ssot import apply_production_ssot_schema
+
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    install_canonical_v12(conn)
+    conn.execute(
+        "INSERT INTO calibration_station_registry("
+        "station_id,icao_code,city_label,timezone_name,source_lane,"
+        "settlement_definition,registry_version,source_role,content_sha256"
+        ") VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            "ZUUU", "ZUUU", "Chengdu", "Asia/Shanghai", "AWC",
+            "daily_high_local_midnight_to_midnight", "v1",
+            "official", "e" * 64,
+        ),
+    )
+    def _capture(tx: float, issued: str, seq: int) -> None:
+        conn.execute(
+            "INSERT INTO calibration_forward_taf_capture("
+            "taf_capture_id,station_id,event_date,settlement_timezone,"
+            "revision_id,revision_kind,revision_sequence,issued_at_utc,"
+            "received_at_utc,provider_available_at_utc,valid_from_utc,"
+            "valid_until_utc,source_object_sha256,source_capture_sha256,"
+            "tx_c,tx_available,cloud_cover_fraction,"
+            "precipitation_probability,wind_speed_mps,source_class,"
+            "authority_scope,content_sha256) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"cap-{seq}", "ZUUU", "2026-08-20", "Asia/Shanghai",
+                f"rev-{seq}", "TAF", seq, issued, issued, issued,
+                "2026-08-20T00:00:00Z", "2026-08-21T00:00:00Z",
+                "a" * 64, "b" * 64, tx, 1, 0.0, 0.0, 1.0,
+                "official_forward_native_receipt",
+                "PRODUCTION_NO_LIVE_ONLY", f"{seq:064d}",
+            ),
+        )
+    _capture(33.0, "2026-08-19T09:00:00Z", 1)
+    # 15:00Z is 23:00 local on the 19th: still the day-before (d1), the
+    # later amendment of the same pre-day window.
+    _capture(35.0, "2026-08-19T15:00:00Z", 2)
+
+    # Before the d1 anchor (event-day local midnight = 16:00Z on 08-19):
+    # nothing may be archived, however many amendments exist.
+    early = project_taf_point_member_runs(
+        conn, as_of_utc="2026-08-19T12:00:00Z"
+    )
+    assert early["wrote_count"] == 0
+    assert early["skipped"]["anchor_not_passed"] >= 1
+
+    # After the anchor the final amendment (TX 35, 21:00Z) is the row.
+    final = project_taf_point_member_runs(
+        conn, as_of_utc="2026-08-19T23:00:00Z"
+    )
+    assert final["wrote_count"] == 1
+    row = conn.execute(
+        "SELECT raw_tmax_c,native_run_init_utc "
+        "FROM calibration_native_ensemble_historical_member_run "
+        "WHERE ensemble_system_id='OFFICIAL_AIRPORT_TAF_TX' "
+        "AND station_id='ZUUU' AND target_local_date='2026-08-20'"
+    ).fetchone()
+    assert row == (35.0, "2026-08-19T15:00:00Z")
+
+
+def test_forward_taf_ingest_reports_fresh_scopes_only_for_new_rows() -> None:
+    """The ingest names newly written scopes; replays name nothing.
+
+    The arrival-triggered recompile keys off this: a fresh issuance must wake
+    its scope's packet refresh exactly once, and a replayed inbox must not
+    keep re-waking it.
+    """
+
+    from bayes_basket_target.native_ensemble_training_facts import (
+        ingest_forward_taf_inbox,
+    )
+    from bayes_basket_target.ssot import apply_production_ssot_schema
+    from tests.pr12_atomic_test_support import install_canonical_v12
+
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    install_canonical_v12(conn)
+    conn.execute(
+        "INSERT INTO calibration_station_registry("
+        "station_id,icao_code,city_label,timezone_name,source_lane,"
+        "settlement_definition,registry_version,source_role,content_sha256"
+        ") VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            "ZUUU", "ZUUU", "Chengdu", "Asia/Shanghai", "AWC",
+            "daily_high_local_midnight_to_midnight", "v1",
+            "official", "e" * 64,
+        ),
+    )
+    revision = {
+        "schema": "bayes_basket_forecast_revision_v1",
+        "revision_id": "taf-zuuu-fresh-1",
+        "station_id": "ZUUU",
+        "event_date": "2026-08-20",
+        "revision_kind": "TAF",
+        "sequence": 1,
+        "issued_at_utc": "2026-08-19T09:00:00Z",
+        "received_at_utc": "2026-08-19T09:05:00Z",
+        "valid_from_utc": "2026-08-19T09:00:00Z",
+        "valid_until_utc": "2026-08-20T18:00:00Z",
+        "source_object_sha256": "c" * 64,
+        "supersedes_revision_id": None,
+    }
+    capture_identity = {
+        "schema": "bayes_basket_target_forward_taf_capture_v1",
+        "source_class": "official_forward_native_receipt",
+        "station_id": "ZUUU",
+        "event_date": "2026-08-20",
+        "settlement_timezone": "Asia/Shanghai",
+        "forecast_revision": revision,
+        "taf_fields": {
+            "tx_c": 34.0,
+            "cloud_cover_fraction": 0.25,
+            "precipitation_probability": 0.1,
+            "wind_speed_mps": 4.0,
+        },
+        "boundary": {
+            "native_local_receipt": True,
+            "retrospective_replay_only": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        },
+    }
+    inbox = {
+        "schema": "bayes_basket_target_taf_revision_inbox_v1",
+        "captures": [{
+            **capture_identity,
+            "content_sha256": content_sha256(capture_identity),
+        }],
+    }
+    first = ingest_forward_taf_inbox(conn, inbox)
+    assert first["wrote_count"] == 1
+    assert first["fresh_scopes"] == [
+        {"station_id": "ZUUU", "event_date": "2026-08-20"}
+    ]
+    replay = ingest_forward_taf_inbox(conn, inbox)
+    assert replay["wrote_count"] == 0
+    assert replay["fresh_scopes"] == []
+
+
+def test_stage_attribution_taf_only_advance_is_p0m() -> None:
+    """Same model runs + newer TAF issuance => P0-M; anything else => P0."""
+
+    from bayes_basket_target.native_ensemble_p0 import (
+        _stage_for_native_compile,
+    )
+
+    runs = {
+        "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-11T18:00:00Z",
+        "NOAA_GEFS_05": "2026-08-11T18:00:00Z",
+    }
+    predecessor = {
+        "run_init_utc_by_system_json": json.dumps(runs),
+        "taf_envelope_witness_json": json.dumps(
+            {"issued_at_utc": "2026-08-11T15:06:00Z"}
+        ),
+    }
+    fresh_taf = {"issued_at_utc": "2026-08-11T21:02:00Z"}
+
+    # The confirmation case: models identical, forecaster moved.
+    assert _stage_for_native_compile(
+        predecessor_lineage=predecessor,
+        run_init_utc_by_system=runs,
+        taf_witness=fresh_taf,
+    ) == "P0-M"
+
+    # A model run moved: the model stage owns the update even with new TAF.
+    assert _stage_for_native_compile(
+        predecessor_lineage=predecessor,
+        run_init_utc_by_system={
+            **runs, "NOAA_GEFS_05": "2026-08-12T00:00:00Z",
+        },
+        taf_witness=fresh_taf,
+    ) == "P0"
+
+    # Same TAF as the predecessor saw: replaying is not a revision.
+    assert _stage_for_native_compile(
+        predecessor_lineage=predecessor,
+        run_init_utc_by_system=runs,
+        taf_witness={"issued_at_utc": "2026-08-11T15:06:00Z"},
+    ) == "P0"
+
+    # First compile, no TAF, or unreadable predecessor: opening stage.
+    assert _stage_for_native_compile(
+        predecessor_lineage=None,
+        run_init_utc_by_system=runs,
+        taf_witness=fresh_taf,
+    ) == "P0"
+    assert _stage_for_native_compile(
+        predecessor_lineage=predecessor,
+        run_init_utc_by_system=runs,
+        taf_witness=None,
+    ) == "P0"
+    assert _stage_for_native_compile(
+        predecessor_lineage={
+            "run_init_utc_by_system_json": "not json",
+        },
+        run_init_utc_by_system=runs,
+        taf_witness=fresh_taf,
+    ) == "P0"
+
+    # Predecessor without a witness, fresh TAF now: the forecaster arrived.
+    assert _stage_for_native_compile(
+        predecessor_lineage={
+            "run_init_utc_by_system_json": json.dumps(runs),
+        },
+        run_init_utc_by_system=runs,
+        taf_witness=fresh_taf,
+    ) == "P0-M"

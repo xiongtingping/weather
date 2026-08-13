@@ -693,3 +693,73 @@ def test_real_book_low_high_low_appends_exactly_one_snapshot_per_event(
             (1, "2026-07-23T05:00:01Z"),
             (2, "2026-07-23T05:00:02Z"),
         ]
+
+
+def test_a_sibling_book_proves_the_market_tick_for_a_whole_cent_bucket() -> None:
+    # The live ZUUU shape: six outcomes quoting only whole cents infer 0.01
+    # while five siblings quote sub-cent prices that prove the market is on
+    # 0.001.  The coarse answer costs those six a tick of Maker
+    # competitiveness on every order they place.
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    whole_cent_book = {
+        "asks": [{"price": 0.28, "size": 100.0}],
+        "bids": [{"price": 0.27, "size": 100.0}],
+    }
+    asks = [{"price": 0.28, "shares": 100.0}]
+    bids = [{"price": 0.27, "shares": 100.0}]
+
+    alone, alone_source = derive_official_ws_price_tick_size(
+        whole_cent_book, asks=asks, bids=bids
+    )
+    with_siblings, scope_source = derive_official_ws_price_tick_size(
+        whole_cent_book,
+        asks=asks,
+        bids=bids,
+        scope_prices=[0.28, 0.27, 0.004, 0.009],
+    )
+
+    assert alone == 0.01
+    assert alone_source == "OFFICIAL_WS_BOOK_GRID_DERIVED"
+    assert with_siblings == 0.001
+    assert scope_source == "OFFICIAL_WS_SCOPE_GRID_DERIVED"
+
+
+def test_scope_evidence_never_selects_a_tick_the_market_disproves() -> None:
+    # Widening the evidence may only ever refine, never permit: a scope whose
+    # every level is on whole cents still resolves 0.01.
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    book = {
+        "asks": [{"price": 0.28, "size": 100.0}],
+        "bids": [{"price": 0.27, "size": 100.0}],
+    }
+
+    tick, _ = derive_official_ws_price_tick_size(
+        book,
+        asks=[{"price": 0.28, "shares": 100.0}],
+        bids=[{"price": 0.27, "shares": 100.0}],
+        scope_prices=[0.28, 0.27, 0.05, 0.12],
+    )
+
+    assert tick == 0.01
+
+
+def test_an_explicit_exchange_tick_still_outranks_inference() -> None:
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    tick, source = derive_official_ws_price_tick_size(
+        {"tick_size": 0.01, "asks": [], "bids": []},
+        asks=[{"price": 0.28, "shares": 100.0}],
+        bids=[{"price": 0.27, "shares": 100.0}],
+        scope_prices=[0.004],
+    )
+
+    assert tick == 0.01
+    assert source == "OFFICIAL_WS_TICK_SIZE"

@@ -411,7 +411,22 @@ def resolve_reconciliation(
     notional = _number("filled_notional_usdc", filled_notional_usdc)
     resolved_at = _timestamp("resolved_at_utc", resolved_at_utc)
     with _transaction(conn):
-        _intent_state, _bucket, requested_size, exchange_order_id, _action = _intent_row(conn, intent_id)
+        _intent_state, _bucket, requested_size, _token_id, _action = _intent_row(conn, intent_id)
+        # An intent carries a token, never an exchange order id.  The only
+        # place that id exists is the reconciliation row an earlier event
+        # wrote, so carry it forward rather than replacing it: an
+        # authoritative state must not erase or rewrite the exchange handle
+        # that ``record_order_event`` later compares against.
+        prior_order = conn.execute(
+            "SELECT exchange_order_id FROM basket_target_order_reconciliations "
+            "WHERE order_intent_id=?",
+            (intent_id,),
+        ).fetchone()
+        exchange_order_id = (
+            str(prior_order[0])
+            if prior_order is not None and prior_order[0]
+            else None
+        )
         if state == "filled" and filled + EPS < requested_size:
             raise ReconciliationError("authoritative_filled_size_incomplete")
         if state == "cancelled" and filled > EPS:
@@ -442,14 +457,24 @@ def can_submit_next_order(
     token = _text("token_id", token_id)
     exclude = str(exclude_order_intent_id or "").strip()
     rows = conn.execute(
-        "SELECT i.order_intent_id,i.state,COALESCE(r.state,'pending') FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
+        "SELECT i.order_intent_id,i.state,r.state FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
         (bucket_value, token, exclude),
     ).fetchall()
+    # A missing reconciliation row means the intent never reached the
+    # exchange, so the intent's own state is the whole truth about it.
+    # Reading that absence as a pending reconciliation made every intent
+    # cancelled without an event -- which is what supersession writes -- block
+    # its bucket and token forever.  An intent that is still live, or a real
+    # reconciliation row that is pending or unknown, both still block.
     blockers = [
-        {"order_intent_id": str(row[0]), "intent_state": str(row[1]), "reconciliation_state": str(row[2])}
+        {
+            "order_intent_id": str(row[0]),
+            "intent_state": str(row[1]),
+            "reconciliation_state": "none" if row[2] is None else str(row[2]),
+        }
         for row in rows
         if str(row[1]) in {"prepared", "submitting", "submitted", "reconcile_required"}
-        or str(row[2]) in {"pending", "unknown"}
+        or (row[2] is not None and str(row[2]) in {"pending", "unknown"})
     ]
     return {"schema": SCHEMA, "allowed": not blockers, "blockers": blockers, "reason": "same_bucket_unknown_or_pending" if blockers else "no_same_bucket_pending", "places_orders": False, "calls_order_gateway": False}
 

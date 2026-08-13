@@ -656,3 +656,82 @@ def test_old_blocked_cycles_cannot_make_basket_stage_ready() -> None:
     assert result["blocked_at"] == "CALIBRATION_ENSEMBLE"
     assert result["stages"][6]["ready"] is False
     assert result["stages"][7]["ready"] is False
+
+
+def _selection_evidence_db(tmp_path: Path, rows: list[tuple[str, str]]) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    for index, (station_id, holdout_end) in enumerate(rows):
+        conn.execute(
+            "INSERT INTO calibration_cross_native_ensemble_selection_evidence("
+            "selection_evidence_id,station_id,season_bin,lead_bucket,run_cycle,"
+            "settlement_definition,method_version,candidate_system_ids_json,"
+            "selected_system_ids_json,selected_system_count,"
+            "independent_family_count,selected_weights_json,family_weights_json,"
+            "family_weight_caps_json,supported_exact_masks_json,train_start_date,"
+            "train_end_date,holdout_start_date,holdout_end_date,"
+            "rolling_origin_fold_count,effective_sample_n,oos_metrics_json,"
+            "cross_system_residual_correlation_json,"
+            "deterministic_baseline_metrics_json,content_sha256,"
+            "run_cycle_by_system_json,run_cycle_by_system_sha256"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"sel-{index}", station_id, "SUMMER", "d1", "00Z",
+                "DAILY_HIGH", "v1", "[]", "[]", 2, 2, "{}", "{}", "{}", "[]",
+                "2026-07-01", "2026-07-20", "2026-07-21", holdout_end,
+                1, 10.0, "{}", "{}", "{}", f"{index:064d}", "{}", f"{index:064d}",
+            ),
+        )
+    return conn
+
+
+def test_calibration_staleness_flags_only_stations_past_the_window() -> None:
+    conn = _selection_evidence_db(
+        Path("."),
+        [
+            ("KDAL", "2026-07-28"),
+            ("KSFO", "2026-08-07"),
+            ("EDDM", "2026-08-10"),
+        ],
+    )
+    with conn:
+        result = readiness_module._calibration_staleness(
+            conn,
+            as_of_utc="2026-08-11T12:00:00Z",
+        )
+
+    assert result["ready"] is False
+    assert result["station_count"] == 3
+    # KSFO is four days behind, which is ordinary settled-truth and scan lag;
+    # only KDAL has actually stopped being refreshed.
+    assert [row["station_id"] for row in result["stale_stations"]] == ["KDAL"]
+    assert result["stale_stations"][0]["stale_days"] == 14
+
+
+def test_calibration_staleness_is_ready_when_every_station_is_recent() -> None:
+    conn = _selection_evidence_db(
+        Path("."),
+        [("EDDM", "2026-08-10"), ("EFHK", "2026-08-09")],
+    )
+    with conn:
+        result = readiness_module._calibration_staleness(
+            conn,
+            as_of_utc="2026-08-11T12:00:00Z",
+        )
+
+    assert result["ready"] is True
+    assert result["state"] == "fresh"
+    assert result["stale_stations"] == []
+
+
+def test_calibration_staleness_reports_a_scoped_station_with_no_evidence() -> None:
+    conn = _selection_evidence_db(Path("."), [("EDDM", "2026-08-10")])
+    with conn:
+        result = readiness_module._calibration_staleness(
+            conn,
+            as_of_utc="2026-08-11T12:00:00Z",
+            station_ids=["EDDM", "KDAL"],
+        )
+
+    assert result["ready"] is False
+    assert result["stations_without_selection_evidence"] == ["KDAL"]

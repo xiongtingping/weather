@@ -35,6 +35,16 @@ FORMAL_ENSEMBLE_METHOD_VERSION = (
     "rolling_origin_probability_stack_v4_five_model_pool_min2"
 )
 STAGES = ("P0", "P0-M", "P1")
+# How far past its cadence the newest P1 probability still describes the day.
+# P1 re-rolls off arriving observations, so a lapsed ``fresh_until`` usually
+# means the observation lane stalled, not that the reading turned wrong.  Two
+# hours of METAR is a handful of cycles; beyond three the day has had time to
+# move somewhere the envelope never saw.
+PROBABILITY_MAX_STALE_SECONDS = 3 * 60 * 60
+# Only P1 gets the allowance.  P0/P0-M are rooted in a model run or a TAF
+# issuance, and a lapsed cadence there means the run everyone else has moved
+# on from -- the fix is to recompile off the newer run, which is available.
+STAGES_SERVABLE_PAST_CADENCE = frozenset({"P1"})
 EPS = 1e-9
 
 
@@ -800,7 +810,48 @@ class ProbabilityEnvelope:
         )
 
     def is_fresh(self, at_utc: str) -> bool:
+        """Inside the cadence this stage re-rolls on."""
+
         return timestamp_lte(self.decision_at_utc, at_utc) and timestamp_lt(at_utc, self.fresh_until_utc)
+
+    def is_servable(self, at_utc: str) -> bool:
+        """Usable as the current reading, which is a wider claim than fresh.
+
+        ``fresh_until`` is the cadence P1 re-rolls on -- hourly, off arriving
+        observations -- not an expiry of what the envelope says.  Past that
+        instant the latest checkpoint is still the only one there is, and
+        refusing it stood stations down for holding slightly old information
+        rather than none: 26 of 48 scopes sat out one recovery that way, and
+        ZUUU spent an event day blocked twelve minutes past its own roll.
+
+        So usability is bounded by age instead of by cadence, with the same
+        limit the resident publisher applies, because two places deciding
+        "expired" by two rules is how a scope passes one gate and dies at the
+        next.  Beyond the limit a probability is not slightly old; it
+        describes a different state of the day, and refusing is right.
+
+        This governs the probability only.  P1's hard bound comes from the
+        observed high, which only ever rises, so an older bound is a weaker
+        one and would readmit buckets the day has ruled out; the bound is
+        re-derived from current observations and never carried along here.
+        """
+
+        if not timestamp_lte(self.decision_at_utc, at_utc):
+            return False
+        if timestamp_lt(at_utc, self.fresh_until_utc):
+            return True
+        if self.stage not in STAGES_SERVABLE_PAST_CADENCE:
+            return False
+        try:
+            age = (
+                datetime.fromisoformat(str(at_utc).replace("Z", "+00:00"))
+                - datetime.fromisoformat(
+                    str(self.fresh_until_utc).replace("Z", "+00:00")
+                )
+            ).total_seconds()
+        except ValueError:
+            return False
+        return 0.0 <= age <= PROBABILITY_MAX_STALE_SECONDS
 
     def to_dict(self) -> dict[str, Any]:
         return {

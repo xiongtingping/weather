@@ -263,12 +263,26 @@ def test_p1_precedence_and_stale_or_corrupt_p1_never_bare_downgrade() -> None:
         latest_after_lower_stage_replay
         == latest_before_lower_stage_replay
     )
+    # Past its cadence the P1 is still the newest thing anyone knows, so it
+    # serves.  ``p0_new`` is fresh through 12:00 here on purpose: the point is
+    # that a fresh lower stage never wins, whether the P1 is servable or not.
+    served = load_current_probability_bridge(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-23",
+        as_of_utc="2026-07-23T07:30:00Z",
+    )
+    assert served["stage"] == "P1"
+    assert served["checkpoint_id"] == "p1-stale"
+
+    # Far enough past it and the envelope no longer describes this day.  That
+    # blocks; it still does not hand authority back to the fresh P0.
     with pytest.raises(ContractError, match="xsb_latest_stage_stale_fail_closed"):
         load_current_probability_bridge(
             conn,
             station_id="RKPK",
             event_date="2026-07-23",
-            as_of_utc="2026-07-23T07:30:00Z",
+            as_of_utc="2026-07-23T09:00:01Z",
         )
 
     # Simulate on-disk corruption outside the append-only writer.  Selecting

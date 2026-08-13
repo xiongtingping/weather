@@ -185,7 +185,11 @@ def _p0_stations(value: Mapping[str, Any]) -> list[str]:
     raw = value.get("packets")
     if not isinstance(raw, list):
         return []
-    stations: list[str] = []
+    # The inbox identity is the station-day, not the station: P0 compiles on
+    # every model arrival, so today's d0 packet and tomorrow's d1 packet for
+    # one station coexist by design.  Uniqueness therefore binds the pair,
+    # and the station list this returns is the distinct-station view.
+    station_days: list[tuple[str, str]] = []
     for wrapper in raw:
         if not isinstance(wrapper, Mapping):
             raise SnapshotError("snapshot_station_entry_invalid:p0_inbox")
@@ -195,10 +199,12 @@ def _p0_stations(value: Mapping[str, Any]) -> list[str]:
         station = str(packet.get("station_id") or "").strip().upper()
         if not station:
             raise SnapshotError("snapshot_station_entry_invalid:p0_inbox")
-        stations.append(station)
-    if len(stations) != len(set(stations)):
+        station_days.append(
+            (station, str(packet.get("event_date") or ""))
+        )
+    if len(station_days) != len(set(station_days)):
         raise SnapshotError("snapshot_station_duplicate:p0_inbox")
-    return sorted(stations)
+    return sorted({station for station, _ in station_days})
 
 
 def _taf_stations(value: Mapping[str, Any]) -> list[str]:
@@ -339,6 +345,13 @@ def _native_p0_binding(
             raise SnapshotError("native_p0_binding_candidate_plan_invalid")
         if str(plan.get("action") or "") != "NOOP_ALREADY_CONSUMABLE":
             continue
+        if plan.get("artifact_pointer") is None and plan.get(
+            "pointer_withheld_reason"
+        ):
+            # A consumable runner-up whose scope pointer went to a richer
+            # activation.  It stays valid DB authority; it just is not the
+            # one binding this scope names.
+            continue
         if str(plan.get("candidate_state") or "") != "PRODUCTION_NO_LIVE_OOS_PASS":
             raise SnapshotError("native_p0_binding_candidate_not_pass")
         scope = plan.get("scope")
@@ -437,10 +450,30 @@ def _native_p0_binding(
             "selection_evidence_sha256": selection_sha,
             "artifact_pointer": dict(pointer),
         })
-    bindings.sort(key=lambda item: item["station_id"])
-    station_ids = [item["station_id"] for item in bindings]
-    if len(set(station_ids)) != len(station_ids):
-        raise SnapshotError("native_p0_binding_duplicate_station")
+    bindings.sort(key=lambda item: (
+        item["station_id"],
+        item["season_bin"],
+        item["lead_bucket"],
+        item["run_cycle"],
+    ))
+    # Attestation is per scope, not per station: one station legitimately
+    # carries one binding per (season, lead, run_cycle) it was fitted in, and
+    # ``pointer_for_scope`` resolves by that full key.  The old per-station
+    # uniqueness predates that migration -- under it, a station attested at
+    # d2/18Z could never also be attested at h00_12/00Z, so every packet
+    # outside the single blessed scope failed ``pointer_not_bound``.
+    scope_keys = [
+        (
+            item["station_id"],
+            item["season_bin"],
+            item["lead_bucket"],
+            item["run_cycle"],
+        )
+        for item in bindings
+    ]
+    if len(set(scope_keys)) != len(scope_keys):
+        raise SnapshotError("native_p0_binding_duplicate_scope")
+    station_ids = sorted({item["station_id"] for item in bindings})
     # The linkage audit and the repair plan are two views of one immutable
     # current pointer.  A subset check would silently allow an active DB row
     # (for example a prior cutoff's stale activation) to remain outside the

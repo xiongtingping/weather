@@ -20,6 +20,36 @@ from weather_basket_yes_runtime import identity, parse_metar_temperature
 from reported_trajectory_sources import infer_ddhhmm_time, utc_now
 
 
+_ORIGIN_REGISTRY_SHA_BY_STATION: dict[str, str] = {}
+
+
+def _origin_registry_sha256(station_id: str) -> str:
+    """The source registry that admitted this station, cached per station.
+
+    Resolved lazily and per process: a poll carries a batch of reports, and
+    the route reads a config file, so calling it once per report would turn
+    one ingest into hundreds of reads.  A route that cannot be resolved
+    yields the empty string rather than raising -- capture must not stop
+    because a downstream contract wants a stronger lineage than is available,
+    and the empty value is exactly what every row already had.
+    """
+
+    station = str(station_id or "").strip().upper()
+    if not station:
+        return ""
+    cached = _ORIGIN_REGISTRY_SHA_BY_STATION.get(station)
+    if cached is not None:
+        return cached
+    try:
+        from reported_trajectory_country_sources import station_source_route
+
+        resolved = str(station_source_route(station).get("registry_sha256") or "")
+    except Exception:
+        resolved = ""
+    _ORIGIN_REGISTRY_SHA_BY_STATION[station] = resolved
+    return resolved
+
+
 SCHEMA_VERSION = "reported_trajectory_awc_ingress_v1"
 
 
@@ -216,6 +246,18 @@ class ReportedTrajectoryAwcIngress:
             "origin_direct_country_official": False,
             "origin_fallback_used": False,
             "origin_fallback_reason": "",
+            # An AWC report is raw METAR: it carries no notion of which source
+            # registry admitted the station, so nothing in ``raw`` can supply
+            # this and the column was written empty for every observation from
+            # 2026-08-01 on.  PR12 needs it to bind an observation to the
+            # registry that authorised its origin, and without it the contract
+            # builder terminates the whole station -- which is what stopped
+            # truth revision facts, and with them every order.  The route is
+            # the same one the registry row resolves, so reading it here binds
+            # the observation to exactly the registry that admitted it.
+            "official_source_registry_sha256": _origin_registry_sha256(
+                str(raw.get("station_id") or "")
+            ),
         }
         origin = {
             **default_origin,

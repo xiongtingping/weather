@@ -222,9 +222,18 @@ def test_registered_official_transports_cover_every_scope_contract() -> None:
     merely lacked history when in fact nothing could ever reach the selector.
     """
 
+    from bayes_basket_target.native_ensemble_oos import (
+        POINT_FORECAST_SCOPE_CONTRACTS,
+    )
+
     assert OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS == {
         str(contract["transport_provider_id"])
-        for contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values()
+        for contract in (
+            *OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values(),
+            # The point-forecast lane registers through the same derived-set
+            # property: one contract edit, both SQL prefilters follow.
+            *POINT_FORECAST_SCOPE_CONTRACTS.values(),
+        )
     }
     for provider in OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS:
         assert f"'{provider}'" in _OFFICIAL_TRANSPORT_SQL_LIST

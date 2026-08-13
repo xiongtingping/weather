@@ -171,6 +171,36 @@ def snapshot_from_probability_envelope(
     raw_upper_ordinal = envelope.lineage.get("model_envelope_upper_ordinal")
     if (raw_lower_ordinal is None) != (raw_upper_ordinal is None):
         raise ContractError("probability_model_envelope_boundary_incomplete")
+    # An absent boundary means "this stage publishes no envelope", so it is
+    # read as a silence rather than an error.  A stage that names the envelope
+    # buckets but omits the ordinals this reads is therefore not degraded, it
+    # is invisible: the candidate boundary collapses onto the probability core
+    # and the dispersion widening never runs, with nothing raised.  The bucket
+    # names resolve through the envelope's own ordinal contract, so derive the
+    # pair rather than refusing: a refusal would take down every already
+    # committed envelope of a producer that only ever named the buckets, which
+    # is the whole native P0 history.  An unresolvable bucket still fails.
+    if raw_lower_ordinal is None:
+        named_lower = str(
+            envelope.lineage.get("model_envelope_lower_bucket") or ""
+        )
+        named_upper = str(
+            envelope.lineage.get("model_envelope_upper_bucket") or ""
+        )
+        if bool(named_lower) != bool(named_upper):
+            raise ContractError(
+                "probability_model_envelope_boundary_incomplete"
+            )
+        if named_lower:
+            if (
+                named_lower not in envelope.bucket_ordinals
+                or named_upper not in envelope.bucket_ordinals
+            ):
+                raise ContractError(
+                    "probability_model_envelope_boundary_invalid"
+                )
+            raw_lower_ordinal = envelope.bucket_ordinals[named_lower]
+            raw_upper_ordinal = envelope.bucket_ordinals[named_upper]
     model_envelope_lower_ordinal: int | None = None
     model_envelope_upper_ordinal: int | None = None
     if raw_lower_ordinal is not None:

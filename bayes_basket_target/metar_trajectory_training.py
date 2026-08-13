@@ -13,6 +13,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
     METAR_TRAJECTORY_METHOD_VERSION,
     build_metar_trajectory_likelihood_artifact,
+    maturity_strength_for_sample_n,
 )
 from .metar_path_state import (
     ConditionalMetarPathState,
@@ -679,14 +680,23 @@ def train_metar_trajectory_artifact(
     probability_baseline_metrics: dict[str, float] | None = None
     probability_candidate_metrics: dict[str, float] | None = None
     stable_oos_gain = False
+    # The maturity the artifact will actually carry, not the configured
+    # ceiling.  The OOS gain below has to be measured at the strength that
+    # will be applied in production or the gate is scoring a model nobody
+    # runs -- and with the ramp in place the two now differ most exactly
+    # where it matters, on the small samples this gate newly admits.
+    ramped_maturity_strength = maturity_strength_for_sample_n(
+        effective_sample_n,
+        full_strength=_number(
+            "metar_trajectory_training_maturity_strength",
+            artifact_parameters.get("maturity_strength"),
+        ),
+    )
     if probability_oos_available:
         strength = _number(
             "metar_trajectory_training_base_strength",
             artifact_parameters.get("base_strength"),
-        ) * _number(
-            "metar_trajectory_training_maturity_strength",
-            artifact_parameters.get("maturity_strength"),
-        )
+        ) * ramped_maturity_strength
         probability_baseline_metrics = _bucket_metrics(
             parsed,
             [
@@ -737,6 +747,10 @@ def train_metar_trajectory_artifact(
     )
     payload = dict(artifact_parameters)
     payload.update({
+        # Ship the strength the gate scored.  Leaving the configured ceiling
+        # here would let production apply more correction than any fold ever
+        # justified.
+        "maturity_strength": ramped_maturity_strength,
         "remaining_warming_distribution": {
             format(key, ".12g"): value
             for key, value in final_distribution.items()

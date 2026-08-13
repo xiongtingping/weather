@@ -7,9 +7,11 @@ import pytest
 
 from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.metar_trajectory import (
+    MATURITY_FULL_SAMPLE_N,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
+    maturity_strength_for_sample_n,
 )
 from bayes_basket_target.future_temperature_curve import (
     build_root_future_temperature_curve,
@@ -245,6 +247,38 @@ def test_expanding_window_oos_builds_formal_artifact() -> None:
     assert evidence["oos_gate_passed"] is True
     assert artifact.activated is True
     assert artifact.remaining_warming_distribution[2.0] > 1 / 3
+
+
+def test_applied_strength_is_earned_by_sample_size_not_granted() -> None:
+    """A gated artifact ships the strength its folds paid for.
+
+    The gate now admits small samples, so the thing standing between a
+    three-fold win and a full-strength correction of live probabilities is
+    this ramp.  If the artifact ever carries the configured ceiling again,
+    production applies more than any fold justified.
+    """
+
+    result = _train()
+    artifact = MetarTrajectoryLikelihoodArtifact.from_mapping(
+        result["artifact"]
+    )
+    configured = _parameters()["maturity_strength"]
+    n = result["training_evidence"]["effective_sample_n"]
+
+    assert n < MATURITY_FULL_SAMPLE_N
+    assert artifact.maturity_strength < configured
+    assert artifact.maturity_strength == pytest.approx(
+        maturity_strength_for_sample_n(n, full_strength=configured)
+    )
+    # Monotone, capped, and zero where there is nothing to stand on.
+    ramp = [
+        maturity_strength_for_sample_n(value, full_strength=configured)
+        for value in (1.0, 5.0, 12.0, 30.0, 90.0)
+    ]
+    assert ramp == sorted(ramp)
+    assert ramp[-1] == pytest.approx(configured)
+    assert ramp[-2] == pytest.approx(configured)
+    assert maturity_strength_for_sample_n(0.0, full_strength=configured) == 0.0
 
 
 def test_conditional_path_oos_uses_only_complete_strict_asof_states() -> None:

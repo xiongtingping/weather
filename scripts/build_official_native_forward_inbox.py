@@ -115,7 +115,16 @@ def _load_archives(
         raise RuntimeError(
             "official_native_forward_optional_eccc_archive_duplicate"
         )
-    if len(archives) not in {2, 3}:
+    if counts[DWD_ICON_EPS_MULTISTATION_SCHEMA] > 1:
+        raise RuntimeError(
+            "official_native_forward_optional_icon_archive_duplicate"
+        )
+    # GEFS and ECMWF required, ECCC and ICON each optional.  The old {2, 3}
+    # cap predated ICON's admission to the forward lane and rejected every
+    # four-archive capture outright -- which, once the resident worker began
+    # passing --icon-output, silently stalled every station's P0 recompile
+    # behind an "archive set invalid" that named no family.
+    if len(archives) not in {2, 3, 4}:
         raise RuntimeError("official_native_forward_archive_set_invalid")
     return archives
 
@@ -204,6 +213,15 @@ def main() -> int:
             "be combined with --market-registry."
         ),
     )
+    parser.add_argument(
+        "--taf-point-archive",
+        type=Path,
+        help=(
+            "Per-station TAF TX point archives; stations present get the "
+            "forecaster's point as one more packet system, absent stations "
+            "keep the model-only set."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (
@@ -234,6 +252,19 @@ def main() -> int:
         == ECCC_GEPS_MULTISTATION_SCHEMA
     ]
     eccc_archive = eccc_archives[0] if eccc_archives else None
+    # ICON is optional in exactly the way ECCC is, and needs the same partition
+    # to reach a packet.  Without it the archive was accepted by the loader --
+    # right schema, right family, inside the four-archive cap -- and then never
+    # read, so every ``--archive icon_*`` argument was validated and dropped.
+    # The capture had been paying for those objects daily and no packet ever
+    # carried the family.
+    icon_archives = [
+        archive
+        for archive in archives
+        if str(archive.get("schema") or "")
+        == DWD_ICON_EPS_MULTISTATION_SCHEMA
+    ]
+    icon_archive = icon_archives[0] if icon_archives else None
     requested_eccc_stations = {
         str(value or "").strip().upper()
         for value in args.eccc_station_id
@@ -273,6 +304,11 @@ def main() -> int:
     if (
         eccc_archive is not None
         and str(eccc_archive.get("event_date") or "") != base_event_date
+    ):
+        raise RuntimeError("official_native_forward_archive_date_invalid")
+    if (
+        icon_archive is not None
+        and str(icon_archive.get("event_date") or "") != base_event_date
     ):
         raise RuntimeError("official_native_forward_archive_date_invalid")
     if args.market_registry is not None:
@@ -415,18 +451,44 @@ def main() -> int:
                     "SOURCE_ARCHIVE_OFFLINE_CONTRACT_BRIDGE"
                 ),
             }
+    taf_archives_by_station: dict[str, object] = {}
+    if args.taf_point_archive is not None:
+        taf_payload = load_bounded_json(
+            args.taf_point_archive.expanduser().resolve(strict=True)
+        )
+        if (
+            not isinstance(taf_payload, dict)
+            or taf_payload.get("schema")
+            != "official_taf_tx_point_forward_archives_v1"
+            or not isinstance(
+                taf_payload.get("archives_by_station"), dict
+            )
+        ):
+            raise RuntimeError("taf_point_archive_payload_invalid")
+        taf_archives_by_station = dict(
+            taf_payload["archives_by_station"]
+        )
+
+    def _station_archives(station: str) -> list:
+        archives = list(base_archives)
+        if eccc_archive is not None and station in (
+            requested_eccc_stations
+            if requested_eccc_stations
+            else _archive_station_ids(eccc_archive)
+        ):
+            archives.append(eccc_archive)
+        if icon_archive is not None and station in _archive_station_ids(
+            icon_archive
+        ):
+            archives.append(icon_archive)
+        taf_archive = taf_archives_by_station.get(station)
+        if taf_archive is not None:
+            archives.append(taf_archive)
+        return archives
+
     packets = [
         build_official_native_forward_packet(
-            archives=(
-                [*base_archives, eccc_archive]
-                if eccc_archive is not None
-                and station in (
-                    requested_eccc_stations
-                    if requested_eccc_stations
-                    else _archive_station_ids(eccc_archive)
-                )
-                else base_archives
-            ),
+            archives=_station_archives(station),
             station_id=station,
             target_bucket_contract=target_contracts.get(station),
         )

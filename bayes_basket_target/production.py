@@ -16,6 +16,7 @@ false in this build.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any, Callable, Mapping, Sequence
 
 from .atomic_ledger import (
@@ -37,6 +38,13 @@ from .policy import (
 )
 from .contracts import ProbabilityEnvelope, ContractError, content_sha256
 from .delta_v2_artifact import DeltaV2PolicyArtifact
+from .order_submission import submit_prepared_intents
+from .stage_evidence import (
+    assert_intent_buckets_within_bound,
+    build_model_envelope_soft_bound,
+    build_stage_evidence_root,
+    persist_stage_evidence,
+)
 from .delta_v2_training import build_delta_v2_training_fact
 from .regime_artifact import RegimeArtifact
 from .runtime import DeltaBasketScoreV2Optimizer
@@ -211,6 +219,57 @@ def _build_forward_evidence_binding(
     return binding
 
 
+def _bucket_ordinals_from_lineage(
+    lineage: Mapping[str, Any],
+) -> dict[str, int]:
+    """Order the buckets by the temperature interval each one covers.
+
+    The envelope's ordinals are this same order, so deriving it here lets a
+    stage-rooted bound be checked against the plan alone.  An open edge bucket
+    sorts by its finite side, which is what makes ``31C or below`` the lowest
+    and ``41C or higher`` the highest rather than ties at infinity.
+    """
+
+    try:
+        intervals = json.loads(
+            str(lineage.get("bucket_intervals_c_json") or "{}")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ContractError(
+            "production_stage_bucket_intervals_invalid"
+        ) from exc
+    if not isinstance(intervals, Mapping) or not intervals:
+        raise ContractError("production_stage_bucket_intervals_missing")
+
+    def edge(item: tuple[str, Any]) -> tuple[float, float]:
+        bounds = item[1]
+        if not isinstance(bounds, Sequence) or len(bounds) != 2:
+            raise ContractError("production_stage_bucket_intervals_invalid")
+        lower, upper = bounds
+        return (
+            float("-inf") if lower is None else float(lower),
+            float("inf") if upper is None else float(upper),
+        )
+
+    return {
+        str(bucket): index
+        for index, (bucket, _bounds) in enumerate(
+            sorted(intervals.items(), key=edge)
+        )
+    }
+
+
+def _no_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Refuse to reach the exchange when no caller supplied a way to.
+
+    Reached only if authority was granted without a transport, which is a
+    caller error rather than a market condition: failing here keeps the
+    absence of a transport from silently reading as a refused order.
+    """
+
+    raise ContractError("production_order_transport_missing")
+
+
 def compile_production_plan(
     *,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
@@ -234,8 +293,18 @@ def compile_production_plan(
     resource_probe_ok: bool = False,
     delta_v2_owns_cadence: bool = False,
     expected_source_lane: str | None = None,
+    order_transport: Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    live_submit_authorized: bool = False,
 ) -> dict[str, Any]:
-    """Compile one v2-only production_no_live decision."""
+    """Compile one v2-only production decision, and deliver it when authorised.
+
+    Delivery is the step this lane never had: intents were written and nothing
+    carried them to the exchange, so the reconciliation tables stayed empty
+    from the first day.  Authority is a parameter rather than a constant, but
+    it defaults to withheld -- an unauthorised run still walks the whole
+    delivery path and records the payload it would have sent, which is how a
+    no-live run can be compared against the live one it stands in for.
+    """
 
     result = DeltaBasketScoreV2Optimizer().compile(
         probability_envelopes=probability_envelopes,
@@ -299,12 +368,15 @@ def commit_production_candidate_atomic(
     *,
     compiled_plan: Mapping[str, Any],
     market_snapshot: Mapping[str, Any],
-    awc_observation_contract: Mapping[str, Any],
+    awc_observation_contract: Mapping[str, Any] | None,
     truth_observation_revision_content_sha256: str,
-    bound: Mapping[str, Any],
+    bound: Mapping[str, Any] | None,
     created_at_utc: str,
     supersede_prepared_cycle_id: str | None = None,
     new_decision_scope_key: str | None = None,
+    order_transport: Any = None,
+    live_submit_authorized: bool = False,
+    evaluation_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Persist one compiled no-live candidate through the unique M5 boundary.
 
@@ -328,11 +400,17 @@ def commit_production_candidate_atomic(
     if compiled_plan.get("boundary", {}).get("calls_order_gateway") is not False:
         raise ContractError("production_gateway_boundary_invalid")
     lineage = plan.get("lineage")
-    if (
-        not isinstance(lineage, Mapping)
-        or str(lineage.get("probability_stage") or "") != "P1"
-    ):
-        raise ContractError("production_candidate_atomic_requires_p1")
+    # All three stages may hold a position: P0 opens on the ensemble, P0-M
+    # re-confirms on the TAF revision, P1 adjusts on observed METAR.  The
+    # chain head each one roots on differs and is chosen below; the stage
+    # itself is no longer the thing that decides who may act.
+    candidate_stage = (
+        str(lineage.get("probability_stage") or "").strip().upper()
+        if isinstance(lineage, Mapping)
+        else ""
+    )
+    if candidate_stage not in {"P0", "P0-M", "P1"}:
+        raise ContractError("production_candidate_atomic_stage_invalid")
     station_id = str(plan.get("station_id") or "").strip()
     event_date = str(plan.get("event_date") or "").strip()
     if station_id != str(market_snapshot.get("station_id") or "").strip() or event_date != str(market_snapshot.get("event_date") or "").strip():
@@ -362,6 +440,57 @@ def commit_production_candidate_atomic(
     plan_payload["settlement_timezone"] = market_timezone
     plan_lineage = dict(lineage)
     plan_lineage["settlement_timezone"] = probability_timezone
+    # P1 roots on the observation the day produced; the two stages that run
+    # before one exists root on their own evidence instead.  Both are derived
+    # from this same lineage, so the caller supplies neither and cannot pair a
+    # stage with a root that does not belong to it.  They are built here, ahead
+    # of the forward-evidence binding, because that binding hashes the lineage:
+    # anything added afterwards would leave the plan and its binding disagreeing
+    # about what was signed.
+    #
+    # The checkpoint is defined by the probability envelope, not by the plan
+    # lineage, which carries only the cash-phase and curve-root checkpoints.
+    candidate_envelope = compiled_plan.get("probability_envelope")
+    stage_checkpoint_id = (
+        str(candidate_envelope.get("checkpoint_id") or "")
+        if isinstance(candidate_envelope, Mapping)
+        else ""
+    )
+    stage_root = (
+        build_stage_evidence_root(
+            probability_stage=candidate_stage,
+            station_id=station_id,
+            event_date=event_date,
+            settlement_timezone=probability_timezone,
+            checkpoint_id=stage_checkpoint_id,
+            posterior_sha256=str(lineage.get("posterior_sha256") or ""),
+            lineage=lineage,
+        )
+        if candidate_stage in {"P0", "P0-M"}
+        else None
+    )
+    stage_soft_bound = (
+        build_model_envelope_soft_bound(
+            probability_stage=candidate_stage,
+            lineage=lineage,
+            # Ordered by the interval each bucket covers, which is the same
+            # order the envelope's own ordinals carry.  Deriving it from the
+            # lineage keeps the bound provable from the plan alone rather than
+            # from a mapping the caller could pass inconsistently.
+            bucket_ordinals=_bucket_ordinals_from_lineage(lineage),
+        )
+        if stage_root is not None
+        else None
+    )
+    if stage_root is not None:
+        plan_lineage["stage_evidence_root_id"] = str(
+            stage_root["evidence_root_id"]
+        )
+        plan_lineage["stage_evidence_content_sha256"] = str(
+            stage_root["content_sha256"]
+        )
+        plan_lineage["probability_checkpoint_id"] = stage_checkpoint_id
+        plan_lineage["soft_bound_id"] = str(stage_soft_bound["bound_id"])
     plan_payload["lineage"] = plan_lineage
     target_deadline: str | None = None
     deadline_input = (
@@ -642,11 +771,16 @@ def commit_production_candidate_atomic(
         },
     }
     bundle = build_target_atomic_bundle(
-        awc_observation_contract=awc_observation_contract,
-        truth_observation_revision_content_sha256=(
-            truth_observation_revision_content_sha256
+        awc_observation_contract=(
+            None if stage_root is not None else awc_observation_contract
         ),
-        bound=bound,
+        truth_observation_revision_content_sha256=(
+            "" if stage_root is not None
+            else truth_observation_revision_content_sha256
+        ),
+        stage_evidence_root=stage_root,
+        stage_soft_bound=stage_soft_bound,
+        bound=None if stage_root is not None else bound,
         plan=plan_payload,
         decision=decision,
         intents=intents,
@@ -655,6 +789,22 @@ def commit_production_candidate_atomic(
         execution_version_vectors=execution_version_vectors,
         target_execution_hard_deadline_at=target_deadline,
     )
+    if stage_root is not None:
+        # A stage-rooted basket must not open outside the envelope its own
+        # evidence admits, and the evidence itself is persisted in the same
+        # transaction so the committed cycle can never cite a root that was
+        # not written.  Both are idempotent under replay: same evidence,
+        # same content hash, no new position.
+        assert_intent_buckets_within_bound(
+            bound=stage_soft_bound,
+            intent_buckets=[str(item["bucket"]) for item in intents],
+        )
+        persist_stage_evidence(
+            conn,
+            evidence_root=stage_root,
+            soft_bound=stage_soft_bound,
+            created_at_utc=created_at_utc,
+        )
     training_fact = build_delta_v2_training_fact(
         conn,
         compiled_plan=compiled_plan,
@@ -708,17 +858,39 @@ def commit_production_candidate_atomic(
         "fact_id": str(training_fact["fact_id"]),
         "idempotent": str(training_state) == "already_committed",
     }
+    # Deliver whatever this cycle just prepared.  The submitter reads the
+    # authority rather than asserting it, so an unauthorised run reaches the
+    # exchange boundary and stops there, leaving the payload hash on the
+    # receipt.  A cycle that prepared nothing returns an empty submission set
+    # instead of a special case.
+    submission_receipt = submit_prepared_intents(
+        conn,
+        cycle_id=str(bundle["cycle"]["cycle_id"]),
+        transport=(
+            order_transport
+            if order_transport is not None
+            else _no_transport
+        ),
+        live_submit_authorized=bool(live_submit_authorized),
+        observed_at_utc=str(evaluation_at_utc or created_at_utc),
+    )
     result = {
         "schema": "bayes_basket_target_production_candidate_atomic_v1",
         "state": receipt["state"],
         "receipt": receipt,
         "delta_v2_training_fact": training_receipt,
         "candidate_will_order": not blocked,
-        "orders_submitted": 0,
-        "places_orders": False,
-        "calls_order_gateway": False,
+        # What this cycle did, not what the lane is configured to allow.  These
+        # were constants while nothing could submit; reporting them as facts is
+        # what makes a receipt worth reading once something can.
+        "order_submission": submission_receipt,
+        "orders_submitted": int(submission_receipt["orders_submitted"]),
+        "places_orders": bool(submission_receipt["orders_submitted"]),
+        "calls_order_gateway": bool(submission_receipt["calls_order_gateway"]),
         "writes_target_ledger": True,
-        "live_submit_authorized": False,
+        "live_submit_authorized": bool(
+            submission_receipt["live_submit_authorized"]
+        ),
     }
     if forward_evidence_binding is not None:
         forward_receipt = {

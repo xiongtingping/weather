@@ -13,6 +13,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .contracts import ContractError, content_sha256
+from .metar_physical_tmax import (
+    EXPECTED_MEMBER_COUNT as METAR_PHYSICAL_EXPECTED_MEMBER_COUNT,
+    INDEPENDENCE_FAMILY_ID as METAR_PHYSICAL_FAMILY_ID,
+    PROVIDER_ID as METAR_PHYSICAL_PROVIDER_ID,
+    SYSTEM_ID as METAR_PHYSICAL_SYSTEM_ID,
+)
 
 
 SCHEMA = "official_native_ensemble_forward_packet_v1"
@@ -28,11 +34,71 @@ ECCC_GEPS_MULTISTATION_SCHEMA = (
 DWD_ICON_EPS_MULTISTATION_SCHEMA = (
     "dwd_icon_eps_official_historical_multistation_members_v1"
 )
+OFFICIAL_TAF_TX_MULTISTATION_SCHEMA = (
+    "official_airport_taf_tx_point_members_v1"
+)
 SUPPORTED_ARCHIVE_SCHEMAS = {
     NOAA_GEFS_MULTISTATION_SCHEMA: "NOAA_GEFS_PDS_S3",
     ECMWF_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
+    OFFICIAL_TAF_TX_MULTISTATION_SCHEMA: "AWC_TAF_DATA_API",
+}
+# The forecaster's TAF TX as a single-member point system.  Registered here --
+# the shared upstream of both the OOS admission and the live compile -- so one
+# registration serves both, and neither table CHECK (plural members) nor the
+# NWP registry rows are stretched to cover a different kind of candidate.
+# TAF issue instants jitter across the 6h UTC grid, so a point archive's
+# ``run_cycle`` is its training-scope label (the sticky station-lead label the
+# archive carries) while ``run_init_utc`` keeps the true issuance instant; the
+# hour-equality check between the two is therefore waived for these systems
+# and replaced by plain ordering against the query time.
+POINT_FORECAST_SYSTEM_IDS = frozenset({
+    "OFFICIAL_AIRPORT_TAF_TX",
+    METAR_PHYSICAL_SYSTEM_ID,
+})
+POINT_FORECAST_SYSTEMS = {
+    "OFFICIAL_AIRPORT_TAF_TX": {
+        "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+        "canonical_name": "Official Airport TAF TX Point",
+        "independence_family_id": "HUMAN_FORECASTER",
+        "provider_id": "ICAO_MET_OFFICE",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+            "member_identity_contract_version": "taf_tx_single_point_v1",
+            "publication_contract_version": (
+                "issue_time_known_amendments_supersede_v1"
+            ),
+        }),
+    },
+    # The day's own observations, forecasting the day's maximum without
+    # consulting a model.  It sits in its own independence family for the
+    # reason the family exists: the weight machinery aggregates within a
+    # family before capping across families, so filing this under any NWP
+    # family would let a source that shares none of their physics dilute the
+    # cap that keeps them honest.  It is not the human forecaster either --
+    # the TAF and this system disagree in useful ways, and collapsing them
+    # would hide exactly the disagreement worth seeing.
+    METAR_PHYSICAL_SYSTEM_ID: {
+        "ensemble_system_id": METAR_PHYSICAL_SYSTEM_ID,
+        "canonical_name": "METAR Physical Path Daily Maximum",
+        "independence_family_id": METAR_PHYSICAL_FAMILY_ID,
+        "provider_id": METAR_PHYSICAL_PROVIDER_ID,
+        # One, like the TAF.  METAR is a single observation stream producing a
+        # single forecast; it has no exchangeable draws to contribute, and its
+        # uncertainty is measured from its record rather than declared here.
+        "expected_member_count": METAR_PHYSICAL_EXPECTED_MEMBER_COUNT,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": METAR_PHYSICAL_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "metar_physical_tmax_single_point_v1"
+            ),
+            "publication_contract_version": (
+                "recomputed_on_each_canonical_observation_v1"
+            ),
+        }),
+    },
 }
 # Only a fallback, for archives written before collectors stated their lead.
 # Every current archive carries ``archive_lead_bucket`` derived from the run it
@@ -257,9 +323,15 @@ def build_official_native_forward_packet(
         run_init = _verified_utc_timestamp(run_init_utc)
         archive_query = _verified_utc_timestamp(archive_query_at_utc)
         if (
-            run_init.hour != int(run_cycle[:2])
+            (
+                system_id not in POINT_FORECAST_SYSTEM_IDS
+                and run_init.hour != int(run_cycle[:2])
+            )
             or archive_query < run_init
         ):
+            # A model run's init hour is its cycle by definition.  A point
+            # forecast's cycle is a scope label over a jittering issuance
+            # instant, so only the temporal ordering is checked for those.
             raise ContractError(
                 "official_native_forward_run_cycle_lineage_mismatch"
             )

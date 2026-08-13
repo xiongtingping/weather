@@ -29,7 +29,7 @@ from .dwd_icon_eps_archive import (
     extraction_version_for_lead as _icon_extraction_version,
 )
 from .eccc_geps_archive import (
-    RUN_CYCLE_HOUR_BY_LEAD as _GEPS_CYCLE_BY_LEAD,
+    ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as _GEPS_ARCHIVE_CYCLES_BY_LEAD,
     SUPPORTED_LEAD_DAYS as _GEPS_LEADS,
     extraction_version_for_lead as _geps_extraction_version,
 )
@@ -49,13 +49,63 @@ from .noaa_gefs_archive import (
     SUPPORTED_LEAD_DAYS as _GEFS_LEADS,
     extraction_version_for_lead as _gefs_extraction_version,
 )
-from .official_native_forward_packet import MIXED_NATIVE_CYCLES
+from .metar_physical_tmax import (
+    METHOD_VERSION as METAR_PHYSICAL_METHOD_VERSION,
+    PROVIDER_ID as METAR_PHYSICAL_PROVIDER_ID,
+    SYSTEM_ID as METAR_PHYSICAL_SYSTEM_ID,
+)
+from .official_native_forward_packet import (
+    MIXED_NATIVE_CYCLES,
+    POINT_FORECAST_SYSTEMS,
+)
 from .ssot import native_ensemble_foundation_schema_status
+from .truth_exclusions import is_excluded
 
 
 SCHEMA = "native_ensemble_strict_forward_oos_v1"
 DEFAULT_MIN_TRAIN_DAYS = 20
 DEFAULT_MIN_HOLDOUT_DAYS = 8
+# Where a system's weight stops being discounted for thin evidence.
+WEIGHT_MATURITY_FULL_TRAIN_DAYS = 28
+# The live evaluation window (user decision, 2026-08-13): minimum 5 training
+# days, 3-day exact shared holdout.  Training is an expanding window, so this
+# floors nothing for the established families -- ECMWF and GEFS keep every
+# settled day they have; only the gate's holdout shrinks.  What the shorter
+# window buys is admission: the cross cohort requires every member to share
+# the exact latest settled days, and an 8-day window ejected any family with
+# one hole in it -- ECCC (capture stalled 8/04-8/06) could sit on thirty days
+# of history and still never pair, and ICON (unfillable by design, capturing
+# since 8/08) was three weeks out.  A 3-day window both can share today.
+# The quality controls that matter do not live in this number: thin training
+# is priced by the sqrt(n/28) weight ramp, and the combo winner still has to
+# clear the CRPS/Brier/NLL selection gates.  Judged on 3 days those gates are
+# noisier -- that is the accepted cost of admitting evidence forward instead
+# of waiting for it.
+FORWARD_ACCUMULATION_MIN_TRAIN_DAYS = 5
+FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS = 3
+FORWARD_ACCUMULATION_THRESHOLD_PROFILE = (
+    "FORWARD_ACCUMULATION_5_TRAIN_3_HOLDOUT"
+)
+# Point forecast systems -- today only the aerodrome TAF's TX group -- clear a
+# lower bar than an ensemble family.
+#
+# The 20+8 profile is sized for a fifty-member ensemble whose spread must be
+# characterised before its centre can be trusted.  A TAF TX is one number a
+# human committed to; there is no spread to fit, so the same history buys far
+# more certainty about it.  Measured over 303 settled station-days its mean
+# error is -0.012C against -0.5 to -1.9C for every model family, and it is the
+# only source in the system that is independent of NWP -- precisely the thing
+# a blend of mutually-correlated models is short of.  Holding it out until it
+# has 28 days at each station meant 9 of the 17 TX-issuing stations still had
+# no access to it, while the models it would have corrected went on picking
+# buckets unchallenged.
+#
+# Lowering the bar is safe only because it is paired with the weight ramp
+# above: an early TAF enters at a fraction of its earned share rather than at
+# full strength.  The holdout still has to exist and still has to be strictly
+# out of sample -- this shortens the wait, it does not remove the test.
+POINT_FORECAST_MIN_TRAIN_DAYS = 5
+POINT_FORECAST_MIN_HOLDOUT_DAYS = 3
 NO_LIVE_BOOTSTRAP_MIN_TRAIN_DAYS = 2
 NO_LIVE_BOOTSTRAP_MIN_HOLDOUT_DAYS = 1
 FORMAL_PROMOTION_THRESHOLD_PROFILE = "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT"
@@ -88,8 +138,8 @@ def _lead_contracts(
     supported_lead_days,
     cycle_hour_by_lead,
     extraction_version_for_lead,
-) -> dict[str, dict[str, str]]:
-    """One lead's cycle and extraction identity, taken from its collector.
+) -> dict[str, list[dict[str, str]]]:
+    """One lead's cycles and extraction identities, taken from its collector.
 
     Restating these by hand is what let the table drift from the code: the
     collector was changed to read 00Z at the shorter leads while the table --
@@ -97,15 +147,31 @@ def _lead_contracts(
     passed on rows whose object had come from a different run entirely.  A
     contract that is derived cannot disagree with the collector; it can only be
     wrong in the same way, which the collector's own tests can catch.
+
+    A lead maps to one or more cycles.  Most families publish one usable run per
+    lead and give a bare hour; ECCC gives a tuple, because reading it at a
+    single cycle put its thickest scope in a lead-hour bucket no other family
+    occupies -- see ``ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD`` there.  Admitting both
+    does not blur them: the cycle is part of the extraction identity and of the
+    training scope key, so each stays a separate candidate that the cohort
+    selection either finds a partner for or leaves unused.
     """
 
-    return {
-        f"d{lead}": {
-            "run_cycle": f"{int(cycle_hour_by_lead[lead]):02d}Z",
-            "extraction_version": extraction_version_for_lead(lead),
-        }
-        for lead in sorted(supported_lead_days)
-    }
+    contracts: dict[str, list[dict[str, str]]] = {}
+    for lead in sorted(supported_lead_days):
+        cycle_hours = cycle_hour_by_lead[lead]
+        if isinstance(cycle_hours, int):
+            cycle_hours = (cycle_hours,)
+        contracts[f"d{lead}"] = [
+            {
+                "run_cycle": f"{int(cycle_hour):02d}Z",
+                "extraction_version": extraction_version_for_lead(
+                    lead, cycle_hour
+                ),
+            }
+            for cycle_hour in cycle_hours
+        ]
+    return contracts
 
 
 # Registered at all three leads, because P0 follows the freshest run: d2 two
@@ -114,10 +180,10 @@ def _lead_contracts(
 # another's contract, and training stays split by (season_bin, lead_bucket).
 #
 # The cycle differs by family and, within a family, by lead.  The reasons live
-# with each collector -- ECCC's measured 00Z-over-12Z result, DWD's hourly t_2m
-# only on its primary cycles, the shorter leads moving to the day's first cycle
-# so the local-day grid still fits -- and are read from there rather than
-# repeated here.
+# with each collector -- ECCC's two admitted cycles, DWD's hourly t_2m only on
+# its primary cycles, the shorter leads moving to the day's first cycle so the
+# local-day grid still fits -- and are read from there rather than repeated
+# here.
 OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     "NOAA_GEFS_05": {
         "transport_provider_id": "NOAA_GEFS_PDS_S3",
@@ -139,12 +205,11 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "transport_provider_id": "ECCC_DD_WEATHER",
         "leads": _lead_contracts(
             supported_lead_days=_GEPS_LEADS,
-            cycle_hour_by_lead=_GEPS_CYCLE_BY_LEAD,
-            # ECCC is the one family read at two cycles, so its extraction
-            # identity takes the cycle explicitly rather than deriving it.
-            extraction_version_for_lead=lambda lead: _geps_extraction_version(
-                lead, _GEPS_CYCLE_BY_LEAD[lead]
-            ),
+            # The archive map, not the collector's single production cycle:
+            # ECCC is the one family admitted at two cycles, because at 00Z
+            # alone its d2 sits in a lead-hour bucket no other family reaches.
+            cycle_hour_by_lead=_GEPS_ARCHIVE_CYCLES_BY_LEAD,
+            extraction_version_for_lead=_geps_extraction_version,
         ),
     },
     # DWD retains only the newest run per cycle, so ICON's history cannot be
@@ -157,17 +222,75 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "leads": _lead_contracts(
             supported_lead_days=_ICON_LEADS,
             cycle_hour_by_lead=_ICON_CYCLE_BY_LEAD,
-            extraction_version_for_lead=_icon_extraction_version,
+            # ICON's identity is a function of the lead alone -- one cycle per
+            # lead, spelled out by the collector -- so the cycle argument is
+            # accepted and dropped rather than the signature being widened
+            # where there is nothing to vary.
+            extraction_version_for_lead=(
+                lambda lead, _cycle_hour: _icon_extraction_version(lead)
+            ),
         ),
     },
 }
+# The forecaster's TAF TX as a single-member candidate system.  It lives in
+# its own dict rather than in ``OFFICIAL_ARCHIVE_SCOPE_CONTRACTS`` because the
+# NWP capture scheduler iterates that dict to advertise archive runs, and TAF
+# is captured by its own rotation lane -- merging them would emit capture
+# scopes no NWP collector can fetch.  For OOS admission the two dicts are one
+# set: same scope check, same transport allowlist, same gates.  All four issue
+# cycles are admitted at both near leads; each (lead, cycle) stays its own
+# training scope exactly as ECCC's two cycles do.
+POINT_FORECAST_SCOPE_CONTRACTS = {
+    "OFFICIAL_AIRPORT_TAF_TX": {
+        "transport_provider_id": "AWC_TAF_DATA_API",
+        "leads": _lead_contracts(
+            supported_lead_days=(0, 1),
+            cycle_hour_by_lead={0: (0, 6, 12, 18), 1: (0, 6, 12, 18)},
+            extraction_version_for_lead=(
+                lambda _lead, _cycle_hour: "taf_tx_point_v4"
+            ),
+        ),
+    },
+    # Lead 0 only, and that is the whole character of this system: it forecasts
+    # from what the airport has already reported today, so there is nothing for
+    # it to say about tomorrow.  The four cycle labels are carried to match the
+    # scope vocabulary its cross-candidates use -- it recomputes on every
+    # arriving observation rather than on a run cycle, and pairing it to a
+    # cycle it does not observe is how a system ends up in a lead-hour bucket
+    # no other family occupies and never finds a partner to be scored against.
+    METAR_PHYSICAL_SYSTEM_ID: {
+        "transport_provider_id": METAR_PHYSICAL_PROVIDER_ID,
+        "leads": _lead_contracts(
+            supported_lead_days=(0,),
+            cycle_hour_by_lead={0: (0, 6, 12, 18)},
+            extraction_version_for_lead=(
+                lambda _lead, _cycle_hour: METAR_PHYSICAL_METHOD_VERSION
+            ),
+        ),
+    },
+}
+def _admitted_scope_contract(system_id: str) -> Mapping[str, Any] | None:
+    """Live lookup across both contract dicts, official lane first.
+
+    Deliberately not a merged snapshot: tests (and any future runtime
+    registration) mutate ``OFFICIAL_ARCHIVE_SCOPE_CONTRACTS`` in place, and a
+    copy taken at import time would silently stop seeing them.
+    """
+
+    official = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.get(system_id)
+    if official is not None:
+        return official
+    return POINT_FORECAST_SCOPE_CONTRACTS.get(system_id)
 # Derived rather than restated, because the two SQL filters that used to spell
 # this set out by hand had silently fallen behind: ICON was registered above but
 # missing from both, so every official ICON row was discarded before it reached
 # the scope check.  Deriving it means registering a system is a single edit.
 OFFICIAL_ARCHIVE_TRANSPORT_PROVIDER_IDS = frozenset(
     str(contract["transport_provider_id"])
-    for contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values()
+    for contract in (
+        *OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.values(),
+        *POINT_FORECAST_SCOPE_CONTRACTS.values(),
+    )
 )
 # Inlined into SQL rather than bound as parameters because the set is a
 # compile-time constant of this module, never caller input.  Values are
@@ -238,7 +361,10 @@ def _temperature_bucket(value: float) -> str:
 KERNEL_BANDWIDTH_C = 0.5
 
 
-def _probabilities(values: Sequence[float]) -> dict[str, float]:
+def _probabilities(
+    values: Sequence[float],
+    bandwidth_c: float = KERNEL_BANDWIDTH_C,
+) -> dict[str, float]:
     """Bucket probabilities from a kernel-dressed sample, not a histogram.
 
     A histogram of a few dozen discrete values serves zeros even beside its
@@ -257,7 +383,7 @@ def _probabilities(values: Sequence[float]) -> dict[str, float]:
         if not math.isfinite(float(value)):
             raise ContractError("native_ensemble_oos_value_invalid")
         current.append(float(value))
-    bandwidth = KERNEL_BANDWIDTH_C
+    bandwidth = float(bandwidth_c)
     # Variance-preserving: shrink deviations so sample variance plus kernel
     # variance reproduces the original.  The calibration already chose the
     # distribution's width; dressing may not change it, only make it smooth.
@@ -546,7 +672,23 @@ def _apply_parameters(
         center + spread_factor * (value - mean)
         for value in current
     ]
-    member_probability = _probabilities(corrected)
+    # A single-member system (a point forecast) has no member spread for the
+    # spread factor to inflate, so the default kernel would serve a delta of
+    # width 0.5C regardless of how wrong the point tends to be.  Its honest
+    # width is the training residual: dress the lone member with the fitted
+    # RMSE instead.  Strictly one member -- a plural ensemble that happens to
+    # collapse to identical values keeps the plain kernel, exactly as before.
+    member_bandwidth = (
+        max(
+            KERNEL_BANDWIDTH_C,
+            float(parameters.get("train_rmse_c") or 0.0),
+        )
+        if len(current) == 1
+        else KERNEL_BANDWIDTH_C
+    )
+    member_probability = _probabilities(
+        corrected, bandwidth_c=member_bandwidth
+    )
     climate_probability = _probabilities([
         float(value)
         for value in parameters["climate_samples_c"]
@@ -687,16 +829,165 @@ def _correlation(
     return max(-1.0, min(1.0, numerator / (left_scale * right_scale)))
 
 
+def _weight_maturity(train_n: int | None) -> float:
+    """How much of its earned weight a system may hold at ``train_n`` days.
+
+    ``sqrt(n / n_full)``, capped at one, because the standard error of the
+    fitted RMSE shrinks as ``1/sqrt(n)`` -- the share we can justify tracks how
+    well the error is pinned down.  ``None`` means the caller could not report
+    a count, which is treated as mature so this never silently demotes the
+    established systems on a path that has not been taught to pass it.
+    """
+
+    if train_n is None:
+        return 1.0
+    if train_n <= 0:
+        return 0.0
+    return math.sqrt(
+        min(1.0, float(train_n) / float(WEIGHT_MATURITY_FULL_TRAIN_DAYS))
+    )
+
+
+def _select_minimum_crps_subset(
+    *,
+    ready_system_ids: Sequence[str],
+    predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    common_holdout: Sequence[str],
+    family_by_system: Mapping[str, str],
+    configured_caps: Mapping[str, float],
+    train_rmse: Mapping[str, float],
+    train_n_by_system: Mapping[str, int],
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Choose the subset of ready systems whose blend scores best out of sample.
+
+    Every ready system used to enter the blend unconditionally, weighted by
+    inverse RMSE -- admission was the only selection there was.  That is the
+    wrong default for a blend: a mediocre correlated system dilutes a sharp
+    pair even at a small weight, and admitting a family (which the forward
+    window now does early, on thin records) should not be the same act as
+    granting it a seat.  Here every combination spanning at least two
+    independence families is scored on the exact shared holdout with exactly
+    the bridged blend P0 would serve, and the seat goes to the combination
+    with the best CRPS -- NLL, then Brier break ties, then fewer systems,
+    because when the evidence cannot separate two blends the one carrying
+    fewer moving parts is the one to trust.
+
+    The enumeration is availability-and-skill on the fixed holdout only; no
+    subset ever sees its own selection reflected back into training, so this
+    cannot tune on the holdout any more than the single full-set blend could.
+    """
+
+    ordered = sorted(ready_system_ids)
+    if len(ordered) > 8:
+        raise ContractError("cross_native_ensemble_subset_space_too_large")
+    scored: list[dict[str, Any]] = []
+    best: tuple[Any, ...] | None = None
+    best_weights: dict[str, float] | None = None
+    best_entry: dict[str, Any] | None = None
+    for mask in range(1, 1 << len(ordered)):
+        subset = [
+            ordered[index]
+            for index in range(len(ordered))
+            if mask & (1 << index)
+        ]
+        if len({family_by_system[s] for s in subset}) < 2:
+            continue
+        try:
+            weights = _bounded_family_weights(
+                train_rmse_by_system={s: train_rmse[s] for s in subset},
+                family_by_system={
+                    s: family_by_system[s] for s in subset
+                },
+                family_caps=configured_caps,
+                train_n_by_system={
+                    s: train_n_by_system.get(s, 0) for s in subset
+                },
+            )
+        except ContractError:
+            continue
+        day_metrics = []
+        for day in common_holdout:
+            keys = set().union(*(
+                set(predictions_by_system[s][day]["probability"])
+                for s in subset
+            ))
+            ordered_keys = sorted(keys, key=lambda key: int(key))
+            probability, _receipt = bridged_cross_probability(
+                system_probabilities={
+                    s: predictions_by_system[s][day]["probability"]
+                    for s in subset
+                },
+                system_weights=weights,
+                system_centers_c={
+                    s: float(
+                        predictions_by_system[s][day]["calibrated_center_c"]
+                    )
+                    for s in subset
+                },
+                ordered_keys=ordered_keys,
+                key_centers_c=[float(int(key)) for key in ordered_keys],
+            )
+            actual = float(
+                predictions_by_system[subset[0]][day]["actual_tmax_c"]
+            )
+            day_metrics.append(_metrics(probability, actual))
+        mean = _mean_metrics(day_metrics)
+        entry = {
+            "system_ids": subset,
+            "crps": mean["crps"],
+            "nll": mean["nll"],
+            "brier": mean["brier"],
+        }
+        scored.append(entry)
+        rank = (
+            round(float(mean["crps"]), 12),
+            round(float(mean["nll"]), 12),
+            round(float(mean["brier"]), 12),
+            len(subset),
+            tuple(subset),
+        )
+        if best is None or rank < best:
+            best = rank
+            best_weights = weights
+            best_entry = entry
+    if best_weights is None or best_entry is None:
+        raise ContractError("cross_native_ensemble_no_scorable_subset")
+    scored.sort(key=lambda row: (
+        round(float(row["crps"]), 12),
+        round(float(row["nll"]), 12),
+        len(row["system_ids"]),
+    ))
+    receipt = {
+        "rule": "MIN_CRPS_EXACT_SHARED_HOLDOUT_SUBSET_V1",
+        "evaluated_subset_count": len(scored),
+        "winner": best_entry,
+        "leaderboard": scored[:8],
+    }
+    return best_weights, receipt
+
+
 def _bounded_family_weights(
     *,
     train_rmse_by_system: Mapping[str, float],
     family_by_system: Mapping[str, str],
     family_caps: Mapping[str, float],
+    train_n_by_system: Mapping[str, int] | None = None,
 ) -> dict[str, float]:
     family_scores: dict[str, float] = defaultdict(float)
     system_scores: dict[str, float] = {}
     for system_id, rmse in train_rmse_by_system.items():
+        # Inverse RMSE is only as trustworthy as the RMSE behind it.  A system
+        # admitted on a handful of days can post a flattering error by luck and
+        # would then walk straight into a large share of the blend, which is
+        # the failure mode that a high admission bar used to prevent by simply
+        # keeping newcomers out entirely.  Shrinking the score toward zero on
+        # small samples replaces that wall with a ramp: a system enters at a
+        # fraction of the weight its raw error would earn and grows into its
+        # full share as its record accumulates forward.
         score = 1.0 / max(float(rmse), 0.1)
+        score *= _weight_maturity(
+            (train_n_by_system or {}).get(system_id)
+        )
         system_scores[system_id] = score
         family_scores[family_by_system[system_id]] += score
     families = sorted(family_scores)
@@ -817,32 +1108,45 @@ def _load_systems(
                 "expected_member_count": int(row[4]),
                 "content_sha256": str(row[5]),
             })
+    for system_id, registration in POINT_FORECAST_SYSTEMS.items():
+        # Code-registered point forecasts; the table's plural-member CHECK
+        # stays authoritative for genuine ensembles.
+        systems.setdefault(system_id, dict(registration))
     return systems
 
 
 def _scope_contract_variants(
     official: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any], ...]:
-    """Normalise a scope entry into one contract per lead.
+    """Normalise a scope entry into one contract per lead and cycle.
 
     An entry is either a single contract (the historical shape, one lead) or a
     ``leads`` mapping from lead bucket to its own cycle and extraction.  Both
     are accepted so registering a second lead for a system never requires
     rewriting the ones already in production.
+
+    A lead's value is one contract or a list of them, because a family may be
+    admitted at more than one cycle for the same lead.  Each cycle carries its
+    own extraction version, so flattening them here widens what is admitted
+    without letting two runs be mistaken for one another downstream.
     """
 
     leads = official.get("leads")
     if not isinstance(leads, Mapping):
         return (official,)
     variants: list[Mapping[str, Any]] = []
-    for lead_bucket, contract in sorted(leads.items()):
-        if not isinstance(contract, Mapping):
-            continue
-        variants.append({
-            "transport_provider_id": official["transport_provider_id"],
-            "lead_bucket": str(lead_bucket),
-            **contract,
-        })
+    for lead_bucket, entry in sorted(leads.items()):
+        contracts = entry if isinstance(entry, Sequence) and not isinstance(
+            entry, (str, bytes, Mapping)
+        ) else [entry]
+        for contract in contracts:
+            if not isinstance(contract, Mapping):
+                continue
+            variants.append({
+                "transport_provider_id": official["transport_provider_id"],
+                "lead_bucket": str(lead_bucket),
+                **contract,
+            })
     return tuple(variants)
 
 
@@ -945,7 +1249,7 @@ def _historical_transport_scope_allowed(
     is the honest price and the reason to make such changes early.
     """
 
-    official = OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.get(system_id)
+    official = _admitted_scope_contract(system_id)
     if official is not None:
         # A system may be registered at several leads.  P0 follows the freshest
         # run available, so the same system supplies d2 two days out and d1 or
@@ -1210,6 +1514,14 @@ def _load_cases(
             ") ORDER BY t.local_date",
             (station, as_of_utc, as_of_utc),
         )
+        # Station-days settled by the retired ingest before their own local
+        # afternoon.  They cannot be revised -- no canonical fact was ever
+        # written for them -- so a model scored against one is scored against
+        # a partial morning: KSFO 2026-08-01 recorded 14C from three
+        # observations on a day that reached 23C.  Skipping them here is the
+        # difference between a gate that measures skill and one that also
+        # measures which mornings the old path happened to catch.
+        if not is_excluded(station, str(row[1]))
     }
     grouped: dict[
         tuple[str, str, str, str, str],
@@ -1682,12 +1994,30 @@ def _evaluate_system(
             "native_ensemble_oos_transport_scope_mixed"
         )
     transport_provider_id = next(iter(transports))
+    # A point forecast is not an ensemble and is not sized like one.  The 20+8
+    # window exists to characterise a fifty-member spread before its centre is
+    # trusted; a TAF TX is a single number a forecaster signed, with no spread
+    # to fit, so the same history buys far more certainty about it.  Its own
+    # profile is allowed here and nowhere else -- an ensemble family that tried
+    # to use it still fails closed on the line below.
+    is_point_forecast = system_id in POINT_FORECAST_SYSTEMS
+    allowed_windows = {
+        (DEFAULT_MIN_TRAIN_DAYS, DEFAULT_MIN_HOLDOUT_DAYS),
+        # The live forward-accumulation window, valid for every official
+        # system: training floors nothing (expanding window), and thin
+        # evidence is priced by the weight ramp rather than barred here.
+        (
+            FORWARD_ACCUMULATION_MIN_TRAIN_DAYS,
+            FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS,
+        ),
+    }
+    if is_point_forecast:
+        allowed_windows.add(
+            (POINT_FORECAST_MIN_TRAIN_DAYS, POINT_FORECAST_MIN_HOLDOUT_DAYS)
+        )
     if (
         transport_provider_id != "OPEN_METEO"
-        and (
-            min_train_days != DEFAULT_MIN_TRAIN_DAYS
-            or min_holdout_days != DEFAULT_MIN_HOLDOUT_DAYS
-        )
+        and (min_train_days, min_holdout_days) not in allowed_windows
     ):
         raise ContractError(
             "native_ensemble_oos_official_window_must_be_20_train_8_holdout"
@@ -2111,6 +2441,11 @@ def build_native_ensemble_oos(
         and min_holdout_days == DEFAULT_MIN_HOLDOUT_DAYS
     ):
         threshold_profile = FORMAL_PROMOTION_THRESHOLD_PROFILE
+    elif (
+        min_train_days == FORWARD_ACCUMULATION_MIN_TRAIN_DAYS
+        and min_holdout_days == FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS
+    ):
+        threshold_profile = FORWARD_ACCUMULATION_THRESHOLD_PROFILE
     else:
         threshold_profile = "CUSTOM_STRICT_CHRONOLOGICAL_OOS"
     station = station_id.strip().upper()
@@ -2176,11 +2511,24 @@ def build_native_ensemble_oos(
                 )
             ):
                 continue
+        # Each system is held to the window its own class requires.  Applying
+        # the ensemble window to a point forecast is what kept the TAF out of
+        # 9 of the 17 stations that issue one, waiting for spread statistics a
+        # single signed number does not have.
+        scope_min_train, scope_min_holdout = (
+            (POINT_FORECAST_MIN_TRAIN_DAYS, POINT_FORECAST_MIN_HOLDOUT_DAYS)
+            if (
+                scope[0] in POINT_FORECAST_SYSTEMS
+                and min_train_days == DEFAULT_MIN_TRAIN_DAYS
+                and min_holdout_days == DEFAULT_MIN_HOLDOUT_DAYS
+            )
+            else (min_train_days, min_holdout_days)
+        )
         result = _evaluate_system(
             system_id=scope[0],
             cases=cases,
-            min_train_days=min_train_days,
-            min_holdout_days=min_holdout_days,
+            min_train_days=scope_min_train,
+            min_holdout_days=scope_min_holdout,
         )
         evaluations[scope] = result
         readiness.append({
@@ -2330,6 +2678,10 @@ def build_native_ensemble_oos(
             train_rmse_by_system=train_rmse,
             family_by_system=family_by_system,
             family_caps=configured_caps,
+            train_n_by_system={
+                system_id: int(evaluation.get("train_n") or 0)
+                for system_id, evaluation in rows
+            },
         )
         predictions_by_system = {
             system_id: {
@@ -2338,6 +2690,43 @@ def build_native_ensemble_oos(
             }
             for system_id, evaluation in rows
         }
+        # The seat is earned, not granted with admission: every combination
+        # of the ready systems is scored on this exact holdout and the best
+        # blend takes the weights.  ``weights`` from the full set above stays
+        # only as the enumeration's starting vocabulary.
+        weights, subset_selection = _select_minimum_crps_subset(
+            ready_system_ids=[system_id for system_id, _e in rows],
+            predictions_by_system=predictions_by_system,
+            common_holdout=common_holdout,
+            family_by_system=family_by_system,
+            configured_caps=configured_caps,
+            train_rmse=train_rmse,
+            train_n_by_system={
+                system_id: int(evaluation.get("train_n") or 0)
+                for system_id, evaluation in rows
+            },
+        )
+        family_by_system = {
+            system_id: family_by_system[system_id]
+            for system_id in weights
+        }
+        # The cycle mapping, its hash and the scope's run_cycle label all
+        # describe what the activation actually blends, so they are recomputed
+        # for the seated subset -- a full-cohort mapping under a subset
+        # selection is exactly the identity mismatch the persist guard
+        # rejects.  A subset that is single-cycle also correctly sheds the
+        # MIXED label its cohort carried.
+        selected_ready_rows = [
+            row for row in selected_ready_rows if row[0] in weights
+        ]
+        rows = [
+            (system_id, evaluation)
+            for system_id, evaluation in rows
+            if system_id in weights
+        ]
+        cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
+            _cycle_mapping_for_rows(selected_ready_rows)
+        )
         cross_predictions = []
         climate_train = next(
             iter(rows)
@@ -2459,9 +2848,14 @@ def build_native_ensemble_oos(
                     [residuals[left][day] for day in days],
                     [residuals[right][day] for day in days],
                 )
+        # The gate record must stay out of ``cross_metrics``: those bytes are
+        # part of the selection-evidence identity, and the activation pointers
+        # the P0 compile validates against were bound under the gate-free
+        # bytes.  Injecting it there changed every re-evaluated scope's
+        # selection sha, unbound the current pointers, and silenced the whole
+        # envelope pipeline within one OOS scan of the next worker restart.
         oos_gate = _cross_oos_gate(cross_metrics, climate_metrics)
         oos_pass = bool(oos_gate["pass"])
-        cross_metrics = {**cross_metrics, "gate": oos_gate}
         # Activations are unique on
         # (kind, station, system, season, lead, run_cycle, set_hash,
         # generation) and the per-system cycle mapping is not part of that key.
@@ -2490,6 +2884,10 @@ def build_native_ensemble_oos(
                 if oos_pass
                 else "OOS_REJECTED"
             ),
+            # Which gate path decided the state, for review.  Deliberately a
+            # sibling of ``oos_metrics``: the evaluation row embeds it, the
+            # selection identity never sees it.
+            "oos_gate": oos_gate,
             "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
             "future_event_count": 0,
             "station_id": station,
@@ -2529,8 +2927,9 @@ def build_native_ensemble_oos(
                 + ("ALL_READY_OFFICIAL" if system_mask is None else
                    _json(sorted(str(value) for value in system_mask)))
                 + "::MAX_EXACT_SHARED_STRICT_HOLDOUT"
-                "_THEN_MAX_SYSTEM_COVERAGE"
+                "::MIN_CRPS_SUBSET"
             ),
+            "subset_selection": subset_selection,
             "system_transport_provider_ids": {
                 system_id: str(
                     evaluation["transport_provider_id"]
@@ -2787,7 +3186,15 @@ def _evaluation_identity(
         "train_end_date": candidate["train_end_date"],
         "holdout_start_date": candidate["holdout_start_date"],
         "holdout_end_date": candidate["holdout_end_date"],
-        "oos_metrics_json": _json(candidate["oos_metrics"]),
+        # The gate record rides only here: the evaluation row is a new
+        # append-only fact each scan, so embedding it is free, while the
+        # selection identity must keep the gate-free bytes its activation
+        # pointers were bound under.
+        "oos_metrics_json": _json(
+            {**candidate["oos_metrics"], "gate": candidate["oos_gate"]}
+            if isinstance(candidate.get("oos_gate"), Mapping)
+            else candidate["oos_metrics"]
+        ),
         "climatology_baseline_metrics_json": _json(
             candidate["climatology_baseline_metrics"]
         ),

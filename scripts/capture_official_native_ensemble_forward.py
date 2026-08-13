@@ -37,6 +37,7 @@ from bayes_basket_target.noaa_gefs_archive import (  # noqa: E402
     ingest_gefs_station_days,
 )
 from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
+    RUN_CYCLE_HOUR_BY_LEAD as ECCC_RUN_CYCLE_HOUR_BY_LEAD,
     capture_geps_station_days,
     ingest_geps_station_days,
 )
@@ -169,13 +170,84 @@ def _canonical_station_ids() -> tuple[str, ...]:
     return station_ids
 
 
+def _capture_taf_point_archives(
+    *,
+    event_date: str,
+    scopes: Sequence[dict[str, Any]],
+    capture_at: str,
+    lead_days: int,
+) -> dict[str, Any]:
+    """Per-station TAF TX point archives for this scope, possibly empty.
+
+    Read-only against the SSOT: the TAF capture lane already persisted the
+    issuances; this only projects the admissible one per station into the
+    forward-packet archive shape.  Stations without an admissible TAF are
+    simply absent -- the packet builder then serves the model-only set.
+    """
+
+    from bayes_basket_target.native_ensemble_training_facts import (
+        build_taf_point_forward_archive_for_station,
+    )
+    from bayes_basket_target.p0_producer import (
+        bucket_intervals_from_registry_rows,
+    )
+
+    archives_by_station: dict[str, Any] = {}
+    conn = sqlite3.connect(
+        f"file:{DEFAULT_TARGET_DB}?mode=ro", uri=True, timeout=30.0
+    )
+    try:
+        for scope in scopes:
+            station_id = str(scope["station_id"])
+            intervals = bucket_intervals_from_registry_rows(
+                scope["registry_rows"]
+            )
+            frozen = {
+                bucket: [
+                    None if lower is None else float(lower),
+                    None if upper is None else float(upper),
+                ]
+                for bucket, (lower, upper) in intervals.items()
+            }
+            archive = build_taf_point_forward_archive_for_station(
+                conn,
+                station_id=station_id,
+                event_date=event_date,
+                lead_bucket=f"d{int(lead_days)}",
+                as_of_utc=capture_at,
+                bucket_intervals=frozen,
+            )
+            if archive is not None:
+                archives_by_station[station_id] = archive
+    finally:
+        conn.close()
+    return {
+        "schema": "official_taf_tx_point_forward_archives_v1",
+        "event_date": event_date,
+        "archive_lead_bucket": f"d{int(lead_days)}",
+        "captured_at_utc": capture_at,
+        "archives_by_station": archives_by_station,
+    }
+
+
 def build_station_scopes(
     registry: dict[str, Any],
     *,
     event_date: str,
     station_ids: Sequence[str] | None = None,
+    skip_unlisted_stations: bool = False,
 ) -> list[dict[str, Any]]:
-    """Resolve complete, source-eligible registry scopes before any fetch."""
+    """Resolve complete, source-eligible registry scopes before any fetch.
+
+    ``skip_unlisted_stations`` captures whatever the registry currently lists
+    for the day rather than insisting on the full canonical set.  A model run
+    is downloaded once and read for every station at once, so the caller that
+    wants the whole run cannot name its stations in advance -- an event date
+    three days out legitimately lists 29 of 45.  Only "this station has no
+    market on this day" is skipped; a station the registry does list but
+    describes incoherently still fails closed, because that is a contract
+    violation rather than a market that has not opened yet.
+    """
 
     canonical = _canonical_station_ids()
     requested = canonical if station_ids is None else tuple(
@@ -203,6 +275,8 @@ def build_station_scopes(
             and int(row.get("source_eligible") or 0) == 1
         ]
         if not matching:
+            if skip_unlisted_stations:
+                continue
             raise ContractError(
                 "official_native_forward_registry_scope_missing:"
                 f"{station_id}:{event_date}"
@@ -230,6 +304,8 @@ def build_station_scopes(
             "longitude": float(coordinates["longitude"]),
             "registry_rows": matching,
         })
+    if not scopes:
+        raise ContractError("official_native_forward_station_scope_invalid")
     return scopes
 
 
@@ -281,6 +357,7 @@ def capture_official_native_forward(
     inbox_output: Path,
     timeout_seconds: float,
     station_ids: Sequence[str] | None = None,
+    skip_unlisted_stations: bool = False,
     eccc_geps_archive: Path | None = None,
     eccc_station_ids: Sequence[str] | None = None,
     eccc_output: Path | None = None,
@@ -295,7 +372,12 @@ def capture_official_native_forward(
     if not MIN_TIMEOUT_SECONDS <= float(timeout_seconds) <= MAX_TIMEOUT_SECONDS:
         raise ContractError("official_native_forward_timeout_invalid")
     registry = load_market_registry_snapshot(registry_path.expanduser().resolve(strict=True))
-    scopes = build_station_scopes(registry, event_date=event_date, station_ids=station_ids)
+    scopes = build_station_scopes(
+        registry,
+        event_date=event_date,
+        station_ids=station_ids,
+        skip_unlisted_stations=skip_unlisted_stations,
+    )
     capture_at = _utc_now()
     requested_station_ids = [str(scope["station_id"]) for scope in scopes]
     gefs_path = gefs_output.expanduser().resolve()
@@ -378,16 +460,34 @@ def capture_official_native_forward(
             archive_query_at_utc=capture_at,
             timeout_seconds=float(timeout_seconds),
             lead_days=int(lead_days),
+            # ECCC's own cycle for this lead, not the caller's.  ``run_cycle_hour``
+            # carries the ECMWF/GEFS ladder's answer -- 18Z at d2 -- which ECCC
+            # does not publish, and passing nothing silently took 00Z at every
+            # lead.  That is how this family's d2 history accumulated for weeks
+            # in a lead-hour bucket no other family occupies.
+            run_cycle_hour=ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)],
         )
+    icon_capture_error = ""
     if icon_output is not None and icon is None:
         assert_process_memory_budget()
-        icon = capture_icon_eps_station_days(
-            event_date=event_date,
-            station_scopes=scopes,
-            archive_query_at_utc=capture_at,
-            timeout_seconds=float(timeout_seconds),
-            lead_days=int(lead_days),
-        )
+        try:
+            icon = capture_icon_eps_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+            )
+        except Exception as exc:  # noqa: BLE001 - one optional family
+            # ICON is the one family with no backfill: DWD keeps only the
+            # newest run, so a lane that is down now is down forever for this
+            # day.  That argues for capturing it on every pass, which in turn
+            # means its failure must not take ECMWF and GEFS with it -- those
+            # two are what the ensemble actually requires, and losing a whole
+            # capture because an optional family timed out would trade a
+            # recoverable gap for an unrecoverable one.  Record and continue.
+            icon = None
+            icon_capture_error = f"{type(exc).__name__}:{exc}"[:200]
     assert_process_memory_budget()
     inbox_path = inbox_output.expanduser().resolve()
     wrote_gefs = write_bounded_json_if_changed(gefs_path, gefs)
@@ -406,6 +506,20 @@ def capture_official_native_forward(
         if icon_output is not None and icon is not None
         else False
     )
+    taf_point = _capture_taf_point_archives(
+        event_date=event_date,
+        scopes=scopes,
+        capture_at=capture_at,
+        lead_days=int(lead_days),
+    )
+    taf_point_path = inbox_path.parent / (
+        f"official_taf_tx_point_{event_date}_d{int(lead_days)}.json"
+    )
+    wrote_taf_point = (
+        write_bounded_json_if_changed(taf_point_path, taf_point)
+        if taf_point["archives_by_station"]
+        else False
+    )
     command = [
         sys.executable,
         str(ROOT / "scripts" / "build_official_native_forward_inbox.py"),
@@ -414,6 +528,8 @@ def capture_official_native_forward(
         "--market-registry", str(registry_path.expanduser().resolve()),
         "--output", str(inbox_path),
     ]
+    if taf_point["archives_by_station"]:
+        command.extend(["--taf-point-archive", str(taf_point_path)])
     # An actively captured ECCC archive is preferred over a supplied one; both
     # carry the same GEPS native 00Z lineage, so the builder treats them alike.
     resolved_eccc = (
@@ -469,6 +585,17 @@ def capture_official_native_forward(
             "NOAA_GEFS_PDS_S3": reused_gefs,
             "ECMWF_OPEN_DATA_S3": reused_ecmwf,
         },
+        # ICON carried no instrumentation at all, which is the wrong way round:
+        # it is the family whose misses are permanent, so it is the one whose
+        # outcome most needs to be visible on every pass.
+        **({
+            "icon_capture": {
+                "requested": True,
+                "wrote": wrote_icon,
+                "reused_retained": reused_icon,
+                "error": icon_capture_error,
+            }
+        } if icon_output is not None else {}),
         "inbox_path": str(inbox_path),
         "inbox_content_sha256": str(inbox["content_sha256"]),
         "inbox_packet_count": len(inbox["packets"]),
@@ -490,9 +617,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         choices=[0, 18],
         help=(
-            "Read this cycle instead of the lead's default.  ECCC has only "
-            "00Z and is unaffected; a cycle that does not cover a station's "
-            "local day is still rejected by the coverage check."
+            "Read this cycle instead of the lead's default.  ECCC publishes "
+            "neither 00Z-at-d2 nor 18Z and takes its own cycle for the lead "
+            "regardless; a cycle that does not cover a station's local day is "
+            "still rejected by the coverage check."
         ),
     )
     parser.add_argument("--market-registry", type=Path, default=DEFAULT_REGISTRY)
@@ -517,6 +645,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--station-id", action="append", default=[])
+    parser.add_argument(
+        "--registry-scope-stations",
+        action="store_true",
+        help=(
+            "Capture every station the registry lists for this event date "
+            "instead of a named subset, skipping canonical stations whose "
+            "market has not opened for the day.  One model run is downloaded "
+            "once and read for all of them, so this costs about twice a "
+            "single-station pass rather than forty-five times it."
+        ),
+    )
     parser.add_argument("--timeout-seconds", type=float, default=45.0)
     parser.add_argument("--db", type=Path, default=DEFAULT_TARGET_DB)
     parser.add_argument(
@@ -558,6 +697,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             inbox_output=args.inbox_output,
             timeout_seconds=float(args.timeout_seconds),
             station_ids=args.station_id or None,
+            skip_unlisted_stations=bool(args.registry_scope_stations),
             eccc_geps_archive=args.eccc_geps_archive,
             eccc_output=args.eccc_output,
             icon_output=args.icon_output,

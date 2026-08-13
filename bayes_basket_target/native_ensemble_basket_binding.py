@@ -449,7 +449,7 @@ def _choose_stage(
             not in {"P0", "P0-M"}
         ):
             return None, ["probability_p1_root_stage_mismatch"]
-        if as_of_utc is not None and not selected["envelope"].is_fresh(as_of_utc):
+        if as_of_utc is not None and not selected["envelope"].is_servable(as_of_utc):
             return None, ["probability_stage_stale_fail_closed"]
         return selected, blockers
     return None, ["probability_stage_missing"]

@@ -610,6 +610,15 @@ def capture_icon_eps_station_days(
             "OFFICIAL_ICON_EPS_PERTURBED_1_TO_40"
         ),
         "station_count": len(captures),
+        # The retained-archive reuse check matches on the exact station set, so
+        # an archive that does not name its stations can never satisfy it: this
+        # family was the only one of the four omitting the field, and it was
+        # therefore re-downloaded in full on every capture while the other
+        # three were served from the retained copy.  ~517MiB a pass, for bytes
+        # already on disk.
+        "station_ids": [
+            str(capture["station_id"]) for capture in captures
+        ],
         "union_forecast_hours": union_hours,
         "archive_query_at_utc": archive_query_at_utc,
         "object_receipt_count": len(object_receipts),

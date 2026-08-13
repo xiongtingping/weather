@@ -43,24 +43,52 @@ MULTISTATION_SCHEMA = (
 )
 SYSTEM_ID = "ECCC_GEM_GLOBAL_ENS"
 INDEPENDENCE_FAMILY_ID = "ECCC_GEM"
-RUN_CYCLE = "00Z"
 # ECCC is the only native family without an 18Z run, so its d2 cycle is a real
 # choice rather than a given.  00Z fires 18 hours before the 18Z the other
 # families use; 12Z narrows that information deficit to 6 hours.  Both are
 # admitted here so the two can be measured against each other instead of one
-# being assumed.
+# being assumed.  A capture's cycle is derived from its own ``run_init`` -- see
+# ``_run_cycle_label`` -- rather than from a module constant, so that a row can
+# never claim a cycle the object it came from does not carry.
 SUPPORTED_RUN_CYCLE_HOURS = (0, 12)
 # P0 follows the freshest run, so this collector is asked for a shorter lead as
 # the event day approaches.  The default keeps existing d2 callers unchanged.
 SUPPORTED_LEAD_DAYS = (0, 1, 2)
 DEFAULT_LEAD_DAYS = 2
-# ECCC is the one family whose cycle does *not* move with the lead.  The others
-# read a late cycle at d2 and fall back to the day's first cycle at d1/d0,
-# because a late run no longer precedes the local day in the far east.  00Z is
-# already the day's first cycle, so there is nothing to fall back to and every
-# lead reads it.  ``SUPPORTED_RUN_CYCLE_HOURS`` still admits 12Z so the two can
-# be measured against each other; this mapping is what production takes.
-RUN_CYCLE_HOUR_BY_LEAD = {2: 0, 1: 0, 0: 0}
+# Which run production reads at each lead.  The others read a late cycle at d2
+# and fall back to the day's first cycle at d1/d0, because a late run no longer
+# precedes the local day in the far east.  ECCC has no 18Z, so d2 takes 12Z --
+# the latest run that still precedes the day everywhere -- for the lead-hour
+# reason spelled out under ``ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD`` below: at 00Z the
+# d2 capture lands in a bucket no other family occupies and can never be paired.
+#
+# d1 and d0 stay on 00Z.  Their 00Z history is already the length that admits
+# them (30 and 33 days), and moving a lead's cycle restarts its accumulation
+# from zero -- a cost worth paying only where the existing history is unusable,
+# which is d2's case and not theirs.
+RUN_CYCLE_HOUR_BY_LEAD = {2: 12, 1: 0, 0: 0}
+# Which cycles the OOS archive *admits* at each lead, as against the single
+# cycle the mapping above tells the collector to take.  The two differ because
+# they answer different questions: that one asks which run production reads,
+# this one asks which retained runs may train.
+#
+# Reading 00Z at every lead put ECCC in lead-hour buckets the other families do
+# not occupy.  A 00Z run two days out is 48h ahead of a UTC day start and more
+# for every station west of the meridian, so measured over the 45-station
+# registry its d2 lands in ``h48_plus`` at 36 stations while ECMWF and GEFS read
+# 18Z into ``h24_48``.  That is exactly where ECCC's evidence is thickest -- 39
+# days against 30 at d1 -- and a cross-native cohort needs two independent
+# families in the same bucket, so the thickest scope this family has had nobody
+# to pair with.  At 12Z the same lead is 36h ahead of a UTC day start, which
+# lands in ``h24_48`` at all 45 stations.
+#
+# Both cycles stay admitted rather than 00Z being replaced.  The A/B in
+# ``scripts/eccc_geps_run_cycle_ab_experiment.py`` measured 12Z at 0.032C worse
+# MAE than 00Z over 18 paired days -- real but small, and measured on raw skill
+# at a fixed label, which is not the question a cohort asks.  Keeping both lets
+# the cohort selection weigh an in-bucket partner against that 0.032C on the
+# evidence, instead of this table deciding it in advance.
+ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD = {2: (0, 12), 1: (0, 12), 0: (0, 12)}
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 

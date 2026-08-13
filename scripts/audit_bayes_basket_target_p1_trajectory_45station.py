@@ -48,12 +48,14 @@ from scripts.build_bayes_basket_target_metar_trajectory_training_packet import (
 from bayes_basket_target.metar_trajectory_training import (  # noqa: E402
     train_metar_trajectory_artifact,
 )
+from bayes_basket_target.metar_trajectory import (  # noqa: E402
+    MINIMUM_EFFECTIVE_SAMPLE_N,
+)
 
 
 SCHEMA = "bayes_basket_target_p1_trajectory_45station_audit_v1"
 EXECUTION_MODE = "production_no_live"
 MINIMUM_PRIOR_TRUTHS = 3
-MINIMUM_EFFECTIVE_SAMPLE_N = 20.0
 DEFAULT_SEASON_BIN = "JJA"
 DEFAULT_MATURITY_BIN = "D0"
 DEFAULT_SETTLEMENT_DEFINITION = "official_daily_tmax_c"

@@ -122,6 +122,29 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for offset in range(day_count)
     }
     station_map = {str(row["station_id"]): dict(row) for row in stations}
+    # The registry's raw timezone_name is the seed packet's own claim and is
+    # wrong for 33 of the 45 stations (America/New_York for Helsinki, Seoul,
+    # Sao Paulo, ...).  The validated market binding is the settlement
+    # authority everywhere else in the system; using the raw column here put
+    # the day-closure clock and the model-to-day event window hours off local.
+    # A station without a unique binding fails closed rather than guessed.
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as binding_conn:
+        bindings = {
+            str(row[0]): str(row[1])
+            for row in binding_conn.execute(
+                "SELECT station_id,settlement_timezone "
+                "FROM calibration_station_market_timezone_binding "
+                "WHERE market_registry_timezone_count=1 "
+                "AND settlement_timezone<>''"
+            )
+        }
+    for station_id, entry in station_map.items():
+        bound = bindings.get(station_id)
+        if not bound:
+            raise ContractError(
+                "ssot_oos_station_timezone_binding_missing:" + station_id
+            )
+        entry["timezone_name"] = bound
     truth_map: dict[tuple[str, str], dict[str, Any]] = {}
     for raw in truths:
         row = dict(raw)

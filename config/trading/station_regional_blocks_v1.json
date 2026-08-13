@@ -1,0 +1,23 @@
+{
+  "schema": "basket_target_station_regional_blocks_v1",
+  "rationale": "Stations under one air mass move together, so spreading capital across them is not diversification. Blocks group stations that share a synoptic regime; the allocator treats a block as fully correlated inside and independent across, which is the conservative reading and needs no estimated correlation matrix. Derived from ICAO region and climate, not from the station registry's timezone column, which is wrong for every non-US station.",
+  "default_block": "UNBLOCKED_SINGLETON",
+  "blocks": {
+    "NORTH_AMERICA_WEST": ["KLAX", "KSFO", "KSEA", "KBKF"],
+    "NORTH_AMERICA_SOUTH_CENTRAL": ["KAUS", "KDAL", "KHOU"],
+    "NORTH_AMERICA_NORTHEAST": ["KLGA", "KORD", "CYYZ"],
+    "NORTH_AMERICA_SOUTHEAST": ["KATL", "KMIA"],
+    "EUROPE_WEST": ["EGLC", "EHAM", "LFPB"],
+    "EUROPE_CENTRAL": ["EDDM", "EPWA", "EFHK"],
+    "EUROPE_SOUTH": ["LEMD", "LIMC", "LTAC"],
+    "CHINA_NORTH": ["ZBAA", "ZSQD"],
+    "CHINA_CENTRAL": ["ZSPD", "ZHHH", "ZUCK", "ZUUU"],
+    "CHINA_SOUTH": ["ZGGG", "ZGSZ"],
+    "ASIA_NORTHEAST": ["RJTT", "RKPK", "RKSI", "RCSS"],
+    "ASIA_SOUTHEAST": ["RPLL", "WMKK", "WSSS"],
+    "ASIA_SOUTH": ["VILK", "OPKC"],
+    "MIDDLE_EAST": ["OEJN"],
+    "LATIN_AMERICA": ["MMMX", "MPMG", "SAEZ", "SBGR"],
+    "SOUTHERN_HEMISPHERE_OTHER": ["FACT", "NZWN"]
+  }
+}

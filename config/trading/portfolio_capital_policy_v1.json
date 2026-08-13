@@ -1,0 +1,21 @@
+{
+  "schema": "basket_target_portfolio_capital_policy_v1",
+  "policy_version": "portfolio-capital-v1",
+  "rationale": "One book, several limits. The allocator already prices shared weather into each station's quota; these are the outer bounds that hold whatever the allocator concludes, so a single mispriced edge or a bad run cannot take the account.",
+  "portfolio_risk_fraction": 0.35,
+  "station_cap_fraction": 0.25,
+  "block_exposure_cap_fraction": 0.5,
+  "settlement_window_cap_fraction": 0.25,
+  "drawdown_circuit_breaker": {
+    "rolling_days": 7,
+    "max_drawdown_fraction": 0.2,
+    "action": "STOP_NEW_INTENTS_ONLY",
+    "rationale": "A breaker that liquidated would realize the loss it is reacting to, and would do it at whatever price the book happens to show. Stopping new exposure lets existing baskets settle on their own terms, which is the same reasoning the P1 hard bound uses when it constrains additions but not holdings."
+  },
+  "valid_from_utc": "2026-08-01T00:00:00Z",
+  "valid_until_utc": "2027-01-01T00:00:00Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "calls_order_gateway": false,
+  "places_orders": false,
+  "live_submit_authorized": false
+}

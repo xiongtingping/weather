@@ -1057,3 +1057,49 @@ def test_activation_generation_or_binding_drift_fails_closed(
             run_initializations=[run],
             provider_runner=lambda **_: {},
         )
+
+
+def test_every_contracted_lead_resolves_a_run_for_all_four_systems() -> None:
+    # The contract holds a list of cycles per lead because a system may read
+    # more than one -- ECCC takes both 00Z and 12Z at d2.  Reading that as a
+    # single mapping matched nothing, which emptied the run set for every lead
+    # and every date and stopped the capture scheduler outright.
+    from bayes_basket_target.official_nwp_capture_scheduler import (
+        OFFICIAL_ARCHIVE_SCOPE_CONTRACTS,
+        SUPPORTED_LEAD_DAYS,
+        contracted_run_inits,
+    )
+
+    for lead_days in SUPPORTED_LEAD_DAYS:
+        runs = contracted_run_inits("2026-08-12", lead_days=lead_days)
+        assert set(runs) == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS)
+
+
+def test_a_multi_cycle_lead_takes_the_latest_contracted_cycle() -> None:
+    # ECCC contracts 00Z and 12Z at d2; the later run assimilates more and is
+    # also the conservative readiness bound for the lead.
+    from bayes_basket_target.official_nwp_capture_scheduler import (
+        contracted_run_inits,
+    )
+
+    runs = contracted_run_inits("2026-08-12", lead_days=2)
+
+    assert runs["ECCC_GEM_GLOBAL_ENS"].hour == 12
+    assert runs["ECCC_GEM_GLOBAL_ENS"].date().isoformat() == "2026-08-10"
+
+
+def test_a_single_mapping_lead_still_resolves() -> None:
+    # An older contract shape must keep working rather than silently drop the
+    # system out of the run set.
+    import bayes_basket_target.official_nwp_capture_scheduler as scheduler
+
+    original = scheduler.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS
+    scheduler.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
+        "LEGACY_SYSTEM": {"leads": {"d1": {"run_cycle": "06Z"}}},
+    }
+    try:
+        runs = scheduler.contracted_run_inits("2026-08-12", lead_days=1)
+    finally:
+        scheduler.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = original
+
+    assert runs["LEGACY_SYSTEM"].hour == 6

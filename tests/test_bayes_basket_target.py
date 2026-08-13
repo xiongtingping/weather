@@ -43,6 +43,7 @@ from bayes_basket_target.ssot import (
     apply_target_ssot_schema,
 )
 from bayes_basket_target.regime_materialization import build_regime_artifact
+from bayes_basket_target.runtime import snapshot_from_probability_envelope
 from bayes_basket_target.delta_v2_artifact import ARTIFACT_SCHEMA
 
 
@@ -332,6 +333,8 @@ def _envelope() -> ProbabilityEnvelope:
             ),
             "model_envelope_lower_bucket": "38",
             "model_envelope_upper_bucket": "38",
+            "model_envelope_lower_ordinal": "38",
+            "model_envelope_upper_ordinal": "38",
             "model_envelope_span_c": "0",
             "formal_model_members_json": json.dumps(
                 [
@@ -1847,10 +1850,22 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
     expanded_plan = compile_for(expanded)["plan"]
     assert compact_plan["center_bucket"] == expanded_plan["center_bucket"] == "38"
     assert compact_plan["direction"] == expanded_plan["direction"] == Direction.NEUTRAL.value
-    assert compact_plan["candidate_support"] == ["38"]
-    assert expanded_plan["candidate_support"] == ["38"]
-    assert compact_plan["diagnostic_lower_ordinal"] is None
-    assert compact_plan["diagnostic_upper_ordinal"] is None
+    # The seat is the objective's call, not the envelope's, so it is the same
+    # under both envelopes: 37/38/39 hold 0.2/0.6/0.2 and each offers at 0.12,
+    # so taking all three buys the whole day for 0.36 against a dollar payout
+    # (edge +0.64) where 38 alone pays 0.12 for a 60% chance (+0.48).  What
+    # the envelope moves is the diagnostic boundary below, which is what this
+    # test exists to pin.
+    assert compact_plan["candidate_support"] == ["37", "38", "39"]
+    assert expanded_plan["candidate_support"] == ["37", "38", "39"]
+    # Agreeing models still publish an envelope; it is just degenerate, and a
+    # degenerate envelope that sits on the core widens nothing.  Reading it as
+    # absent was the old behaviour and it came from the ordinals being dropped
+    # on the way in, not from the models having said anything different.
+    assert (
+        compact_plan["diagnostic_lower_ordinal"],
+        compact_plan["diagnostic_upper_ordinal"],
+    ) == (38, 38)
     assert (
         compact_plan["candidate_lower_ordinal"],
         compact_plan["candidate_upper_ordinal"],
@@ -1863,3 +1878,87 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
         expanded_plan["candidate_lower_ordinal"],
         expanded_plan["candidate_upper_ordinal"],
     ) == (37, 39)
+
+
+def test_naming_envelope_buckets_without_ordinals_derives_them() -> None:
+    # The defect this pins cost production 455 P0 envelopes their model
+    # envelope: the stage named the boundary buckets, the basket keyed on the
+    # ordinals, and the missing pair read as "no envelope published", so the
+    # candidate boundary silently collapsed onto the probability core.  The
+    # bucket names resolve through the envelope's own ordinal contract, so
+    # they are derived rather than refused -- a refusal would invalidate the
+    # entire committed native P0 history on the next worker restart.
+    base = _envelope()
+    buckets_only = ProbabilityEnvelope.from_mapping({
+        **base.to_dict(),
+        "lineage": {
+            key: value
+            for key, value in base.lineage.items()
+            if key not in {
+                "model_envelope_lower_ordinal",
+                "model_envelope_upper_ordinal",
+            }
+        },
+    })
+
+    snapshot = snapshot_from_probability_envelope(
+        buckets_only,
+        {
+            "snapshot_id": "market-snapshot-derived-boundary",
+            "sequence": 1,
+            "observed_at": DECISION,
+            "market_id": "market-zuuu-2026-07-23",
+            "station_id": "ZUUU",
+            "event_date": "2026-07-23",
+            "settlement_timezone": SETTLEMENT_TIMEZONE,
+            "quote_version": "quote-derived-boundary",
+            "quote_observed_at": DECISION,
+            "inventory_version": "inventory-derived-boundary",
+            "order_state_version": "orders-derived-boundary",
+            "remaining_budget_usdc": 12.0,
+            "buckets": [
+                {
+                    "bucket": bucket,
+                    "bid_price": 0.10,
+                    "ask_levels": [{"price": 0.12, "shares": 100.0}],
+                    "maker_queue_ahead_shares": 1.0,
+                    "maker_queue_known": True,
+                }
+                for bucket in ("37", "38", "39")
+            ],
+        },
+    )
+
+    assert snapshot.evidence.model_envelope_lower_ordinal == 38
+    assert snapshot.evidence.model_envelope_upper_ordinal == 38
+
+
+def test_naming_only_one_envelope_bucket_is_refused() -> None:
+    base = _envelope()
+    half = ProbabilityEnvelope.from_mapping({
+        **base.to_dict(),
+        "lineage": {
+            **{
+                key: value
+                for key, value in base.lineage.items()
+                if key not in {
+                    "model_envelope_lower_ordinal",
+                    "model_envelope_upper_ordinal",
+                    "model_envelope_upper_bucket",
+                }
+            },
+        },
+    })
+
+    with pytest.raises(
+        ContractError,
+        match="probability_model_envelope_boundary_incomplete",
+    ):
+        snapshot_from_probability_envelope(
+            half,
+            {
+                "station_id": "ZUUU",
+                "event_date": "2026-07-23",
+                "settlement_timezone": SETTLEMENT_TIMEZONE,
+            },
+        )

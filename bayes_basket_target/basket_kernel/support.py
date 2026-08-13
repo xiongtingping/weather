@@ -181,24 +181,33 @@ def _converge_contiguous_support(
     temperature range: settlement in a skipped bucket pays nothing while the
     basket was priced as if that outcome were covered.
 
-    Convergence never fills a hole with a bucket that failed its gates.  It
-    instead keeps the longest admitted run containing the center, then trims
-    that run to ``maximum_buckets``, dropping the lower-probability end first.
-    Both operations only ever remove buckets, so every surviving bucket still
-    carries its original admission evidence.
+    Convergence closes a hole by buying the bucket inside it.  Keeping only
+    the longest admitted run instead would delete whatever sits past the hole,
+    and what sits past a hole is usually the hedge: with 35 at 0.45, 36 at
+    0.10 and 37 at 0.45, the run containing the center is 35 alone, so the
+    basket would cover 0.45 of the distribution and drop an equal share of it.
+    Reaching an admitted bucket costs every bucket between it and the center,
+    so the walk starts at the center and extends one admitted endpoint at a
+    time, taking the more valuable side first and skipping any side whose span
+    no longer fits ``maximum_buckets``.  A hedge that cannot be reached inside
+    the cap is left out whole rather than approached with orphan bridge
+    buckets, which would spend the cap on buckets that cover nothing by
+    themselves.
 
     The result narrows on its own as probability concentrates: a sharp P1
-    leaves fewer admitted neighbours, so the run -- and the basket -- shrinks
-    without any separate schedule.  Open-ended edge buckets ("31°C or below",
-    "41°C or higher") are ordinary members here; when the distribution has a
-    real tail they stay adjacent to the core and act as its tail hedge, and
-    when they are cut off from the core they are dropped rather than bridged.
+    leaves fewer admitted buckets within reach, so the span -- and the basket
+    -- shrinks without any separate schedule.  Open-ended edge buckets ("31°C
+    or below", "41°C or higher") are ordinary members here and act as the tail
+    hedge whenever the distribution has a real tail.
 
     A hedge bucket need not touch the core.  With a core at 32/33 and a hedge
     at 35, 34 is pulled in to keep the range whole, giving 32/33/34/35 -- a
-    contiguous four-bucket basket whose far end carries the breakthrough cover.
-    Trimming therefore ranks ends by hedge value rather than probability, so
-    that far end is not the first thing discarded; see ``_discard_key``.
+    contiguous four-bucket basket whose far end carries the breakthrough
+    cover.  Reach therefore ranks sides by hedge value rather than raw
+    probability, so the far end is not the first thing given up: it is held
+    precisely because it is unlikely, paying when the distribution is wrong
+    and the core pays nothing.  ``breakthrough_is_upper`` breaks an exact tie
+    toward the side the direction points at.
     """
 
     if center_bucket not in admitted:
@@ -210,60 +219,63 @@ def _converge_contiguous_support(
         raise ContractError("support_bucket_ordinal_missing")
 
     center_ordinal = ordinal_by_bucket[center_bucket]
-    by_ordinal = {ordinal_by_bucket[bucket]: bucket for bucket in admitted}
-    if len(by_ordinal) != len(admitted):
+    bucket_by_ordinal = {
+        ordinal: bucket for bucket, ordinal in ordinal_by_bucket.items()
+    }
+    if len(bucket_by_ordinal) != len(ordinal_by_bucket):
         raise ContractError("support_duplicate_ordinal")
+    admitted_ordinals = sorted(ordinal_by_bucket[bucket] for bucket in admitted)
 
-    lower = center_ordinal
-    while lower - 1 in by_ordinal:
-        lower -= 1
-    upper = center_ordinal
-    while upper + 1 in by_ordinal:
-        upper += 1
-
-    # Trim the run to the cap by repeatedly discarding one end.  The center is
-    # an interior anchor and is never a discard candidate, so it survives by
-    # construction.
-    #
-    # Ranking ends by raw probability would systematically delete the hedge.
-    # The far end on the breakthrough side is held precisely because it is
-    # unlikely: it pays when the distribution is wrong, which is when the core
-    # pays nothing.  Comparing it against a near-core bucket on probability
-    # alone always loses, so a 5-bucket run would converge to the four dullest
-    # buckets and drop the tail cover.
-    #
-    # ``hedge_value_by_bucket`` already prices that cover as coverage value
-    # times distance, so it is the correct discard key when the caller supplies
-    # it.  ``direction`` then breaks ties toward the breakthrough side: with an
-    # UP move the upper end is the hedge, with DOWN the lower end is.
-    def _discard_key(ordinal: int) -> tuple[float, float]:
-        bucket = by_ordinal[ordinal]
+    # ``hedge_value_by_bucket`` prices tail cover as coverage value times
+    # distance, which is what the far bucket is bought for; raw probability
+    # would rank every hedge below its near-core neighbours and give the tail
+    # up first.  Callers without those scores fall back to probability alone.
+    def _reach_key(ordinal: int) -> tuple[float, float]:
+        bucket = bucket_by_ordinal[ordinal]
         hedge = float((hedge_value_by_bucket or {}).get(bucket, 0.0))
         return (hedge, float(probability_by_bucket.get(bucket, 0.0)))
 
-    while (upper - lower + 1) > maximum_buckets:
-        if lower == center_ordinal:
-            upper -= 1
-            continue
-        if upper == center_ordinal:
-            lower += 1
-            continue
-        lower_key = _discard_key(lower)
-        upper_key = _discard_key(upper)
-        if lower_key < upper_key:
-            lower += 1
-        elif upper_key < lower_key:
-            upper -= 1
-        elif breakthrough_is_upper is True:
-            lower += 1
-        elif breakthrough_is_upper is False:
-            upper -= 1
-        else:
-            # No directional evidence and an exact tie: keep the deterministic
-            # low-side trim so the result stays reproducible.
-            lower += 1
+    def _spannable(low: int, high: int) -> bool:
+        # Every ordinal between the two ends is bought, so the contract has to
+        # name a bucket for each one and the cap has to cover the whole span.
+        return high - low + 1 <= maximum_buckets and all(
+            ordinal in bucket_by_ordinal for ordinal in range(low, high + 1)
+        )
 
-    return {by_ordinal[ordinal] for ordinal in range(lower, upper + 1)}
+    lower = upper = center_ordinal
+    while True:
+        target_low = max(
+            (ordinal for ordinal in admitted_ordinals if ordinal < lower),
+            default=None,
+        )
+        target_high = min(
+            (ordinal for ordinal in admitted_ordinals if ordinal > upper),
+            default=None,
+        )
+        low_ok = target_low is not None and _spannable(target_low, upper)
+        high_ok = target_high is not None and _spannable(lower, target_high)
+        if low_ok and high_ok:
+            low_key = _reach_key(target_low)
+            high_key = _reach_key(target_high)
+            if high_key != low_key:
+                take_high = high_key > low_key
+            else:
+                # An exact tie resolves toward the breakthrough side, and with
+                # no directional evidence toward the upper one, so the result
+                # stays reproducible.
+                take_high = breakthrough_is_upper is not False
+        elif low_ok:
+            take_high = False
+        elif high_ok:
+            take_high = True
+        else:
+            break
+        if take_high:
+            upper = target_high
+        else:
+            lower = target_low
+
+    return {bucket_by_ordinal[ordinal] for ordinal in range(lower, upper + 1)}
 
 
 def _center(

@@ -54,7 +54,51 @@ MAX_METAR_TRAJECTORY_OBSERVATIONS = 512
 MAX_METAR_TRAJECTORY_BUCKETS = 256
 MAX_METAR_TRAJECTORY_FEATURES = 32
 MAX_METAR_TRAJECTORY_PROOF_TEXT_BYTES = 131_072
+# How much evidence a trajectory artifact must carry before it may govern.
+#
+# This was 20, chosen when the assumption was that folds would arrive roughly
+# daily.  They do not: a fold needs a complete observation prefix *and* a root
+# curve for the same day, and the two overlap on well under half of days, so
+# 20 sat about five weeks out with the layer contributing nothing in the
+# meantime -- and contributing nothing is not neutral.  It leaves P1 as the
+# model's own tail renormalised, which is exactly the shape that fails on days
+# the model got wrong (ZUUU 2026-08-12: 76% of P0 mass at or below 37C against
+# an observed 38C).
+#
+# Lowering it does not lower the standard.  The gate's real quality test is
+# ``stable_oos_gain`` -- the candidate must beat the no-correction baseline on
+# Brier, NLL and CRPS simultaneously, out of sample -- and that test does not
+# get easier with fewer folds; a weak artifact still loses on all three.  What
+# the sample floor buys is protection against a lucky win on a tiny sample,
+# and that is bought instead by ramping applied strength with evidence: see
+# ``maturity_strength_for_sample_n``.  A newly gated artifact nudges; a
+# seasoned one moves.
+MINIMUM_EFFECTIVE_SAMPLE_N = 5.0
+# Where the ramp reaches the artifact's full configured strength.
+MATURITY_FULL_SAMPLE_N = 30.0
 _PROMOTED_STATES = {"FORMAL_PROMOTED", "PRODUCTION_NO_LIVE_PROMOTED"}
+
+
+def maturity_strength_for_sample_n(
+    effective_sample_n: float,
+    *,
+    full_strength: float,
+) -> float:
+    """Scale configured maturity by ``sqrt(n / n_full)``, capped at full.
+
+    Square root because the correction's standard error shrinks as
+    ``1/sqrt(n)``: the strength we are entitled to apply tracks how well the
+    correction is pinned down, not how many rows we happened to collect.  At
+    the five-fold floor this is about 0.41 of configured strength, so the
+    first live artifacts tilt the posterior rather than reshape it.
+    """
+
+    if full_strength <= 0.0:
+        return 0.0
+    if effective_sample_n <= 0.0:
+        return 0.0
+    ratio = min(1.0, effective_sample_n / MATURITY_FULL_SAMPLE_N)
+    return full_strength * math.sqrt(ratio)
 _LOCAL_TIME_BUCKETS = {
     "NIGHT": range(0, 6),
     "MORNING": range(6, 12),

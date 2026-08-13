@@ -448,7 +448,11 @@ def test_open_scope_keeps_stale_latest_p1_subscription_without_fallback(
     scope = catalog["scopes"][0]
     assert scope["event_day_state"] == "open"
     assert scope["probability_stage"] == "P1"
-    assert scope["probability_evidence_fresh"] is False
+    # One second past the roll cadence is still the latest reading there is,
+    # so it stays usable and says so: past-cadence, not absent.
+    assert scope["probability_evidence_fresh"] is True
+    assert scope["probability_past_cadence"] is True
+    assert scope["probability_age_seconds"] == pytest.approx(1.0)
     assert scope["probability_envelope_id"].endswith("stale-current")
 
 
@@ -490,7 +494,8 @@ def test_open_scope_never_downgrades_stale_p1_to_later_p0_or_p0m(
     scope = catalog["scopes"][0]
     assert scope["event_day_state"] == "open"
     assert scope["probability_stage"] == "P1"
-    assert scope["probability_evidence_fresh"] is False
+    assert scope["probability_evidence_fresh"] is True
+    assert scope["probability_past_cadence"] is True
     assert scope["probability_envelope_id"] == "p1-final-stale"
 
 
@@ -910,3 +915,52 @@ def test_resident_publisher_reconnects_with_bounded_backoff(
     assert attempts == [1, 2, 3]
     assert sleeps == [1.0, 1.7]
     assert max(sleeps) <= publisher.RETRY_MAX_SECONDS
+
+
+def test_latest_p1_is_usable_past_cadence_but_not_past_the_age_limit(
+    tmp_path: Path,
+) -> None:
+    """The latest reading is the reading -- until it describes another day.
+
+    P1 re-rolls hourly, so a scope is routinely past that cadence with
+    nothing newer to prefer; refusing there stood 26 of 48 scopes down
+    during one recovery.  Age, not cadence, is what makes a probability
+    unusable, and the limit has to bite or "use the latest" would mean
+    trading on this morning's state all afternoon.
+    """
+
+    limit = publisher.P1_PROBABILITY_MAX_STALE_SECONDS
+    assert limit >= 3600, "the limit must at least span one missed roll"
+
+    def _catalog(as_of: str):
+        db = tmp_path / f"target-{as_of.replace(':', '')}.db"
+        _database(db)
+        _add_probability(
+            db,
+            event_date="2026-07-28",
+            stage="P1",
+            decision_at_utc="2026-07-28T01:00:00Z",
+            fresh_until_utc="2026-07-28T02:00:00Z",
+            suffix="latest",
+        )
+        return _scope(db_path=db, as_of_utc=as_of)
+
+    # Just inside the limit: usable, and marked as past the cadence.
+    inside = _catalog("2026-07-28T04:59:00Z")["scopes"][0]
+    assert inside["probability_evidence_fresh"] is True
+    assert inside["probability_past_cadence"] is True
+    assert inside["probability_age_seconds"] == pytest.approx(
+        limit - 60.0, abs=1.0
+    )
+
+    # Past it: this is a different state of the day, and it is refused.
+    outside = _catalog("2026-07-28T05:30:00Z")["scopes"][0]
+    assert outside["probability_evidence_fresh"] is False
+    assert outside["probability_past_cadence"] is False
+    assert outside["probability_age_seconds"] > limit
+
+    # Inside the cadence the flag is off: the two claims stay distinct.
+    current = _catalog("2026-07-28T01:30:00Z")["scopes"][0]
+    assert current["probability_evidence_fresh"] is True
+    assert current["probability_past_cadence"] is False
+    assert current["probability_age_seconds"] == 0.0

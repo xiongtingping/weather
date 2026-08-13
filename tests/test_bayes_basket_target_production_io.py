@@ -486,6 +486,8 @@ def _seed(
         **e["lineage"],
         "model_envelope_lower_bucket": "37",
         "model_envelope_upper_bucket": "39",
+        "model_envelope_lower_ordinal": "37",
+        "model_envelope_upper_ordinal": "39",
         "model_envelope_span_c": "2",
         "bucket_intervals_c_json": json.dumps(
             {
@@ -1662,9 +1664,19 @@ def test_target_registry_lane_mismatch_rejects_p1_before_p0_fallback() -> None:
             )
 
 
-@pytest.mark.parametrize("stage", ["P0-M", "P1"])
+# P1 keeps serving for a bounded while past its cadence, so the instant at
+# which each stage must fail closed differs.  What does not differ is that
+# failing closed means blocking, never crossing down to the P0 underneath.
+@pytest.mark.parametrize(
+    "stage,expired_at",
+    [
+        ("P0-M", "2026-07-23T05:00:04Z"),
+        ("P1", "2026-07-23T08:00:04Z"),
+    ],
+)
 def test_highest_existing_stage_expiry_fails_closed_without_crossing(
     stage: str,
+    expired_at: str,
 ) -> None:
     with sqlite3.connect(":memory:") as conn:
         root = _seed_native_probability_only(conn)
@@ -1685,7 +1697,7 @@ def test_highest_existing_stage_expiry_fails_closed_without_crossing(
             conn,
             station_id="ZUUU",
             event_date="2026-07-23",
-            evaluation_at_utc="2026-07-23T05:00:04Z",
+            evaluation_at_utc=expired_at,
         )
         with pytest.raises(
             ContractError,
@@ -1693,8 +1705,36 @@ def test_highest_existing_stage_expiry_fails_closed_without_crossing(
         ):
             select_current_stage(
                 envelopes,
-                at_utc="2026-07-23T05:00:04Z",
+                at_utc=expired_at,
             )
+
+
+def test_p1_just_past_its_cadence_still_holds_authority() -> None:
+    """The lapse that used to hand a whole event day back to nothing."""
+
+    with sqlite3.connect(":memory:") as conn:
+        root = _seed_native_probability_only(conn)
+        p1 = _stage_envelope(
+            root,
+            stage="P1",
+            checkpoint_id="P1-past-cadence",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T05:00:03Z",
+        )
+        _insert_probability_row(conn, p1, created_at="2026-07-23T05:00:01Z")
+
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+        )
+        selected = select_current_stage(
+            envelopes,
+            at_utc="2026-07-23T05:00:04Z",
+        )
+        assert selected.stage == "P1"
+        assert selected.checkpoint_id == "P1-past-cadence"
 
 
 def test_stage_routing_only_falls_back_when_higher_stage_is_not_yet_asof() -> None:

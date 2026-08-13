@@ -377,6 +377,15 @@ def evaluate_basket_value_v2(
     expected_pnl = sum(
         probability[bucket] * scenario_pnl[bucket] for bucket in buckets
     )
+    # The settled-outcome PnL curve's spread.  ``scenario_pnl`` already spans
+    # every bucket -- an unheld bucket settles at minus the basket's cost --
+    # so the outcome space is a complete partition and this is the honest
+    # variance of the curve, not of the held legs alone.
+    variance = sum(
+        probability[bucket]
+        * (scenario_pnl[bucket] - expected_pnl) ** 2
+        for bucket in buckets
+    )
     profit_floor = min(scenario_pnl[bucket] for bucket in protected)
     cvar = _lower_tail_cvar(
         scenario_pnl,
@@ -430,6 +439,7 @@ def evaluate_basket_value_v2(
         "weights_sha256": weights.content_sha256,
         "value": value,
         "expected_pnl": expected_pnl,
+        "variance": variance,
         "profit_floor": profit_floor,
         "cvar": cvar,
         "shortfall_coverage": shortfall_coverage,
@@ -450,6 +460,137 @@ def evaluate_basket_value_v2(
     return {**identity, "content_sha256": content_sha256(identity)}
 
 
+VALUE_OBJECTIVE_FORM = "value_v2"
+CURVE_OBJECTIVE_FORM = "fractional_log_wealth_curve_v1"
+OBJECTIVE_FORMS = frozenset({VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM})
+DEFAULT_KELLY_FRACTION = 0.25
+# The basket promise, made enforceable (user ruling, 2026-08-13): a settlement
+# inside the support may cost at most this fraction of the basket's premium.
+# Measured over the 21 most recent plans, the unconstrained optimizer was a
+# faithful mispricing harvester and an unfaithful basket machine -- median win
+# probability 29%, median best-case odds 7.3x, median spike ratio 0.92, with
+# support buckets that held a positive *target* and still settled at -97% of
+# cost.  The objective could not fix this because at these stakes log wealth
+# is numerically expected value, and the cheap-tail edge the market offers is
+# convex; the shape had to become a legality condition, not a preference.
+# -0.10 rather than 0.0 keeps a small ability to lean toward a genuinely
+# mispriced bucket; the zero-cost baseline always satisfies it, so a book
+# that only offers lottery shapes resolves to HOLD instead of a lottery.
+SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
+# The support must clear this much of our own probability before it may be
+# seated.  It is a variance preference, not a source of return: the measured
+# frontier over 37 station-days runs +0.271 mean edge at no floor, +0.060 at
+# 0.45, and turns negative past 0.50, because a wide central basket is exactly
+# what the market prices richest.  0.45 is where a realised win rate lands
+# near 0.55 while the edge is still positive -- the ruling's shape, priced.
+#
+# What this rail guards against was measured after it was set, and the answer
+# was not the one it was set for.  The tails are *not* overestimated -- over
+# 175 settled station-days, buckets we priced under 5% realised 1.38x what we
+# predicted, and the ZUUU sub-32C mass (7.2%) sat beside an 11% base rate for
+# a 4C day-over-day drop against a market ask implying 0.1% on a book whose
+# extreme bids were literally 0.000.  What the same measurement did find is
+# fat tails in the *conditional* sense: |z|>3 residuals occur at 13x the rate
+# the model's own spread implies, because it does not know which day the
+# front arrives.  So the rail stays, for the corrected reason: below this
+# line our per-day tail estimates are unconditionally right and conditionally
+# blind, and a seat should not be won by a number the model cannot defend on
+# the day it matters.
+MIN_SUPPORT_WIN_PROBABILITY = 0.45
+# How much of our belief must exceed the market's before a basket is worth
+# seating at all, as a share of the support's price.  The edge that survives
+# at the win-rate floor is thin (~6 points), and the measured error scale is
+# 2.7x the bucket width (median |error| 1.04C, sigma 2.69C against 1C
+# buckets), so a basket whose entire advantage is smaller than the model's
+# own error is noise being traded as signal.
+MIN_SUPPORT_EDGE_FRACTION = 0.10
+# ``candidate_kind`` is a load-bearing activation signal, not a label: the
+# state machine reads it to decide TRADE versus HOLD, and this kernel reads it
+# to know which candidate is the "spend nothing" option the floor exempts.
+# Both live here because the legality rule above depends on the vocabulary.
+CANDIDATE_KIND_COMPLETE = "COMPLETE_BASKET_TARGET"
+CANDIDATE_KIND_BASELINE = "NO_NEW_ACTION_BASELINE"
+CANDIDATE_KINDS = frozenset({
+    CANDIDATE_KIND_COMPLETE, CANDIDATE_KIND_BASELINE,
+})
+
+
+def curve_score(
+    audit: Mapping[str, Any],
+    *,
+    bankroll_usdc: float,
+    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+) -> float:
+    """Score the settled-outcome PnL curve by fractional log wealth.
+
+        sum_o  p_o * log(1 + f * s_o / W)
+
+    Concave in the payoff, which is what charges a basket for spread: two
+    baskets of equal mean rank by how evenly their outcomes pay, so the
+    ranking prefers a flat curve over a spike and the lottery shape loses.
+
+    The plain quadratic charge ``E - Var/(2W)`` expresses the same
+    preference and was tried first, but it is only the local expansion of
+    this and breaks once a payoff is large next to the bankroll: on a
+    50/50 paying +24.5 or -0.5 against a 5 USDC book it scores -1.48 and
+    refuses, because a squared term grows without bound and ends up pricing
+    *winning too much* as risk.  The log saturates instead, so a bet that
+    cannot hurt the book is never refused for being too good.
+
+    ``f`` is the variance dial and the model-error hedge.  Betting a
+    fraction of the log-optimal stake is equivalent to betting the full
+    stake against a larger book, so it enters here as an effective bankroll
+    ``W/f`` -- one number, and the same one whether it sizes a basket or
+    ranks two.
+    """
+
+    bankroll = float(bankroll_usdc)
+    fraction = float(kelly_fraction)
+    if not (bankroll > 0.0) or not math.isfinite(bankroll):
+        raise ContractError("delta_v2_curve_bankroll_invalid")
+    if not (0.0 < fraction <= 1.0):
+        raise ContractError("delta_v2_curve_kelly_fraction_invalid")
+    effective = bankroll / fraction
+    total = 0.0
+    for bucket, pnl in audit["scenario_pnl"].items():
+        probability = float(audit["probabilities"][bucket])
+        if probability <= 0.0:
+            continue
+        wealth = 1.0 + float(pnl) / effective
+        if wealth <= EPS:
+            # Ruin under a settled outcome the model gives real mass: no
+            # finite score, and nothing to trade off against.
+            return -math.inf
+        total += probability * math.log(wealth)
+    return total
+
+
+def _win_probability(audit: Mapping[str, Any]) -> float:
+    return sum(
+        float(audit["probabilities"][bucket])
+        for bucket, pnl in audit["scenario_pnl"].items()
+        if float(pnl) > EPS
+    )
+
+
+def _odds_ratio(audit: Mapping[str, Any]) -> float | None:
+    """Probability-weighted mean win over mean loss; None when one-sided."""
+
+    win_mass = loss_mass = win_sum = loss_sum = 0.0
+    for bucket, pnl in audit["scenario_pnl"].items():
+        probability = float(audit["probabilities"][bucket])
+        value = float(pnl)
+        if value > EPS:
+            win_mass += probability
+            win_sum += probability * value
+        elif value < -EPS:
+            loss_mass += probability
+            loss_sum += probability * (-value)
+    if win_mass <= EPS or loss_mass <= EPS:
+        return None
+    return (win_sum / win_mass) / (loss_sum / loss_mass)
+
+
 def solve_target_inventory_v2(
     *,
     probabilities: Mapping[str, Any],
@@ -459,9 +600,28 @@ def solve_target_inventory_v2(
     breakthrough_buckets: Sequence[str],
     weights: ValueWeightsV2,
     maximum_candidates: int = 4096,
+    objective_form: str = VALUE_OBJECTIVE_FORM,
+    bankroll_usdc: float | None = None,
+    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
 ) -> dict[str, Any]:
-    """Return the exact argmax over a caller-provided bounded feasible set."""
+    """Return the exact argmax over a caller-provided bounded feasible set.
 
+    ``objective_form`` selects what the argmax reads.  ``value_v2`` is the
+    original weighted value function.  ``mean_variance_curve_v1`` ranks by
+    the curve score above; every value-function term is still computed and
+    audited, it simply no longer decides.  The feasible set is untouched by
+    either -- protected buckets, contiguity, budget, depth and clip bounds
+    all bind during candidate generation, so changing the ranking cannot
+    admit anything the constraints refuse.
+    """
+
+    form = str(objective_form or "").strip()
+    if form not in OBJECTIVE_FORMS:
+        raise ContractError("delta_v2_objective_form_invalid")
+    if form == CURVE_OBJECTIVE_FORM and not (
+        bankroll_usdc is not None and float(bankroll_usdc) > 0.0
+    ):
+        raise ContractError("delta_v2_curve_bankroll_required")
     if (
         not isinstance(feasible_inventory_candidates, Sequence)
         or isinstance(feasible_inventory_candidates, (str, bytes, bytearray))
@@ -492,11 +652,51 @@ def solve_target_inventory_v2(
                 raw.get("candidate_kind") or "UNSPECIFIED"
             ),
             "audit": audit,
+            "curve_score": (
+                curve_score(
+                    audit,
+                    bankroll_usdc=float(bankroll_usdc),
+                    kelly_fraction=kelly_fraction,
+                )
+                if form == CURVE_OBJECTIVE_FORM
+                else None
+            ),
         })
+    # Legality before preference: a candidate whose worst in-support
+    # settlement loses more than the floor fraction of its premium is not a
+    # basket, whatever its score.  ``profit_floor`` is the minimum scenario
+    # pnl over ``protected_buckets`` -- the support -- and the zero-cost
+    # baseline has floor 0 against cost 0, so at least one candidate is
+    # always legal and a book offering only lottery shapes resolves to HOLD.
+    def _floor_legal(row: Mapping[str, Any]) -> bool:
+        # Buying nothing is always available and therefore always legal.  The
+        # baseline carries whatever the station already holds, and holdings
+        # cannot be un-bought: judging inherited shape by this floor condemns
+        # the one answer that is always correct -- hold, add nothing -- and
+        # turns it into a hard compile error.  Every position opened before
+        # this floor existed was built by the unconstrained objective, so
+        # without this exemption the rule would have blocked exactly the
+        # stations it was written to protect.  The floor governs what a
+        # decision may *add*; a candidate that spends must meet it, and if
+        # none can the winner falls back to the baseline as a HOLD.
+        if str(row.get("candidate_kind") or "") == CANDIDATE_KIND_BASELINE:
+            return True
+        cost = sum(row["audit"]["cost_by_bucket"].values())
+        return float(row["audit"]["profit_floor"]) >= (
+            SUPPORT_SCENARIO_FLOOR_FRACTION * cost - EPS
+        )
+
+    legal = [row for row in evaluations if _floor_legal(row)]
+    if not legal:
+        raise ContractError("delta_v2_no_floor_legal_candidate")
     winner = max(
-        evaluations,
+        legal,
         key=lambda row: (
-            float(row["audit"]["value"]),
+            float(
+                row["curve_score"]
+                if form == CURVE_OBJECTIVE_FORM
+                else row["audit"]["value"]
+            ),
             -sum(row["audit"]["cost_by_bucket"].values()),
             row["candidate_id"],
         ),
@@ -504,6 +704,10 @@ def solve_target_inventory_v2(
     identity = {
         "schema": TARGET_SOLUTION_SCHEMA,
         "kernel_version": KERNEL_VERSION,
+        "objective_form": form,
+        "kelly_fraction": (
+            kelly_fraction if form == CURVE_OBJECTIVE_FORM else None
+        ),
         "candidate_count": len(evaluations),
         "winner_candidate_id": winner["candidate_id"],
         "winner_candidate_index": winner["candidate_index"],
@@ -511,6 +715,19 @@ def solve_target_inventory_v2(
         "target_shares_by_bucket": winner["audit"]["shares_by_bucket"],
         "target_cost_by_bucket": winner["audit"]["cost_by_bucket"],
         "target_value": winner["audit"]["value"],
+        "target_expected_pnl": winner["audit"]["expected_pnl"],
+        "target_variance": winner["audit"]["variance"],
+        "target_curve_score": winner["curve_score"],
+        "target_scenario_pnl": winner["audit"]["scenario_pnl"],
+        "support_scenario_floor_fraction": SUPPORT_SCENARIO_FLOOR_FRACTION,
+        "floor_rejected_candidate_count": len(evaluations) - len(legal),
+        "target_support_floor_pnl": winner["audit"]["profit_floor"],
+        # The two dials the strategy is steered by -- P(pnl>0) under our own
+        # probabilities, and mean win over mean loss.  At a 55% win rate the
+        # break-even odds are 0.45/0.55 = 0.82; the design floor is 1.0 so a
+        # five-point calibration slip still cannot turn the book negative.
+        "target_win_probability": _win_probability(winner["audit"]),
+        "target_odds_ratio": _odds_ratio(winner["audit"]),
         "target_value_sha256": winner["audit"]["content_sha256"],
         "candidate_value_sha256s": [
             row["audit"]["content_sha256"] for row in evaluations

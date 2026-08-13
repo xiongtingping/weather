@@ -167,15 +167,16 @@ TARGET_NWP_SCOPES_PER_POLL = 3
 # bounded at OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY.  Advancing the cursor
 # faster than the pool drains just skips scopes into their 30-minute retry
 # floor, which makes coverage slower rather than faster.
-# A sweep costs far less than the scope count suggests.  Retained archives are
-# shared per (event date, model) and reused within their TTL, so a 90-scope
-# catalog spanning three event days needs about twelve real downloads -- the
-# other ~78 scopes resolve from cache in seconds.  Budgeting four hours made
-# every one of those cached scopes wait a full 10-minute poll for nothing.
+# Budgeting four hours was too slow for a catalog this size, so the sweep is
+# given one.  What the budget must not assume is that most scopes are cheap:
+# retained archives key on the exact station set, and this rotation dispatches
+# one station at a time, so no scope is ever served from another scope's
+# archive.  Every scope pays for its own download of the same global fields --
+# ~340MiB at the time of writing -- and a "twelve real downloads per ninety
+# scopes" estimate is off by the station count.
 #
-# The ceiling still exists because the first scope of each event date does pay
-# for the whole download, and those go through a pool bounded at
-# OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY.  Overshooting it does not stall the
+# The ceiling exists for that reason.  Captures go through a pool bounded at
+# OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY; overshooting it does not stall the
 # rotation -- capture runs off-thread -- but it pushes unserved scopes into
 # their 30-minute retry floor, so coverage gets slower, not faster.
 TARGET_NWP_SWEEP_BUDGET_SEC = 1.0 * 3600.0
@@ -842,6 +843,10 @@ def run_target_forecast_refresh_cycle(
     return {
         "schema": "reported_trajectory_forecast_prefetch_v1",
         "resident_nwp_capture": nwp_state,
+        # ICON had its own receipt here while it had its own capture pass.  It
+        # is now one of the four families the native capture reads in a single
+        # run, so ``resident_nwp_capture`` below is its instrument; a separate
+        # key would report an empty dict forever and read as a broken lane.
         "forward_taf_capture": capture_state,
         "calls_order_gateway": False,
         "places_orders": False,

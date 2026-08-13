@@ -29,7 +29,11 @@ from typing import Any, Mapping, Sequence
 import certifi
 import websockets
 
-from bayes_basket_target.contracts import ContractError
+from bayes_basket_target.contracts import (
+    PROBABILITY_MAX_STALE_SECONDS,
+    STAGES_SERVABLE_PAST_CADENCE,
+    ContractError,
+)
 from bayes_basket_target.database import (
     DEFAULT_TARGET_DB,
     DEFAULT_TARGET_WS_MANIFEST,
@@ -57,6 +61,13 @@ from scripts.capture_bayes_basket_target_official_ws_snapshot import (
     _quote_from_message,
 )
 
+
+# Deliberately the same bound the compiler enforces.  This gate decides which
+# scopes get published and the compiler decides which it will act on; when the
+# two carried their own copies of "expired", scopes cleared this one and died
+# at the next, which is how ZUUU sat in the candidate set all day and never
+# compiled.
+P1_PROBABILITY_MAX_STALE_SECONDS = PROBABILITY_MAX_STALE_SECONDS
 
 SCHEMA = "bayes_basket_target_resident_multi_scope_ws_publisher_v1"
 MANIFEST_SCHEMA = "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
@@ -328,7 +339,39 @@ def _scope(
             )["state"])
             stage = str(probability["stage"])
             fresh_until = _parse_utc(str(probability["fresh_until_utc"]))
-            probability_evidence_fresh = as_of < fresh_until
+            # The envelope selected above is already the latest committed one
+            # for this scope; ``fresh_until`` is the cadence P1 re-rolls on,
+            # not an expiry of what it says.  Past that instant the latest
+            # reading is still the only reading -- there is nothing newer to
+            # prefer -- so treating it as absent stood a station down for
+            # holding slightly old information rather than none.  P1 rolls
+            # hourly off arriving observations, so every scope spends part of
+            # every hour past its window; 26 of 48 sat out one recovery this
+            # way.
+            #
+            # Usability is therefore bounded by age, not by the cadence.
+            # Beyond the staleness limit a probability is not slightly old,
+            # it describes a different state of the day, and refusing is
+            # right.
+            #
+            # This governs the *probability* only.  P1's hard bound comes
+            # from the observed high, which only ever rises, so an older
+            # bound is a weaker one and would readmit buckets the day has
+            # already ruled out.  The bound is re-derived from current
+            # observations downstream and is never carried along with the
+            # envelope; nothing here relaxes it.
+            probability_age_seconds = max(
+                0.0, (as_of - fresh_until).total_seconds()
+            )
+            within_cadence = as_of < fresh_until
+            probability_evidence_fresh = within_cadence or (
+                stage in STAGES_SERVABLE_PAST_CADENCE
+                and probability_age_seconds
+                <= P1_PROBABILITY_MAX_STALE_SECONDS
+            )
+            probability_past_cadence = (
+                probability_evidence_fresh and not within_cadence
+            )
             if state == "closed":
                 continue
             if state == "not_started" and stage not in {"P0", "P0-M"}:
@@ -376,6 +419,13 @@ def _scope(
                     probability["fresh_until_utc"]
                 ),
                 "probability_evidence_fresh": probability_evidence_fresh,
+                # Visible so a consumer, and an audit, can tell a reading
+                # taken inside the roll cadence from the latest one carried
+                # past it.  Both are usable; they are not the same claim.
+                "probability_past_cadence": probability_past_cadence,
+                "probability_age_seconds": round(
+                    probability_age_seconds, 3
+                ),
                 "tokens": tokens,
                 "registry_scope": {
                     "event_date": event_date,
@@ -506,6 +556,15 @@ def _build_multi_scope_manifest(
             ),
             "probability_evidence_fresh": bool(
                 scope["probability_evidence_fresh"]
+            ),
+            # Carried through rather than recomputed: the summary is what the
+            # worker reads, so a field that stops here is a field the rest of
+            # the system cannot see.
+            "probability_past_cadence": bool(
+                scope.get("probability_past_cadence")
+            ),
+            "probability_age_seconds": float(
+                scope.get("probability_age_seconds") or 0.0
             ),
             "token_count": len(scope_tokens),
             "scope_manifest_sha256": manifest["snapshot_sha256"],

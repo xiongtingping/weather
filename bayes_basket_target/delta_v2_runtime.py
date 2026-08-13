@@ -22,6 +22,13 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel.delta_v2 import (
+    MIN_SUPPORT_EDGE_FRACTION,
+    MIN_SUPPORT_WIN_PROBABILITY,
+    CANDIDATE_KIND_BASELINE,
+    CANDIDATE_KIND_COMPLETE,
+    CANDIDATE_KINDS,
+    CURVE_OBJECTIVE_FORM,
+    VALUE_OBJECTIVE_FORM,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     select_action_v2,
@@ -36,6 +43,7 @@ from .basket_kernel.support import (
 )
 from .basket_kernel.state_machine import resolve_basket_state
 from .delta_v2_artifact import DeltaV2PolicyArtifact
+from .shadow_objective import solve_fractional_kelly
 
 
 SCHEMA = "delta_basket_score_runtime_plan_v2"
@@ -103,6 +111,296 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
     return tuple(sorted(price for price in values if price > EPS))
 
 
+def _support_windows(
+    *,
+    snapshot: TargetBasketSnapshot,
+    desired: set[str],
+    probabilities: Mapping[str, float],
+    minimum_win_probability: float,
+    minimum_edge_fraction: float,
+    fee_rate: float,
+    maximum_support_buckets: int,
+) -> list[dict[str, Any]]:
+    """Contiguous windows admissible as a support, ranked by belief divergence.
+
+    The incumbent support stays in the list unconditionally.  It is what the
+    continuous-core resolver admitted -- evidence, model agreement, hard
+    bounds, peripheral reliability -- and this function is a price filter, not
+    a second opinion on any of that.  Windows are drawn from the same admitted
+    set, so nothing here can seat a bucket the core refused.
+
+    Ranking is by ``p - all_in_ask`` because that is the quantity the log
+    objective maximises anyway; it only orders the shortlist, and the seat is
+    decided by the objective itself on the full curve.
+    """
+
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    incumbent_buckets = sorted(
+        (bucket for bucket in desired if bucket in by_bucket),
+        key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
+    )
+    if not incumbent_buckets:
+        raise ContractError("delta_v2_support_empty")
+    incumbent = tuple(incumbent_buckets)
+    # The domain is every outcome the day can still reach, not the window
+    # where the probability happens to pile up.
+    #
+    # Drawing candidates from the probability core made the optimizer a
+    # formality: the core is chosen by mass, mass is what the market prices
+    # richest, and no sub-window of four expensive buckets clears the win
+    # rail -- 34 of 40 production plans had exactly one admissible window,
+    # their own incumbent.  ZUUU 2026-08-14 seated a support whose four
+    # buckets priced at 0.93 against our 0.585, while 33C (edge +0.092),
+    # 38C (+0.048) and 32C (+0.052) sat outside it unconsidered.  Over 53
+    # station-days a full-domain search finds a window clearing both rails on
+    # 24 of them at a mean edge of +0.318; ZUUU's own was {33,34,35,36} at
+    # +0.154, one bucket below the incumbent.
+    #
+    # The safety property the core carried is preserved by the filter below:
+    # a bucket the hard lower bound has excluded holds zero probability and
+    # is not a candidate.  Evidence still decides what is possible; the
+    # objective decides only what is worth buying among the possible.
+    admitted = sorted(
+        (
+            row.bucket
+            for row in snapshot.buckets
+            if float(row.probability) > EPS
+        ),
+        key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
+    )
+    for bucket in incumbent:
+        if bucket not in admitted:
+            admitted.append(bucket)
+    admitted.sort(key=lambda bucket: (by_bucket[bucket].ordinal, bucket))
+
+    def _all_in(bucket: str) -> float | None:
+        """All-in ask, or None when the bucket has no offer to price.
+
+        A support may legitimately contain a bucket with no ask -- it was
+        admitted on evidence and is held or waited on, not bought now.  Such a
+        window cannot be scored on price, so it is not *ranked* against the
+        priced ones; the incumbent still passes through unconditionally, which
+        keeps a bid-only bucket exactly as available as it was before.
+        """
+
+        row = by_bucket[bucket]
+        if not row.ask_available:
+            return None
+        return float(row.ask_price) * (1.0 + float(fee_rate))
+
+    windows: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    # Contiguous and at most ``maximum_support_buckets`` -- the same structural
+    # cap the continuous core enforces.  Widening the *domain* must not widen
+    # the basket: a five-bucket support would break the atomicity contract
+    # downstream and the clip lattice it feeds.
+    max_size = max(1, int(maximum_support_buckets))
+    for size in range(1, min(max_size, len(admitted)) + 1):
+        for start in range(0, len(admitted) - size + 1):
+            window = tuple(admitted[start:start + size])
+            if window in seen:
+                continue
+            seen.add(window)
+            win = sum(float(probabilities[bucket]) for bucket in window)
+            quotes = [_all_in(bucket) for bucket in window]
+            priced = all(quote is not None for quote in quotes)
+            price = sum(quote for quote in quotes if quote is not None)
+            edge = win - price if priced else None
+            is_incumbent = window == incumbent
+            # The incumbent is always offered so the optimizer can keep it;
+            # every other window has to be fully priced and clear both rails.
+            # A window priced at zero cannot be measured as a fraction of its
+            # price, and free optionality needs no edge test.
+            admissible = is_incumbent or (
+                priced
+                and win + EPS >= minimum_win_probability
+                and (
+                    price <= EPS
+                    or edge >= minimum_edge_fraction * price
+                )
+            )
+            if not admissible:
+                continue
+            windows.append({
+                "buckets": window,
+                "win_probability": win,
+                "all_in_price": price if priced else None,
+                "edge": edge,
+                "is_incumbent": is_incumbent,
+            })
+    if incumbent not in seen:
+        # Enumeration can miss the incumbent outright: it is bounded to
+        # contiguous runs of at most ``maximum_support_buckets``, and an
+        # inherited support may be neither -- a live ZHHH core sat on
+        # {31C, 33C or higher} with 32C alive between them.  Relying on the
+        # ``is_incumbent`` branch inside the loop to carry it through is
+        # therefore not enough; that branch only fires on a window the loop
+        # actually produced.  Dropping it would take "keep what we hold" off
+        # the menu, which is the same escape the floor's live-bucket scope
+        # exists to close, so it is appended here instead.
+        quotes = [_all_in(bucket) for bucket in incumbent]
+        priced = all(quote is not None for quote in quotes)
+        price = sum(quote for quote in quotes if quote is not None)
+        win = sum(float(probabilities[bucket]) for bucket in incumbent)
+        windows.append({
+            "buckets": incumbent,
+            "win_probability": win,
+            "all_in_price": price if priced else None,
+            "edge": (win - price) if priced else None,
+            "is_incumbent": True,
+        })
+    # An unpriced window has no edge to rank on, so it sorts last rather than
+    # being compared against numbers it does not have; the objective still
+    # scores it, and its own curve decides whether it is seated.
+    windows.sort(
+        key=lambda row: (
+            row["edge"] is None,
+            -(row["edge"] or 0.0),
+            len(row["buckets"]),
+            row["buckets"],
+        )
+    )
+    return windows
+
+
+# Enumerating quantities is exponential in the window's width, so the shortlist
+# is bounded rather than the whole lattice being expanded.  The ordering above
+# is by the same quantity the objective maximises, so a deeper shortlist buys
+# progressively less; four keeps the incumbent plus the leading alternatives
+# inside the existing candidate ceiling.
+MAX_SUPPORT_WINDOWS_SOLVED = 4
+
+
+def _solve_over_support_windows(
+    *,
+    windows: Sequence[Mapping[str, Any]],
+    live_buckets: Sequence[str],
+    snapshot: TargetBasketSnapshot,
+    probabilities: Mapping[str, float],
+    shortfall: set[str],
+    breakthrough: set[str],
+    delta_policy: DeltaV2PolicyArtifact,
+    basket_policy: TargetBasketPolicy,
+    capital_available_usdc: float,
+    objective_form: str,
+    bankroll_usdc: float,
+) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
+    """Run the objective on each shortlisted window; the best curve is seated.
+
+    Scores are comparable across windows because every candidate's scenario
+    curve spans the whole bucket space -- an unheld bucket settles at minus the
+    basket's cost -- so two windows are scored on the same outcome partition
+    rather than on their own supports.
+    """
+
+    shortlist = list(windows[:MAX_SUPPORT_WINDOWS_SOLVED])
+    incumbent = next(
+        (row for row in windows if row["is_incumbent"]), None
+    )
+    if incumbent is not None and incumbent not in shortlist:
+        shortlist.append(incumbent)
+    if not shortlist:
+        raise ContractError("delta_v2_support_empty")
+
+    scored: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    for row in shortlist:
+        window = tuple(row["buckets"])
+        try:
+            solution = solve_target_inventory_v2(
+                probabilities=probabilities,
+                feasible_inventory_candidates=_target_candidates(
+                    snapshot=snapshot,
+                    desired=window,
+                    artifact=delta_policy,
+                    capital_available_usdc=capital_available_usdc,
+                    minimum_clip_notional_usdc=(
+                        basket_policy.clip_min_notional_usdc
+                    ),
+                ),
+                # The floor's scope is every bucket the evidence still holds
+                # live, never the window the optimizer just chose.  Those two
+                # were the same thing while the support was fixed upstream;
+                # now that the optimizer picks the window, tying the floor to
+                # its choice would let it escape the constraint by narrowing
+                # -- shrink to one bucket and the floor protects nothing.
+                # Charter clause 38 relaxes the floor as the *hard bound*
+                # kills buckets, which is certainty arriving; a voluntarily
+                # narrower bet is not that, and the outcomes it walks away
+                # from still cost the whole premium when they settle.
+                protected_buckets=live_buckets,
+                shortfall_buckets=tuple(sorted(shortfall & set(window))),
+                breakthrough_buckets=tuple(
+                    sorted(breakthrough & set(window))
+                ),
+                weights=delta_policy.value_weights,
+                objective_form=objective_form,
+                bankroll_usdc=bankroll_usdc,
+            )
+        except ContractError as exc:
+            # One infeasible window -- no legal shape at these prices, or a
+            # candidate lattice too wide -- must not deny the others their
+            # comparison.  It is recorded, not silently dropped.
+            failures.append({
+                "buckets": list(window),
+                "reason": f"ContractError:{exc}",
+            })
+            continue
+        score = (
+            solution["target_curve_score"]
+            if objective_form == CURVE_OBJECTIVE_FORM
+            else solution["target_value"]
+        )
+        scored.append({
+            "window": row,
+            "solution": solution,
+            "score": float(score),
+        })
+    if not scored:
+        raise ContractError("delta_v2_no_solvable_support_window")
+    best = max(
+        scored,
+        key=lambda item: (
+            item["score"],
+            # Ties go to the cheaper basket, then to the incumbent, then by
+            # bucket order: three deterministic keys so an equal-scoring pair
+            # never resolves on dict ordering.
+            -sum(item["solution"]["target_cost_by_bucket"].values()),
+            item["window"]["is_incumbent"],
+            item["window"]["buckets"],
+        ),
+    )
+    selection = {
+        "rule": "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V1",
+        "minimum_win_probability": MIN_SUPPORT_WIN_PROBABILITY,
+        "minimum_edge_fraction": MIN_SUPPORT_EDGE_FRACTION,
+        "admissible_window_count": len(windows),
+        "solved_window_count": len(scored),
+        "unsolvable_windows": failures,
+        "seated": {
+            "buckets": list(best["window"]["buckets"]),
+            "win_probability": best["window"]["win_probability"],
+            "all_in_price": best["window"]["all_in_price"],
+            "edge": best["window"]["edge"],
+            "curve_score": best["score"],
+            "is_incumbent": best["window"]["is_incumbent"],
+        },
+        "considered": [
+            {
+                "buckets": list(item["window"]["buckets"]),
+                "win_probability": item["window"]["win_probability"],
+                "all_in_price": item["window"]["all_in_price"],
+                "edge": item["window"]["edge"],
+                "curve_score": item["score"],
+            }
+            for item in sorted(
+                scored, key=lambda item: -item["score"]
+            )
+        ],
+    }
+    return tuple(best["window"]["buckets"]), best["solution"], selection
+
+
 def _target_candidates(
     *,
     snapshot: TargetBasketSnapshot,
@@ -130,6 +428,13 @@ def _target_candidates(
         for clip in artifact.cash_clip_grid:
             if clip > capital_available_usdc + EPS:
                 continue
+            # The clip floor is deliberately *not* applied here.  Dropping a
+            # sub-floor clip from the grid does stop an unfillable q*, but it
+            # also removes the bucket from the sizing decisions downstream,
+            # and ``clip_below_minimum`` is raised there -- so filtering early
+            # trades one silent hold for another while destroying the only
+            # reason code that explains it.  ``cash_phase`` owns this refusal
+            # and says so per bucket; leave the candidate visible to it.
             shares, spent = _ask_depth_purchase(
                 levels=row.ask_levels,
                 cash_limit=float(clip),
@@ -190,14 +495,216 @@ def _target_candidates(
             "cost_by_bucket": costs,
             "pricing_basis": "official_ws_ask_depth",
             "candidate_kind": (
-                "NO_NEW_ACTION_BASELINE"
+                CANDIDATE_KIND_BASELINE
                 if is_baseline
-                else "COMPLETE_BASKET_TARGET"
+                else CANDIDATE_KIND_COMPLETE
             ),
+            "candidate_origin": "CLIP_GRID_PRODUCT",
         })
+    candidates.extend(_continuous_optimum_candidates(
+        snapshot=snapshot,
+        ordered=ordered,
+        current_shares=current_shares,
+        current_cost=current_cost,
+        pending_shares=pending_shares,
+        pending_cost=pending_cost,
+        capital_available_usdc=capital_available_usdc,
+        minimum_clip_notional_usdc=minimum_clip_notional_usdc,
+    ))
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
-    return candidates
+    return _assert_candidate_support_contract(
+        candidates, ordered_support=ordered
+    )
+
+
+def _continuous_optimum_candidates(
+    *,
+    snapshot: TargetBasketSnapshot,
+    ordered: Sequence[str],
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    pending_shares: Mapping[str, float],
+    pending_cost: Mapping[str, float],
+    capital_available_usdc: float,
+    minimum_clip_notional_usdc: float,
+) -> list[dict[str, Any]]:
+    """Offer the split the clip grid cannot express.
+
+    An exhaustive product over the grid costs ``(levels+1) ** buckets``, so
+    six support buckets exhaust the 4096 bound at three levels and the
+    objective is left choosing between a handful of corners.  Resolution
+    cannot come from a denser grid; it comes from solving the continuous
+    problem, which is concave here, and offering the answer alongside.
+
+    These are ordinary complete-basket candidates -- same kind, same audit,
+    same contract -- so the argmax is still exact over the set it is given.
+    They differ only in provenance, which is why provenance is a separate
+    field: a generator must be able to say where a candidate came from
+    without changing what the state machine reads.
+
+    Sizes span rather than pre-judge.  Using the serving fraction here would
+    count the same risk aversion twice, since the curve score already
+    expresses it, and the smallest candidate would always win.
+    """
+
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    prices: list[float] = []
+    caps: list[float] = []
+    probabilities: list[float] = []
+    for bucket in ordered:
+        row = by_bucket[bucket]
+        levels = list(row.ask_levels)
+        if not levels:
+            return []
+        prices.append(float(levels[0].price))
+        caps.append(sum(float(level.shares) for level in levels))
+        probabilities.append(float(row.probability))
+    if any(price <= EPS or price >= 1.0 for price in prices):
+        return []
+    floor = max(float(minimum_clip_notional_usdc), 0.0)
+    if floor * len(ordered) > capital_available_usdc + EPS:
+        return []
+
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[float, ...]] = set()
+    for fraction in (1.0, 0.5):
+        try:
+            stakes = solve_fractional_kelly(
+                probabilities=probabilities,
+                prices=prices,
+                depth_caps=caps,
+                budget_usdc=float(capital_available_usdc),
+                bankroll_usdc=float(capital_available_usdc),
+                kelly_fraction=fraction,
+            )
+        except ContractError:
+            continue
+        cash = [
+            max(floor, round(stake * price, 2))
+            for stake, price in zip(stakes, prices)
+        ]
+        total = sum(cash)
+        if total > capital_available_usdc + EPS:
+            scale = capital_available_usdc / total
+            cash = [max(floor, round(value * scale, 2)) for value in cash]
+            if sum(cash) > capital_available_usdc + EPS:
+                continue
+        key = tuple(cash)
+        if key in seen:
+            continue
+        seen.add(key)
+        shares = {
+            bucket: current_shares[bucket] + pending_shares[bucket]
+            for bucket in current_shares
+        }
+        costs = {
+            bucket: current_cost[bucket] + pending_cost[bucket]
+            for bucket in current_cost
+        }
+        usable = True
+        for bucket, clip in zip(ordered, cash):
+            acquired_shares, spent = _ask_depth_purchase(
+                levels=by_bucket[bucket].ask_levels,
+                cash_limit=float(clip),
+            )
+            if acquired_shares <= EPS or spent + EPS < float(clip):
+                usable = False
+                break
+            shares[bucket] += acquired_shares
+            costs[bucket] += spent
+        if not usable:
+            continue
+        results.append({
+            "candidate_id": "k-" + content_sha256({
+                "ordered_support": tuple(ordered),
+                "cash": key,
+                "quote_version": snapshot.quote_version,
+            })[:24],
+            "shares_by_bucket": shares,
+            "cost_by_bucket": costs,
+            "pricing_basis": "official_ws_ask_depth",
+            "candidate_kind": CANDIDATE_KIND_COMPLETE,
+            "candidate_origin": "CONTINUOUS_LOG_OPTIMUM",
+        })
+    return results
+
+
+
+
+def _assert_candidate_support_contract(
+    candidates: Sequence[Mapping[str, Any]],
+    *,
+    ordered_support: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Hold every candidate to what the stages downstream assume of it.
+
+    ``candidate_kind`` is not a label.  ``basket_target_activated`` is a
+    literal comparison against ``COMPLETE_BASKET_TARGET``, and the support
+    that the gap, the Maker bundle and the emitted target rows are all
+    computed over collapses to empty when that comparison fails.  A generator
+    that produced a structurally perfect basket under a new name would
+    therefore not be rejected -- it would silently turn a trade into a hold,
+    which is what happened the first time a second generator was tried.
+
+    So the kind stays a closed semantic class that the state machine reads,
+    provenance moves to ``candidate_origin`` where it can vary freely, and
+    the three invariants the rest of the pipeline relies on are checked here,
+    at the boundary where a new generator is introduced, rather than assumed:
+
+    - a complete basket gives every support bucket a positive increment,
+      because activation is atomic;
+    - no candidate moves a bucket outside the support, because the gap is
+      only ever computed over the support and anything bought outside it
+      would never be reconciled;
+    - exactly one baseline exists, because it is the anchor every other
+      candidate is compared against.
+
+    Increments are measured against the baseline rather than read absolutely:
+    the absolute figures carry existing inventory, which every candidate
+    shares and none of them chose.
+    """
+
+    support = tuple(ordered_support)
+    baselines = [
+        row for row in candidates
+        if row.get("candidate_kind") == CANDIDATE_KIND_BASELINE
+    ]
+    if len(baselines) != 1:
+        raise ContractError("delta_v2_candidate_baseline_not_unique")
+    baseline_shares = dict(baselines[0].get("shares_by_bucket") or {})
+    for row in candidates:
+        kind = str(row.get("candidate_kind") or "")
+        if kind not in CANDIDATE_KINDS:
+            raise ContractError("delta_v2_candidate_kind_invalid")
+        shares = dict(row.get("shares_by_bucket") or {})
+        for bucket, value in shares.items():
+            increment = float(value) - float(
+                baseline_shares.get(bucket, 0.0)
+            )
+            if bucket not in support and increment > EPS:
+                raise ContractError(
+                    "delta_v2_candidate_moves_bucket_outside_support"
+                )
+        if kind == CANDIDATE_KIND_COMPLETE and any(
+            float(shares.get(bucket, 0.0))
+            - float(baseline_shares.get(bucket, 0.0))
+            <= EPS
+            for bucket in support
+        ):
+            raise ContractError(
+                "delta_v2_candidate_complete_basket_incomplete"
+            )
+        if kind == CANDIDATE_KIND_BASELINE and any(
+            abs(
+                float(shares.get(bucket, 0.0))
+                - float(baseline_shares.get(bucket, 0.0))
+            )
+            > EPS
+            for bucket in shares
+        ):
+            raise ContractError("delta_v2_candidate_baseline_not_flat")
+    return [dict(row) for row in candidates]
 
 
 def _hard_gates(
@@ -298,20 +805,63 @@ def compile_delta_v2_runtime_plan(
     ordered_support = tuple(
         sorted(desired, key=lambda bucket: (by_bucket[bucket].ordinal, bucket))
     )
-    target_solution = solve_target_inventory_v2(
-        probabilities=probabilities,
-        feasible_inventory_candidates=_target_candidates(
-            snapshot=snapshot,
-            desired=ordered_support,
-            artifact=delta_policy,
-            capital_available_usdc=capital_available_usdc,
-            minimum_clip_notional_usdc=basket_policy.clip_min_notional_usdc,
-        ),
-        protected_buckets=ordered_support,
-        shortfall_buckets=tuple(sorted(shortfall & desired)),
-        breakthrough_buckets=tuple(sorted(breakthrough & desired)),
-        weights=delta_policy.value_weights,
+    # Rank by the settled-outcome curve rather than by expected value; see
+    # ``curve_score`` for why a symmetric variance charge flattens the curve
+    # where log-wealth alone would sharpen it.
+    #
+    # The bankroll is the station's allotted risk capital, not the budget
+    # still unspent.  Using the remainder would make the charge grow as the
+    # book fills and diverge as it empties -- the last dollar priced as
+    # infinitely precious -- so the risk preference would drift within a day
+    # for no reason the evidence supports.  A depleted budget still compiles:
+    # the feasible set collapses to the zero basket on its own, and the
+    # ranking simply has nothing left to choose between.
+    bankroll_usdc = float(basket_policy.total_budget_usdc)
+    objective_form = (
+        CURVE_OBJECTIVE_FORM
+        if bankroll_usdc > 0.0
+        else VALUE_OBJECTIVE_FORM
     )
+    # One argmax over (support, quantities), not two stages.
+    #
+    # The support used to be fixed by probability mass alone and handed to the
+    # optimizer already chosen, which threw the book away before the objective
+    # ever saw it.  Measured over 37 station-days with live asks, that support
+    # carried our probability 0.688 against a market price of 0.883 -- an
+    # expected value of -0.195, because the buckets we rate highest are the
+    # ones the market prices richest.  The objective never needed a new term
+    # to fix this: at its optimal stake the log-wealth score *is* the
+    # divergence between our belief and the price (measured correlation 0.833
+    # against KL), so simply letting it see more than one window makes it
+    # choose on edge.  Given the choice it agreed with the mispricing-maximal
+    # window on 31 of 37 days and with the incumbent probability-maximal one
+    # on 3.
+    support_windows = _support_windows(
+        snapshot=snapshot,
+        desired=desired,
+        probabilities=probabilities,
+        minimum_win_probability=MIN_SUPPORT_WIN_PROBABILITY,
+        minimum_edge_fraction=MIN_SUPPORT_EDGE_FRACTION,
+        fee_rate=basket_policy.fee_rate,
+        maximum_support_buckets=basket_policy.maximum_support_buckets,
+    )
+    seated_support, target_solution, support_selection = (
+        _solve_over_support_windows(
+            windows=support_windows,
+            live_buckets=ordered_support,
+            snapshot=snapshot,
+            probabilities=probabilities,
+            shortfall=shortfall,
+            breakthrough=breakthrough,
+            delta_policy=delta_policy,
+            basket_policy=basket_policy,
+            capital_available_usdc=capital_available_usdc,
+            objective_form=objective_form,
+            bankroll_usdc=bankroll_usdc,
+        )
+    )
+    ordered_support = seated_support
+    desired = set(seated_support)
     target_shares = dict(target_solution["target_shares_by_bucket"])
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
     current_cost = {row.bucket: row.filled_cost_usdc for row in snapshot.buckets}
@@ -324,15 +874,19 @@ def compile_delta_v2_runtime_plan(
         == "COMPLETE_BASKET_TARGET"
     )
     final_support = ordered_support if basket_target_activated else ()
-    execution_gap_support = tuple(
-        bucket
-        for bucket in final_support
-        if (
+    # The positive gap is a per-bucket quantity and every consumer below must
+    # read the same one.  Deriving it once keeps candidate admission, Maker
+    # clip sizing and the emitted target rows from drifting apart.
+    gap_by_bucket = {
+        bucket: (
             target_shares[bucket]
             - current_shares[bucket]
             - pending_shares[bucket]
         )
-        > EPS
+        for bucket in final_support
+    }
+    execution_gap_support = tuple(
+        bucket for bucket in final_support if gap_by_bucket[bucket] > EPS
     )
     event_id = f"{snapshot.station_id}-{snapshot.event_date}"
     actions: list[dict[str, Any]] = []
@@ -349,11 +903,7 @@ def compile_delta_v2_runtime_plan(
                 "official_ws_ask_unavailable"
             )
             continue
-        gap = (
-            target_shares[bucket]
-            - current_shares[bucket]
-            - pending_shares[bucket]
-        )
+        gap = gap_by_bucket[bucket]
         if gap <= EPS:
             continue
         reservation_grid = _reservation_grid(row=row, artifact=delta_policy)
@@ -410,6 +960,7 @@ def compile_delta_v2_runtime_plan(
         mode, timeout_raw = mode_timeout.split(":", 1)
         timeout = float(timeout_raw)
         row = by_bucket[bucket]
+        gap = gap_by_bucket[bucket]
         initial_fill = fill_resolver(
             station_id=snapshot.station_id,
             stage=snapshot.evidence.probability_stage,
@@ -707,10 +1258,7 @@ def compile_delta_v2_runtime_plan(
             "filled_cost_usdc": row.filled_cost_usdc,
             "pending_shares": row.pending_shares,
             "pending_notional_usdc": row.pending_notional_usdc,
-            "delta_shares": max(
-                0.0,
-                target_shares[bucket] - row.filled_shares - row.pending_shares,
-            ),
+            "delta_shares": max(0.0, gap_by_bucket[bucket]),
             "clip_shares": float(action.get("maximum_shares") or 0.0),
             "clip_notional_usdc": float(action.get("cash_clip") or 0.0),
             "candidate_price": float(action.get("limit_price") or 0.0),
@@ -876,6 +1424,32 @@ def compile_delta_v2_runtime_plan(
         "expected_pnl_usdc": realised["expected_pnl"],
         "profit_floor_usdc": realised["profit_floor"],
         "cvar_usdc": realised["cvar"],
+        "basket_objective_form": objective_form,
+        "basket_curve_variance": target_solution.get("target_variance"),
+        "basket_curve_score": target_solution.get("target_curve_score"),
+        # The curve dials the charter is steered by.  They exist in the solve
+        # identity either way; carrying them onto the plan is what makes the
+        # win-rate target an auditable daily number instead of an intention --
+        # the whole reason the 21-plan measurement that exposed the lottery
+        # shape had to be reconstructed by hand from scenario curves.
+        "basket_win_probability": target_solution.get(
+            "target_win_probability"
+        ),
+        "basket_odds_ratio": target_solution.get("target_odds_ratio"),
+        "basket_support_floor_pnl_usdc": target_solution.get(
+            "target_support_floor_pnl"
+        ),
+        "basket_support_floor_fraction": target_solution.get(
+            "support_scenario_floor_fraction"
+        ),
+        "basket_floor_rejected_candidate_count": target_solution.get(
+            "floor_rejected_candidate_count"
+        ),
+        # Which windows were on the table, what each was worth, and why this
+        # one was seated.  Without it a support decision is unreviewable: the
+        # incumbent rule was wrong for months precisely because nothing
+        # recorded the alternatives it never considered.
+        "basket_support_selection": support_selection,
         "total_target_shares": sum(target_shares.values()),
         "total_delta_notional_usdc": float(
             selection.get("capital_reserved_usdc") or 0.0

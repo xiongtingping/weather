@@ -465,7 +465,7 @@ def load_current_probability_bridge(
     envelope = history["envelope"]
     # This check intentionally happens after stage authority is selected.  A
     # stale P1 blocks; it must never cause a fallback to a fresh P0/P0-M.
-    if not envelope.is_fresh(as_of_utc):
+    if not envelope.is_servable(as_of_utc):
         raise ContractError("xsb_latest_stage_stale_fail_closed")
     rows = _load_projection_rows(conn, history)
     return {

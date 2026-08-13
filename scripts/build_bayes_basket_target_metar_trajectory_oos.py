@@ -331,6 +331,7 @@ def main() -> int:
             apply_probability_evidence_schema,
             insert_probability_evidence_activation,
             insert_probability_evidence_artifact,
+            insert_probability_evidence_promotion,
         )
 
         conn = sqlite3.connect(
@@ -341,6 +342,7 @@ def main() -> int:
             apply_probability_evidence_schema(conn)
             conn.execute("BEGIN IMMEDIATE")
             wrote_artifacts = 0
+            wrote_promotions = 0
             wrote_activations = 0
             for row in ingress_packet.get("artifacts") or []:
                 exists = conn.execute(
@@ -352,12 +354,35 @@ def main() -> int:
                     continue
                 insert_probability_evidence_artifact(conn, dict(row))
                 wrote_artifacts += 1
+            # The packet has always carried its promotion decision and this
+            # loop has always skipped it, which made the whole path unable to
+            # activate anything: the store refuses a FORMAL_PROMOTED
+            # activation whose artifact has no PROMOTED receipt, so every
+            # commit died one statement later.  That is why the promotion and
+            # activation tables were both empty while 246 artifacts sat in
+            # evidence.  Rejections are appended too -- a refused candidate
+            # should leave a receipt saying so, not silence.
+            for row in ingress_packet.get("promotions") or []:
+                exists = conn.execute(
+                    "SELECT 1 FROM basket_probability_evidence_promotion "
+                    "WHERE artifact_kind=? AND artifact_id=? AND decision_seq=?",
+                    (
+                        str(row.get("artifact_kind") or ""),
+                        str(row.get("artifact_id") or ""),
+                        row.get("decision_seq"),
+                    ),
+                ).fetchone()
+                if exists:
+                    continue
+                insert_probability_evidence_promotion(conn, dict(row))
+                wrote_promotions += 1
             for row in ingress_packet.get("activations") or []:
                 insert_probability_evidence_activation(conn, dict(row))
                 wrote_activations += 1
             conn.commit()
             ingress_receipt = {
                 "wrote_artifacts": wrote_artifacts,
+                "wrote_promotions": wrote_promotions,
                 "wrote_activations": wrote_activations,
             }
         except Exception:

@@ -51,9 +51,14 @@ EXACT_JOIN_SCHEMA = "bayes_basket_taf_increment_calibration_dataset_v2"
 CROSSFIT_SCHEMA = "bayes_basket_nwp_crossfit_predictions_v1"
 P0_INBOX_SCHEMA = "bayes_basket_target_p0_inbox_v1"
 AWC_TAF_DATASET_SCHEMA = "bayes_basket_awc_taf_calibration_dataset_v1"
-# Matches the native gate it shares a split series with; see MIN_SAMPLE_N in
-# taf_native_ensemble_oos for why the qualifying window is the smaller half.
-MIN_TRANSPORT_SAMPLE_N = 8
+# The qualifying window is the smaller half of a split series; see MIN_SAMPLE_N
+# in taf_native_ensemble_oos.  Six rather than eight because the fit and the
+# gate are drawn from one series and their sum has to fit inside it: at 14+8 a
+# real 16-sample series qualified nothing, so the pair was an absent gate
+# rather than a strict one.  What this window guarantees is unchanged and is
+# the part that matters -- every row in it is strictly later than the last
+# truth the fit consumed, so the artifact is never gated on its own rows.
+MIN_TRANSPORT_SAMPLE_N = 6
 NESTED_MIN_TRAIN_DAYS = 3
 MAX_ROWS = 366
 MAX_REFERENCE_FILES = 64

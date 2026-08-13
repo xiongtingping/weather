@@ -24,8 +24,10 @@ from bayes_basket_target.metar_path_state import (
 )
 from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    MINIMUM_EFFECTIVE_SAMPLE_N,
 )
 from bayes_basket_target.resource_bounds import write_bounded_json
+from bayes_basket_target.truth_exclusions import is_excluded
 from bayes_basket_target.future_temperature_curve import (
     build_root_future_temperature_curve,
 )
@@ -153,6 +155,11 @@ def _read_truth(
             or str(value.get("qc_status") or "").upper() != "ACCEPTED"
             or int(value.get("timestamps_complete") or 0) != 1
             or not str(value.get("canonical_committed_at_utc") or "")
+            # Settled before its own local afternoon by the retired ingest and
+            # unrepairable for want of a canonical fact.  A fold labelled with
+            # a partial morning teaches the trajectory that the day stops
+            # warming, which is the opposite of what it is for.
+            or is_excluded(station_id, str(value.get("local_date") or ""))
         ):
             continue
         latest[str(value["local_date"])] = value
@@ -1138,7 +1145,9 @@ def main() -> int:
     )
     parser.add_argument("--minimum-prior-truths", type=int, default=3)
     parser.add_argument(
-        "--minimum-effective-sample-n", type=float, default=20.0
+        "--minimum-effective-sample-n",
+        type=float,
+        default=MINIMUM_EFFECTIVE_SAMPLE_N,
     )
     parser.add_argument("--decided-at-utc", required=True)
     parser.add_argument("--valid-from-utc", required=True)

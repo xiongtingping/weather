@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_system (
   source_class TEXT NOT NULL CHECK(source_class='NATIVE_ENSEMBLE_PROVIDER'),
   aggregator_or_republisher INTEGER NOT NULL DEFAULT 0
     CHECK(aggregator_or_republisher=0),
-  expected_member_count INTEGER NOT NULL CHECK(expected_member_count>=2),
+  expected_member_count INTEGER NOT NULL CHECK(expected_member_count>=1),
   member_identity_contract_version TEXT NOT NULL,
   publication_contract_version TEXT NOT NULL,
   valid_from_utc TEXT NOT NULL,
@@ -382,7 +382,8 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   transport_provider_id TEXT NOT NULL CHECK(
     transport_provider_id IN (
       'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-      'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
+      'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
+      'AWC_METAR_PHYSICAL_PATH'
     )
   ),
   native_run_init_utc TEXT,
@@ -401,7 +402,8 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
     OR (
       transport_provider_id IN (
         'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-        'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
+        'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
+        'AWC_METAR_PHYSICAL_PATH'
       )
       AND native_run_init_utc IS NOT NULL
       AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
@@ -1721,6 +1723,55 @@ CREATE TABLE IF NOT EXISTS basket_target_bound_facts (
   FOREIGN KEY(observation_id) REFERENCES basket_target_observation_facts(observation_id)
 );
 
+-- The chain root for a stage that has not observed anything yet.  The
+-- observation/bound pair above is METAR-only by construction -- its CHECK
+-- constraints name the report types -- so P0 opening on the NWP ensemble and
+-- P0-M re-confirming on a TAF revision had nowhere to record what they stand
+-- on.  These two tables are that record, and they are deliberately separate
+-- from the observed pair rather than a relaxation of it: an observed high
+-- rules buckets out permanently, and nothing here may ever weaken that.
+CREATE TABLE IF NOT EXISTS basket_target_stage_evidence_roots (
+  evidence_root_id TEXT PRIMARY KEY,
+  probability_stage TEXT NOT NULL CHECK(probability_stage IN ('P0','P0-M','P1')),
+  position_role TEXT NOT NULL CHECK(position_role IN ('OPEN','ADJUST')),
+  bound_kind TEXT NOT NULL CHECK(
+    bound_kind IN ('MODEL_ENVELOPE_SOFT','OBSERVED_REPORTED_HIGH_HARD')
+  ),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  settlement_timezone TEXT NOT NULL,
+  checkpoint_id TEXT NOT NULL,
+  posterior_sha256 TEXT NOT NULL CHECK(length(posterior_sha256)=64),
+  evidence_json TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS basket_target_stage_bound_facts (
+  stage_bound_fact_id TEXT PRIMARY KEY,
+  bound_id TEXT NOT NULL UNIQUE,
+  evidence_root_id TEXT NOT NULL,
+  probability_stage TEXT NOT NULL CHECK(probability_stage IN ('P0','P0-M')),
+  bound_kind TEXT NOT NULL CHECK(bound_kind='MODEL_ENVELOPE_SOFT'),
+  soft_lower_ordinal INTEGER NOT NULL,
+  soft_upper_ordinal INTEGER NOT NULL
+    CHECK(soft_upper_ordinal>=soft_lower_ordinal),
+  admitted_buckets_json TEXT NOT NULL,
+  excluded_buckets_json TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(evidence_root_id)
+    REFERENCES basket_target_stage_evidence_roots(evidence_root_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS basket_target_stage_evidence_roots_append_only
+BEFORE UPDATE ON basket_target_stage_evidence_roots
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
+CREATE TRIGGER IF NOT EXISTS basket_target_stage_bound_facts_append_only
+BEFORE UPDATE ON basket_target_stage_bound_facts
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
+
 CREATE TABLE IF NOT EXISTS basket_target_execution_cycles (
   cycle_id TEXT PRIMARY KEY,
   plan_id TEXT NOT NULL UNIQUE,
@@ -2874,6 +2925,14 @@ def _migrate_native_historical_source_contract(
         # never accumulate the d2 history that admits it as an independent
         # candidate family.
         or "DWD_OPENDATA_ICON_EPS" not in member_sql
+        # The forecaster's TAF TX enters the same archive as a single-member
+        # point system; its transport is the TAF capture lane.
+        or "AWC_TAF_DATA_API" not in member_sql
+        # The METAR physical daily-maximum point rides the same archive; a
+        # missing transport here silently zeroes its every insert (OR IGNORE
+        # swallows the CHECK), which is how it shipped registered, contracted
+        # and producing nothing.
+        or "AWC_METAR_PHYSICAL_PATH" not in member_sql
     ):
         had_offline_columns = "offline_oos_eligible" in member_sql
         conn.execute(
@@ -2919,7 +2978,8 @@ def _migrate_native_historical_source_contract(
                 transport_provider_id IN (
                   'OPEN_METEO','NOAA_GEFS_PDS_S3',
                   'ECMWF_OPEN_DATA_S3','ECCC_DD_WEATHER',
-                  'DWD_OPENDATA_ICON_EPS'
+                  'DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
+                  'AWC_METAR_PHYSICAL_PATH'
                 )
               ),
               native_run_init_utc TEXT,
@@ -2942,7 +3002,8 @@ def _migrate_native_historical_source_contract(
                 OR (
                   transport_provider_id IN (
                     'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
-                    'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS'
+                    'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS',
+                    'AWC_TAF_DATA_API','AWC_METAR_PHYSICAL_PATH'
                   )
                   AND native_run_init_utc IS NOT NULL
                   AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'

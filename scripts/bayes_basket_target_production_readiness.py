@@ -17,7 +17,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -66,6 +66,11 @@ SCHEMA = "bayes_basket_target_production_readiness_v1"
 DEFAULT_CALIBRATION_EVIDENCE = ROOT / "output/audits/bayes_basket_target_calibration_evidence.json"
 DEFAULT_NATIVE_DECODE_EVIDENCE = ROOT / "output/audits/bayes_basket_target_native_model_arrival_decode.json"
 DEFAULT_TARGET_RAW_ROOT = ROOT / "data/research/bayes_basket_target/model_arrivals"
+# A station's holdout window ends on settled truth, which itself lands a day
+# or two late, and the OOS scan walks one station at a time.  Two days of lag
+# is therefore structural; five is the point past which a station has stopped
+# being refreshed rather than merely waiting its turn.
+DEFAULT_CALIBRATION_MAX_STALE_DAYS = 5
 # The target lane must never use the resident WS manifest as an input.
 # Keep the target evidence path separate from unrelated resident evidence.
 TARGET_WS_MANIFEST = ROOT / "data/bayes_basket_target_official_ws_manifest.json"
@@ -1711,6 +1716,88 @@ def _normalize_station_scope(station_ids: Sequence[str] | None) -> tuple[str, ..
     return tuple(sorted({str(value).strip().upper() for value in (station_ids or []) if str(value).strip()}))
 
 
+def _calibration_staleness(
+    conn: sqlite3.Connection,
+    *,
+    as_of_utc: str,
+    station_ids: Sequence[str] | None = None,
+    max_stale_days: int = DEFAULT_CALIBRATION_MAX_STALE_DAYS,
+) -> dict[str, Any]:
+    """Report stations whose model weights stopped being refreshed.
+
+    The OOS gate is fail-closed on purpose: a station whose candidates keep
+    losing to climatology goes on serving the last weights that did pass.
+    That is the right execution behaviour and an invisible operational one --
+    nothing else in this audit distinguishes a station refreshed yesterday
+    from one frozen a fortnight ago, so a stalled station is only ever found
+    by reading the table by hand.
+    """
+
+    scope = _normalize_station_scope(station_ids)
+    try:
+        rows = conn.execute(
+            "SELECT station_id,MAX(holdout_end_date) FROM "
+            "calibration_cross_native_ensemble_selection_evidence "
+            "GROUP BY station_id"
+        ).fetchall()
+    except sqlite3.Error:
+        return {
+            "ready": False,
+            "state": "selection_evidence_unavailable",
+            "max_stale_days": max_stale_days,
+            "stale_stations": [],
+        }
+    try:
+        as_of = datetime.fromisoformat(
+            str(as_of_utc).replace("Z", "+00:00")
+        ).astimezone(timezone.utc).date()
+    except ValueError:
+        return {
+            "ready": False,
+            "state": "decision_clock_invalid",
+            "max_stale_days": max_stale_days,
+            "stale_stations": [],
+        }
+
+    observed: list[dict[str, Any]] = []
+    unreadable: list[str] = []
+    for station_id, holdout_end in rows:
+        station = str(station_id or "").strip().upper()
+        if not station or (scope and station not in scope):
+            continue
+        try:
+            end = date.fromisoformat(str(holdout_end or ""))
+        except ValueError:
+            unreadable.append(station)
+            continue
+        observed.append({
+            "station_id": station,
+            "holdout_end_date": end.isoformat(),
+            "stale_days": (as_of - end).days,
+        })
+    stale = sorted(
+        (row for row in observed if row["stale_days"] > max_stale_days),
+        key=lambda row: (-int(row["stale_days"]), str(row["station_id"])),
+    )
+    missing = sorted(set(scope) - {row["station_id"] for row in observed})
+    return {
+        "ready": not stale and not unreadable and not missing,
+        "state": (
+            "fresh"
+            if not stale and not unreadable and not missing
+            else "stale"
+        ),
+        "max_stale_days": max_stale_days,
+        "as_of_date": as_of.isoformat(),
+        "station_count": len(observed),
+        "stale_station_count": len(stale),
+        "stale_stations": stale,
+        "unreadable_holdout_stations": unreadable,
+        "stations_without_selection_evidence": missing,
+        "read_only": True,
+    }
+
+
 def _official_ws_scope_coverage(
     conn: sqlite3.Connection,
     manifest_path: Path,
@@ -1982,6 +2069,12 @@ def audit(
         capital = {"ready": False, "state": "database_invalid"}
         alignment = {"state": "not_checked", "aligned": False}
         ws_coverage = {"state": "database_invalid", "complete_scope_count": 0}
+        calibration_staleness = {
+            "ready": False,
+            "state": "database_invalid",
+            "max_stale_days": DEFAULT_CALIBRATION_MAX_STALE_DAYS,
+            "stale_stations": [],
+        }
         probability_evidence_runtime = {
             "schema": "bayes_basket_probability_evidence_runtime_status_v1",
             "state": "DATABASE_INVALID",
@@ -2017,6 +2110,11 @@ def audit(
             capital = _capital_pool(conn)
             alignment = _db_activation_alignment(conn, activation_file)
             ws_coverage = _official_ws_scope_coverage(conn, manifest_path, station_ids=station_ids)
+            calibration_staleness = _calibration_staleness(
+                conn,
+                as_of_utc=decision_clock,
+                station_ids=station_ids,
+            )
             probability_evidence_runtime = (
                 _probability_evidence_runtime_status(
                     conn,
@@ -2065,6 +2163,8 @@ def audit(
             blockers.append("file_db_activation_drift")
         if not resource_budget.get("ok"):
             blockers.append("target_resource_budget_exceeded")
+        if not calibration_staleness.get("ready"):
+            blockers.append("target_calibration_weights_stale")
         if not future_day_residue.get("checks", {}).get("future_residue_isolated"):
             blockers.append("future_day_residue_not_isolated")
     if not db_path.exists() or db_path.is_symlink() or not db_path.is_file():
@@ -2156,6 +2256,7 @@ def audit(
             "exists": Path(manifest_path).is_file(),
         },
         "official_ws_scope_coverage": ws_coverage,
+        "calibration_staleness": calibration_staleness,
         "probability_evidence_runtime": probability_evidence_runtime,
         "station_scope": {
             "mode": "allowlist" if _normalize_station_scope(station_ids) else "full_target_registry",

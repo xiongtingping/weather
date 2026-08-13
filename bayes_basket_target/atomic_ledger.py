@@ -48,6 +48,10 @@ from .ssot import (
 SCHEMA = "bayes_basket_target_atomic_ledger_v2"
 OBSERVATION_SCHEMA = "basket_target_observation_projection_v2"
 BOUND_SCHEMA = "basket_target_bound_projection_v2"
+# The pre-observation chain head.  Deliberately its own schema rather than a
+# relaxed observation projection: an observed fact and a model's evidence are
+# different claims, and a replay must not be able to read one as the other.
+STAGE_EVIDENCE_ROOT_SCHEMA = "basket_target_stage_evidence_projection_v1"
 PLAN_SCHEMA = "basket_target_plan_v1"
 DECISION_SCHEMA = "basket_target_decision_fact_v1"
 INTENT_SCHEMA = "basket_target_order_intent_v1"
@@ -356,20 +360,36 @@ def _assert_plan_observation_bound_lineage(
     before committing a bundle.
     """
 
-    expected = {
-        "canonical_observation_event_id": str(
-            observation.get("observation_id") or ""
-        ),
-        "truth_observation_revision_content_sha256": str(
-            observation.get("truth_observation_revision_content_sha256") or ""
-        ).lower(),
-        "canonical_observation_committed_at_utc": str(
-            observation.get("canonical_committed_at") or ""
-        ),
-        "hard_bound_id": str(bound.get("bound_id") or ""),
-        "source_lane": str(observation.get("source_lane") or "").upper(),
-        "report_type": str(observation.get("report_type") or "").upper(),
-    }
+    if str(observation.get("probability_stage") or "") in {"P0", "P0-M"}:
+        # A stage-rooted plan names the evidence it was compiled from, which is
+        # the root's own identity rather than a report that does not exist yet.
+        expected = {
+            "stage_evidence_root_id": str(
+                observation.get("observation_id") or ""
+            ),
+            "stage_evidence_content_sha256": str(
+                observation.get("evidence_root_content_sha256") or ""
+            ).lower(),
+            "probability_checkpoint_id": str(
+                observation.get("checkpoint_id") or ""
+            ),
+            "soft_bound_id": str(bound.get("bound_id") or ""),
+        }
+    else:
+        expected = {
+            "canonical_observation_event_id": str(
+                observation.get("observation_id") or ""
+            ),
+            "truth_observation_revision_content_sha256": str(
+                observation.get("truth_observation_revision_content_sha256") or ""
+            ).lower(),
+            "canonical_observation_committed_at_utc": str(
+                observation.get("canonical_committed_at") or ""
+            ),
+            "hard_bound_id": str(bound.get("bound_id") or ""),
+            "source_lane": str(observation.get("source_lane") or "").upper(),
+            "report_type": str(observation.get("report_type") or "").upper(),
+        }
     for field, expected_value in expected.items():
         actual = str(plan_lineage.get(field) or "")
         if field == "truth_observation_revision_content_sha256":
@@ -395,19 +415,28 @@ def _assert_plan_lane_contract(
 ) -> None:
     if lane != "basket":
         raise AtomicLedgerError("strategy_lane_hard_no_retired")
-    if str(plan_lineage.get("probability_stage") or "") != "P1":
+    # All three stages open or adjust a position: P0 on the ensemble, P0-M on
+    # the TAF revision, P1 on observed METAR.  Requiring P1 here made the two
+    # that precede an observation unable to hold one at all, which is not the
+    # conservatism it looked like -- it left the opening stage with no way to
+    # act on the evidence it is built from.
+    if str(plan_lineage.get("probability_stage") or "") not in {
+        "P0", "P0-M", "P1",
+    }:
         raise AtomicLedgerError(
-            "target_atomic_commit_requires_p1"
+            "target_atomic_commit_stage_invalid"
             if commit_boundary
-            else "target_atomic_bundle_requires_p1"
+            else "target_atomic_bundle_stage_invalid"
         )
 
 
 def build_target_atomic_bundle(
     *,
-    awc_observation_contract: Mapping[str, Any],
-    truth_observation_revision_content_sha256: str,
-    bound: Mapping[str, Any],
+    awc_observation_contract: Mapping[str, Any] | None = None,
+    truth_observation_revision_content_sha256: str = "",
+    stage_evidence_root: Mapping[str, Any] | None = None,
+    stage_soft_bound: Mapping[str, Any] | None = None,
+    bound: Mapping[str, Any] | None = None,
     plan: Mapping[str, Any],
     decision: Mapping[str, Any],
     intents: Sequence[Mapping[str, Any]] = (),
@@ -422,53 +451,142 @@ def build_target_atomic_bundle(
     """Normalize a candidate and derive every identity from immutable content."""
 
     created_at = _timestamp("created_at_utc", created_at_utc)
-    canonical_contract = CanonicalAWCObservationContract.from_mapping(
-        awc_observation_contract
-    )
-    revision_sha = _sha(
-        "truth_observation_revision_content_sha256",
-        truth_observation_revision_content_sha256,
-    )
-    matching_revisions = [
-        fact for fact in canonical_contract.revision_facts
-        if fact.content_sha256 == revision_sha
-    ]
-    if len(matching_revisions) != 1:
-        raise AtomicLedgerError(
-            "truth_observation_revision_reference_not_exact"
+    # Two chain roots, one shape.  P1 roots on an observed METAR fact; P0 and
+    # P0-M exist before the event day has produced one and root on the stage
+    # evidence they do have -- the ensemble selection/activation for P0, the
+    # TAF revision proof for P0-M.  Everything downstream derives scope and
+    # identity from whichever root applies, so only the head of the chain
+    # differs and the P1 path below is untouched.
+    if stage_evidence_root is not None and awc_observation_contract is not None:
+        raise AtomicLedgerError("target_atomic_root_ambiguous")
+    if stage_evidence_root is None and awc_observation_contract is None:
+        raise AtomicLedgerError("target_atomic_root_missing")
+    stage_rooted = stage_evidence_root is not None
+    if stage_rooted:
+        # P0 and P0-M exist before the event day has produced an observation,
+        # so they root the chain on the evidence they do have: the ensemble
+        # selection/activation for P0, the TAF revision proof for P0-M.  The
+        # shape matches the observed root exactly -- one scope, one immutable
+        # content hash -- so everything downstream is unchanged and only the
+        # head of the chain differs.
+        root = dict(stage_evidence_root)
+        obs = {
+            "observation_id": _text(
+                "stage_evidence_root_id", root.get("evidence_root_id")
+            ),
+            "station_id": _text(
+                "stage_evidence_station_id", root.get("station_id")
+            ),
+            "event_date": _date(
+                "stage_evidence_event_date", root.get("event_date")
+            ),
+            "settlement_timezone": _settlement_timezone(
+                "stage_evidence_settlement_timezone",
+                root.get("settlement_timezone"),
+            ),
+            "probability_stage": _text(
+                "stage_evidence_probability_stage",
+                root.get("probability_stage"),
+            ),
+            "position_role": _text(
+                "stage_evidence_position_role", root.get("position_role")
+            ),
+            "bound_kind": _text(
+                "stage_evidence_bound_kind", root.get("bound_kind")
+            ),
+            "checkpoint_id": _text(
+                "stage_evidence_checkpoint_id", root.get("checkpoint_id")
+            ),
+            "posterior_sha256": _sha(
+                "stage_evidence_posterior_sha256", root.get("posterior_sha256")
+            ),
+            "evidence_root_content_sha256": _sha(
+                "stage_evidence_content_sha256", root.get("content_sha256")
+            ),
+        }
+        if obs["probability_stage"] not in {"P0", "P0-M"}:
+            raise AtomicLedgerError("stage_evidence_probability_stage_invalid")
+        obs_sha = _content_hash(STAGE_EVIDENCE_ROOT_SCHEMA, obs)
+        observation_fact_id = obs["observation_id"]
+        soft = dict(stage_soft_bound or {})
+        if not soft:
+            raise AtomicLedgerError("stage_evidence_soft_bound_missing")
+        # The soft bound answers the same question the hard one does -- which
+        # buckets may be opened -- so it is projected into the same shape and
+        # the rest of the chain never learns which kind it holds.  It carries
+        # no ``hard_lower_bound``: nothing has been observed to exclude a
+        # bucket, and inventing an integer floor here would let a forecast
+        # masquerade as a settled fact.
+        bound = {
+            "bound_id": _text("soft_bound_id", soft.get("bound_id")),
+            "station_id": obs["station_id"],
+            "event_date": obs["event_date"],
+            "bound_generation": 0,
+            "hard_lower_bound": None,
+            "bound_json": {
+                "bound_kind": _text(
+                    "soft_bound_kind", soft.get("bound_kind")
+                ),
+                "probability_stage": obs["probability_stage"],
+                "soft_lower_ordinal": int(soft["soft_lower_ordinal"]),
+                "soft_upper_ordinal": int(soft["soft_upper_ordinal"]),
+                "admitted_buckets": list(soft.get("admitted_buckets") or []),
+                "excluded_buckets": list(soft.get("excluded_buckets") or []),
+                "content_sha256": _sha(
+                    "soft_bound_content_sha256", soft.get("content_sha256")
+                ),
+            },
+        }
+    else:
+        if bound is None:
+            raise AtomicLedgerError("target_atomic_bound_missing")
+        canonical_contract = CanonicalAWCObservationContract.from_mapping(
+            awc_observation_contract
         )
-    revision = matching_revisions[0].raw
-    obs = {
-        "observation_id": _text("observation_id", revision.get("observation_id")),
-        "station_id": _text("observation_station_id", revision.get("station_id")),
-        "event_date": _date("observation_event_date", revision.get("event_date")),
-        "settlement_timezone": _settlement_timezone(
-            "observation_settlement_timezone",
-            revision.get("settlement_timezone"),
-        ),
-        "source_lane": _awc_source_lane(
-            "observation_source_lane", revision.get("source_lane")
-        ),
-        "report_type": _text("observation_report_type", revision.get("report_type")).upper(),
-        "observed_at_utc": _timestamp(
-            "observation_observed_at_utc", revision.get("observed_at_utc")
-        ),
-        "raw_sha256": _sha("observation_raw_sha256", revision.get("raw_object_sha256")),
-        "awc_source_receipt_sha256": _sha(
-            "observation_awc_source_receipt_sha256",
-            revision.get("awc_source_receipt_sha256"),
-        ),
-        "canonical_committed_at": _timestamp(
-            "observation_canonical_committed_at", revision.get("canonical_committed_at_utc")
-        ),
-        "truth_observation_revision_content_sha256": revision_sha,
-    }
-    if obs["report_type"] not in {"METAR", "SPECI"}:
-        raise AtomicLedgerError("observation_report_type_invalid")
-    obs_sha = _content_hash(OBSERVATION_SCHEMA, obs)
-    observation_fact_id = _verify_or_set_id(
-        "observation_fact_id", None, _derive_id("obsfact", obs)
-    )
+        revision_sha = _sha(
+            "truth_observation_revision_content_sha256",
+            truth_observation_revision_content_sha256,
+        )
+        matching_revisions = [
+            fact for fact in canonical_contract.revision_facts
+            if fact.content_sha256 == revision_sha
+        ]
+        if len(matching_revisions) != 1:
+            raise AtomicLedgerError(
+                "truth_observation_revision_reference_not_exact"
+            )
+        revision = matching_revisions[0].raw
+        obs = {
+            "observation_id": _text("observation_id", revision.get("observation_id")),
+            "station_id": _text("observation_station_id", revision.get("station_id")),
+            "event_date": _date("observation_event_date", revision.get("event_date")),
+            "settlement_timezone": _settlement_timezone(
+                "observation_settlement_timezone",
+                revision.get("settlement_timezone"),
+            ),
+            "source_lane": _awc_source_lane(
+                "observation_source_lane", revision.get("source_lane")
+            ),
+            "report_type": _text("observation_report_type", revision.get("report_type")).upper(),
+            "observed_at_utc": _timestamp(
+                "observation_observed_at_utc", revision.get("observed_at_utc")
+            ),
+            "raw_sha256": _sha("observation_raw_sha256", revision.get("raw_object_sha256")),
+            "awc_source_receipt_sha256": _sha(
+                "observation_awc_source_receipt_sha256",
+                revision.get("awc_source_receipt_sha256"),
+            ),
+            "canonical_committed_at": _timestamp(
+                "observation_canonical_committed_at", revision.get("canonical_committed_at_utc")
+            ),
+            "truth_observation_revision_content_sha256": revision_sha,
+        }
+        if obs["report_type"] not in {"METAR", "SPECI"}:
+            raise AtomicLedgerError("observation_report_type_invalid")
+        obs_sha = _content_hash(OBSERVATION_SCHEMA, obs)
+        observation_fact_id = _verify_or_set_id(
+            "observation_fact_id", None, _derive_id("obsfact", obs)
+        )
 
     bound_payload = _mapping("bound_json", bound.get("bound_json", bound.get("hard_bound" , {})))
     bound_identity = {
@@ -479,7 +597,12 @@ def build_target_atomic_bundle(
         "bound_generation": int(bound.get("bound_generation", 0)),
         "hard_lower_bound": None if bound.get("hard_lower_bound") in (None, "") else int(bound["hard_lower_bound"]),
         "bound_json": bound_payload,
-        "truth_observation_revision_content_sha256": revision_sha,
+        # Present only on an observed root.  A stage-rooted bound has no truth
+        # revision to name -- the day has produced none -- and writing an empty
+        # string would claim one exists.
+        "truth_observation_revision_content_sha256": obs.get(
+            "truth_observation_revision_content_sha256"
+        ),
     }
     if bound_identity["bound_generation"] < 0:
         raise AtomicLedgerError("bound_generation_invalid")
@@ -495,9 +618,13 @@ def build_target_atomic_bundle(
     if not isinstance(plan_lineage, Mapping):
         raise AtomicLedgerError("target_atomic_bundle_lineage_missing")
     plan_lineage = dict(plan_lineage)
-    plan_lineage["source_lane"] = _awc_source_lane(
-        "plan_lineage_source_lane", plan_lineage.get("source_lane")
-    )
+    if not stage_rooted:
+        # The source lane names which observation feed the plan consumed, so
+        # it belongs to an observed root only.  Demanding it of a stage-rooted
+        # plan asked P0 to declare a feed it never read.
+        plan_lineage["source_lane"] = _awc_source_lane(
+            "plan_lineage_source_lane", plan_lineage.get("source_lane")
+        )
     plan_payload["lineage"] = plan_lineage
     lane = _basket_lane(
         "strategy_lane",
@@ -714,7 +841,12 @@ def build_target_atomic_bundle(
     result = {
         "schema": SCHEMA,
         "created_at": created_at,
-        "awc_observation_contract": dict(awc_observation_contract),
+        "awc_observation_contract": (
+            None if stage_rooted else dict(awc_observation_contract)
+        ),
+        "stage_evidence_root": (
+            dict(stage_evidence_root) if stage_rooted else None
+        ),
         "observation": {**obs, "observation_fact_id": observation_fact_id, "content_sha256": obs_sha},
         "bound": {**bound_identity, "bound_fact_id": bound_fact_id, "content_sha256": bound_sha},
         "plan": {"plan_id": plan_id, "plan_sha256": plan_sha, "plan_json": plan_payload},
@@ -1509,6 +1641,44 @@ def _assert_existing_cycle_weather_fact_binding(
         )
 
 
+def _assert_existing_cycle_stage_evidence_binding(
+    conn: sqlite3.Connection,
+    *,
+    observation: Mapping[str, Any],
+    bound: Mapping[str, Any],
+) -> None:
+    """Fail closed if a stage-rooted replay has lost its persisted evidence.
+
+    The immutable pair for a pre-observation cycle lives in the stage tables:
+    the root row named by the plan and the soft bound derived from the same
+    envelope.  A replay that cannot find both with matching content hashes is
+    citing evidence that was never written, and must not look idempotent.
+    """
+
+    root_row = conn.execute(
+        "SELECT content_sha256 FROM basket_target_stage_evidence_roots "
+        "WHERE evidence_root_id=?",
+        (str(observation.get("observation_id") or ""),),
+    ).fetchone()
+    if root_row is None or str(root_row[0]) != str(
+        observation.get("evidence_root_content_sha256") or ""
+    ):
+        raise AtomicLedgerError(
+            "cycle_existing_stage_evidence_root_binding_drift"
+        )
+    bound_row = conn.execute(
+        "SELECT evidence_root_id FROM basket_target_stage_bound_facts "
+        "WHERE bound_id=?",
+        (str(bound.get("bound_id") or ""),),
+    ).fetchone()
+    if bound_row is None or str(bound_row[0]) != str(
+        observation.get("observation_id") or ""
+    ):
+        raise AtomicLedgerError(
+            "cycle_existing_stage_bound_binding_drift"
+        )
+
+
 def _stage_canonical_target_projections(
     conn: sqlite3.Connection,
     *,
@@ -1631,28 +1801,38 @@ def commit_target_atomic_bundle(
     if any(key not in bundle for key in required):
         raise AtomicLedgerError("atomic_bundle_incomplete")
     obs = dict(bundle["observation"])
-    obs["source_lane"] = _awc_source_lane(
-        "observation_source_lane", obs.get("source_lane")
-    )
-    bound = dict(bundle["bound"])
-    try:
-        awc_contract = CanonicalAWCObservationContract.from_mapping(
-            bundle["awc_observation_contract"]
+    # A stage-rooted bundle (P0/P0-M) cites the evidence it was compiled from;
+    # there is no canonical AWC report yet, so the METAR-shaped checks below
+    # would only be satisfiable by fabricating one.  The stage checks that
+    # replace them live in the builder and in _assert_plan_observation_bound_
+    # lineage; the commit boundary re-verifies content addresses either way.
+    stage_rooted = bundle.get("stage_evidence_root") is not None
+    if not stage_rooted:
+        obs["source_lane"] = _awc_source_lane(
+            "observation_source_lane", obs.get("source_lane")
         )
-    except ContractError as exc:
-        raise AtomicLedgerError("atomic_awc_observation_contract_invalid") from exc
-    revision_sha = _sha(
-        "truth_observation_revision_content_sha256",
-        obs.get("truth_observation_revision_content_sha256"),
-    )
-    revisions = [
-        fact for fact in awc_contract.revision_facts
-        if fact.content_sha256 == revision_sha
-    ]
-    if len(revisions) != 1:
-        raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
-    if bound.get("truth_observation_revision_content_sha256") != revision_sha:
-        raise AtomicLedgerError("atomic_bound_revision_reference_mismatch")
+    bound = dict(bundle["bound"])
+    if stage_rooted:
+        revision_sha = ""
+    else:
+        try:
+            awc_contract = CanonicalAWCObservationContract.from_mapping(
+                bundle["awc_observation_contract"]
+            )
+        except ContractError as exc:
+            raise AtomicLedgerError("atomic_awc_observation_contract_invalid") from exc
+        revision_sha = _sha(
+            "truth_observation_revision_content_sha256",
+            obs.get("truth_observation_revision_content_sha256"),
+        )
+        revisions = [
+            fact for fact in awc_contract.revision_facts
+            if fact.content_sha256 == revision_sha
+        ]
+        if len(revisions) != 1:
+            raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
+        if bound.get("truth_observation_revision_content_sha256") != revision_sha:
+            raise AtomicLedgerError("atomic_bound_revision_reference_mismatch")
     cycle = dict(bundle["cycle"])
     decision = dict(bundle["decision"])
     intents = [dict(item) for item in bundle["intents"]]
@@ -1664,11 +1844,14 @@ def commit_target_atomic_bundle(
     cycle_timezone = _settlement_timezone(
         "cycle_settlement_timezone", cycle.get("settlement_timezone")
     )
-    _assert_event_day_started(
-        str(cycle.get("event_date") or ""),
-        settlement_timezone=cycle_timezone,
-        as_of_utc=created_at,
-    )
+    if not stage_rooted:
+        # Opening before the day exists is the entire purpose of a stage-rooted
+        # position; only observation-rooted commits must wait for the day.
+        _assert_event_day_started(
+            str(cycle.get("event_date") or ""),
+            settlement_timezone=cycle_timezone,
+            as_of_utc=created_at,
+        )
 
     # Do not trust a previously normalized mapping merely because it carries
     # a hash.  Recompute every content address at the write boundary so a
@@ -1677,9 +1860,18 @@ def commit_target_atomic_bundle(
         "observation_settlement_timezone", obs.get("settlement_timezone")
     )
     obs_identity = {key: value for key, value in obs.items() if key not in {"observation_fact_id", "content_sha256"}}
-    if obs.get("content_sha256") != _content_hash(OBSERVATION_SCHEMA, obs_identity):
+    if obs.get("content_sha256") != _content_hash(
+        STAGE_EVIDENCE_ROOT_SCHEMA if stage_rooted else OBSERVATION_SCHEMA,
+        obs_identity,
+    ):
         raise AtomicLedgerError("observation_content_address_drift")
-    if obs.get("observation_fact_id") != _derive_id("obsfact", obs_identity):
+    if obs.get("observation_fact_id") != (
+        # The builder names a stage projection by its evidence root rather
+        # than minting a separate obsfact id for a report that does not exist.
+        obs.get("observation_id")
+        if stage_rooted
+        else _derive_id("obsfact", obs_identity)
+    ):
         raise AtomicLedgerError("observation_fact_id_content_address_drift")
     bound_identity = {key: value for key, value in bound.items() if key not in {"bound_fact_id", "content_sha256"}}
     if bound.get("content_sha256") != _content_hash(BOUND_SCHEMA, bound_identity):
@@ -1689,9 +1881,10 @@ def commit_target_atomic_bundle(
     if not isinstance(plan_lineage, Mapping):
         raise AtomicLedgerError("target_atomic_commit_lineage_missing")
     plan_lineage = dict(plan_lineage)
-    plan_lineage["source_lane"] = _awc_source_lane(
-        "plan_lineage_source_lane", plan_lineage.get("source_lane")
-    )
+    if not stage_rooted:
+        plan_lineage["source_lane"] = _awc_source_lane(
+            "plan_lineage_source_lane", plan_lineage.get("source_lane")
+        )
     plan_identity["lineage"] = plan_lineage
     if cycle.get("plan_sha256") != _content_hash(PLAN_SCHEMA, plan_identity):
         raise AtomicLedgerError("plan_content_address_drift")
@@ -1814,27 +2007,28 @@ def commit_target_atomic_bundle(
     for row in vector_rows:
         row["training_fact_id"] = training_fact_id
     with _atomic_transaction(conn, operation="commit_target_atomic_bundle"):
-        try:
-            from .canonical_ingress import stage_awc_observation_contract
+        if not stage_rooted:
+            try:
+                from .canonical_ingress import stage_awc_observation_contract
 
-            stage_awc_observation_contract(
-                conn, awc_contract, ingested_at_utc=created_at
-            )
-        except ContractError as exc:
-            raise AtomicLedgerError("atomic_awc_canonical_stage_rejected") from exc
-        _fault(fault_after, "canonical_stage")
-        canonical_rows = conn.execute(
-            "SELECT fact_json,content_sha256 FROM canonical_ssot_fact "
-            "WHERE fact_type='truth_observation_revision' "
-            "AND content_sha256=? ORDER BY fact_id",
-            (revision_sha,),
-        ).fetchall()
-        if (
-            len(canonical_rows) != 1
-            or str(canonical_rows[0][1]) != revision_sha
-            or json.loads(str(canonical_rows[0][0])) != revisions[0].raw
-        ):
-            raise AtomicLedgerError("atomic_awc_canonical_revision_binding_invalid")
+                stage_awc_observation_contract(
+                    conn, awc_contract, ingested_at_utc=created_at
+                )
+            except ContractError as exc:
+                raise AtomicLedgerError("atomic_awc_canonical_stage_rejected") from exc
+            _fault(fault_after, "canonical_stage")
+            canonical_rows = conn.execute(
+                "SELECT fact_json,content_sha256 FROM canonical_ssot_fact "
+                "WHERE fact_type='truth_observation_revision' "
+                "AND content_sha256=? ORDER BY fact_id",
+                (revision_sha,),
+            ).fetchall()
+            if (
+                len(canonical_rows) != 1
+                or str(canonical_rows[0][1]) != revision_sha
+                or json.loads(str(canonical_rows[0][0])) != revisions[0].raw
+            ):
+                raise AtomicLedgerError("atomic_awc_canonical_revision_binding_invalid")
         existing_cycle = conn.execute(
             "SELECT plan_sha256,requested_reserve_usdc,state,settlement_timezone "
             "FROM basket_target_execution_cycles WHERE cycle_id=?",
@@ -1885,11 +2079,18 @@ def commit_target_atomic_bundle(
             }
             if existing_intents != expected_intents:
                 raise AtomicLedgerError("cycle_existing_intents_drift")
-            _assert_existing_cycle_weather_fact_binding(
-                conn,
-                observation=obs,
-                bound=bound,
-            )
+            if stage_rooted:
+                _assert_existing_cycle_stage_evidence_binding(
+                    conn,
+                    observation=obs,
+                    bound=bound,
+                )
+            else:
+                _assert_existing_cycle_weather_fact_binding(
+                    conn,
+                    observation=obs,
+                    bound=bound,
+                )
             _assert_existing_cycle_training_fact_binding(
                 conn,
                 cycle_id=str(cycle["cycle_id"]),
@@ -1983,14 +2184,18 @@ def commit_target_atomic_bundle(
                     "target_active_candidate_supersession_required"
                 )
 
-        _stage_canonical_target_projections(
-            conn,
-            observation=obs,
-            bound=bound,
-            revision_sha=revision_sha,
-            created_at=created_at,
-            fault_after=fault_after,
-        )
+        if not stage_rooted:
+            # The METAR-only projection tables carry CHECK constraints naming
+            # observed report types; stage evidence is persisted through its
+            # own append-only pair by the production adapter instead.
+            _stage_canonical_target_projections(
+                conn,
+                observation=obs,
+                bound=bound,
+                revision_sha=revision_sha,
+                created_at=created_at,
+                fault_after=fault_after,
+            )
         conn.execute(
             "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,requested_reserve_usdc,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (cycle["cycle_id"], cycle["plan_id"], cycle["station_id"], cycle["event_date"], cycle_timezone, cycle["strategy_lane"], cycle["plan_sha256"], cycle["requested_reserve_usdc"], "prepared", created_at, created_at),
@@ -3041,10 +3246,24 @@ def close_target_cycle(
         if current == "settled":
             if reservation is not None and str(reservation[2]) == "active":
                 raise AtomicLedgerError("settled_cycle_active_reservation")
-            if (
-                reservation is None
-                or str(reservation[2]) != outcome_value
-            ):
+            if reservation is None:
+                raise AtomicLedgerError("settled_cycle_outcome_drift")
+            settled_state = str(reservation[2])
+            # ``expired`` is a terminal state this function never writes, so it
+            # is not comparable to the requested outcome.  It also moved no
+            # capital, which is what a replay has to be told; comparing it as
+            # if it were an outcome made an expired close permanently
+            # unreplayable.  ``released``/``consumed`` remain mutually
+            # exclusive and still fail closed against each other.
+            if settled_state == "expired":
+                return {
+                    "schema": SCHEMA,
+                    "state": "already_settled",
+                    "cycle_id": cycle,
+                    "outcome": settled_state,
+                    "released_or_consumed_usdc": 0.0,
+                }
+            if settled_state != outcome_value:
                 raise AtomicLedgerError("settled_cycle_outcome_drift")
             return {"schema": SCHEMA, "state": "already_settled", "cycle_id": cycle, "outcome": outcome_value}
         if current not in {"prepared", "submitted", "reconcile_required"}:
@@ -3063,10 +3282,21 @@ def close_target_cycle(
             else:
                 conn.execute("UPDATE basket_target_capital_pool SET reserved_usdc=reserved_usdc-?,version=version+1,updated_at=? WHERE pool_id=1", (amount, closed_at))
             conn.execute("UPDATE basket_target_capital_reservations SET state=?,release_reason=?,updated_at=? WHERE reservation_id=? AND state='active'", (outcome_value, close_reason, closed_at, reservation_id))
-        elif reservation_state not in {"released", "consumed", "expired"}:
+            settled_amount = amount
+        elif reservation_state == "expired":
+            # Capital already left the reservation by expiry, so this close
+            # only settles the cycle.  Reporting the reservation's original
+            # amount here would let a caller reconciling pool movement from
+            # this receipt count the same capital twice.
+            settled_amount = 0.0
+        elif reservation_state in {"released", "consumed"}:
+            if reservation_state != outcome_value:
+                raise AtomicLedgerError("settled_cycle_outcome_drift")
+            settled_amount = 0.0
+        else:
             raise AtomicLedgerError("reservation_state_invalid")
         conn.execute("UPDATE basket_target_execution_cycles SET state='settled',updated_at=? WHERE cycle_id=?", (closed_at, cycle))
-    return {"schema": SCHEMA, "state": "settled", "cycle_id": cycle, "outcome": outcome_value, "released_or_consumed_usdc": float(amount)}
+    return {"schema": SCHEMA, "state": "settled", "cycle_id": cycle, "outcome": outcome_value, "released_or_consumed_usdc": float(settled_amount)}
 
 
 def supersede_prepared_cycle_and_commit_bundle(

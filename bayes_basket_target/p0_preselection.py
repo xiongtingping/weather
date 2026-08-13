@@ -43,6 +43,8 @@ from .stages import select_current_stage
 SCHEMA = "bayes_basket_target_p0_preselection_v1"
 STATE = "PRELIMINARY_NO_LIVE"
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
+# Compile-time companion to a preselection, never part of its stored identity.
+UNPERSISTED_MARKET_SNAPSHOT_KEY = "_production_market_snapshot"
 
 
 def _decision_semantic_projection(
@@ -322,6 +324,26 @@ def _market_snapshot(
     buckets = []
     quote_times = []
     market_labels = set()
+    # Every official level in this scope, gathered before the per-bucket pass
+    # so the tick each bucket resolves is the market's, not whatever its own
+    # book happens to be quoting.  One sibling on a sub-cent price proves the
+    # finer grid for all of them.
+    scope_prices: list[float] = []
+    for registry_row in by_bucket.values():
+        quote = quotes.get(str(registry_row.get("yes_token") or ""))
+        if not isinstance(quote, Mapping):
+            continue
+        for side in ("asks", "bids"):
+            for level in quote.get(side) or []:
+                if not isinstance(level, Mapping):
+                    continue
+                try:
+                    price = float(level.get("price", 0.0))
+                    size = float(level.get("size", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                if price > 0.0 and size > 0.0:
+                    scope_prices.append(price)
     for bucket in sorted(envelope.probabilities, key=envelope.bucket_ordinals.__getitem__):
         registry_row = by_bucket[bucket]
         token_id = str(registry_row.get("yes_token") or "")
@@ -366,6 +388,7 @@ def _market_snapshot(
                 quote,
                 asks=ask_levels,
                 bids=bid_levels,
+                scope_prices=scope_prices,
             )
         )
         observed = str(quote.get("book_observed_at") or quote.get("created_at") or "")
@@ -692,6 +715,12 @@ def compile_p0_preselection(
             + content_sha256(economic_identity)[:40]
         ),
         "plan_sha256": plan_sha256,
+        # Carried out for the atomic commit, which prices the opening intents
+        # against the very snapshot this plan was compiled from.  It is
+        # deliberately kept out of ``identity`` and dropped again before the
+        # preselection row is serialized, so exposing it cannot move the
+        # preselection's content address.
+        UNPERSISTED_MARKET_SNAPSHOT_KEY: market,
     }
 
 
@@ -724,7 +753,16 @@ def commit_p0_preselection(
         str(value["quote_manifest_sha256"]),
         str(value["policy_activation_id"]),
         str(value["policy_authority_scope"]),
-        json.dumps(dict(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        json.dumps(
+            {
+                key: item
+                for key, item in value.items()
+                if key != UNPERSISTED_MARKET_SNAPSHOT_KEY
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
         str(value["plan_sha256"]),
         STATE,
         "P1",

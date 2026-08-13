@@ -22,11 +22,23 @@ TAF_NATIVE_ENSEMBLE_LIVE_FINGERPRINT_SCHEMA = (
 # transport that happens to expose a similarly named product.  Keep this
 # mapping deliberately small: adding an official provider is a SSOT change,
 # never an implicit side effect of registering a model name.
+#
+# Every value must be the transport the member-run whitelist and the actual
+# member rows carry -- this map is the compile-time face of that whitelist,
+# and a divergence is a silent compile outage, not a safety margin.  "DWD"
+# mapped to a transport name no member row has ever carried, so a packet
+# containing ICON always failed the gate and ICON quietly vanished from every
+# forward packet; TAF and the METAR physical predictor were ratified into the
+# member whitelist without being added here at all, so any packet carrying
+# them died with ``provider_not_official`` -- which is how the whole network
+# kept serving P0 roots from before TAF entered the packets.
 OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER = {
     "ECMWF": "ECMWF_OPEN_DATA_S3",
     "NOAA": "NOAA_GEFS_PDS_S3",
     "ECCC": "ECCC_DD_WEATHER",
-    "DWD": "DWD",
+    "DWD": "DWD_OPENDATA_ICON_EPS",
+    "ICAO_MET_OFFICE": "AWC_TAF_DATA_API",
+    "AWC_METAR_PHYSICAL_PATH": "AWC_METAR_PHYSICAL_PATH",
 }
 
 

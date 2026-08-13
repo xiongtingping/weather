@@ -12,6 +12,7 @@ from bayes_basket_target import (
     validate_forecast_revision_chain,
 )
 from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+from bayes_basket_target.contracts import PROBABILITY_MAX_STALE_SECONDS
 
 
 SHA = "a" * 64
@@ -34,6 +35,42 @@ def _envelope() -> ProbabilityEnvelope:
         "bridge_sha256": "b" * 64,
         "lineage": {"ensemble_artifact_id": "ensemble-1"},
     })
+
+
+def test_p1_serves_past_its_cadence_but_only_until_the_day_has_moved() -> None:
+    base = _envelope().to_dict()
+    p1 = ProbabilityEnvelope.from_mapping({
+        **base,
+        "stage": "P1",
+        "checkpoint_id": "p1-cadence",
+        "decision_at_utc": "2026-07-26T07:00:00Z",
+        "fresh_until_utc": "2026-07-26T08:00:00Z",
+    })
+    assert PROBABILITY_MAX_STALE_SECONDS == 3 * 60 * 60
+
+    assert p1.is_fresh("2026-07-26T07:30:00Z") is True
+    assert p1.is_servable("2026-07-26T07:30:00Z") is True
+    # The case that stood ZUUU down for an event day: minutes past an hourly
+    # roll, with nothing newer in existence.
+    assert p1.is_fresh("2026-07-26T08:13:00Z") is False
+    assert p1.is_servable("2026-07-26T08:13:00Z") is True
+    assert p1.is_servable("2026-07-26T11:00:00Z") is True
+    assert p1.is_servable("2026-07-26T11:00:01Z") is False
+    # A checkpoint is never usable before it was decided.
+    assert p1.is_servable("2026-07-26T06:59:59Z") is False
+
+    # The allowance is P1's alone.  A lapsed P0/P0-M means a newer model run
+    # or TAF exists to recompile from, so serving the old one is a choice, not
+    # the only option.
+    for stage in ("P0", "P0-M"):
+        lapsed = ProbabilityEnvelope.from_mapping({
+            **base,
+            "stage": stage,
+            "checkpoint_id": f"{stage.lower()}-cadence",
+            "decision_at_utc": "2026-07-26T07:00:00Z",
+            "fresh_until_utc": "2026-07-26T08:00:00Z",
+        })
+        assert lapsed.is_servable("2026-07-26T08:13:00Z") is False
 
 
 def _policy() -> TargetBasketPolicy:

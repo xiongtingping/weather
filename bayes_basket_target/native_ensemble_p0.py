@@ -40,6 +40,7 @@ from .open_meteo_ensemble import (
 )
 from .official_native_forward_packet import (
     MIXED_NATIVE_CYCLES,
+    POINT_FORECAST_SYSTEMS,
     SCHEMA as OFFICIAL_FORWARD_PACKET_SCHEMA,
 )
 from .ssot import native_ensemble_foundation_schema_status
@@ -211,6 +212,7 @@ def _activated_lead_bucket(
 def _interval_probability(
     values: Sequence[float],
     intervals: Mapping[str, Sequence[float | None]],
+    bandwidth_c: float | None = None,
 ) -> dict[str, float]:
     """Integrate a kernel-dressed sample over the bucket contract.
 
@@ -245,7 +247,9 @@ def _interval_probability(
     # what the calibration had already sized.  Deviations shrink so sample
     # variance plus kernel variance reproduces the original: dressing may
     # not change the width the calibration chose, only make it smooth.
-    bandwidth = 0.5
+    # A caller may widen it explicitly -- a lone point member has no sample
+    # variance, so its calibrated width must arrive through the kernel.
+    bandwidth = 0.5 if bandwidth_c is None else float(bandwidth_c)
     if std > bandwidth:
         shrink = math.sqrt(1.0 - (bandwidth / std) ** 2)
         current = [mean + shrink * (v - mean) for v in current]
@@ -328,7 +332,23 @@ def _calibrated_system_probability(
         center + spread * (value - mean)
         for value in current
     ]
-    member_probability = _interval_probability(corrected, intervals)
+    # A single-member system (a point forecast) has no member deviations for
+    # the spread factor to scale, so the plain 0.5C kernel would serve the
+    # point as near-certainty regardless of how wrong it tends to be.  Its
+    # honest width is the artifact's training residual -- the same number the
+    # OOS evaluator used when it admitted the system -- so serving stays
+    # consistent with what was gated.  Plural ensembles are untouched.
+    single_member_bandwidth = None
+    if len(current) == 1:
+        single_member_bandwidth = max(
+            0.5,
+            float(spread_parameters.get("train_rmse_c") or 0.0),
+        )
+    member_probability = _interval_probability(
+        corrected,
+        intervals,
+        bandwidth_c=single_member_bandwidth,
+    )
     climate_samples = reliability_parameters.get("climate_samples_c")
     if not isinstance(climate_samples, list) or not climate_samples:
         raise ContractError(
@@ -418,6 +438,112 @@ def _bucket_for_value(
 
 
 _VALID_NATIVE_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
+
+
+def _stage_for_native_compile(
+    *,
+    predecessor_lineage: Mapping[str, Any] | None,
+    run_init_utc_by_system: Mapping[str, str],
+    taf_witness: Mapping[str, str] | None,
+) -> str:
+    """P0 when a model run moved; P0-M when only the forecaster did.
+
+    The stage is the driver of the update, not the machinery that computed
+    it.  A recompile whose model run set is byte-identical to the predecessor
+    checkpoint's and whose TAF issuance advanced is the forecaster's revision
+    -- the confirmation stage -- and orders pre-day as P0-M while yielding to
+    P1 on the event day through the existing stage precedence.  Any model
+    movement, a first compile, or an unreadable predecessor stays P0.
+    """
+
+    if predecessor_lineage is None or taf_witness is None:
+        return "P0"
+    try:
+        previous_runs = json.loads(str(
+            predecessor_lineage.get("run_init_utc_by_system_json") or "{}"
+        ))
+        if {str(k): str(v) for k, v in previous_runs.items()} != {
+            str(k): str(v) for k, v in run_init_utc_by_system.items()
+        }:
+            return "P0"
+        previous_witness = predecessor_lineage.get(
+            "taf_envelope_witness_json"
+        )
+        previous_issued = ""
+        if previous_witness:
+            previous_issued = str(
+                json.loads(str(previous_witness)).get("issued_at_utc") or ""
+            )
+        current_issued = str(taf_witness.get("issued_at_utc") or "")
+        if current_issued and current_issued > previous_issued:
+            return "P0-M"
+    except (ValueError, TypeError):
+        return "P0"
+    return "P0"
+
+
+def _taf_envelope_witness(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    decision_at_utc: str,
+) -> dict[str, str] | None:
+    """Latest pre-decision TAF TX for this station-day, or None.
+
+    Measured on 24 celsius station-days, the forecaster's TX fell outside the
+    model-center envelope 10 times and the settled bucket followed the TAF in
+    7 of them.  An envelope that excludes the human forecast therefore forbids
+    the winning bucket about a third of the time; the TX is admitted as one
+    more center in the min/max below, widening but never narrowing.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT tx_c, content_sha256, issued_at_utc, revision_sequence, "
+            "revision_id "
+            "FROM calibration_forward_taf_capture "
+            "WHERE station_id=? AND event_date=? AND tx_c IS NOT NULL "
+            "AND issued_at_utc<=? "
+            "ORDER BY issued_at_utc DESC, revision_sequence DESC LIMIT 1",
+            (station_id, event_date, decision_at_utc),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None or row[0] is None:
+        return None
+    return {
+        "tx_c": f"{float(row[0]):.12g}",
+        "capture_content_sha256": str(row[1] or ""),
+        "issued_at_utc": str(row[2] or ""),
+        "revision_sequence": str(row[3] if row[3] is not None else ""),
+        "forecast_revision_id": str(row[4] or ""),
+    }
+
+
+def _station_issues_taf_tx(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+) -> bool:
+    """Whether this airport has ever published a TAF TX group.
+
+    A property of the aerodrome's own reporting practice, not of today's
+    capture: 28 of the 45 stations never carry TX, so waiting for one is
+    waiting forever.  Answered from the whole capture history rather than the
+    current day so a quiet day at a TX-issuing station is not mistaken for a
+    station that does not issue at all.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM calibration_forward_taf_capture "
+            "WHERE station_id=? AND tx_c IS NOT NULL LIMIT 1",
+            (station_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
 
 
 def _require_aggregator_fallback_authority(
@@ -536,8 +662,19 @@ def _official_forward_lineage(
                 query_by_system[system_id],
                 "native_ensemble_p0_mixed_arrival_lineage_invalid",
             )
+            # A point forecast's run_init is its issuance instant -- 11:05,
+            # 17:08 -- and its cycle is the label that pairs it with model
+            # cohorts, so the label-hour equality holds only for models.  The
+            # packet builder already waives it for point systems; this
+            # revalidation must agree with the builder or every MIXED packet
+            # observing a TAF dies here after being built successfully.  The
+            # ordering conditions stay for everyone: an issuance from the
+            # future is wrong no matter what class of system claims it.
             if (
-                run_init.hour != int(cycle[:2])
+                (
+                    system_id not in POINT_FORECAST_SYSTEMS
+                    and run_init.hour != int(cycle[:2])
+                )
                 or archive_query < run_init
                 or archive_query > captured
                 or run_init > captured
@@ -650,7 +787,12 @@ def _official_forward_lineage(
                 init_by_system[system_id],
                 "native_ensemble_p0_same_cycle_init_lineage_invalid",
             )
-            if run_init.hour != int(packet_cycle[:2]) or run_init > captured:
+            # Same waiver as the mixed path: a point forecast's label pairs
+            # it with the cohort, its issuance hour jitters.
+            if (
+                system_id not in POINT_FORECAST_SYSTEMS
+                and run_init.hour != int(packet_cycle[:2])
+            ) or run_init > captured:
                 raise ContractError(
                     "native_ensemble_p0_same_cycle_init_lineage_mismatch"
                 )
@@ -1344,6 +1486,15 @@ def compile_native_ensemble_p0(
             ),
             (system_id,),
         ).fetchone()
+        if system_config is None and official_snapshot:
+            # Point forecasts are registered in code, next to their packet
+            # schema; the table's plural-member CHECK stays for ensembles.
+            point = POINT_FORECAST_SYSTEMS.get(system_id)
+            if point is not None:
+                system_config = (
+                    str(point["independence_family_id"]),
+                    int(point["expected_member_count"]),
+                )
         if system_config is None:
             raise ContractError(
                 (
@@ -1574,12 +1725,29 @@ def compile_native_ensemble_p0(
     model_center_bucket = _bucket_for_value(model_center_c, intervals_raw)
     lower_center_c = min(calibrated_system_centers_c.values())
     upper_center_c = max(calibrated_system_centers_c.values())
+    # The envelope is the range the evidence points at.  The TAF TX is a
+    # forecaster's revision of these same models and joins the min/max as one
+    # more center: it can only widen the admitted range, never narrow it, and
+    # when no TAF carries a TX the envelope is exactly the model pair.
+    taf_witness = _taf_envelope_witness(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        decision_at_utc=decision_at_utc,
+    )
+    if taf_witness is not None:
+        taf_tx_c = float(taf_witness["tx_c"])
+        envelope_lower_c = min(lower_center_c, taf_tx_c)
+        envelope_upper_c = max(upper_center_c, taf_tx_c)
+    else:
+        envelope_lower_c = lower_center_c
+        envelope_upper_c = upper_center_c
     model_envelope_lower_bucket = _bucket_for_value(
-        lower_center_c,
+        envelope_lower_c,
         intervals_raw,
     )
     model_envelope_upper_bucket = _bucket_for_value(
-        upper_center_c,
+        envelope_upper_c,
         intervals_raw,
     )
     active_run_cycle_scope = (
@@ -1766,8 +1934,29 @@ def compile_native_ensemble_p0(
         "decision_at_utc": decision_at_utc,
         "posterior_sha256": posterior_sha,
     }
+    predecessor_lineage = None
+    try:
+        predecessor_row = conn.execute(
+            "SELECT lineage_json FROM basket_probability_envelope "
+            "WHERE station_id=? AND event_date=? "
+            "AND stage IN ('P0','P0-M') AND decision_at_utc<? "
+            "ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id, event_date, decision_at_utc),
+        ).fetchone()
+        if predecessor_row is not None:
+            predecessor_lineage = json.loads(str(predecessor_row[0]))
+    except (sqlite3.Error, ValueError, TypeError):
+        predecessor_lineage = None
+    compiled_stage = _stage_for_native_compile(
+        predecessor_lineage=predecessor_lineage,
+        run_init_utc_by_system=native_forward_lineage[
+            "run_init_utc_by_system"
+        ],
+        taf_witness=taf_witness,
+    )
     checkpoint_id = (
-        "p0-native-" + content_sha256(checkpoint_identity)[:32]
+        ("p0m-native-" if compiled_stage == "P0-M" else "p0-native-")
+        + content_sha256(checkpoint_identity)[:32]
     )
     root_future_curve = None
     if official_snapshot and all(
@@ -1951,10 +2140,41 @@ def compile_native_ensemble_p0(
             ordered.index(model_envelope_upper_bucket)
         ),
         "model_envelope_span_c": (
-            f"{upper_center_c - lower_center_c:.12g}"
+            f"{envelope_upper_c - envelope_lower_c:.12g}"
         ),
         "model_center_bucket": model_center_bucket,
         "model_center_c": f"{model_center_c:.12g}",
+        # The TAF witness that took part in the envelope min/max above, or an
+        # explicit statement that none was available.  Recording the capture's
+        # content hash keeps the widened envelope reproducible from evidence.
+        **(
+            {
+                "taf_envelope_witness_json": _json(taf_witness),
+                "taf_envelope_extended": (
+                    "lower"
+                    if float(taf_witness["tx_c"]) < lower_center_c
+                    else "upper"
+                    if float(taf_witness["tx_c"]) > upper_center_c
+                    else "none"
+                ),
+            }
+            if taf_witness is not None
+            else {
+                # "Unavailable" conflated two unlike things.  Only 17 of the 45
+                # stations issue a TAF carrying a TX temperature group at all;
+                # for the other 28 there is no forecaster revision to wait for,
+                # so P0-M is not a layer that is missing, it is a layer that
+                # does not apply.  Reporting both as one state made a permanent
+                # property of the airport look like a recurring capture fault.
+                "taf_envelope_extended": (
+                    "station_has_no_taf_tx"
+                    if not _station_issues_taf_tx(
+                        conn, station_id=station_id
+                    )
+                    else "unavailable"
+                )
+            }
+        ),
         # What the consensus bridge did to this packet, or absent when the
         # serving artifact predates the bridge and the plain mixture ran.
         **({"consensus_bridge_json": json.dumps(
@@ -1984,7 +2204,7 @@ def compile_native_ensemble_p0(
             "conditional_future_temperature_curve_sha256": (
                 root_future_curve.content_sha256
             ),
-            "conditional_future_temperature_curve_root_stage": "P0",
+            "conditional_future_temperature_curve_root_stage": compiled_stage,
             "conditional_future_temperature_curve_root_checkpoint_id": (
                 checkpoint_id
             ),
@@ -1993,7 +2213,7 @@ def compile_native_ensemble_p0(
             ),
         })
     envelope = ProbabilityEnvelope.from_mapping({
-        "stage": "P0",
+        "stage": compiled_stage,
         "checkpoint_id": checkpoint_id,
         "station_id": station_id,
         "event_date": event_date,
@@ -2010,7 +2230,7 @@ def compile_native_ensemble_p0(
         "lineage": lineage,
     })
     packet = {
-        "stage": "P0",
+        "stage": compiled_stage,
         "station_id": station_id,
         "event_date": event_date,
         "settlement_timezone": timezone_name,

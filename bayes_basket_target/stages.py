@@ -40,7 +40,7 @@ def select_latest_checkpoint(
     if len(winners) != 1:
         raise ContractError("ambiguous_stage_checkpoint")
     winner = winners[0]
-    if not winner.is_fresh(at_utc):
+    if not winner.is_servable(at_utc):
         raise ContractError("latest_stage_stale_fail_closed")
     return winner
 
@@ -75,7 +75,7 @@ def select_current_stage(
         if len(latest) != 1:
             raise ContractError("ambiguous_stage_checkpoint")
         winner = latest[0]
-        if not winner.is_fresh(at_utc):
+        if not winner.is_servable(at_utc):
             raise ContractError("latest_stage_stale_fail_closed")
         return winner
     raise ContractError("probability_stage_invalid")

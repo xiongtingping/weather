@@ -1,0 +1,69 @@
+{
+  "schema": "retired_ingest_truth_exclusions_v1",
+  "effective_from": "2026-08-13",
+  "authority": "L0-charter-clause-44",
+  "rationale": "Station-days whose settled daily high was published before the local day could produce it, by an ingest path that is now retired. Every entry was verified three ways: the recorded value is at least 3C below the maximum in the day's own complete observation record; the truth row's publication instant precedes the local afternoon; and its lineage carries only a handful of observations against 25-48 in the archive. They are excluded rather than corrected because AMSC is retired_history_only under the charter and their canonical facts were never written -- appending a projection revision with no canonical source would fabricate provenance to fix a number, which is the worse of the two errors. The rows stay exactly as they are and remain readable as history; consumers skip them.",
+  "detection_method": "latest revision per station-day joined to archive observations over the settlement window; flag when archive_max - truth >= 3.0C",
+  "excluded_station_days": [
+    {
+      "station_id": "KATL",
+      "event_date": "2026-08-02",
+      "recorded_tmax_c": 30.0,
+      "observed_max_c": 33.0,
+      "lineage_observation_count": 10,
+      "archive_observation_count": 34,
+      "published_local_time": "11:42",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    },
+    {
+      "station_id": "KAUS",
+      "event_date": "2026-07-31",
+      "recorded_tmax_c": 28.0,
+      "observed_max_c": 38.0,
+      "lineage_observation_count": 5,
+      "archive_observation_count": 26,
+      "published_local_time": "09:19",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    },
+    {
+      "station_id": "KBKF",
+      "event_date": "2026-07-31",
+      "recorded_tmax_c": 29.0,
+      "observed_max_c": 32.0,
+      "lineage_observation_count": 4,
+      "archive_observation_count": 26,
+      "published_local_time": "19:48",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    },
+    {
+      "station_id": "KSEA",
+      "event_date": "2026-08-01",
+      "recorded_tmax_c": 18.0,
+      "observed_max_c": 22.0,
+      "lineage_observation_count": 7,
+      "archive_observation_count": 31,
+      "published_local_time": "11:29",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    },
+    {
+      "station_id": "KSFO",
+      "event_date": "2026-07-31",
+      "recorded_tmax_c": 17.0,
+      "observed_max_c": 22.0,
+      "lineage_observation_count": 2,
+      "archive_observation_count": 25,
+      "published_local_time": "20:33",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    },
+    {
+      "station_id": "KSFO",
+      "event_date": "2026-08-01",
+      "recorded_tmax_c": 14.0,
+      "observed_max_c": 23.0,
+      "lineage_observation_count": 3,
+      "archive_observation_count": 27,
+      "published_local_time": "05:28",
+      "source_role": "CANONICAL_AMSC_AWC_INGRESS"
+    }
+  ]
+}

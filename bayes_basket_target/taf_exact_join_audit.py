@@ -112,9 +112,16 @@ def _p0_index(inbox: Mapping[str, Any]) -> dict[str, tuple[str, str, str, str, s
         raise ContractError("taf_exact_join_audit_p0_inbox_schema_invalid")
     _verify_hash(inbox, name="p0_inbox")
     packets = inbox.get("packets")
-    if not isinstance(packets, list) or len(packets) > MAX_STATIONS:
+    # The inbox holds one packet per open station-day, and several days are
+    # legitimately open at once (today's d0 next to tomorrow's d1) since P0
+    # compiles on every model arrival.  The station-level scope this audit
+    # wants is the forward-looking day -- the one a TAF revision would be
+    # confirming -- so among a station's packets the latest event date wins.
+    if not isinstance(packets, list) or len(packets) > MAX_STATIONS * 3:
         raise ContractError("taf_exact_join_audit_p0_inbox_rows_invalid")
     result: dict[str, tuple[str, str, str, str, str]] = {}
+    event_date_by_station: dict[str, str] = {}
+    seen_station_days: set[tuple[str, str]] = set()
     for wrapper in packets:
         if not isinstance(wrapper, Mapping) or not isinstance(wrapper.get("packet"), Mapping):
             raise ContractError("taf_exact_join_audit_p0_packet_invalid")
@@ -137,9 +144,18 @@ def _p0_index(inbox: Mapping[str, Any]) -> dict[str, tuple[str, str, str, str, s
             _text("p0_settlement_definition", lineage.get("settlement_definition")),
             _text("p0_settlement_timezone", packet.get("settlement_timezone")),
         )
-        if station in result:
+        # Minimal legacy packets carry no event date; an empty key degrades
+        # to the old per-station uniqueness rather than refusing the inbox.
+        event_date = str(packet.get("event_date") or "")
+        if (station, event_date) in seen_station_days:
             raise ContractError("taf_exact_join_audit_p0_station_duplicate")
-        result[station] = scope
+        seen_station_days.add((station, event_date))
+        if (
+            station not in result
+            or event_date > event_date_by_station[station]
+        ):
+            result[station] = scope
+            event_date_by_station[station] = event_date
     return result
 
 

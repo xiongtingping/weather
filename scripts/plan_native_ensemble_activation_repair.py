@@ -36,6 +36,8 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
+    FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS,
+    FORWARD_ACCUMULATION_MIN_TRAIN_DAYS,
     P0_PROBABILITY_PATHWAY,
     _candidate_cycle_mapping,
     _selection_identity,
@@ -72,7 +74,14 @@ REJECTED = "OOS_REJECTED"
 MAX_STATIONS = 45
 MAX_MANIFEST_BYTES = MAX_JSON_INPUT_BYTES
 MAX_ACTIVATION_ROWS = 2_048
-MAX_SYSTEM_ACTIVATION_ROWS = 2_048
+# Bounded-read guard, not a business rule.  The table is append-only and its
+# growth is structural: scopes multiplied when leads went from d0/d1/d2 to
+# hour buckets and again when activations became per-cycle-map, so 2,048 --
+# sized for the 2026-08-03 table -- was overtaken within ten days (2,261 rows
+# on 2026-08-13) and the planner began refusing to plan at all, which froze
+# pointer rebinding and with it every fresh P0 compile.  The guard exists to
+# keep one run's memory bounded; 16,384 rows is still a trivial read.
+MAX_SYSTEM_ACTIVATION_ROWS = 16_384
 MAX_CANDIDATE_ROWS = 512
 DEFAULT_VALID_DAYS = 30
 OFFICIAL_NATIVE_TRANSPORTS = {
@@ -1182,7 +1191,49 @@ def _candidate_plan(conn: sqlite3.Connection, candidate: Mapping[str, Any], *, r
                 active_exact = exact_activation
         except Exception:
             active_exact = None
-    if validation["state"] != "STRICT_OOS_CANDIDATE_VALID":
+    # Two admission regimes share this planner, and they hold different
+    # powers.  The strict 20-train/8-holdout recompute keeps its monopoly on
+    # *writes*: every READY_* action below still requires it, because a
+    # repair write mints authority from this plan alone.  Attestation of an
+    # *existing* activation is a different act -- the governed resident lane
+    # already wrote that activation under the ratified forward-accumulation
+    # regime, and the live compiler will consume it the moment its latest
+    # exact-mask evaluation is a PASS.  When this planner refused to attest
+    # such rows for failing the retired historical profile, the pointer and
+    # the compiler diverged, and every fresh multi-system packet died at
+    # ``native_current_pointer_not_bound`` while its activation sat PASSing
+    # in the database.  The pointer's job is to name what the compiler will
+    # consume, so the attestation basis mirrors the compiler's own rule,
+    # floored by the forward regime's ratified minimums.
+    strict_valid = validation["state"] == "STRICT_OOS_CANDIDATE_VALID"
+    family_state = str((family_audit or {}).get("state") or "")
+    forward_floor_ok = (
+        candidate.get("authority_scope") == NO_LIVE_SCOPE
+        and _nonnegative_int(candidate.get("min_train_days"))
+        >= FORWARD_ACCUMULATION_MIN_TRAIN_DAYS
+        and _nonnegative_int(candidate.get("min_holdout_days"))
+        >= FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS
+        and int(candidate.get("independent_family_count") or 0) >= 2
+        and not family_state.startswith("BLOCKED_")
+        and family_state != "UNVERIFIED_SCHEMA_MISSING"
+    )
+    db_attested = (
+        not ambiguous
+        and latest is not None
+        and latest_state == PASS
+        and str(latest["selection_evidence_sha256"]) == selection_sha
+        and active_exact is not None
+        and artifact is not None
+    )
+    attestation_basis = None
+    if db_attested and (strict_valid or forward_floor_ok):
+        action = "NOOP_ALREADY_CONSUMABLE"
+        attestation_basis = (
+            "STRICT_HISTORICAL_MANIFEST"
+            if strict_valid
+            else "FORWARD_ACCUMULATION_DB_EVALUATION"
+        )
+    elif not strict_valid:
         action = "BLOCKED_CANDIDATE_CONTRACT"
     elif str(candidate.get("state")) == REJECTED:
         action = "BLOCKED_MANIFEST_REJECTED"
@@ -1194,8 +1245,6 @@ def _candidate_plan(conn: sqlite3.Connection, candidate: Mapping[str, Any], *, r
         action = "BLOCKED_LATEST_REJECTED"
     elif str(latest["selection_evidence_sha256"]) != selection_sha:
         action = "BLOCKED_LATEST_SELECTION_MISMATCH"
-    elif active_exact is not None:
-        action = "NOOP_ALREADY_CONSUMABLE"
     elif artifact is not None:
         action = "READY_REPAIR_ACTIVATION_ONLY"
     else:
@@ -1235,6 +1284,7 @@ def _candidate_plan(conn: sqlite3.Connection, candidate: Mapping[str, Any], *, r
         "existing_exact_activation": active_exact or exact_activation,
         "existing_scope_activation_count": len(activations),
         "action": action,
+        "attestation_basis": attestation_basis,
         "artifact_pointer": None if pointer is None else pointer["pointer"],
         "expected_artifact": None if pointer is None else {
             "cross_ensemble_artifact_id": pointer["cross_ensemble_artifact_id"],
@@ -1570,6 +1620,113 @@ def build_plan(
             if total > MAX_ACTIVATION_ROWS:
                 raise ContractError("native_repair_activation_bound_exceeded")
         activation_plans = [_activation_plan(conn, dict(row), as_of_utc=as_of) for row in activation_rows]
+        # The candidate manifest is one snapshot of one OOS run; the database
+        # is the accumulation of every governed run, including the resident
+        # forward lane's.  A consumable activation whose scope the manifest
+        # did not re-evaluate (an older lead still current, a station whose
+        # fresh candidates all failed) is still what the compiler will
+        # consume, and leaving it unpointed splits the pointer view from the
+        # DB view -- the exact-station-set check downstream then correctly
+        # fails closed and the whole snapshot refuses to build.  So every
+        # current exact-PASS activation not already covered by a candidate
+        # becomes a DB-sourced binding entry; provenance marks it as such.
+        candidate_scope_keys = {
+            (
+                str((item.get("scope") or {}).get("station_id") or ""),
+                str((item.get("scope") or {}).get("season_bin") or ""),
+                str((item.get("scope") or {}).get("lead_bucket") or ""),
+                str((item.get("scope") or {}).get("run_cycle") or ""),
+            )
+            for item in candidate_plans
+            if item.get("artifact_pointer") is not None
+        }
+        for row, activation_plan in zip(activation_rows, activation_plans):
+            if activation_plan.get("action") != "NOOP_CURRENT_EXACT_PASS":
+                continue
+            row = dict(row)
+            scope_key = (
+                str(row["station_id"]),
+                str(row["season_bin"]),
+                str(row["lead_bucket"]),
+                str(row["run_cycle"]),
+            )
+            if scope_key in candidate_scope_keys:
+                continue
+            candidate_scope_keys.add(scope_key)
+            selection_sha = str(row["selection_evidence_sha256"])
+            pointer = _existing_pointer(
+                manifest_sha=manifest_sha,
+                report_sha=str(row["activation_content_sha256"]),
+                candidate_sha=str(row["activation_content_sha256"]),
+                selection_sha=selection_sha,
+                artifact={
+                    "cross_ensemble_artifact_id": str(row["artifact_id"]),
+                    "artifact_content_sha256": str(
+                        row["artifact_content_sha256"]
+                    ),
+                },
+                activation={
+                    "activation_id": str(row["activation_id"]),
+                    "activation_content_sha256": str(
+                        row["activation_content_sha256"]
+                    ),
+                    "valid_from_utc": str(row["valid_from_utc"]),
+                    "valid_until_utc": str(row["valid_until_utc"]),
+                    "generation": int(row["generation"]),
+                },
+            )
+            try:
+                selected_ids = sorted(
+                    str(item)
+                    for item in json.loads(str(row["ensemble_system_ids_json"]))
+                )
+            except (TypeError, json.JSONDecodeError):
+                continue
+            candidate_plans.append({
+                "scope": dict(activation_plan["scope"]),
+                "selected_system_ids": selected_ids,
+                "candidate_state": PASS,
+                "candidate_sha256": str(row["activation_content_sha256"]),
+                "selection_evidence_sha256": selection_sha,
+                "manifest_report_sha256": str(
+                    row["activation_content_sha256"]
+                ),
+                "validation": {
+                    "state": "DB_CURRENT_EXACT_PASS_ATTESTED",
+                    "reasons": [],
+                },
+                "independent_family_audit": {
+                    "state": "DB_ATTESTED_NOT_REAUDITED",
+                    "reason": None,
+                },
+                "latest_exact_oos_evaluation": activation_plan[
+                    "latest_exact_oos_evaluation"
+                ],
+                "latest_evaluation_ambiguous": False,
+                "existing_exact_artifact": None,
+                "existing_exact_activation": None,
+                "existing_scope_activation_count": 0,
+                "action": "NOOP_ALREADY_CONSUMABLE",
+                "attestation_basis": "FORWARD_ACCUMULATION_DB_EVALUATION",
+                "artifact_pointer": pointer["pointer"],
+                "expected_artifact": {
+                    "cross_ensemble_artifact_id": pointer[
+                        "cross_ensemble_artifact_id"
+                    ],
+                    "cross_artifact_content_sha256": pointer[
+                        "cross_artifact_identity_sha256"
+                    ],
+                    "activation_id": pointer["activation_id"],
+                    "activation_identity_sha256": pointer[
+                        "activation_identity_sha256"
+                    ],
+                    "generation": pointer["generation"],
+                },
+                "source": {
+                    "manifest_content_sha256": manifest_sha,
+                    "db_activation_id": str(row["activation_id"]),
+                },
+            })
     candidate_summary = Counter(str(item["action"]) for item in candidate_plans)
     activation_summary = Counter(str(item["action"]) for item in activation_plans)
     family_audit_summary = Counter(
@@ -1602,6 +1759,47 @@ def build_plan(
         summary["station_ids"] = sorted(summary["station_ids"])
         summary["station_count"] = len(summary["station_ids"])
     model_summary = dict(sorted(model_summary.items()))
+    # One pointer per scope.  Two different system subsets can both hold a
+    # PASSing activation for the same (station, season, lead, run_cycle) --
+    # ZUUU's h12_24/MIXED carried {ECMWF,GEFS} and {ECCC,GEFS} side by side --
+    # but the binding must name exactly one activation or the pointer is
+    # ambiguous, which is the thing it exists to prevent.  Prefer what the
+    # compiler itself prefers among compatible activations: higher generation,
+    # then the richer system set, then the stable id.  The runner-up keeps its
+    # NOOP action (it is still consumable authority in the database); only the
+    # pointer is withheld.
+    preferred_by_scope: dict[tuple[str, str, str, str], dict] = {}
+    for item in candidate_plans:
+        if item.get("artifact_pointer") is None:
+            continue
+        scope = item.get("scope") or {}
+        key = (
+            str(scope.get("station_id") or ""),
+            str(scope.get("season_bin") or ""),
+            str(scope.get("lead_bucket") or ""),
+            str(scope.get("run_cycle") or ""),
+        )
+        rank = (
+            int((item.get("expected_artifact") or {}).get("generation") or 0),
+            len(item.get("selected_system_ids") or ()),
+            str((item.get("expected_artifact") or {}).get("activation_id") or ""),
+        )
+        incumbent = preferred_by_scope.get(key)
+        if incumbent is None or rank > incumbent["_scope_rank"]:
+            if incumbent is not None:
+                incumbent["artifact_pointer"] = None
+                incumbent["pointer_withheld_reason"] = (
+                    "scope_pointer_superseded_by_richer_activation"
+                )
+            item["_scope_rank"] = rank
+            preferred_by_scope[key] = item
+        else:
+            item["artifact_pointer"] = None
+            item["pointer_withheld_reason"] = (
+                "scope_pointer_superseded_by_richer_activation"
+            )
+    for item in preferred_by_scope.values():
+        item.pop("_scope_rank", None)
     pointer_count = sum(item["artifact_pointer"] is not None for item in candidate_plans)
     repair_ready_count = sum(str(item["action"]).startswith("READY_") for item in candidate_plans)
     identity = {

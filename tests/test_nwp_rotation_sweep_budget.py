@@ -27,6 +27,10 @@ from scripts.weather_basket_yes_daemon import (
 OBSERVED_P0_TTL_HOURS = 5.95
 # 45 stations across the open event days currently in the forward registry.
 OBSERVED_SCOPE_COUNT = 77
+# ECCC GEPS publishes 00Z/12Z; the other three run 00/06/12/18Z.  Twelve hours
+# is therefore the longest a capture could wait for a fresh run, and the
+# shortest cycle any of them keeps.
+SHORTEST_PUBLICATION_CYCLE_SEC = 6.0 * 3600.0
 
 
 def _sweep_hours(scope_count: int) -> float:
@@ -64,4 +68,13 @@ def test_captures_run_concurrently_off_the_rotation_thread() -> None:
 def test_capture_deadline_stays_hard_bounded() -> None:
     # Even off-thread, a capture must not run unbounded: the pool has a fixed
     # number of slots and a wedged child would hold one forever.
-    assert 0 < OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC <= TARGET_NWP_POLL_INTERVAL_SEC
+    #
+    # The bound used to be one poll interval, back when a capture served a
+    # single station and every scope needed its own.  A capture now reads a
+    # whole model run for every station the day lists, so it legitimately runs
+    # far longer than a poll -- and there are only as many of them as there are
+    # open event dates.  What still has to hold is that a wedged child cannot
+    # outlive the cycle its run belongs to, and that the pool can serve every
+    # open event date even with one slot wedged.
+    assert 0 < OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC <= SHORTEST_PUBLICATION_CYCLE_SEC / 2
+    assert OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC >= TARGET_NWP_POLL_INTERVAL_SEC

@@ -16,7 +16,7 @@ import math
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
 from .market_registry import load_started_registry_rows
@@ -372,11 +372,21 @@ def derive_official_ws_price_tick_size(
     *,
     asks: list[dict[str, float]],
     bids: list[dict[str, float]],
+    scope_prices: Sequence[float] = (),
 ) -> tuple[float, str]:
+    # The tick belongs to the market, not to one outcome.  Inferring it from a
+    # single book reads whatever that book happens to be quoting: a ZUUU
+    # outcome sitting on whole cents infers 0.01 while its neighbour quoting
+    # 0.004 proves the market is on 0.001, and the coarse answer then costs
+    # that outcome a tick of Maker competitiveness on every order.  Widening
+    # the evidence to every book in the same scope keeps the rule intact --
+    # still the coarsest grid *proved* by official levels -- while letting one
+    # sibling's finer quote speak for the market they share.
     prices = [
         float(level["price"])
         for level in [*asks, *bids]
     ]
+    evidence = [*prices, *(float(value) for value in scope_prices)]
 
     def validate_grid(tick: float, *, source: str) -> tuple[float, str]:
         if any(
@@ -401,11 +411,15 @@ def derive_official_ws_price_tick_size(
     for tick in (0.1, 0.01, 0.001, 0.0001):
         if all(
             abs(price / tick - round(price / tick)) <= 1e-7
-            for price in prices
+            for price in evidence
         ):
             return validate_grid(
                 tick,
-                source="OFFICIAL_WS_BOOK_GRID_DERIVED",
+                source=(
+                    "OFFICIAL_WS_SCOPE_GRID_DERIVED"
+                    if scope_prices
+                    else "OFFICIAL_WS_BOOK_GRID_DERIVED"
+                ),
             )
     raise ContractError("official_ws_tick_size_missing")
 

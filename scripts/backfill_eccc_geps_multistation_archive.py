@@ -17,6 +17,8 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
+    RUN_CYCLE_HOUR_BY_LEAD,
+    SUPPORTED_RUN_CYCLE_HOURS,
     capture_geps_station_days,
     ingest_geps_station_days,
 )
@@ -194,6 +196,16 @@ def main() -> int:
     # P0 follows the freshest run, so history is backfilled per lead: the same
     # event date has a d2, a d1 and a d0 capture, each from a different run.
     parser.add_argument("--lead-days", type=int, default=2, choices=[0, 1, 2])
+    # ECCC is admitted at two cycles, so a backfill has to say which one it is
+    # taking.  Left unset it takes the cycle production reads at that lead, so
+    # backfilled history and forward capture stay the same evidence; naming a
+    # cycle explicitly is for filling the other one.
+    parser.add_argument(
+        "--run-cycle-hour",
+        type=int,
+        default=None,
+        choices=list(SUPPORTED_RUN_CYCLE_HOURS),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--commit", action="store_true")
@@ -207,6 +219,11 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    run_cycle_hour = (
+        RUN_CYCLE_HOUR_BY_LEAD[args.lead_days]
+        if args.run_cycle_hour is None
+        else args.run_cycle_hour
+    )
     database = args.db.expanduser().resolve(strict=True)
     scope_authority = "HISTORICAL_EVENT_DATE_REGISTRY"
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as conn:
@@ -254,6 +271,7 @@ def main() -> int:
         archive = capture_geps_station_days(
             event_date=args.event_date,
             lead_days=args.lead_days,
+            run_cycle_hour=run_cycle_hour,
             station_scopes=scopes,
             archive_query_at_utc=queried_at,
         )

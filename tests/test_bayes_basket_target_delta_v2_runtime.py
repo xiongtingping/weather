@@ -288,8 +288,17 @@ def test_exact_prior_core_is_not_inferred_from_all_active_inventory() -> None:
         bucket["bucket"] for bucket in raw["buckets"]
     }
     assert result["basket_state_transition"]["added_buckets"] == []
+    # The core stays exactly ["36"] -- that is what this test guards.  What is
+    # *bought* is a separate decision: both buckets offer at 0.20 against 0.30
+    # and 0.70 of belief, so the objective seats the pair and covers the day
+    # outright.  Core inference and support selection are allowed to differ.
     assert result["basket_state_transition"]["positive_gap_buckets"] == [
-        "36"
+        "35",
+        "36",
+    ]
+    assert result["basket_support_selection"]["seated"]["buckets"] == [
+        "35",
+        "36",
     ]
 
 
@@ -331,7 +340,10 @@ def test_sparse_candidate_support_persists_contiguous_probability_core() -> None
         resource_probe_ok=True,
     )
 
-    assert result["candidate_support"] == ["35", "37"]
+    # The probability core admits 35 and 37 and skips 36, but a basket with a
+    # hole is priced for an outcome it does not cover, so 36 is bridged in
+    # rather than 37 being dropped for sitting past the hole.
+    assert result["candidate_support"] == ["35", "36", "37"]
     assert result["core_buckets"] == ["35", "36", "37"]
     assert result["core_transition"]["next_core_buckets"] == [
         "35",
@@ -568,8 +580,11 @@ def test_maker_limit_is_quote_anchored_and_not_the_static_reservation_grid_floor
         resource_probe_ok=True,
     )
 
-    selected = result["delta_v2_audit"]["selected_actions"][0]["action"]
-    assert selected["bucket"] == "36"
+    selected = next(
+        entry["action"]
+        for entry in result["delta_v2_audit"]["selected_actions"]
+        if entry["action"]["bucket"] == "36"
+    )
     assert selected["limit_price"] == pytest.approx(0.20)
     assert selected["limit_price"] != min(_delta_policy().price_grid)
     assert selected["limit_price"] < 0.21
@@ -852,3 +867,235 @@ def test_target_execution_code_has_no_lifetime_three_batch_cap() -> None:
         if forbidden.search(path.read_text(encoding="utf-8"))
     }
     assert hits == {}
+
+
+def test_a_sub_floor_clip_stays_visible_to_the_sizing_gate() -> None:
+    # Filtering these out of the q* grid does stop an unfillable target, but it
+    # also hides the bucket from the sizing decisions, and ``clip_below_minimum``
+    # is raised there -- so the early filter traded one silent hold for another.
+    # The candidate must reach the gate that owns the refusal.
+    policy = TargetBasketPolicy.from_mapping({
+        **_basket_policy().to_dict(),
+        "clip_min_notional_usdc": 1.0,
+    })
+
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(),
+        basket_policy=policy,
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+
+    assert result["basket_target_activated"] is True
+
+
+def test_curve_objective_prefers_flat_curve_and_keeps_sound_bets() -> None:
+    """The ranking charges spread, but never refuses a bet that cannot hurt.
+
+    Both properties in one place because they pull against each other: the
+    first is the whole point of the change, and the second is what the plain
+    quadratic charge got wrong -- it scored a 50/50 paying +24.5 or -0.5
+    against a 5 USDC book at -1.48 and held.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        CURVE_OBJECTIVE_FORM,
+        curve_score,
+        evaluate_basket_value_v2,
+        solve_target_inventory_v2,
+    )
+
+    weights = _delta_policy().value_weights
+    probabilities = {"35": 0.5, "36": 0.5}
+
+    def _audit(shares, costs):
+        return evaluate_basket_value_v2(
+            probabilities=probabilities,
+            shares_by_bucket=shares,
+            cost_by_bucket=costs,
+            protected_buckets=("35", "36"),
+            shortfall_buckets=(),
+            breakthrough_buckets=(),
+            weights=weights,
+        )
+
+    # Equal mean, different spread: the flat curve must win.
+    flat = _audit({"35": 10.0, "36": 10.0}, {"35": 2.0, "36": 2.0})
+    spiked = _audit({"35": 20.0, "36": 0.0}, {"35": 4.0, "36": 0.0})
+    assert flat["expected_pnl"] == pytest.approx(spiked["expected_pnl"])
+    assert flat["variance"] < spiked["variance"]
+    assert curve_score(flat, bankroll_usdc=30.0) > curve_score(
+        spiked, bankroll_usdc=30.0
+    )
+
+    # A large payoff next to a small book is still taken.
+    sound = _audit({"35": 25.0, "36": 0.0}, {"35": 0.5, "36": 0.0})
+    assert curve_score(sound, bankroll_usdc=5.0) > 0.0
+
+    # A smaller Kelly fraction ranks the same basket more cautiously.
+    assert curve_score(spiked, bankroll_usdc=30.0, kelly_fraction=0.1) < (
+        curve_score(spiked, bankroll_usdc=30.0, kelly_fraction=1.0)
+    )
+
+    # The solver honours the form, and reports what it ranked by.
+    solution = solve_target_inventory_v2(
+        probabilities=probabilities,
+        feasible_inventory_candidates=[
+            {
+                "candidate_id": "flat",
+                "shares_by_bucket": {"35": 10.0, "36": 10.0},
+                "cost_by_bucket": {"35": 2.0, "36": 2.0},
+            },
+            {
+                "candidate_id": "spiked",
+                "shares_by_bucket": {"35": 20.0, "36": 0.0},
+                "cost_by_bucket": {"35": 4.0, "36": 0.0},
+            },
+        ],
+        protected_buckets=("35", "36"),
+        shortfall_buckets=(),
+        breakthrough_buckets=(),
+        weights=weights,
+        objective_form=CURVE_OBJECTIVE_FORM,
+        bankroll_usdc=30.0,
+    )
+    assert solution["winner_candidate_id"] == "flat"
+    assert solution["objective_form"] == CURVE_OBJECTIVE_FORM
+    assert solution["target_variance"] == pytest.approx(flat["variance"])
+
+    # The legacy form is still exactly itself, and still the default.
+    legacy = solve_target_inventory_v2(
+        probabilities=probabilities,
+        feasible_inventory_candidates=[
+            {
+                "candidate_id": "flat",
+                "shares_by_bucket": {"35": 10.0, "36": 10.0},
+                "cost_by_bucket": {"35": 2.0, "36": 2.0},
+            },
+            {
+                "candidate_id": "spiked",
+                "shares_by_bucket": {"35": 20.0, "36": 0.0},
+                "cost_by_bucket": {"35": 4.0, "36": 0.0},
+            },
+        ],
+        protected_buckets=("35", "36"),
+        shortfall_buckets=(),
+        breakthrough_buckets=(),
+        weights=weights,
+    )
+    assert legacy["objective_form"] == "value_v2"
+
+    with pytest.raises(ContractError, match="delta_v2_curve_bankroll_required"):
+        solve_target_inventory_v2(
+            probabilities=probabilities,
+            feasible_inventory_candidates=[{
+                "candidate_id": "flat",
+                "shares_by_bucket": {"35": 1.0, "36": 1.0},
+                "cost_by_bucket": {"35": 0.2, "36": 0.2},
+            }],
+            protected_buckets=("35", "36"),
+            shortfall_buckets=(),
+            breakthrough_buckets=(),
+            weights=weights,
+            objective_form=CURVE_OBJECTIVE_FORM,
+        )
+
+
+def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
+    """A new generator must fail loudly, not silently turn a trade into a hold.
+
+    ``basket_target_activated`` is a literal comparison against the complete
+    kind, and the support every later stage reads collapses to empty when it
+    fails.  The first attempt at a second generator named its candidates
+    after their provenance, passed every structural check, and quietly held
+    the basket -- so provenance now lives in its own field and the three
+    invariants are checked where a generator is introduced.
+    """
+
+    from bayes_basket_target.delta_v2_runtime import (
+        CANDIDATE_KIND_BASELINE,
+        CANDIDATE_KIND_COMPLETE,
+        _assert_candidate_support_contract,
+        _target_candidates,
+    )
+
+    support = ("35", "36")
+    baseline = {
+        "candidate_id": "base",
+        "candidate_kind": CANDIDATE_KIND_BASELINE,
+        "candidate_origin": "CLIP_GRID_PRODUCT",
+        "shares_by_bucket": {"35": 0.0, "36": 0.0, "37": 2.0},
+        "cost_by_bucket": {},
+    }
+    complete = {
+        "candidate_id": "full",
+        "candidate_kind": CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": "CONTINUOUS_LOG_OPTIMUM",
+        "shares_by_bucket": {"35": 4.0, "36": 3.0, "37": 2.0},
+        "cost_by_bucket": {},
+    }
+    # Existing inventory outside the support (37) is shared by every
+    # candidate and is not an increment, so it is not a breach.
+    assert len(
+        _assert_candidate_support_contract(
+            [baseline, complete], ordered_support=support
+        )
+    ) == 2
+
+    partial = {**complete, "shares_by_bucket": {"35": 4.0, "36": 0.0, "37": 2.0}}
+    with pytest.raises(
+        ContractError, match="delta_v2_candidate_complete_basket_incomplete"
+    ):
+        _assert_candidate_support_contract(
+            [baseline, partial], ordered_support=support
+        )
+
+    strays = {
+        **complete,
+        "shares_by_bucket": {"35": 4.0, "36": 3.0, "37": 9.0},
+    }
+    with pytest.raises(
+        ContractError,
+        match="delta_v2_candidate_moves_bucket_outside_support",
+    ):
+        _assert_candidate_support_contract(
+            [baseline, strays], ordered_support=support
+        )
+
+    with pytest.raises(
+        ContractError, match="delta_v2_candidate_baseline_not_unique"
+    ):
+        _assert_candidate_support_contract(
+            [baseline, {**baseline, "candidate_id": "base2"}, complete],
+            ordered_support=support,
+        )
+
+    with pytest.raises(ContractError, match="delta_v2_candidate_kind_invalid"):
+        _assert_candidate_support_contract(
+            [baseline, {**complete, "candidate_kind": "CONTINUOUS_LOG_OPTIMUM"}],
+            ordered_support=support,
+        )
+
+    # The shipped generators satisfy it, and the continuous one adds the
+    # resolution the grid cannot express.
+    produced = _target_candidates(
+        snapshot=_snapshot(), desired=support, artifact=_delta_policy(),
+        capital_available_usdc=5.0,
+        minimum_clip_notional_usdc=_basket_policy().clip_min_notional_usdc,
+    )
+    origins = {row["candidate_origin"] for row in produced}
+    assert origins == {"CLIP_GRID_PRODUCT", "CONTINUOUS_LOG_OPTIMUM"}
+    grid_costs = {
+        round(sum(row["cost_by_bucket"].values()), 2)
+        for row in produced
+        if row["candidate_origin"] == "CLIP_GRID_PRODUCT"
+    }
+    continuous_costs = {
+        round(sum(row["cost_by_bucket"].values()), 2)
+        for row in produced
+        if row["candidate_origin"] == "CONTINUOUS_LOG_OPTIMUM"
+    }
+    assert continuous_costs - grid_costs == continuous_costs

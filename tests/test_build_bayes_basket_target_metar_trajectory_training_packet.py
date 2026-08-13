@@ -2,10 +2,39 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
+from scripts import (
+    build_bayes_basket_target_metar_trajectory_training_packet as packet_builder,
+)
 from scripts.build_bayes_basket_target_metar_trajectory_training_packet import (
     build_training_packet,
 )
 from bayes_basket_target.contracts import content_sha256
+
+
+@pytest.fixture(autouse=True)
+def _no_archive_reconstruction(tmp_path, monkeypatch):
+    """Keep these cases off the real ``data/runtime`` history files.
+
+    The builder falls back to an archive-reconstructed root whenever the
+    supplied root carries no complete future curve, which every fixture root
+    here does.  Reading the live directory made the outcome depend on which
+    stations had been backfilled: these cases passed only while RKPK happened
+    to have no reconstruction on disk, and started asserting the wrong root
+    the moment one appeared.  Point the lookup at an empty directory so the
+    fixtures alone decide.
+    """
+
+    monkeypatch.setattr(
+        packet_builder, "POSTERIOR_HISTORY_DIR", tmp_path / "posteriors"
+    )
+    monkeypatch.setattr(
+        packet_builder, "CURVE_HISTORY_DIR", tmp_path / "curves"
+    )
+    packet_builder._HISTORICAL_CACHE.clear()
+    yield
+    packet_builder._HISTORICAL_CACHE.clear()
 
 
 def _truth(day: int, *, committed: str) -> dict[str, object]:

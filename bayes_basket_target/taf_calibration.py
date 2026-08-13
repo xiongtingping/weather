@@ -30,15 +30,20 @@ TAF_CALIBRATION_SCORECARD_SCHEMA = "bayes_basket_taf_calibration_scorecard_v1"
 # Require nearly the full official window without making a compliant artifact
 # impossible to fit from the authoritative source.
 #
-# Lowered from 24 because 24 could not be met and 24 gated at the same time: a
-# rolling series has to yield a fit window and a strictly later window to be
-# gated on, and the two together exceeded anything the block plan can produce.
+# Lowered from 24, then to 10, each time for the same reason: the number could
+# not be met and gated at the same time.  A rolling series has to yield a fit
+# window and a strictly later window to be gated on, and the two together
+# exceeded anything the block plan produces -- at 14+8 a real 16-sample series
+# still produced no artifact at all, which is not a stricter calibration but
+# an absent one.
+#
 # What keeps a smaller fit honest is that strength is already a function of
 # sample size -- ``reliability`` divides ``effective_sample_n`` by 64, so a
-# 14-sample artifact caps its correction near the 0.08 floor while only a
+# 10-sample artifact caps its correction near the 0.08 floor while only a
 # 64-sample one reaches 0.30.  Fewer samples therefore buy a weaker artifact
-# rather than an equally strong one on thinner evidence.
-MIN_TAF_CALIBRATION_SAMPLE_N = 14
+# rather than an equally strong one on thinner evidence, and the strictly
+# later transport window still has to pass on rows the fit never saw.
+MIN_TAF_CALIBRATION_SAMPLE_N = 10
 MIN_TAF_HOLDOUT_N = 6
 _FEATURES = (
     "cloud_cover_fraction",

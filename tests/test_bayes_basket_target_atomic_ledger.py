@@ -23,11 +23,6 @@ from bayes_basket_target.atomic_ledger import (
 )
 from bayes_basket_target.production import commit_production_candidate_atomic
 from bayes_basket_target.contracts import ContractError, content_sha256
-from bayes_basket_target.awc_observation_contract import (
-    AUTHORITY_SCOPE,
-    CONTRACT_SCHEMA,
-    RAW_OBJECT_KIND,
-)
 from bayes_basket_target.canonical_ssot_v12_migration import (
     TARGET_TABLE_DDL as V12_TABLE_DDL,
     TARGET_TRIGGER_DDL as V12_TRIGGER_DDL,
@@ -49,6 +44,8 @@ from bayes_basket_target.ssot import (
 )
 from bayes_basket_target.delta_v2_training import FACT_SCHEMA
 
+from tests.pr12_atomic_test_support import awc_contract
+
 
 NOW = "2026-07-23T04:00:00Z"
 SETTLEMENT_TIMEZONE = "America/New_York"
@@ -56,42 +53,15 @@ SHA_A = "a" * 64
 SHA_B = "b" * 64
 
 
-def _seal(value: dict[str, object]) -> dict[str, object]:
-    return {**value, "content_sha256": content_sha256(value)}
-
-
 def _awc_contract(index: int = 0) -> tuple[dict[str, object], str]:
-    revision = _seal({
-        "station_id": "ZUUU", "observation_id": f"obs-{index}",
-        "revision_no": 1, "event_date": "2026-07-23",
-        "settlement_timezone": SETTLEMENT_TIMEZONE, "source_lane": "AWC",
-        "authority_scope": AUTHORITY_SCOPE, "report_type": "METAR",
-        "sequence": 1, "observed_at_utc": "2026-07-23T04:00:00.000Z",
-        "received_at_utc": "2026-07-23T04:00:00.000Z",
-        "first_seen_at_utc": "2026-07-23T04:00:00.000Z",
-        "parsed_at_utc": "2026-07-23T04:00:00.000Z",
-        "fetch_started_at_utc": "2026-07-23T04:00:00.000Z",
-        "fetch_completed_at_utc": "2026-07-23T04:00:00.000Z",
-        "origin_committed_at_utc": "2026-07-23T04:00:00.000Z",
-        "source_observation_committed_at_utc": "2026-07-23T04:00:00.000Z",
-        "canonical_committed_at_utc": "2026-07-23T04:00:00.000Z",
-        "reported_temperature_c": 38.0, "raw_object_kind": RAW_OBJECT_KIND,
-        "raw_object_sha256": SHA_A, "awc_source_receipt_sha256": SHA_B,
-        "origin_source_id": "global_noaa_awc_relay",
-        "origin_authority": "NOAA/NWS Aviation Weather Center worldwide relay",
-        "origin_url": "https://aviationweather.gov/data/api/",
-        "origin_transport": "official_awc_raw_metar_batch_direct",
-        "origin_registry_sha256": "c" * 64, "origin_record_sha256": "d" * 64,
-        "correction_kind": "NONE", "correction_state": "NO_CORRECTION",
-        "supersedes_observation_fact_sha256": None, "qc_state": "ACCEPTED",
-        "review_receipt_sha256": None, "halt_state": "CLEAR",
-    })
-    contract = _seal({
-        "schema": CONTRACT_SCHEMA, "as_of_utc": NOW,
-        "builder_id": "atomic-test.pr12.v1", "revision_facts": [revision],
-        "day_bounds_facts": [],
-    })
-    return contract, str(revision["content_sha256"])
+    return awc_contract(
+        station_id="ZUUU",
+        observation_id=f"obs-{index}",
+        event_date="2026-07-23",
+        settlement_timezone=SETTLEMENT_TIMEZONE,
+        observed_at_utc=NOW,
+        raw_object_sha256=SHA_A,
+    )
 
 
 def _complete_execution_vector(index: int = 0) -> dict[str, str]:
@@ -1801,7 +1771,11 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
     }
     with _db() as conn:
         before = _counts(conn)
-        with pytest.raises(Exception, match="production_candidate_atomic_requires_p1"):
+        # P0 may hold a position now, so the stage is no longer what refuses
+        # this plan.  What still refuses it -- and what this test is really
+        # for -- is that nothing reaches a write: the plan is incomplete and
+        # fails on its own scope before any row is touched.
+        with pytest.raises(Exception, match="settlement_timezone_missing"):
             commit_production_candidate_atomic(
                 conn,
                 compiled_plan=compiled,
@@ -1820,8 +1794,15 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
 
 
 def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
+    # P0 and P0-M may hold a position now, but not on an observed root: they
+    # exist before the event day produces one, so a plan claiming those stages
+    # while handing over an AWC contract is naming evidence it cannot have.
+    # The refusal moved from the stage to the lineage that proves it.
     contract, revision_sha = _awc_contract(999)
-    with pytest.raises(AtomicLedgerError, match="target_atomic_bundle_requires_p1"):
+    with pytest.raises(
+        AtomicLedgerError,
+        match="plan_lineage_canonical_observation_event_id_missing",
+    ):
         build_target_atomic_bundle(
             awc_observation_contract=contract,
             truth_observation_revision_content_sha256=revision_sha,
@@ -2211,7 +2192,12 @@ def test_final_atomic_commit_rechecks_p1_after_bundle_mutation() -> None:
         before = _counts(conn)
         with pytest.raises(
             AtomicLedgerError,
-            match="target_atomic_commit_requires_p1",
+            # Mutating the stage after the bundle was built now trips the
+            # plan's own content address first: the stage is part of the
+            # lineage the plan id derives from, so the tamper surfaces as
+            # drift rather than as a stage rule.  The commit boundary still
+            # refuses the mutated bundle, which is what this pins.
+            match="plan_id_content_address_drift",
         ):
             commit_target_atomic_bundle(conn, bundle=bundle)
         assert _counts(conn) == before

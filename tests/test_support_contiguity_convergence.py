@@ -6,8 +6,12 @@ RKPK basket selected ordinals {0, 2, 3, 5}, skipping two buckets inside its own
 span: settlement in a skipped bucket pays nothing while the basket was priced as
 if that outcome were covered.
 
-Convergence only ever removes buckets, so every survivor keeps its original
-admission evidence -- a hole is never bridged with a bucket that failed a gate.
+Convergence closes a hole by buying the bucket inside it.  Keeping only the
+admitted run containing the center would delete whatever sits past the hole,
+and what sits past a hole is usually the hedge -- the bucket held precisely
+because it is unlikely.  Reaching an admitted bucket costs every bucket
+between it and the center, so a hedge that does not fit inside the cap is
+given up whole rather than approached with orphan bridge buckets.
 """
 
 import pytest
@@ -62,14 +66,14 @@ def _converge(
     return sorted(ORDINALS[bucket] for bucket in result)
 
 
-def test_live_rkpk_hole_is_converged_to_the_run_containing_center() -> None:
+def test_live_rkpk_hole_is_bridged_up_to_the_cap() -> None:
     # The exact observed basket: center 34°C (ordinal 3), support {0, 2, 3, 5}.
     result = _converge([0, 2, 3, 5], center=3)
 
-    # 2-3 is the only admitted run touching the center.  Ordinals 0 and 5 are
-    # cut off by the failed buckets at 1 and 4, so they are dropped, not
-    # bridged -- bridging would buy 32°C and 35°C, which failed their gates.
-    assert result == [2, 3]
+    # 35°C (4) is bought to bridge the hole and keep 36°C (5) -- the hedge --
+    # inside the range.  31°C (0) needs a second bridge at 32°C (1) and no
+    # longer fits the four-bucket cap, so that end is given up whole.
+    assert result == [2, 3, 4, 5]
 
 
 def test_already_contiguous_support_is_untouched() -> None:
@@ -125,8 +129,14 @@ def test_sharper_probability_naturally_yields_a_smaller_basket() -> None:
     assert len(sharp) == 2
 
 
-def test_isolated_center_yields_a_single_bucket() -> None:
-    assert _converge([0, 3, 7], center=3) == [3]
+def test_center_reaches_only_the_side_that_fits_the_cap() -> None:
+    # 31°C (0) is three bridges below the center and lands exactly on the
+    # four-bucket cap; 38°C (7) needs five buckets and is unreachable.
+    assert _converge([0, 3, 7], center=3) == [0, 1, 2, 3]
+
+
+def test_center_with_nothing_in_reach_stays_a_single_bucket() -> None:
+    assert _converge([0, 5, 10], center=5, maximum=3) == [5]
 
 
 def test_center_outside_admitted_set_fails_closed() -> None:
@@ -134,11 +144,16 @@ def test_center_outside_admitted_set_fails_closed() -> None:
         _converge([1, 2], center=5)
 
 
-def test_result_never_contains_a_bucket_that_was_not_admitted() -> None:
+def test_result_stays_inside_the_admitted_span_it_bridges() -> None:
     admitted = {0, 2, 3, 5, 6}
     result = _converge(sorted(admitted), center=5)
 
-    assert set(result).issubset(admitted)
+    # Bridging may add a bucket that failed its own gates, but only one that
+    # is enclosed by admitted buckets on both sides: the result never reaches
+    # past the outermost admitted ordinal.
+    assert result == [3, 4, 5, 6]
+    assert min(result) >= min(admitted) and max(result) <= max(admitted)
+    assert set(result) - admitted == {4}
 
 
 @pytest.mark.parametrize("maximum", [2, 3, 4, 5])
@@ -232,14 +247,30 @@ def test_zuuu_shape_core_plus_detached_hedge_stays_contiguous() -> None:
     assert result == [1, 2, 3, 4]
 
 
-def test_hedge_still_cannot_survive_as_a_detached_island() -> None:
-    # A hedge separated from the core by a bucket that failed its own gates is
-    # dropped, not bridged: convergence never invents an unadmitted bucket.
+def test_detached_hedge_is_bridged_when_it_fits_the_cap() -> None:
+    # A hedge separated from the core by buckets that failed their own gates
+    # is reached across them, because its value is the tail cover it carries.
+    # Reaching 37°C (6) from the center spends the whole cap, so the lower
+    # admitted end at 33°C (2) is given up instead.
     result = _converge(
         [2, 3, 6],
         center=3,
         probabilities={2: 0.30, 3: 0.50, 6: 0.05},
         hedge_values={6: 5.0},
+        maximum=4,
+    )
+
+    assert result == [3, 4, 5, 6]
+
+
+def test_detached_hedge_beyond_the_cap_leaves_no_orphan_bridge() -> None:
+    # 40°C (9) cannot be reached inside four buckets.  The walk must not spend
+    # the cap on bridge buckets that would cover nothing on their own.
+    result = _converge(
+        [2, 3, 9],
+        center=3,
+        probabilities={2: 0.30, 3: 0.50, 9: 0.05},
+        hedge_values={9: 5.0},
         maximum=4,
     )
 

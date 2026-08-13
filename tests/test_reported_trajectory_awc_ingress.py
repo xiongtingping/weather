@@ -329,3 +329,24 @@ def test_awc_ingress_has_no_gateway_or_order_client_import() -> None:
     assert "ClobOrderServiceClient" not in source
     assert "place_order" not in source
     assert "auto_trade_decisions" not in source
+
+
+def test_origin_registry_sha_is_resolved_for_a_known_station() -> None:
+    # An AWC report is raw METAR and carries no registry identity, so this is
+    # the only place the observation can be bound to the registry that
+    # admitted its station.  Written empty from 2026-08-01 on, it terminated
+    # every station in the PR12 contract builder and stopped truth revision
+    # facts -- and with them every order.
+    from reported_trajectory_awc_ingress import _origin_registry_sha256
+
+    resolved = _origin_registry_sha256("RKPK")
+
+    assert len(resolved) == 64
+    assert resolved == _origin_registry_sha256("KDAL")
+
+
+def test_origin_registry_sha_degrades_instead_of_stopping_capture() -> None:
+    from reported_trajectory_awc_ingress import _origin_registry_sha256
+
+    assert _origin_registry_sha256("") == ""
+    assert _origin_registry_sha256("   ") == ""

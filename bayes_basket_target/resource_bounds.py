@@ -46,7 +46,17 @@ MAX_JSON_NODES = 500_000
 # tables in the same isolated target database.  V10 crossed the historical
 # 4 GiB ceiling while preserving every V9/V8/V7/V6 row, so keep the guard
 # bounded but large enough for that audited history plus current facts.
-MAX_TARGET_DB_BYTES = 8192 * MIB
+#
+# Raised to 12 GiB on 2026-08-12.  The 8 GiB ceiling was reached and stopped
+# the whole chain: the store was 8.40 GiB, of which 2.86 GiB was ten
+# generations of replaced canonical tables (v2..v13), retained by the
+# migration chain and never pruned.  Those generations were exported and
+# dropped -- v14/v15 remain for replay -- leaving 5.55 GiB, and the ceiling
+# now sits far enough above that a rebuild of the largest table (the member
+# archive doubles in place before its old copy is dropped) cannot trip it
+# mid-migration, which is how the store crossed the old ceiling in the first
+# place.  The guard is not the thing that grew; keep it a real bound.
+MAX_TARGET_DB_BYTES = 12288 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.

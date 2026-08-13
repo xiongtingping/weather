@@ -615,3 +615,113 @@ def test_historical_bucket_join_uses_bucket_schema_without_member_run_cycle() ->
     )
 
     assert intervals == {"19°C or below": (None, 19.5), "20°C": (19.5, 20.5)}
+
+
+def _tie_cases(day_count: int, prefix: str = "2026-07") -> list[dict]:
+    return [
+        {"event_date": f"{prefix}-{day:02d}"}
+        for day in range(1, day_count + 1)
+    ]
+
+
+def test_a_tie_resolves_to_the_cycle_the_root_serves() -> None:
+    # An hour bucket holds both the 00Z and 18Z run of the same system.  P0
+    # serves from one of them, so training must use that one rather than
+    # discard the system -- discarding is what left ZUUU's serving pair with
+    # no evaluable scope at all while a scope nothing serves accumulated.
+    from bayes_basket_target.rolling_native_taf_oos import _scope_system_cases
+
+    scoped = _scope_system_cases(
+        {
+            ("ECMWF", "JJA", "h12_24", "00Z"): _tie_cases(3),
+            ("ECMWF", "JJA", "h12_24", "18Z"): _tie_cases(9),
+            ("GEFS", "JJA", "h12_24", "00Z"): _tie_cases(3),
+            ("GEFS", "JJA", "h12_24", "18Z"): _tie_cases(9),
+        },
+        live_run_cycle_by_system={"ECMWF": "00Z", "GEFS": "00Z"},
+    )
+
+    selected = scoped[("JJA", "h12_24")]
+    assert set(selected) == {"ECMWF", "GEFS"}
+    assert selected["ECMWF"][0] == "00Z"
+    assert selected["GEFS"][0] == "00Z"
+    assert len(selected["ECMWF"][1]) == 3
+
+
+def test_a_tie_with_no_serving_cycle_is_still_dropped() -> None:
+    # Nothing distinguishes the runs, so the conservative answer stands: a
+    # pooled sample of different-age predictions is not one homogeneous scope.
+    from bayes_basket_target.rolling_native_taf_oos import _scope_system_cases
+
+    scoped = _scope_system_cases(
+        {
+            ("ECMWF", "JJA", "h12_24", "00Z"): _tie_cases(3),
+            ("ECMWF", "JJA", "h12_24", "18Z"): _tie_cases(9),
+        },
+        live_run_cycle_by_system={},
+    )
+
+    assert scoped[("JJA", "h12_24")] == {}
+
+
+def test_a_serving_cycle_absent_from_the_archive_drops_the_system() -> None:
+    from bayes_basket_target.rolling_native_taf_oos import _scope_system_cases
+
+    scoped = _scope_system_cases(
+        {
+            ("ECMWF", "JJA", "h12_24", "00Z"): _tie_cases(3),
+            ("ECMWF", "JJA", "h12_24", "18Z"): _tie_cases(9),
+        },
+        live_run_cycle_by_system={"ECMWF": "12Z"},
+    )
+
+    assert scoped[("JJA", "h12_24")] == {}
+
+
+def test_an_untied_system_is_unaffected_by_the_serving_cycle() -> None:
+    from bayes_basket_target.rolling_native_taf_oos import _scope_system_cases
+
+    scoped = _scope_system_cases(
+        {("ECMWF", "JJA", "h00_12", "18Z"): _tie_cases(4)},
+        live_run_cycle_by_system={"ECMWF": "00Z"},
+    )
+
+    assert scoped[("JJA", "h00_12")]["ECMWF"][0] == "18Z"
+
+
+def test_two_disjoint_windows_are_enough_to_qualify() -> None:
+    # At three the requirement was 20+8*3=44 days and real stations sat at 36
+    # for weeks producing no artifact at all -- an absent evaluation, not a
+    # stricter one.  Two disjoint forward windows still refuse a single lucky
+    # window, which is what the block count is for.
+    from bayes_basket_target.rolling_native_taf_oos import (
+        MIN_BLOCKS,
+        plan_non_overlapping_rolling_blocks,
+    )
+
+    assert MIN_BLOCKS == 2
+    days = [f"2026-07-{day:02d}" for day in range(1, 32)] + [
+        f"2026-08-{day:02d}" for day in range(1, 6)
+    ]
+    plan = plan_non_overlapping_rolling_blocks(days[:36], required_blocks=2)
+
+    assert plan["state"] == "READY"
+    assert plan["required_common_case_count"] == 36
+    assert plan["block_count"] == 2
+
+
+def test_a_scope_with_more_days_still_gets_more_blocks() -> None:
+    # Lowering the floor must not lower the ceiling: a well-covered scope keeps
+    # the better-supported series.
+    from bayes_basket_target.rolling_native_taf_oos import (
+        MAX_BLOCKS,
+        plan_non_overlapping_rolling_blocks,
+    )
+
+    days = [f"2026-06-{day:02d}" for day in range(1, 31)] + [
+        f"2026-07-{day:02d}" for day in range(1, 32)
+    ]
+    plan = plan_non_overlapping_rolling_blocks(days, required_blocks=MAX_BLOCKS)
+
+    assert plan["state"] == "READY"
+    assert plan["block_count"] == MAX_BLOCKS

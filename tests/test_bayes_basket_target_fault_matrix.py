@@ -8,9 +8,6 @@ from pathlib import Path
 import pytest
 
 from bayes_basket_target import ContractError, content_sha256
-from bayes_basket_target.awc_observation_contract import (
-    AUTHORITY_SCOPE, CONTRACT_SCHEMA, RAW_OBJECT_KIND,
-)
 from bayes_basket_target.canonical_ssot_v12_migration import (
     TARGET_TABLE_DDL as V12_TABLE_DDL,
     TARGET_TRIGGER_DDL as V12_TRIGGER_DDL,
@@ -46,6 +43,8 @@ from bayes_basket_target.policy import (
 from bayes_basket_target.production import commit_production_candidate_atomic
 from bayes_basket_target.ssot import apply_production_ssot_schema
 
+from tests.pr12_atomic_test_support import awc_contract
+
 
 NOW = "2026-07-23T05:00:00Z"
 SETTLEMENT_TIMEZONE = "America/New_York"
@@ -54,41 +53,15 @@ VALID_UNTIL = "2026-08-01T00:00:00Z"
 SHA_A = "a" * 64
 
 
-def _seal(value: dict[str, object]) -> dict[str, object]:
-    return {**value, "content_sha256": content_sha256(value)}
-
-
 def _awc_contract(index: int) -> tuple[dict[str, object], str]:
-    canonical_time = "2026-07-23T05:00:00.000Z"
-    revision = _seal({
-        "station_id": "ZUUU", "observation_id": f"fault-obs-{index}",
-        "revision_no": 1, "event_date": "2026-07-23",
-        "settlement_timezone": SETTLEMENT_TIMEZONE, "source_lane": "AWC",
-        "authority_scope": AUTHORITY_SCOPE, "report_type": "METAR", "sequence": 1,
-        "observed_at_utc": canonical_time, "received_at_utc": canonical_time,
-        "first_seen_at_utc": canonical_time, "parsed_at_utc": canonical_time,
-        "fetch_started_at_utc": canonical_time,
-        "fetch_completed_at_utc": canonical_time,
-        "origin_committed_at_utc": canonical_time,
-        "source_observation_committed_at_utc": canonical_time,
-        "canonical_committed_at_utc": canonical_time, "reported_temperature_c": 38.0,
-        "raw_object_kind": RAW_OBJECT_KIND, "raw_object_sha256": SHA_A,
-        "awc_source_receipt_sha256": "b" * 64,
-        "origin_source_id": "global_noaa_awc_relay",
-        "origin_authority": "NOAA/NWS Aviation Weather Center worldwide relay",
-        "origin_url": "https://aviationweather.gov/data/api/",
-        "origin_transport": "official_awc_raw_metar_batch_direct",
-        "origin_registry_sha256": "c" * 64, "origin_record_sha256": "d" * 64,
-        "correction_kind": "NONE", "correction_state": "NO_CORRECTION",
-        "supersedes_observation_fact_sha256": None, "qc_state": "ACCEPTED",
-        "review_receipt_sha256": None, "halt_state": "CLEAR",
-    })
-    contract = _seal({
-        "schema": CONTRACT_SCHEMA, "as_of_utc": canonical_time,
-        "builder_id": "fault-matrix.pr12.v1", "revision_facts": [revision],
-        "day_bounds_facts": [],
-    })
-    return contract, str(revision["content_sha256"])
+    return awc_contract(
+        station_id="ZUUU",
+        observation_id=f"fault-obs-{index}",
+        event_date="2026-07-23",
+        settlement_timezone=SETTLEMENT_TIMEZONE,
+        observed_at_utc="2026-07-23T05:00:00.000Z",
+        raw_object_sha256=SHA_A,
+    )
 
 
 def _exact_vector(index: int = 0) -> dict[str, str]:

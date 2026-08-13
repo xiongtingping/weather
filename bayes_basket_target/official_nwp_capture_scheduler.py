@@ -221,14 +221,34 @@ def contracted_run_inits(
     runs: dict[str, datetime] = {}
     for system_id, contract in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS.items():
         lead = (contract.get("leads") or {}).get(lead_key)
-        if not isinstance(lead, Mapping):
+        # A system may contract more than one cycle at a lead -- ECCC reads
+        # both 00Z and 12Z at d2 -- so the contract holds a list.  Reading it
+        # as a single mapping matched nothing at all, which emptied ``runs``
+        # for every lead and every date and stopped the capture scheduler
+        # outright.  A single mapping is still accepted so an older contract
+        # keeps resolving.
+        entries = (
+            [lead]
+            if isinstance(lead, Mapping)
+            else [item for item in lead if isinstance(item, Mapping)]
+            if isinstance(lead, Sequence) and not isinstance(lead, (str, bytes))
+            else []
+        )
+        if not entries:
             continue
-        cycle = str(lead.get("run_cycle") or "").strip().upper()
-        if not cycle.endswith("Z") or not cycle[:-1].isdigit():
-            raise ContractError("official_nwp_scheduler_run_cycle_invalid")
+        cycles: list[int] = []
+        for entry in entries:
+            cycle = str(entry.get("run_cycle") or "").strip().upper()
+            if not cycle.endswith("Z") or not cycle[:-1].isdigit():
+                raise ContractError("official_nwp_scheduler_run_cycle_invalid")
+            cycles.append(int(cycle[:-1]))
+        # The latest contracted cycle for the lead.  It assimilates the most
+        # observations of the cycles offered, and it is also the conservative
+        # readiness bound: the lead is not fully on the object store until its
+        # last run has landed.
         runs[str(system_id)] = datetime.combine(
             target - timedelta(days=int(lead_days)),
-            time(hour=int(cycle[:-1])),
+            time(hour=max(cycles)),
             tzinfo=timezone.utc,
         )
     if not runs:

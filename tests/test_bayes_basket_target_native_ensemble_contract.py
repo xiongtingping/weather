@@ -72,7 +72,10 @@ def _members(system_id: str, count: int) -> list[dict[str, object]]:
         "ECMWF": "ECMWF_OPEN_DATA_S3",
         "NOAA": "NOAA_GEFS_PDS_S3",
         "ECCC": "ECCC_DD_WEATHER",
-        "DWD": "DWD",
+        # The member whitelist and every DWD member row carry the opendata
+        # transport; a bare "DWD" here mirrored the map defect that kept ICON
+        # out of every forward packet.
+        "DWD": "DWD_OPENDATA_ICON_EPS",
     }[str(provider_id)]
     return [
         {
@@ -260,7 +263,9 @@ def test_open_meteo_transport_cannot_forge_formal_native_member() -> None:
         ("ECMWF", "ECMWF_OPEN_DATA_S3"),
         ("NOAA", "NOAA_GEFS_PDS_S3"),
         ("ECCC", "ECCC_DD_WEATHER"),
-        ("DWD", "DWD"),
+        ("DWD", "DWD_OPENDATA_ICON_EPS"),
+        ("ICAO_MET_OFFICE", "AWC_TAF_DATA_API"),
+        ("AWC_METAR_PHYSICAL_PATH", "AWC_METAR_PHYSICAL_PATH"),
     ],
 )
 def test_official_transport_gate_accepts_each_registered_native_provider(

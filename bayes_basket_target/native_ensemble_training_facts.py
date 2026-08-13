@@ -320,17 +320,45 @@ def ingest_forward_taf_inbox(
             "content_sha256": row_sha,
         })
     wrote = 0
+    fresh_scopes: set[tuple[str, str]] = set()
     conn.execute("SAVEPOINT forward_taf_capture_ingress")
     try:
         for row in rows:
-            wrote += _insert_content_addressed(conn, row)
+            written = _insert_content_addressed(conn, row)
+            wrote += written
+            if written:
+                # A genuinely new issuance (not a replay): the scopes named
+                # here are what an arrival-triggered recompile should refresh.
+                fresh_scopes.add((
+                    str(row["station_id"]), str(row["event_date"])
+                ))
     except Exception:
         conn.execute("ROLLBACK TO forward_taf_capture_ingress")
         conn.execute("RELEASE forward_taf_capture_ingress")
         raise
     conn.execute("RELEASE forward_taf_capture_ingress")
+    # Projection into the cross-OOS member archive rides behind every capture
+    # ingest so the TAF candidate's day coverage stays as dense as capture
+    # itself.  Its own savepoint: a projection defect must not cost captures.
+    conn.execute("SAVEPOINT taf_point_projection")
+    try:
+        projection = project_taf_point_member_runs(conn)
+        conn.execute("RELEASE taf_point_projection")
+    except Exception as exc:  # noqa: BLE001 -- reported, never masks capture
+        conn.execute("ROLLBACK TO taf_point_projection")
+        conn.execute("RELEASE taf_point_projection")
+        projection = {
+            "schema": "taf_point_member_run_projection_v1",
+            "state": "PROJECTION_FAILED",
+            "error": f"{type(exc).__name__}:{exc}",
+        }
     return {
         "schema": "forward_taf_capture_ingress_v1",
+        "member_run_projection": projection,
+        "fresh_scopes": [
+            {"station_id": station, "event_date": day}
+            for station, day in sorted(fresh_scopes)
+        ],
         "evidence_role": "observational_candidate_not_oos",
         "state": (
             "COMMITTED_WITH_REJECTED_CAPTURES"
@@ -664,8 +692,21 @@ def ingest_historical_taf_calibration(
         conn.execute("RELEASE historical_taf_ingress")
         raise
     conn.execute("RELEASE historical_taf_ingress")
+    conn.execute("SAVEPOINT taf_point_projection_hist")
+    try:
+        projection = project_taf_point_member_runs(conn)
+        conn.execute("RELEASE taf_point_projection_hist")
+    except Exception as exc:  # noqa: BLE001 -- reported, never masks capture
+        conn.execute("ROLLBACK TO taf_point_projection_hist")
+        conn.execute("RELEASE taf_point_projection_hist")
+        projection = {
+            "schema": "taf_point_member_run_projection_v1",
+            "state": "PROJECTION_FAILED",
+            "error": f"{type(exc).__name__}:{exc}",
+        }
     return {
         "schema": "historical_taf_calibration_ingress_v1",
+        "member_run_projection": projection,
         "station_id": station,
         "capture_count": len(rows),
         "wrote_count": wrote,
@@ -1288,4 +1329,339 @@ __all__ = [
     "ingest_historical_taf_calibration",
     "ingest_historical_taf_calibration_with_quarantine",
     "ingest_historical_taf_correction_quarantine",
+    "project_taf_point_member_runs",
 ]
+
+
+TAF_POINT_SYSTEM_ID = "OFFICIAL_AIRPORT_TAF_TX"
+TAF_POINT_TRANSPORT_PROVIDER_ID = "AWC_TAF_DATA_API"
+TAF_POINT_EXTRACTION_VERSION = "taf_tx_point_v4"
+TAF_POINT_MEMBER_ID = "TX_POINT"
+TAF_POINT_D0_LATEST_LOCAL_HOUR = 12
+
+
+def project_taf_point_member_runs(
+    conn: sqlite3.Connection,
+    *,
+    as_of_utc: str | None = None,
+) -> dict[str, Any]:
+    """Project captured TAF TX points into the cross-OOS member archive.
+
+    One row per (station, day, lead): the latest admissible issuance.  Two
+    rules protect the training evidence:
+
+    - **No hindsight at d0.**  An issuance after local noon has seen the
+      day's high; grading it would count hindsight as skill.
+    - **Sticky scope label.**  TAF issue instants jitter across the 6h UTC
+      grid, so rows are labelled with one constant cycle per (station, lead)
+      -- the label already present in the archive when there is one, the
+      modal cycle otherwise.  A drifting label would split the scope's days
+      at the flip and starve the holdout on both sides.  The true issuance
+      instant stays in ``native_run_init_utc``.
+
+    Idempotent: content-addressed identities, OR IGNORE inserts, safe to run
+    after every capture ingest.
+    """
+
+    from .contracts import content_sha256 as _content_sha256
+
+    # The member archive's FK requires a registry row; the point system seeds
+    # its own, idempotently, so any schema-complete database can project.
+    seed_identity = {
+        "ensemble_system_id": TAF_POINT_SYSTEM_ID,
+        "canonical_name": "Official Airport TAF TX Point",
+        "independence_family_id": "HUMAN_FORECASTER",
+        "provider_id": "ICAO_MET_OFFICE",
+        "source_class": "NATIVE_ENSEMBLE_PROVIDER",
+        "aggregator_or_republisher": 0,
+        "expected_member_count": 1,
+        "member_identity_contract_version": "taf_tx_single_point_v1",
+        "publication_contract_version": (
+            "issue_time_known_amendments_supersede_v1"
+        ),
+        "valid_from_utc": "2026-06-01T00:00:00Z",
+        "valid_until_utc": "9999-12-31T23:59:59Z",
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO calibration_native_ensemble_system("
+        "ensemble_system_id,canonical_name,independence_family_id,"
+        "provider_id,source_class,aggregator_or_republisher,"
+        "expected_member_count,member_identity_contract_version,"
+        "publication_contract_version,valid_from_utc,valid_until_utc,"
+        "content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (*seed_identity.values(), _content_sha256(seed_identity)),
+    )
+
+    settlement_by_station = {
+        str(row[0]): str(row[1] or "")
+        for row in conn.execute(
+            "SELECT station_id,settlement_definition "
+            "FROM calibration_station_registry"
+        )
+    }
+    captures: list[dict[str, Any]] = []
+    for row in conn.execute(
+        "SELECT station_id,event_date,settlement_timezone,tx_c,"
+        "issued_at_utc,received_at_utc,source_object_sha256 "
+        "FROM calibration_forward_taf_capture WHERE tx_c IS NOT NULL"
+    ):
+        captures.append(dict(zip(
+            ("station_id", "event_date", "tz", "tx_c", "issued_at_utc",
+             "query_at_utc", "source_sha"), row,
+        )))
+    for row in conn.execute(
+        "SELECT station_id,event_date,settlement_timezone,tx_c,"
+        "issued_at_utc,decision_anchor_utc,raw_taf_sha256 "
+        "FROM calibration_historical_taf_capture WHERE tx_c IS NOT NULL"
+    ):
+        captures.append(dict(zip(
+            ("station_id", "event_date", "tz", "tx_c", "issued_at_utc",
+             "query_at_utc", "source_sha"), row,
+        )))
+
+    as_of = (
+        datetime.now(timezone.utc)
+        if as_of_utc is None
+        else datetime.fromisoformat(
+            str(as_of_utc).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+    )
+    latest: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
+    skipped = {
+        "hindsight_d0": 0,
+        "lead_out_of_scope": 0,
+        "invalid": 0,
+        "anchor_not_passed": 0,
+    }
+    for cap in captures:
+        try:
+            issued = datetime.fromisoformat(
+                str(cap["issued_at_utc"]).replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            local = issued.astimezone(ZoneInfo(str(cap["tz"])))
+            event = datetime.fromisoformat(
+                str(cap["event_date"]) + "T00:00:00"
+            ).date()
+        except (ValueError, KeyError):
+            skipped["invalid"] += 1
+            continue
+        lead = (event - local.date()).days
+        if lead not in (0, 1):
+            skipped["lead_out_of_scope"] += 1
+            continue
+        if lead == 0 and local.hour >= TAF_POINT_D0_LATEST_LOCAL_HOUR:
+            skipped["hindsight_d0"] += 1
+            continue
+        if not settlement_by_station.get(str(cap["station_id"])):
+            skipped["invalid"] += 1
+            continue
+        # TAF amends continuously; the archive row must be the FINAL
+        # pre-anchor issuance, not whichever amendment happened to be first
+        # past the ingest.  The archive is append-only with one row per
+        # (station, day, lead), so a scope is archived only once its anchor
+        # has passed and "latest" cannot change any more.  Live serving is
+        # different on purpose: it tracks the latest issuance intraday.
+        try:
+            tz_local = ZoneInfo(str(cap["tz"]))
+            anchor_hour = TAF_POINT_D0_LATEST_LOCAL_HOUR if lead == 0 else 0
+            anchor = datetime.fromisoformat(
+                str(cap["event_date"]) + f"T{anchor_hour:02d}:00:00"
+            ).replace(tzinfo=tz_local)
+        except (ValueError, KeyError):
+            skipped["invalid"] += 1
+            continue
+        if as_of < anchor:
+            skipped["anchor_not_passed"] += 1
+            continue
+        key = (str(cap["station_id"]), str(cap["event_date"]), f"d{lead}")
+        cycle = f"{(issued.hour // 6) * 6:02d}Z"
+        prior = latest.get(key)
+        if prior is None or str(cap["issued_at_utc"]) > str(
+            prior[1]["issued_at_utc"]
+        ):
+            latest[key] = (cycle, cap)
+
+    sticky: dict[tuple[str, str], str] = {
+        (str(row[0]), str(row[1])): str(row[2])
+        for row in conn.execute(
+            "SELECT DISTINCT station_id,archive_lead_bucket,run_cycle "
+            "FROM calibration_native_ensemble_historical_member_run "
+            "WHERE ensemble_system_id=? AND extraction_version=?",
+            (TAF_POINT_SYSTEM_ID, TAF_POINT_EXTRACTION_VERSION),
+        )
+    }
+    modal_counts: dict[tuple[str, str], dict[str, int]] = {}
+    for (station, _day, lead), (cycle, _cap) in latest.items():
+        counts = modal_counts.setdefault((station, lead), {})
+        counts[cycle] = counts.get(cycle, 0) + 1
+    inserted = 0
+    for (station, day, lead), (_cycle, cap) in sorted(latest.items()):
+        label = sticky.get((station, lead))
+        if label is None:
+            counts = modal_counts[(station, lead)]
+            label = max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+            sticky[(station, lead)] = label
+        identity = {
+            "ensemble_system_id": TAF_POINT_SYSTEM_ID,
+            "station_id": station,
+            "target_local_date": day,
+            "archive_lead_bucket": lead,
+            "run_cycle": label,
+            "member_id": TAF_POINT_MEMBER_ID,
+            "raw_tmax_c": f"{float(cap['tx_c']):.12g}",
+            "native_run_init_utc": str(cap["issued_at_utc"]),
+            "extraction_version": TAF_POINT_EXTRACTION_VERSION,
+        }
+        sha = _content_sha256(identity)
+        conn.execute(
+            "INSERT OR IGNORE INTO "
+            "calibration_native_ensemble_historical_member_run("
+            "historical_member_run_id,ensemble_system_id,station_id,"
+            "target_local_date,archive_lead_bucket,run_cycle,member_id,"
+            "member_role,raw_tmax_c,settlement_definition,"
+            "extraction_version,provider_id,transport_provider_id,"
+            "native_run_init_utc,offline_oos_eligible,"
+            "archive_query_at_utc,source_url,raw_object_ref,"
+            "source_object_sha256,qc_status,authority_scope,"
+            "holdout_eligible,content_sha256) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "tafpt-" + sha[:32], TAF_POINT_SYSTEM_ID, station, day,
+                lead, label, TAF_POINT_MEMBER_ID, "CONTROL",
+                float(cap["tx_c"]),
+                settlement_by_station[station],
+                TAF_POINT_EXTRACTION_VERSION,
+                "ICAO_MET_OFFICE", TAF_POINT_TRANSPORT_PROVIDER_ID,
+                str(cap["issued_at_utc"]), 1,
+                str(cap["query_at_utc"] or cap["issued_at_utc"]),
+                "", "", str(cap["source_sha"]) or "0" * 64,
+                "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0, sha,
+            ),
+        )
+        inserted += int(conn.execute("SELECT changes()").fetchone()[0])
+    return {
+        "schema": "taf_point_member_run_projection_v1",
+        "candidate_count": len(latest),
+        "wrote_count": inserted,
+        "skipped": skipped,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+
+
+def build_taf_point_forward_archive_for_station(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    lead_bucket: str,
+    as_of_utc: str,
+    bucket_intervals: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """One station's TAF TX as a live forward-packet archive entry, or None.
+
+    The serving rules are exactly the training rules -- latest admissible
+    issuance, no post-noon d0 hindsight, the sticky scope label from the
+    member-run archive -- so what the OOS gated is what live consumes.
+    ``None`` (no admissible TAF, or no sticky label yet) lets the packet fall
+    back to the model-only archive set rather than blocking it.
+    """
+
+    from .contracts import content_sha256 as _content_sha256
+
+    if lead_bucket not in ("d0", "d1"):
+        return None
+    label_row = conn.execute(
+        "SELECT DISTINCT run_cycle "
+        "FROM calibration_native_ensemble_historical_member_run "
+        "WHERE ensemble_system_id=? AND extraction_version=? "
+        "AND station_id=? AND archive_lead_bucket=?",
+        (
+            TAF_POINT_SYSTEM_ID, TAF_POINT_EXTRACTION_VERSION,
+            station_id, lead_bucket,
+        ),
+    ).fetchall()
+    if len(label_row) != 1:
+        return None
+    label = str(label_row[0][0])
+    best: dict[str, Any] | None = None
+    for row in conn.execute(
+        "SELECT tx_c,issued_at_utc,settlement_timezone,content_sha256 "
+        "FROM calibration_forward_taf_capture "
+        "WHERE station_id=? AND event_date=? AND tx_c IS NOT NULL "
+        "AND issued_at_utc<=? ORDER BY issued_at_utc",
+        (station_id, event_date, as_of_utc),
+    ):
+        try:
+            issued = datetime.fromisoformat(
+                str(row[1]).replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            local = issued.astimezone(ZoneInfo(str(row[2])))
+            event = datetime.fromisoformat(
+                event_date + "T00:00:00"
+            ).date()
+        except (ValueError, KeyError):
+            continue
+        lead = (event - local.date()).days
+        if f"d{lead}" != lead_bucket:
+            continue
+        if lead == 0 and local.hour >= TAF_POINT_D0_LATEST_LOCAL_HOUR:
+            continue
+        best = {
+            "tx_c": float(row[0]),
+            "issued_at_utc": str(row[1]),
+            "settlement_timezone": str(row[2]),
+            "capture_content_sha256": str(row[3] or ""),
+        }
+    if best is None:
+        return None
+    member = {
+        "member_id": TAF_POINT_MEMBER_ID,
+        "member_role": "CONTROL",
+        "raw_tmax_c": best["tx_c"],
+    }
+    frozen_intervals = {
+        str(bucket): [
+            None if bounds[0] is None else float(bounds[0]),
+            None if bounds[1] is None else float(bounds[1]),
+        ]
+        for bucket, bounds in dict(bucket_intervals).items()
+    }
+    capture_identity = {
+        "station_id": station_id,
+        "ensemble_system_id": TAF_POINT_SYSTEM_ID,
+        "independence_family_id": "HUMAN_FORECASTER",
+        "event_date": event_date,
+        "settlement_timezone": best["settlement_timezone"],
+        "run_cycle": label,
+        "archive_lead_bucket": lead_bucket,
+        "member_count": 1,
+        "members": [member],
+        "member_set_sha256": _content_sha256([member]),
+        "bucket_intervals": frozen_intervals,
+        "bucket_contract_sha256": _content_sha256(frozen_intervals),
+        "source_capture_content_sha256": best["capture_content_sha256"],
+    }
+    capture = {
+        **capture_identity,
+        "content_sha256": _content_sha256(capture_identity),
+    }
+    archive_identity = {
+        "schema": "official_airport_taf_tx_point_members_v1",
+        "ensemble_system_id": TAF_POINT_SYSTEM_ID,
+        "independence_family_id": "HUMAN_FORECASTER",
+        "event_date": event_date,
+        "archive_lead_bucket": lead_bucket,
+        "run_cycle": label,
+        "run_init_utc": best["issued_at_utc"],
+        "archive_query_at_utc": as_of_utc,
+        "member_count": 1,
+        "training_only": True,
+        "holdout_eligible": False,
+        "captures": [capture],
+    }
+    return {
+        **archive_identity,
+        "content_sha256": _content_sha256(archive_identity),
+    }

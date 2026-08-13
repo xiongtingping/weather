@@ -7,6 +7,7 @@ import sys
 
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.official_native_forward_packet import (
+    DWD_ICON_EPS_MULTISTATION_SCHEMA,
     ECCC_GEPS_MULTISTATION_SCHEMA,
     ECMWF_MULTISTATION_SCHEMA,
     NOAA_GEFS_MULTISTATION_SCHEMA,
@@ -268,6 +269,36 @@ def test_optional_eccc_archive_joins_three_independent_families(
     assert packet["calls_order_gateway"] is False
     assert packet["orders_submitted"] == 0
     assert packet["live_submit_authorized"] is False
+
+
+def test_optional_icon_archive_reaches_the_packet(tmp_path: Path) -> None:
+    # ICON used to be accepted by the loader -- right schema, right family,
+    # inside the archive-count cap -- and then never partitioned for use, so
+    # every ``--archive icon_*`` was validated and silently dropped.  The
+    # capture paid for those objects daily and no packet ever carried the
+    # family, which left per-station model selection choosing between three.
+    archives = _base_archives(tmp_path)
+    icon = _archive(
+        tmp_path / "icon.json",
+        schema=DWD_ICON_EPS_MULTISTATION_SCHEMA,
+        system_id="DWD_ICON_GLOBAL_EPS",
+        family_id="DWD_ICON_EPS",
+        intervals={
+            "29°C or below": [None, 29.5],
+            "30°C or higher": [29.5, None],
+        },
+    )
+
+    result, inbox = _run(tmp_path, [*archives, icon])
+
+    assert result.returncode == 0, result.stderr
+    packet = inbox["packets"][0]
+    assert "DWD_ICON_GLOBAL_EPS" in {
+        system["ensemble_system_id"] for system in packet["systems"]
+    }
+    assert "DWD_ICON_EPS" in {
+        row["independence_family_id"] for row in packet["source_archives"]
+    }
 
 
 def test_missing_optional_eccc_keeps_exact_two_family_packet(

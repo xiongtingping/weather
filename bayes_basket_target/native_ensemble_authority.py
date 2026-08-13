@@ -27,7 +27,7 @@ DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST = (
     ROOT
     / "output"
     / "audits"
-    / "oos_atomic_snapshot_manifest_45station_20260803_current_latest_eval_pair_p0_recheck.json"
+    / "oos_atomic_snapshot_manifest_45station_20260813.json"
 )
 
 
