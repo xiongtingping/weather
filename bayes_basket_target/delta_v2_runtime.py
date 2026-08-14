@@ -948,10 +948,23 @@ def compile_delta_v2_runtime_plan(
         fee_rate=basket_policy.fee_rate,
         maximum_support_buckets=basket_policy.maximum_support_buckets,
     )
+    # The floor's live set is the evidence's, not the candidate support's.
+    # ``ordered_support`` here is the continuous-core candidate boundary --
+    # four buckets on an ordinary day -- and handing it to the solver as
+    # "live" made the coverability test at the floor always pass in
+    # full-protection mode: every window that did not blanket the whole
+    # candidate core was floor-illegal, which re-manufactured the listing-day
+    # ban that the clause 38 amendment removed.  Live means what the hard
+    # bound still holds reachable: every bucket with probability mass.
+    evidence_live_buckets = tuple(
+        row.bucket
+        for row in snapshot.buckets
+        if row.probability > EPS
+    )
     seated_support, target_solution, support_selection = (
         _solve_over_support_windows(
             windows=support_windows,
-            live_buckets=ordered_support,
+            live_buckets=evidence_live_buckets,
             snapshot=snapshot,
             probabilities=probabilities,
             shortfall=shortfall,

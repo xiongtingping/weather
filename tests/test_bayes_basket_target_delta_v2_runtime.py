@@ -739,6 +739,10 @@ def test_p1_recomputes_complete_gap_bundle_beyond_three_changes() -> None:
         "reported_high_observation_id": "metar-rkpk-p1",
         "hard_bound_id": "hard-bound-rkpk-p1",
     })
+    # Same evening state as the parametrized trigger test above: the live
+    # set the amended clause 38 floor protects is the pruned one.
+    base["buckets"][0]["probability"] = 0.0
+    base["buckets"][1]["probability"] = 1.0
     policy = _p1_delta_policy()
     plans = []
     for generation in range(1, 7):
@@ -798,6 +802,15 @@ def test_each_p1_authority_change_recomputes_a_complete_gap_bundle(
         "reported_high_observation_id": "metar-rkpk-p1",
         "hard_bound_id": "hard-bound-rkpk-p1",
     })
+    # Clause 38 (amended): with the live set coverable, the floor protects
+    # every live bucket.  These tests exercise recomputation triggers, not
+    # floor shape, so the evening state they model is the pruned one -- the
+    # hard bound has cleared 35 and the whole mass sits on 36.  The earlier
+    # 0.3/0.7 split relied on the pre-amendment drift that scoped the floor
+    # to the chosen support and let a one-bucket basket run naked past a
+    # thirty-percent live neighbour.
+    raw["buckets"][0]["probability"] = 0.0
+    raw["buckets"][1]["probability"] = 1.0
     raw.update({
         "checkpoint_changed": False,
         "quote_changed": False,
