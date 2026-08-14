@@ -1604,3 +1604,41 @@ def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
         for seat, row in zip(seats, windows)
         if not row["is_incumbent"]
     )
+
+
+def test_clause_42_p0_membership_is_won_never_granted() -> None:
+    """The P0 combination is numerical models only, and every seat is won.
+
+    The 2026-08-15 ruling clarified eligibility versus mandate.  Two
+    contest-free paths existed and both are gone: ICON's equal-family-share
+    graft (its fingerprint: exactly 1/n on every selection row it touched,
+    beside fitted peers) and TAF's candidacy in the cross-system contest
+    (the forecaster's stage is P0-M and the envelope witness, never a P0
+    member -- ZUUU's bound train_end 08-08 row had five candidates, five
+    selected, TAF at 0.216: a contest that never eliminated anyone).
+    """
+
+    clause = _clause(42)
+    assert "P0 组合成员资格" in clause
+    assert "有权入选 ≠ 必须入选" in clause
+    assert "永不作 P0 组合成员" in clause
+    assert "p0_membership_demotions_json" in clause
+
+    import inspect
+
+    import bayes_basket_target.native_ensemble_oos as oos
+    from bayes_basket_target import native_ensemble_p0
+
+    # Fit side: no graft, and point forecasts never reach the contest.
+    assert not hasattr(oos, "_provisional_family_share_admission")
+    fit_source = inspect.getsource(oos.build_native_ensemble_oos)
+    ready = fit_source.split("ready_rows = [", 1)[1][:600]
+    assert "POINT_FORECAST_SYSTEMS" in ready
+
+    # Serve side: a point-forecast weight in an old selection row is demoted
+    # to a rider and named in the lineage, not silently served.
+    serve_source = inspect.getsource(
+        native_ensemble_p0.compile_native_ensemble_p0
+    )
+    assert "p0_membership_demotions" in serve_source
+    assert "p0_membership_demotions_json" in serve_source

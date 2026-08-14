@@ -1812,6 +1812,32 @@ def compile_native_ensemble_p0(
         str(key): float(value)
         for key, value in json.loads(str(selection[0])).items()
     }
+    # Stage ruling, 2026-08-15: the P0 combination is numerical models only.
+    # The forecaster's TX acts at P0-M and as envelope evidence (the witness
+    # union below is untouched), never as a P0 member.  Selection rows fitted
+    # before the ruling can still carry a point-forecast weight -- ZUUU's
+    # bound row served TAF at 0.216 -- so the weight is demoted to a rider
+    # here and the remainder renormalised, with the demotion named in the
+    # lineage rather than inferred.  New fits exclude point forecasts from
+    # candidacy, so this path decays to a no-op as rows regenerate.
+    p0_membership_demotions: dict[str, float] = {}
+    for demoted_id in sorted(POINT_FORECAST_SYSTEMS):
+        weight = float(system_weights.get(demoted_id) or 0.0)
+        if weight > EPS:
+            p0_membership_demotions[demoted_id] = weight
+            system_weights[demoted_id] = 0.0
+    if p0_membership_demotions:
+        remaining = sum(system_weights.values())
+        if remaining <= EPS:
+            raise ContractError(
+                "FAIL_CLOSED_NO_P0:p0_membership_all_demoted"
+            )
+        system_weights = {
+            system_id: (
+                value / remaining if value > EPS else 0.0
+            )
+            for system_id, value in system_weights.items()
+        }
     family_caps = {
         str(key): float(value)
         for key, value in json.loads(str(selection[2])).items()
@@ -2697,6 +2723,7 @@ def compile_native_ensemble_p0(
         "system_weights_json": _json(system_weights),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
+        "p0_membership_demotions_json": _json(p0_membership_demotions),
         "training_lead_bucket": training_lead_bucket,
         "provisional_lead_fallback_json": _json(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
@@ -2915,6 +2942,7 @@ def compile_native_ensemble_p0(
         "system_weights_json": _json(system_weights),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
+        "p0_membership_demotions_json": _json(p0_membership_demotions),
         "training_lead_bucket": training_lead_bucket,
         "provisional_lead_fallback_json": _json(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}

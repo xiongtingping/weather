@@ -142,13 +142,16 @@ DEFAULT_VALID_DAYS = 30
 # outright.  Leaving this empty restores the symmetric 0.75 diversity bound and
 # lets skill decide.
 DEFAULT_FAMILY_WEIGHT_CAPS: dict[str, float] = {}
-# The one family allowed to take a cross-ensemble seat without an exact shared
-# holdout.  ICON is the only family whose archive cannot be backfilled -- DWD
-# publishes one run and keeps it for hours -- so a gap in its history is
-# permanent and the cohort it needs may never assemble.  Everything else earns
-# its seat on the holdout; see ``_provisional_family_share_admission`` for what
-# the seat does and does not certify.  Empty disables the exception entirely.
-PROVISIONAL_CROSS_ENSEMBLE_SYSTEM_ID = "DWD_ICON_GLOBAL_EPS"
+# There is no provisional cross-ensemble seat.  The 2026-08-15 ruling
+# clarified the earlier "ICON must not sit at zero weight" as *eligibility*,
+# not a guarantee: every seat in the P0 combination is won on the exact
+# shared holdout, and a system without one accumulates its forward record at
+# zero weight until it can compete.  The equal-family-share graft this
+# replaced had left its fingerprint on every selection row it touched --
+# ICON at exactly 1/n while its peers carried fitted weights -- which is a
+# mandate, not eligibility.  ICON's archive still cannot be backfilled (DWD
+# publishes one run and keeps it for hours), so its window fills forward
+# only; that makes the wait real, and it does not change who awards seats.
 
 
 def _lead_contracts(
@@ -786,72 +789,6 @@ def _cycle_mapping_for_rows(
         run_cycle = MIXED_NATIVE_CYCLES
         run_cycle_scope = "PER_SYSTEM_NATIVE_CYCLE"
     return mapping, mapping_sha, run_cycle, run_cycle_scope
-
-
-def _provisional_family_share_admission(
-    *,
-    system_rows: Mapping[str, Sequence[tuple[str, Mapping[str, Any]]]],
-    weights: Mapping[str, float],
-    family_by_system: Mapping[str, str],
-    systems: Mapping[str, Mapping[str, Any]],
-    selected_ready_rows: Sequence[tuple[str, str, Mapping[str, Any]]],
-) -> tuple[
-    dict[str, float],
-    dict[str, str],
-    list[tuple[str, str, Mapping[str, Any]]],
-    list[str],
-] | None:
-    """Seat one un-scored family at an equal family share, or return None.
-
-    The weighting machinery is holdout-derived: ``_select_minimum_crps_subset``
-    ranks systems by their predictions over the exact shared cohort, so a
-    system without that cohort has no score and therefore no weight.  This is
-    the deliberate exception for the one family that cannot wait for one --
-    ICON's archive cannot be backfilled, so a gap in it is permanent and the
-    cohort it would need may never assemble.
-
-    The seat is an equal *family* share.  The already-scored systems keep the
-    relative weighting they earned on the holdout and are scaled into the
-    remainder: discarding it would throw away the only externally validated
-    information in the blend to make room for a system that has none.
-    """
-
-    system_id = PROVISIONAL_CROSS_ENSEMBLE_SYSTEM_ID
-    if not system_id or system_id in weights:
-        return None
-    scopes = system_rows.get(system_id) or ()
-    evaluation = next(
-        (row[1] for row in scopes if isinstance(row[1], Mapping)), None
-    )
-    run_cycle = next((str(row[0]) for row in scopes), "")
-    if evaluation is None or run_cycle not in VALID_NATIVE_RUN_CYCLES:
-        return None
-    system = systems.get(system_id)
-    if not isinstance(system, Mapping):
-        return None
-    family = str(system.get("independence_family_id") or "").strip()
-    seated_families = set(family_by_system.values())
-    # Only a family that is not already seated earns a provisional share.  A
-    # second system inside a seated family adds no independence, which is the
-    # only thing an unscored seat can be justified by.
-    if not family or family in seated_families:
-        return None
-    share = 1.0 / float(len(seated_families) + 1)
-    remainder = 1.0 - share
-    total = sum(float(value) for value in weights.values())
-    if total <= 0.0:
-        return None
-    admitted = {
-        seated: float(value) / total * remainder
-        for seated, value in weights.items()
-    }
-    admitted[system_id] = share
-    return (
-        admitted,
-        {**family_by_system, system_id: family},
-        list(selected_ready_rows) + [(system_id, run_cycle, evaluation)],
-        [system_id],
-    )
 
 
 def _candidate_cycle_mapping(candidate: Mapping[str, Any]) -> tuple[
@@ -2834,6 +2771,11 @@ def build_native_ensemble_oos(
             for system_id, scopes in sorted(system_rows.items())
             for run_cycle, evaluation in scopes
             if evaluation["state"] == "OOS_READY"
+            # The 2026-08-15 stage ruling: the P0 combination is numerical
+            # models only.  The forecaster's TX keeps its per-system
+            # evaluation lane -- P0-M and the envelope witness read it --
+            # but never contests a P0 seat.
+            and system_id not in POINT_FORECAST_SYSTEMS
         ]
         if len(ready_rows) < 2:
             continue
@@ -3068,51 +3010,13 @@ def build_native_ensemble_oos(
             row["metrics"] for row in cross_predictions
         ])
         climate_metrics = _mean_metrics(baseline_metrics)
-        # Provisional admission, deliberately after the holdout has been
-        # scored.  The metrics above certify the blend of systems that have an
-        # exact shared holdout; a provisional system has none by definition, so
-        # it cannot be scored and must not silently enter the numbers that
-        # certify the gate.  It enters the *served* weights only, and both sets
-        # are persisted so the divergence is visible rather than implied.
-        #
-        # This is a standing exception for one family, not a general relaxation.
-        # ICON is the only family that cannot be backfilled -- DWD keeps one
-        # run -- so a gap in its history is permanent, and waiting for it to
-        # accumulate an exact shared holdout costs more than the other three
-        # families would.  Every other system still earns its seat.
+        # No provisional admission: every served weight is a certified
+        # weight, awarded by the subset contest on the exact shared holdout
+        # (the 2026-08-15 ruling -- eligibility, never a mandate).  The two
+        # fields stay persisted so a reader can verify the sets no longer
+        # diverge, and so old rows, where they did, remain interpretable.
         certified_weights = dict(weights)
         provisional_system_ids: list[str] = []
-        provisional = _provisional_family_share_admission(
-            system_rows=system_rows,
-            weights=weights,
-            family_by_system=family_by_system,
-            systems=systems,
-            selected_ready_rows=selected_ready_rows,
-        )
-        if provisional is not None:
-            (
-                weights,
-                family_by_system,
-                selected_ready_rows,
-                provisional_system_ids,
-            ) = provisional
-            # ``rows`` stays the certified cohort deliberately.  Everything
-            # derived from it -- the train window, the residuals, the holdout
-            # metrics -- describes systems that were actually trained and
-            # scored, and a provisional seat has none of those.  Folding it in
-            # here would not just crash on the missing fields; it would let a
-            # seat with no train window widen the window the artifact claims.
-            #
-            # Reuse the same identity resolver the validated cohort used: a
-            # provisional seat changes what is blended, so the activation's
-            # cycle identity has to follow it -- including picking up the
-            # MIXED label if the provisional family runs a different cycle.
-            (
-                cycle_by_system,
-                cycle_mapping_sha,
-                run_cycle,
-                run_cycle_scope,
-            ) = _cycle_mapping_for_rows(selected_ready_rows)
         selected_system_ids = sorted(weights)
         family_caps_exact = {
             family: float(configured_caps.get(family, 0.75))
