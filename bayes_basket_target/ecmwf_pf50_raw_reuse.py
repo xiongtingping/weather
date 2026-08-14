@@ -18,7 +18,9 @@ from typing import Any
 from .contracts import ContractError, content_sha256
 from .native_raw_object_store import (
     find_content_addressed_message,
+    find_range_addressed_message,
     store_content_addressed_message,
+    store_range_alias,
 )
 
 

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .contracts import ContractError, content_sha256
+from .native_archive_lead import capture_lead_bucket
 from .metar_physical_tmax import (
     EXPECTED_MEMBER_COUNT as METAR_PHYSICAL_EXPECTED_MEMBER_COUNT,
     INDEPENDENCE_FAMILY_ID as METAR_PHYSICAL_FAMILY_ID,
@@ -113,7 +114,27 @@ ARCHIVE_LEAD_BY_SCHEMA = {
 # -- and then every shorter-lead capture died here with
 # ``official_native_forward_scope_mismatch`` after doing all the downloading.
 # Nothing but d2 had ever reached a packet.
-SUPPORTED_ARCHIVE_LEAD_BUCKETS = frozenset({"d0", "d1", "d2"})
+# Hours ahead of the station's local day.  The calendar ``d`` labels remain
+# admissible only so archives captured before the switch stay readable; nothing
+# writes them any more, and the builder re-derives the lead from the run
+# whenever the archive states one, so a stated ``d`` label survives only for
+# archives with no readable run.
+SUPPORTED_ARCHIVE_LEAD_BUCKETS = frozenset({
+    "h00_12", "h12_24", "h24_48", "h48_plus", "d0", "d1", "d2",
+})
+# Freshest first, for choosing the packet-level label out of a mixed-cycle
+# set.  Calendar labels sort after the hour buckets: they survive only on
+# archives whose run cannot be read, and a stated claim without a verifiable
+# run should never outrank a derived one.
+_LEAD_BUCKET_FRESHNESS_ORDER = {
+    "h00_12": 0,
+    "h12_24": 1,
+    "h24_48": 2,
+    "h48_plus": 3,
+    "d0": 10,
+    "d1": 11,
+    "d2": 12,
+}
 VALID_RUN_CYCLES = frozenset({"00Z", "06Z", "12Z", "18Z"})
 MIXED_NATIVE_CYCLES = "MIXED_NATIVE_CYCLES"
 
@@ -245,6 +266,27 @@ def _verified_target_bucket_contract(
     }
 
 
+def _station_capture_lead(
+    archive: Mapping[str, Any], station_id: str
+) -> str:
+    """The lead this archive states for one station, or empty if it has none.
+
+    Empty rather than raising: the caller falls back to the archive-level value
+    and then to the schema default, which is what keeps archives captured
+    before the per-station vocabulary readable.
+    """
+
+    captures = archive.get("captures")
+    if not isinstance(captures, Sequence):
+        return ""
+    for capture in captures:
+        if not isinstance(capture, Mapping):
+            continue
+        if str(capture.get("station_id") or "").strip().upper() == station_id:
+            return str(capture.get("archive_lead_bucket") or "")
+    return ""
+
+
 def build_official_native_forward_packet(
     *,
     archives: Sequence[Mapping[str, Any]],
@@ -269,20 +311,57 @@ def build_official_native_forward_packet(
         )
     verified = [_verified_archive(row) for row in archives]
     event_dates = {str(row.get("event_date") or "") for row in verified}
-    lead_buckets = {
-        str(
-            row.get("archive_lead_bucket")
-            or (
-                row["captures"][0].get("archive_lead_bucket")
-                if row["captures"]
-                and isinstance(row["captures"][0], Mapping)
-                else ""
-            )
+    # The lead is derived from each archive's run against this station's own
+    # local day, not read from the stamped label.  The stamp's vocabulary
+    # changed underneath this check -- new captures state per-station hour
+    # buckets while archives from before the switch state calendar labels --
+    # and a packet legitimately mixes both vintages for hours after a deploy,
+    # which made a label-equality check fail on spelling.  ``run_init_utc`` is
+    # the underlying fact and every vintage carries it.
+    #
+    # Derived per system, the leads are no longer required to agree: ECMWF's
+    # 06Z run and ECCC's 00Z run stand at genuinely different hours from the
+    # same station-day, and requiring one shared value was an artifact of the
+    # calendar era, when all four collectors stamped whatever lead the caller
+    # asked for.  What still must hold: every archive names a run this station
+    # can be measured against.  Archives without a readable run keep their
+    # stated label, so pre-switch fixtures and replays stay buildable.
+    lead_by_system: dict[str, str] = {}
+    for row in verified:
+        derived = ""
+        run_init_raw = str(row.get("run_init_utc") or "").strip()
+        capture_row = next(
+            (
+                item
+                for item in row.get("captures") or []
+                if isinstance(item, Mapping)
+                and str(item.get("station_id") or "").strip().upper()
+                == station
+            ),
+            None,
+        )
+        if run_init_raw and capture_row is not None:
+            timezone_name = str(
+                capture_row.get("settlement_timezone") or ""
+            ).strip()
+            try:
+                derived = capture_lead_bucket(
+                    event_date=str(row.get("event_date") or ""),
+                    settlement_timezone=timezone_name,
+                    run_init=datetime.fromisoformat(
+                        run_init_raw.replace("Z", "+00:00")
+                    ),
+                )
+            except (ContractError, ValueError, TypeError):
+                derived = ""
+        lead_by_system[str(row.get("ensemble_system_id") or "")] = str(
+            derived
+            or _station_capture_lead(row, station)
+            or row.get("archive_lead_bucket")
             or ARCHIVE_LEAD_BY_SCHEMA.get(str(row.get("schema")), "")
             or ""
         )
-        for row in verified
-    }
+    lead_buckets = set(lead_by_system.values())
     system_ids = {
         str(row.get("ensemble_system_id") or "") for row in verified
     }
@@ -350,11 +429,17 @@ def build_official_native_forward_packet(
     if (
         len(event_dates) != 1
         or "" in event_dates
-        # One lead per packet, not one particular lead.  Mixing a d1 archive
-        # with a d2 one would blend two different forecasts of the same day
-        # into a single cross-family ensemble and label the result with
-        # whichever lead won the set.
-        or len(lead_buckets) != 1
+        # Every system must state a supported lead for this station; the leads
+        # are not required to agree with each other.  Under the hour
+        # vocabulary a mixed-cycle packet legitimately carries different
+        # per-system leads -- ECMWF's 06Z run and ECCC's 00Z run stand at
+        # different hours from the same station-day -- and the old "one lead
+        # per packet" rule was the calendar era's spelling of "one event date
+        # per packet", which the date check above still enforces.  The compile
+        # side derives its own training key from the per-system runs and
+        # treats a genuinely split packet as unkeyed rather than guessing.
+        or not lead_buckets
+        or "" in lead_buckets
         or not lead_buckets.issubset(SUPPORTED_ARCHIVE_LEAD_BUCKETS)
         or not run_cycles.issubset(VALID_RUN_CYCLES)
         or len(system_ids) != len(verified)
@@ -411,10 +496,16 @@ def build_official_native_forward_packet(
             != event_date
             or str(capture.get("run_cycle") or "")
             != archive_cycle
+            # The capture's lead is a per-station fact -- one run stands a
+            # different number of hours from each station's local day -- so it
+            # is checked for admissibility, not for equality with an
+            # archive-level value.  Requiring equality was the calendar era's
+            # "one label per archive" restated per capture, and it rejected
+            # every multi-timezone hour-bucket archive at the first station
+            # whose bucket differed from the first capture's.
             or (
                 capture_lead
-                and capture_lead
-                != str(archive_metadata["archive_lead_bucket"])
+                and capture_lead not in SUPPORTED_ARCHIVE_LEAD_BUCKETS
             )
             or not isinstance(capture.get("members"), list)
             or len(capture["members"])
@@ -627,7 +718,17 @@ def build_official_native_forward_packet(
         "station_id": station,
         "event_date": event_date,
         "settlement_timezone": next(iter(timezones)),
-        "lead_bucket": next(iter(lead_buckets)),
+        # The freshest system's lead.  A mixed-cycle packet carries several
+        # per-system leads; the packet-level label answers "what is the best
+        # this packet can serve", which is the newest run's distance -- the
+        # same convention ``run_init_utc_by_system`` readers use when they
+        # take the max.  ``lead_by_system`` alongside keeps every system's own
+        # lead readable.
+        "lead_bucket": min(
+            lead_buckets,
+            key=lambda name: _LEAD_BUCKET_FRESHNESS_ORDER.get(name, 99),
+        ),
+        "lead_bucket_by_system": dict(sorted(lead_by_system.items())),
         "run_cycle": packet_run_cycle,
         "run_cycle_scope": run_cycle_scope,
         "run_cycle_by_system": run_cycle_by_system,

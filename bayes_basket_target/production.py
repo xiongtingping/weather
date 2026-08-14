@@ -404,11 +404,30 @@ def commit_production_candidate_atomic(
     # re-confirms on the TAF revision, P1 adjusts on observed METAR.  The
     # chain head each one roots on differs and is chosen below; the stage
     # itself is no longer the thing that decides who may act.
+    #
+    # The stage is read from where each compiler actually puts it.  A P0
+    # forward plan carries no ``plan.lineage`` at all -- its stage lives on
+    # the probability envelope -- and reading only the lineage field turned
+    # every stage-open into ``stage_invalid``, which quietly rebuilt the
+    # "P0 waits for P1" gate this comment says was removed (charter 46).
     candidate_stage = (
         str(lineage.get("probability_stage") or "").strip().upper()
         if isinstance(lineage, Mapping)
         else ""
     )
+    if not candidate_stage:
+        envelope = compiled_plan.get("probability_envelope")
+        if isinstance(envelope, Mapping):
+            evidence = envelope.get("evidence")
+            candidate_stage = str(
+                envelope.get("stage")
+                or (
+                    evidence.get("probability_stage")
+                    if isinstance(evidence, Mapping)
+                    else ""
+                )
+                or ""
+            ).strip().upper()
     if candidate_stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("production_candidate_atomic_stage_invalid")
     station_id = str(plan.get("station_id") or "").strip()

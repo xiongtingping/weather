@@ -257,3 +257,53 @@ def test_other_scopes_are_untouched_by_the_lead_comparison(
 
     assert result["packet_count"] == 2
     assert _scopes(inbox) == {("KMIA", "2026-08-07"), ("KATL", "2026-08-07")}
+
+
+def test_a_fresher_run_with_no_fitted_weights_does_not_displace_a_servable_one(
+    tmp_path,
+) -> None:
+    # The lead bucket is per station and derived from the run, so following a
+    # new publication cycle can land a station in a training group its own
+    # history never populated -- reading 06Z for the first time moved thirteen
+    # American station-days into ``h12_24``, where nothing had ever been
+    # fitted.  Serving the newer run there would serve no P0 at all.  The
+    # archive still ingests every run, so the empty group fills and this
+    # preference dissolves once weights exist.
+    from bayes_basket_target.production_worker import (
+        _merge_official_native_inbox,
+    )
+
+    def _packet(lead_bucket: str, run_init: str) -> dict:
+        return {
+            "schema": "official_native_ensemble_forward_packet_v1",
+            "station_id": "CYYZ",
+            "event_date": "2026-08-14",
+            "lead_bucket": lead_bucket,
+            "run_init_utc_by_system": {"ECMWF_IFS_ENS_OPEN_PF50": run_init},
+        }
+
+    inbox = tmp_path / "inbox.json"
+    staging = tmp_path / "staging.json"
+    fitted = {("CYYZ", "h24_48")}
+
+    _write_inbox(inbox, [_packet("h24_48", "2026-08-13T00:00:00Z")])
+    _write_inbox(staging, [_packet("h12_24", "2026-08-13T06:00:00Z")])
+    _merge_official_native_inbox(
+        inbox,
+        staging_path=staging,
+        as_of_utc="2026-08-13T16:00:00Z",
+        fitted_lead_buckets=fitted,
+    )
+    held = json.loads(inbox.read_text(encoding="utf-8"))["packets"]
+    assert [row["lead_bucket"] for row in held] == ["h24_48"]
+
+    # Once the group has weights, the fresher run takes over on its own.
+    _write_inbox(staging, [_packet("h12_24", "2026-08-13T06:00:00Z")])
+    _merge_official_native_inbox(
+        inbox,
+        staging_path=staging,
+        as_of_utc="2026-08-13T16:00:00Z",
+        fitted_lead_buckets=fitted | {("CYYZ", "h12_24")},
+    )
+    held = json.loads(inbox.read_text(encoding="utf-8"))["packets"]
+    assert [row["lead_bucket"] for row in held] == ["h12_24"]

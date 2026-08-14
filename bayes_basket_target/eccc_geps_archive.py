@@ -20,7 +20,11 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
-from .native_archive_lead import capture_lead_and_run, lead_bucket_for_run
+from .native_archive_lead import (
+    capture_lead_and_run,
+    capture_lead_bucket,
+    lead_bucket_for_run,
+)
 from .future_temperature_curve import (
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -469,11 +473,15 @@ def _build_station_capture(
         "longitude": float(scope["longitude"]),
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": _run_cycle_label(run_init),
-        "archive_lead_bucket": lead_bucket_for_run(
+        # Hours ahead of this station's own local day.  The calendar ``d``
+        # label this used to carry is a property of the run's UTC date, so it
+        # grouped runs issued 12 hours apart together and split runs issued the
+        # same number of hours ahead -- ``lead_bucket_for_run`` is still used
+        # below to choose *which run to fetch*, which is a different question.
+        "archive_lead_bucket": capture_lead_bucket(
             event_date=event_date,
+            settlement_timezone=str(scope["settlement_timezone"]),
             run_init=run_init,
-            supported_lead_days=SUPPORTED_LEAD_DAYS,
-            error_code="eccc_geps_archive_lead_days_invalid",
         ),
         "forecast_hours": hours,
         "ensemble_system_id": SYSTEM_ID,

@@ -163,16 +163,17 @@ def test_a_run_already_captured_is_not_downloaded_again(
 
         return _Finished()
 
-    # At 2026-08-06T15:00Z the newest published run covering 08-07 is that
-    # morning's 00Z; 08-05's 18Z is a rung below it on the ladder.
+    # At 2026-08-06T15:00Z the newest initialised run covering 08-07 is that
+    # day's 12Z -- the ladder follows every six-hourly cycle the publishers
+    # issue, so holding 12Z means nothing newer exists to fetch.
     worker._official_native_capture_inflight = {
-        ("2026-08-07",): _finished("2026-08-06T00:00:00Z")
+        ("2026-08-07",): _finished("2026-08-06T12:00:00Z")
     }
 
     result = _capture(worker, tmp_path=tmp_path)
 
     assert result["state"] == "RUN_ALREADY_CAPTURED"
-    assert result["captured_run_init_utc"] == "2026-08-06T00:00:00Z"
+    assert result["captured_run_init_utc"] == "2026-08-06T12:00:00Z"
 
 
 def test_a_superseded_run_does_not_suppress_the_next_capture(
@@ -216,8 +217,84 @@ def test_a_failed_capture_does_not_wedge_its_slot(worker, tmp_path: Path) -> Non
     assert worker._official_native_capture_last_result["state"] == "FAILED"
 
 
+def test_a_failed_fresh_rung_does_not_redownload_the_held_run(
+    worker, tmp_path: Path
+) -> None:
+    # The newest run is the last to finish uploading, so failing on it is
+    # ordinary.  What must not happen is the ladder then falling back onto the
+    # run this date already holds and fetching it a second time -- the fallback
+    # exists to find *older* evidence when there is none, not to re-buy it.
+    class _Finished:
+        def done(self):
+            return True
+
+        def result(self):
+            return {
+                "state": "CAPTURED",
+                "inbox_packet_count": 7,
+                "captured_run_init_utc": "2026-08-06T00:00:00Z",
+            }
+
+    worker._official_native_capture_inflight = {("2026-08-07",): _Finished()}
+
+    # 2026-08-06T18:00Z has published by this clock and is newer than what the
+    # date holds, so the scope is due -- but every older rung is already held.
+    result = worker._capture_official_native_packet(
+        station_id="KMIA",
+        event_date="2026-08-07",
+        as_of_utc="2026-08-06T19:00:00Z",
+        inbox_path=tmp_path / "inbox.json",
+    )
+
+    assert result["state"] != "RUN_ALREADY_CAPTURED"
+
+
+def test_every_rung_held_means_nothing_left_to_fetch(
+    worker, tmp_path: Path
+) -> None:
+    class _Finished:
+        def done(self):
+            return True
+
+        def result(self):
+            return {
+                "state": "CAPTURED",
+                "inbox_packet_count": 7,
+                "captured_run_init_utc": "2026-08-06T12:00:00Z",
+            }
+
+    worker._official_native_capture_inflight = {("2026-08-07",): _Finished()}
+
+    # At 15:00Z the 18Z run has not initialised, so 12Z is both the newest
+    # rung and the one already held: there is nothing to download.
+    result = _capture(worker, tmp_path=tmp_path)
+
+    assert result["state"] == "RUN_ALREADY_CAPTURED"
+
+
 def test_capture_never_touches_the_order_path(worker, tmp_path: Path) -> None:
     result = _capture(worker, tmp_path=tmp_path)
 
     assert result["calls_order_gateway"] is False
     assert result["places_orders"] is False
+
+
+def test_packet_run_identity_is_read_from_its_systems() -> None:
+    # The rotation decides "has a newer cycle published since this packet was
+    # built" from this value, so an unreadable field must not read as "old" --
+    # that would force a download on every poll.
+    from bayes_basket_target.production_worker import _native_packet_run_init
+
+    assert _native_packet_run_init({}) is None
+    assert _native_packet_run_init({"run_init_utc_by_system": {}}) is None
+    assert _native_packet_run_init(
+        {"run_init_utc_by_system": {"A": "not-a-time"}}
+    ) is None
+    newest = _native_packet_run_init({
+        "run_init_utc_by_system": {
+            "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-13T00:00:00Z",
+            "NOAA_GEFS_05": "2026-08-13T06:00:00Z",
+        }
+    })
+    assert newest is not None
+    assert newest.isoformat().replace("+00:00", "Z") == "2026-08-13T06:00:00Z"

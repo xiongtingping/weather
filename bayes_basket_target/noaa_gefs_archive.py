@@ -23,7 +23,11 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
-from .native_archive_lead import capture_lead_and_run, run_cycle_label
+from .native_archive_lead import (
+    capture_lead_and_run,
+    capture_lead_bucket,
+    run_cycle_label,
+)
 from .future_temperature_curve import (
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
@@ -32,7 +36,9 @@ from .future_temperature_curve import (
 from .gefs_raw_reuse import RetainedGEFSField, load_retained_gefs_field_index
 from .native_raw_object_store import (
     find_content_addressed_message,
+    find_range_addressed_message,
     store_content_addressed_message,
+    store_range_alias,
 )
 from .native_ensemble_store import _insert_content_addressed
 from .open_meteo_ensemble import ENSEMBLE_SYSTEMS
@@ -66,7 +72,11 @@ DEFAULT_LEAD_DAYS = 2
 # first cycle instead; GEFS publishes 00/06/12/18Z, so 00Z is available.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
 # GEFS publishes four cycles; these are the two this lane reads.
-SUPPORTED_RUN_CYCLE_HOURS = (0, 18)
+# All four published cycles.  06Z and 12Z were excluded while the run
+# ladder only asked for 00Z/18Z; the ladder now follows every cycle the
+# publisher issues, and the coverage check below still rejects any cycle
+# that cannot cover a station's local day.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 
@@ -277,6 +287,39 @@ def _download_gefs_field(
             max_bytes=MAX_INDEX_BYTES,
         )
         start, end, index_line = _message_range(index_raw)
+        # The index is what names the range, so it is fetched either way -- but
+        # once named, the message itself may already be in the local store.
+        # Two event dates served by the same run share roughly half their
+        # forecast hours, and each shared hour is this same immutable object
+        # range.  The digest is only known after a download, so the store is
+        # asked by source coordinate; the bytes it returns are verified against
+        # that digest before use.
+        if raw_roots:
+            cached = find_range_addressed_message(
+                object_key=object_key,
+                range_start=start,
+                range_end=end,
+                roots=raw_roots,
+            )
+            if cached is not None:
+                path, record = cached
+                message = path.read_bytes()
+                if len(message) == end - start + 1:
+                    return message, {
+                        "member_id": member_id,
+                        "forecast_hour": forecast_hour,
+                        "object_key": object_key,
+                        "index_sha256": hashlib.sha256(index_raw).hexdigest(),
+                        "index_line": index_line,
+                        "range_start": start,
+                        "range_end": end,
+                        "message_sha256": str(record["message_sha256"]),
+                        # The object's own header from when these bytes were
+                        # first fetched.  NOAA's objects are immutable, so it
+                        # still describes them; inventing a fresh value would
+                        # claim a response that was never made.
+                        "last_modified": str(record.get("last_modified") or ""),
+                    }, len(index_raw)
     message, headers = _get_bytes(
         url,
         client=client,
@@ -306,6 +349,14 @@ def _download_gefs_field(
             message,
             root=raw_store,
             expected_sha256=str(new_receipt["message_sha256"]),
+        )
+        store_range_alias(
+            object_key=object_key,
+            range_start=start,
+            range_end=end,
+            message_sha256=str(new_receipt["message_sha256"]),
+            root=raw_store,
+            last_modified=str(new_receipt.get("last_modified") or ""),
         )
     return message, new_receipt, len(index_raw) + len(message)
 
@@ -844,9 +895,14 @@ def _build_station_capture(
         "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
         "run_cycle": run_cycle_label(run_init),
         # Derived from the run actually used, so a capture cannot advertise
-        # a lead its run does not carry.
-        "archive_lead_bucket": _lead_bucket_for_run(
-            event_date=event_date, run_init=run_init
+        # a lead its run does not carry -- and stated in hours ahead of this
+        # station's own local day rather than as a calendar ``d`` label, which
+        # groups runs by which UTC date they fell on and so puts leads 12 hours
+        # apart in the same training group.
+        "archive_lead_bucket": capture_lead_bucket(
+            event_date=event_date,
+            settlement_timezone=str(settlement_timezone),
+            run_init=run_init,
         ),
         "forecast_hours": list(forecast_hours),
         "ensemble_system_id": SYSTEM_ID,

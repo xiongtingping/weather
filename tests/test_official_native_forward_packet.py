@@ -262,42 +262,58 @@ def _lead_archives(lead_bucket: str, run_init_utc: str, run_cycle: str):
 
 
 @pytest.mark.parametrize(
-    "lead_bucket,run_init_utc,run_cycle",
+    "stated_lead,run_init_utc,run_cycle,derived_lead",
     [
-        ("d2", "2026-06-29T18:00:00Z", "18Z"),
-        ("d1", "2026-06-30T00:00:00Z", "00Z"),
-        ("d0", "2026-07-01T00:00:00Z", "00Z"),
+        # The packet's lead is derived from the run against the station's own
+        # local day, not read from the stamped calendar label: SAEZ's 07-01
+        # begins at 03Z, so the 06-29T18Z run stands 33h ahead and the
+        # 06-30T00Z run 27h -- the two calendar labels d2 and d1 name the same
+        # training group, which is the overlap the hour vocabulary exists to
+        # dissolve.
+        ("d2", "2026-06-29T18:00:00Z", "18Z", "h24_48"),
+        ("d1", "2026-06-30T00:00:00Z", "00Z", "h24_48"),
+        ("d0", "2026-07-01T00:00:00Z", "00Z", "h00_12"),
     ],
 )
 def test_every_supported_lead_builds_a_packet(
-    lead_bucket: str, run_init_utc: str, run_cycle: str
+    stated_lead: str, run_init_utc: str, run_cycle: str, derived_lead: str
 ) -> None:
     # P0 is recomputed as the models update, so the same station-day arrives at
     # d2, then d1, then d0.  This builder used to accept d2 alone: the shorter
     # leads were captured, downloaded and correctly labelled, and then rejected
     # here -- so nothing but d2 had ever reached a packet.
     packet = build_official_native_forward_packet(
-        archives=_lead_archives(lead_bucket, run_init_utc, run_cycle),
+        archives=_lead_archives(stated_lead, run_init_utc, run_cycle),
         station_id="SAEZ",
     )
 
-    assert packet["lead_bucket"] == lead_bucket
+    assert packet["lead_bucket"] == derived_lead
     assert packet["run_cycle"] == run_cycle
 
 
-def test_archives_at_different_leads_cannot_be_blended() -> None:
-    # Mixing a d1 archive with a d2 one would fold two different forecasts of
-    # the same day into one cross-family ensemble, then label the result with
-    # whichever lead happened to win.
+def test_archives_from_different_runs_blend_with_per_system_leads() -> None:
+    # Under run-driven capture the systems legitimately stand at different
+    # cycles -- ECMWF follows a six-hourly ladder while ECCC publishes twice a
+    # day -- so one packet carries one run per system and each system keeps its
+    # own lead.  The packet-level label takes the freshest.  This replaces the
+    # calendar-era rule that all archives state one shared lead, which rejected
+    # every mixed-cycle capture after it had done all the downloading.
     mixed = [
         _lead_archives("d2", "2026-06-29T18:00:00Z", "18Z")[0],
-        _lead_archives("d1", "2026-06-30T00:00:00Z", "00Z")[1],
+        _lead_archives("d1", "2026-06-30T12:00:00Z", "12Z")[1],
     ]
 
-    with pytest.raises(
-        ContractError, match="official_native_forward_scope_mismatch"
-    ):
-        build_official_native_forward_packet(archives=mixed, station_id="SAEZ")
+    packet = build_official_native_forward_packet(
+        archives=mixed, station_id="SAEZ"
+    )
+
+    # 06-29T18Z stands 33h ahead of SAEZ's 07-01 (h24_48); 06-30T12Z stands
+    # 15h ahead (h12_24).  Each system keeps its own, the packet claims the
+    # freshest.
+    assert packet["lead_bucket"] == "h12_24"
+    leads = packet["lead_bucket_by_system"]
+    assert leads["NOAA_GEFS_05"] == "h24_48"
+    assert leads["ECMWF_IFS_ENS_OPEN_PF50"] == "h12_24"
 
 
 def test_an_unsupported_lead_is_still_rejected() -> None:

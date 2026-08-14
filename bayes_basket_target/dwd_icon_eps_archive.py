@@ -37,7 +37,11 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
-from .native_archive_lead import capture_lead_and_run, run_cycle_label
+from .native_archive_lead import (
+    capture_lead_and_run,
+    capture_lead_bucket,
+    run_cycle_label,
+)
 from .native_ensemble_store import _insert_content_addressed
 from .resource_bounds import assert_process_memory_budget
 from .ssot import native_ensemble_foundation_schema_status
@@ -545,7 +549,15 @@ def capture_icon_eps_station_days(
             "settlement_timezone": scope["settlement_timezone"],
             "run_init_utc": run_init.isoformat().replace("+00:00", "Z"),
             "run_cycle": run_cycle_label(run_init),
-            "archive_lead_bucket": f"d{lead_days}",
+            # Hours ahead of this station's own local day, not the calendar
+            # ``d`` label the collector was asked for.  The two disagree: one
+            # run reaches a UTC+8 and a UTC-4 station half a day apart, and the
+            # calendar label called both the same lead.
+            "archive_lead_bucket": capture_lead_bucket(
+                event_date=event_date,
+                settlement_timezone=str(scope["settlement_timezone"]),
+                run_init=run_init,
+            ),
             "forecast_hours": scope["hours"],
             "ensemble_system_id": SYSTEM_ID,
             "independence_family_id": INDEPENDENCE_FAMILY_ID,

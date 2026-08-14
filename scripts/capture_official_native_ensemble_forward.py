@@ -15,9 +15,10 @@ import json
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -28,6 +29,7 @@ from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.ecmwf_ifs_archive import (  # noqa: E402
     capture_ecmwf_station_days,
     ingest_ecmwf_station_days,
+    resolve_run_cycle_hour as ecmwf_resolve_run_cycle_hour,
 )
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
@@ -35,6 +37,7 @@ from bayes_basket_target.market_registry import (  # noqa: E402
 from bayes_basket_target.noaa_gefs_archive import (  # noqa: E402
     capture_gefs_station_days,
     ingest_gefs_station_days,
+    resolve_run_cycle_hour as gefs_resolve_run_cycle_hour,
 )
 from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
     RUN_CYCLE_HOUR_BY_LEAD as ECCC_RUN_CYCLE_HOUR_BY_LEAD,
@@ -42,7 +45,12 @@ from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
     ingest_geps_station_days,
 )
 from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
+    RUN_CYCLE_HOUR_BY_LEAD as ICON_RUN_CYCLE_HOUR_BY_LEAD,
     capture_icon_eps_station_days,
+)
+from bayes_basket_target.future_temperature_curve import (  # noqa: E402
+    MIN_CURVE_POINTS,
+    MIN_SAME_DAY_CURVE_POINTS,
 )
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_connection_target_capacity,
@@ -64,6 +72,13 @@ DEFAULT_INBOX_OUTPUT = DEFAULT_RUNTIME_ROOT / "official_native_ensemble_forward_
 MAX_STATIONS = 45
 MIN_TIMEOUT_SECONDS = 5.0
 MAX_TIMEOUT_SECONDS = 120.0
+# ICON's fetches are whole objects, not byte ranges: one ~36MiB file per lead
+# carrying all forty members.  The caller's ``--timeout-seconds`` is sized for
+# the sub-megabyte range reads the other three families make, and reusing it
+# here made a merely slow link read as a dead one.  This is the read timeout
+# for a single streamed object, not a budget for the pass; the pass as a whole
+# is still bounded by the caller's deadline.
+ICON_OBJECT_TIMEOUT_SECONDS = 180.0
 # Forward P0 consumes a bounded current snapshot.  A retained archive older
 # than this is historical evidence, not a current snapshot, and must be
 # refreshed from the official provider (or remain blocked if unavailable).
@@ -99,12 +114,22 @@ def _load_retained_archive(
     expected_schema: str,
     as_of_utc: str | None = None,
     max_reuse_age_seconds: float | None = None,
+    expected_run_init_utc: str | None = None,
 ) -> dict[str, Any] | None:
     """Reuse one retained official archive instead of downloading it again.
 
     Reuse is conservative: malformed, tampered, wrong-date or wrong-scope
     files are treated as absent and the bounded capture path may refresh them.
     This keeps native precedence while preventing duplicate ECMWF/GEFS pulls.
+
+    ``expected_run_init_utc`` makes reuse a question about run identity rather
+    than about the clock.  The runs are immutable, so an archive drawn from the
+    run this capture wants is current no matter how old the file is, and an
+    archive drawn from any other run is wrong no matter how fresh -- the TTL
+    got both directions wrong: it re-downloaded ICON's unchanged run once the
+    file aged past six hours, and it served a stale 00Z archive to a capture
+    asked for the just-published 06Z run for as long as the file stayed inside
+    them.  The TTL path remains for callers that do not know the run.
     """
 
     raw_path = path.expanduser()
@@ -131,15 +156,49 @@ def _load_retained_archive(
     ):
         return None
     expected = tuple(sorted(str(value).strip().upper() for value in station_ids))
-    actual = tuple(sorted(str(value).strip().upper() for value in payload.get("station_ids") or ()))
     captures = payload.get("captures")
+    if not isinstance(captures, list):
+        return None
+    # The station set is read from the captures, falling back to the top-level
+    # index only if they do not carry it.  That index is a convenience, not the
+    # content: an archive whose captures name all forty-five stations holds all
+    # forty-five whether or not it also lists them at the top.  Trusting the
+    # index alone made one family -- the only one that omitted it -- fail this
+    # check forever and re-download in full on every pass, with a complete and
+    # perfectly reusable copy sitting on disk.
+    actual = tuple(sorted(
+        str(row.get("station_id") or "").strip().upper()
+        for row in captures
+        if isinstance(row, dict)
+    ))
+    if not actual or "" in actual:
+        actual = tuple(sorted(
+            str(value).strip().upper()
+            for value in payload.get("station_ids") or ()
+        ))
+    # Coverage, not equality: a retained archive may hold more stations than
+    # this pass asks for.  Same-day cycle passes serve only the stations
+    # their run can still cover, while ECCC and ICON ride those passes on
+    # the same 00Z run already retained for the full set -- demanding the
+    # exact set would re-download an identical ICON run (~543MiB) to read a
+    # subset of it.  The archive's internal consistency stays exact, and
+    # every requested station must still be present.
     if (
-        actual != expected
-        or int(payload.get("station_count") or 0) != len(expected)
-        or not isinstance(captures, list)
-        or len(captures) != len(expected)
+        not actual
+        or len(set(actual)) != len(actual)
+        or int(payload.get("station_count") or 0) != len(actual)
+        or len(captures) != len(actual)
+        or not set(expected).issubset(set(actual))
     ):
         return None
+    if expected_run_init_utc is not None:
+        # Run identity decides outright; the clock is irrelevant both ways.
+        # Malformed either side fails closed to a fresh capture.
+        held = _parse_utc_timestamp(payload.get("run_init_utc"))
+        wanted = _parse_utc_timestamp(expected_run_init_utc)
+        if held is None or wanted is None or held != wanted:
+            return None
+        return payload
     # Forward reuse is freshness-gated.  Historical archives remain reusable
     # when callers omit the optional clock/TTL arguments (for example, an
     # offline unit probe), while the production forward path always supplies
@@ -309,6 +368,65 @@ def build_station_scopes(
     return scopes
 
 
+def _run_coverable_scopes(
+    scopes: Sequence[dict[str, Any]],
+    *,
+    event_date: str,
+    run_init: datetime,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split scopes into those this run can still cover and those it cannot.
+
+    Deterministic from the run time and each station's settlement timezone,
+    before any download: the sealed curve may only hold 3-hourly points whose
+    local date is the event date, so a run issued mid-day serves a shrinking
+    window that differs by timezone.  The capture batch is all-or-nothing
+    across its stations, and a same-day 06Z rung once died whole on
+    ``native_family_temperature_curve_point_count_invalid`` because the
+    easternmost stations had two points left -- the stations that structurally
+    cannot seal are excluded here so the ones that can are not held hostage.
+
+    The floor mirrors the archives' own seal: the same-day relief applies
+    when the run's UTC date is the event date, exactly as the collectors
+    choose their ``min_points``.
+    """
+
+    event_day = date.fromisoformat(str(event_date))
+    run_start = run_init.astimezone(timezone.utc)
+    floor = (
+        MIN_SAME_DAY_CURVE_POINTS
+        if run_start.date() == event_day
+        else MIN_CURVE_POINTS
+    )
+    covered: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for scope in scopes:
+        zone = ZoneInfo(str(scope["settlement_timezone"]))
+        day_start = datetime.combine(
+            event_day, dt_time(0), tzinfo=zone
+        ).astimezone(timezone.utc)
+        day_end = datetime.combine(
+            event_day + timedelta(days=1), dt_time(0), tzinfo=zone
+        ).astimezone(timezone.utc)
+        step = run_start
+        while step < day_start:
+            step += timedelta(hours=3)
+        points = 0
+        while step < day_end:
+            points += 1
+            step += timedelta(hours=3)
+        if points >= floor:
+            covered.append(dict(scope))
+        else:
+            skipped.append({
+                "station_id": str(scope["station_id"]),
+                "settlement_timezone": str(scope["settlement_timezone"]),
+                "reason": "run_cannot_cover_station_day",
+                "coverable_point_count": points,
+                "required_point_count": floor,
+            })
+    return covered, skipped
+
+
 def _verify_official_inbox(
     path: Path,
     *,
@@ -378,10 +496,43 @@ def capture_official_native_forward(
         station_ids=station_ids,
         skip_unlisted_stations=skip_unlisted_stations,
     )
+    # Coverability is judged against the caller's cycle.  ECCC and ICON
+    # follow their own per-lead contracts instead: at same-day leads those
+    # resolve 00Z, never later than the caller's cycle, and at d1/d2 their
+    # run precedes every station's local day outright -- so a station the
+    # caller's run can cover is coverable by every family in the batch.
+    caller_run_init = datetime.combine(
+        date.fromisoformat(str(event_date)) - timedelta(days=int(lead_days)),
+        dt_time(hour=gefs_resolve_run_cycle_hour(int(lead_days), run_cycle_hour)),
+        tzinfo=timezone.utc,
+    )
+    scopes, skipped_uncoverable = _run_coverable_scopes(
+        scopes, event_date=event_date, run_init=caller_run_init
+    )
+    if not scopes:
+        raise ContractError("official_native_forward_no_coverable_station")
     capture_at = _utc_now()
     requested_station_ids = [str(scope["station_id"]) for scope in scopes]
     gefs_path = gefs_output.expanduser().resolve()
     ecmwf_path = ecmwf_output.expanduser().resolve()
+
+    # Each family's expected run for this pass, stated up front so reuse can be
+    # decided by run identity.  ECMWF and GEFS follow the caller's cycle; ECCC
+    # and ICON follow their own per-lead contracts and ignore the caller's
+    # cycle, so their expected run is computed from their own mapping.
+    def _expected_run(cycle_hour: int) -> str:
+        return (
+            datetime.combine(
+                date.fromisoformat(str(event_date))
+                - timedelta(days=int(lead_days)),
+                dt_time(hour=int(cycle_hour)),
+                tzinfo=timezone.utc,
+            ).isoformat().replace("+00:00", "Z")
+        )
+
+    caller_cycle_run = _expected_run(
+        gefs_resolve_run_cycle_hour(int(lead_days), run_cycle_hour)
+    )
     gefs = _load_retained_archive(
         gefs_path,
         event_date=event_date,
@@ -389,6 +540,7 @@ def capture_official_native_forward(
         expected_schema="noaa_gefs_official_historical_multistation_members_v2",
         as_of_utc=capture_at,
         max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+        expected_run_init_utc=caller_cycle_run,
     )
     ecmwf = _load_retained_archive(
         ecmwf_path,
@@ -397,6 +549,9 @@ def capture_official_native_forward(
         expected_schema="ecmwf_ifs_open_pf50_historical_multistation_members_v1",
         as_of_utc=capture_at,
         max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+        expected_run_init_utc=_expected_run(
+            ecmwf_resolve_run_cycle_hour(int(lead_days), run_cycle_hour)
+        ),
     )
     # ECCC and ICON are captured actively here, not merely reused.  Leaving
     # them to a "supply an archive if you happen to have one" parameter meant
@@ -415,6 +570,9 @@ def capture_official_native_forward(
             ),
             as_of_utc=capture_at,
             max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+            expected_run_init_utc=_expected_run(
+                ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+            ),
         )
     icon = None
     if icon_output is not None:
@@ -427,6 +585,9 @@ def capture_official_native_forward(
             ),
             as_of_utc=capture_at,
             max_reuse_age_seconds=FORWARD_REUSE_TTL_SECONDS,
+            expected_run_init_utc=_expected_run(
+                ICON_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)]
+            ),
         )
     reused_gefs = gefs is not None
     reused_ecmwf = ecmwf is not None
@@ -475,7 +636,14 @@ def capture_official_native_forward(
                 event_date=event_date,
                 station_scopes=scopes,
                 archive_query_at_utc=capture_at,
-                timeout_seconds=float(timeout_seconds),
+                # ICON does not read byte ranges.  DWD publishes one object per
+                # lead holding all forty members, so every fetch is a whole
+                # ~36MiB stream where the others take sub-megabyte slices, and
+                # the caller's timeout is sized for those slices.  Applying it
+                # here made ICON the family that fails on a merely slow link --
+                # observed as ``ReadTimeout`` on a pass where the other three
+                # reused their retained archives without touching the network.
+                timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
                 lead_days=int(lead_days),
             )
         except Exception as exc:  # noqa: BLE001 - one optional family
@@ -566,6 +734,7 @@ def capture_official_native_forward(
         "event_date": event_date,
         "captured_at_utc": capture_at,
         "station_count": len(scopes),
+        "skipped_uncoverable_stations": skipped_uncoverable,
         "archive_paths": {
             "NOAA_GEFS_PDS_S3": str(gefs_path),
             "ECMWF_OPEN_DATA_S3": str(ecmwf_path),
@@ -615,12 +784,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--run-cycle-hour",
         type=int,
         default=None,
-        choices=[0, 18],
+        choices=[0, 6, 12, 18],
         help=(
-            "Read this cycle instead of the lead's default.  ECCC publishes "
-            "neither 00Z-at-d2 nor 18Z and takes its own cycle for the lead "
-            "regardless; a cycle that does not cover a station's local day is "
-            "still rejected by the coverage check."
+            "Read this cycle instead of the lead's default.  ECMWF and GEFS "
+            "publish all four; ECCC and ICON take their own cycle for the "
+            "lead regardless of this value.  A cycle that does not cover a "
+            "station's local day is still rejected by the coverage check."
         ),
     )
     parser.add_argument("--market-registry", type=Path, default=DEFAULT_REGISTRY)

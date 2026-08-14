@@ -11,8 +11,13 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+
+# Weight-zero tolerance for provisional riders; matches the kernel's EPS.
+EPS = 1e-9
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
+    TAIL_RELIABILITY_METHOD_TAG,
+    apply_tail_reliability,
     bridged_cross_probability,
 )
 from .future_temperature_curve import (
@@ -49,6 +54,33 @@ from .ssot import native_ensemble_foundation_schema_status
 SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v1"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
+# Systems whose members enter cross-ensemble artifacts without being model
+# runs.  They carry an issuance instant, not a run initialisation, so they
+# never vote on the lead-hour bucket -- the bucket belongs to the NWP runs.
+# Cold-start chain for virgin lead buckets (the listing-at-entry ruling,
+# 2026-08-14).  A newly reachable lead group -- h24_48 exists only since the
+# D-2 capture lane opened -- has no trained weights of its own for its first
+# forward-accumulation window.  Waiting starves the listing window the
+# opening stage exists to trade, so serving borrows the nearest *shorter*
+# trained bucket: shorter leads are strictly better-informed, so the borrow
+# overstates nothing directional, only understates spread -- and the listing
+# book it prices against is wider still.  The borrow is named in lineage,
+# the trainer keeps stamping true buckets on every capture, and the exact
+# bucket takes over the moment its own activation exists because it is
+# always first in the chain.
+HOUR_LEAD_BUCKET_FRESHNESS_ORDER = (
+    "h00_12", "h12_24", "h24_48", "h48_plus",
+)
+HOUR_LEAD_FALLBACK_CHAIN = {
+    "h00_12": ("h00_12",),
+    "h12_24": ("h12_24",),
+    "h24_48": ("h24_48", "h12_24"),
+    "h48_plus": ("h48_plus", "h24_48", "h12_24"),
+}
+NON_RUN_LEAD_BYSTANDER_SYSTEMS = frozenset({
+    "OFFICIAL_AIRPORT_TAF_TX",
+    "METAR_PHYSICAL_PATH_TMAX",
+})
 
 
 def _json(value: Any) -> str:
@@ -74,7 +106,14 @@ def _season_bin(day: str) -> str:
 # Leads P0 may be compiled at, freshest first.  A shorter lead supersedes a
 # longer one for the same station-day: the newest run replaces the previous
 # P0 rather than sitting alongside it.
-SUPPORTED_P0_LEAD_BUCKETS = ("d0", "d1", "d2")
+# Hour-lead vocabulary (charter 47): the calendar labels are retired and the
+# packet builder now stamps the lead the run itself states.  The calendar
+# trio stays admissible only while already-captured packets age out of the
+# six-hour inbox window; the compiler re-derives its own training bucket from
+# run initialisations regardless of this label.
+SUPPORTED_P0_LEAD_BUCKETS = (
+    "h00_12", "h12_24", "h24_48", "h48_plus", "d0", "d1", "d2",
+)
 
 
 def _lead_bucket(
@@ -93,14 +132,14 @@ def _lead_bucket(
     return f"d{delta}" if delta >= 0 else f"d_minus_{abs(delta)}"
 
 
-def _hour_lead_bucket(
+def _hour_lead_buckets(
     *,
     event_date: str,
     timezone_name: str,
     run_init_utc_by_system: Mapping[str, Any],
     observed_system_ids: Sequence[str],
-) -> str | None:
-    """The training group this packet's runs belong to, or None.
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """The training groups this packet's runs touch, freshest first.
 
     OOS trains by how far ahead a run was issued rather than by the calendar
     label the collector wrote, because the two disagree badly: the calendar
@@ -125,32 +164,52 @@ def _hour_lead_bucket(
     """
 
     if not run_init_utc_by_system or not observed_system_ids:
-        return None
+        return (), {}
     try:
         day_start = datetime.fromisoformat(event_date).replace(
             tzinfo=ZoneInfo(timezone_name)
         ).astimezone(timezone.utc)
     except (ValueError, TypeError, KeyError):
-        return None
-    buckets: set[str] = set()
+        return (), {}
+    bucket_by_system: dict[str, str] = {}
     for system_id in observed_system_ids:
+        if system_id in NON_RUN_LEAD_BYSTANDER_SYSTEMS:
+            # A revision stream states when it was issued, but it is not a
+            # model run and holds no seat in the lead vocabulary: a TAF is
+            # re-issued every six hours for the same day, so its issuance
+            # lead is structurally one bucket fresher than the runs it rides
+            # with, and letting it vote split every TAF-carrying packet --
+            # the whole forward fleet fell back to the retired calendar
+            # label and found nothing.  Same principle as the no-run-stated
+            # skip below: a bystander must not decide the key.
+            continue
         raw = str(run_init_utc_by_system.get(system_id) or "").strip()
         if not raw:
             continue
         try:
             run_init = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
-            return None
+            return (), {}
         if run_init.tzinfo is None or run_init.utcoffset() is None:
-            return None
-        buckets.add(
-            lead_hour_bucket_for_run(
-                day_start_utc=day_start, run_init=run_init
-            )
+            return (), {}
+        bucket_by_system[system_id] = lead_hour_bucket_for_run(
+            day_start_utc=day_start, run_init=run_init
         )
-    if len(buckets) != 1:
-        return None
-    return next(iter(buckets))
+    # A capture routinely mixes cycles across families -- each family is read
+    # at its own newest published run, so after 06Z lands for ECMWF and GEFS
+    # while ICON and ECCC still serve 00Z, the packet legitimately spans two
+    # adjacent hour groups.  Treating that split as unresolvable fail-closed
+    # the whole daytime fleet (28 scopes at once on 2026-08-14).  The split is
+    # not an ambiguity to guess about: each bucket the packet touches is a
+    # real trained grouping, so the caller tries them freshest-first and the
+    # one with an admissible activation is the key -- named in lineage along
+    # with every system whose own run sits outside it.
+    ordered = tuple(
+        bucket
+        for bucket in HOUR_LEAD_BUCKET_FRESHNESS_ORDER
+        if bucket in set(bucket_by_system.values())
+    )
+    return ordered, bucket_by_system
 
 
 def _activated_lead_bucket(
@@ -498,6 +557,14 @@ def _taf_envelope_witness(
     more center in the min/max below, widening but never narrowing.
     """
 
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='calibration_forward_taf_capture'"
+    ).fetchone() is None:
+        # A deployment without the TAF lane has no TAF evidence at all --
+        # that is absence, not failure, mirroring the truth-exclusions rule
+        # that a missing file means an empty set.
+        return None
     try:
         row = conn.execute(
             "SELECT tx_c, content_sha256, issued_at_utc, revision_sequence, "
@@ -508,8 +575,14 @@ def _taf_envelope_witness(
             "ORDER BY issued_at_utc DESC, revision_sequence DESC LIMIT 1",
             (station_id, event_date, decision_at_utc),
         ).fetchone()
-    except sqlite3.Error:
-        return None
+    except sqlite3.Error as exc:
+        # The TAF is mandatory envelope evidence, not an optional garnish: a
+        # swallowed query error here compiles a narrower envelope that then
+        # forbids the forecaster's bucket for the rest of the root's life.
+        # "No TX issued" is a legitimate None; "could not ask" is not.
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:taf_envelope_witness_query_failed"
+        ) from exc
     if row is None or row[0] is None:
         return None
     return {
@@ -535,14 +608,24 @@ def _station_issues_taf_tx(
     station that does not issue at all.
     """
 
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='calibration_forward_taf_capture'"
+    ).fetchone() is None:
+        return False
     try:
         row = conn.execute(
             "SELECT 1 FROM calibration_forward_taf_capture "
             "WHERE station_id=? AND tx_c IS NOT NULL LIMIT 1",
             (station_id,),
         ).fetchone()
-    except sqlite3.Error:
-        return False
+    except sqlite3.Error as exc:
+        # False here silently reclassifies a TX-issuing aerodrome as one
+        # that never issues, and every downstream TAF obligation evaporates
+        # with it.  An unanswerable question fails closed.
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:taf_station_capability_query_failed"
+        ) from exc
     return row is not None
 
 
@@ -1070,24 +1153,59 @@ def compile_native_ensemble_p0(
     # calendar label after that switch finds nothing -- no calendar-keyed
     # artifact is written any more -- so P0 has to ask under the key the fit
     # used.
-    hour_lead_bucket = _hour_lead_bucket(
+    hour_bucket_candidates, hour_bucket_by_system = _hour_lead_buckets(
         event_date=event_date,
         timezone_name=timezone_name,
         run_init_utc_by_system=official_lineage["run_init_utc_by_system"],
         observed_system_ids=observed_system_ids,
     )
+    hour_lead_bucket = (
+        hour_bucket_candidates[0] if hour_bucket_candidates else None
+    )
+    # The calendar labels d0/d1/d2 are retired vocabulary for the official
+    # native lane: no native artifact is written under them any more and the
+    # historical ones are being backfilled to hour buckets, so falling back
+    # is asking for weights under a key that by decree holds nothing.  The
+    # republisher fallback is the one legitimate exception -- an aggregator
+    # packet states no native run initialisation at all, its cycle is
+    # AGGREGATOR_UNKNOWN_NATIVE_CYCLE, and its separately governed artifacts
+    # are calendar-keyed by construction.
+    if hour_lead_bucket is None and official_snapshot:
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_lead_hour_bucket_unresolved"
+        )
+    if hour_bucket_candidates:
+        # Every bucket the packet touches, freshest first, each followed by
+        # its cold-start chain.  A split packet's second bucket is a real
+        # trained grouping, not a guess; a virgin bucket's chain borrows the
+        # nearest shorter trained one.  First admissible activation wins.
+        seen: list[str] = []
+        for bucket in hour_bucket_candidates:
+            for candidate in HOUR_LEAD_FALLBACK_CHAIN.get(
+                bucket, (bucket,)
+            ):
+                if candidate not in seen:
+                    seen.append(candidate)
+        lead_candidates: tuple[str, ...] = tuple(seen)
+    else:
+        lead_candidates = (lead_bucket,)
     training_lead_bucket = _activated_lead_bucket(
         conn,
         station_id=station_id,
         season_bin=season_bin,
         decision_at_utc=decision_at_utc,
         observed_system_ids=observed_system_ids,
-        candidates=(
-            (hour_lead_bucket, lead_bucket)
-            if hour_lead_bucket is not None
-            else (lead_bucket,)
-        ),
+        candidates=lead_candidates,
     )
+    provisional_lead_fallback = bool(
+        hour_bucket_candidates
+        and training_lead_bucket not in hour_bucket_candidates
+    )
+    hour_bucket_split_riders = sorted(
+        system_id
+        for system_id, bucket in hour_bucket_by_system.items()
+        if bucket != training_lead_bucket
+    ) if hour_bucket_candidates else []
     activation_sql = (
         "SELECT a.activation_id,a.artifact_id,a.content_sha256,"
         "a.generation,a.valid_from_utc,"
@@ -1159,21 +1277,36 @@ def compile_native_ensemble_p0(
         selected_ids = sorted(
             str(value) for value in json.loads(str(row[6]))
         )
-        selected_cycle_mapping = {
+        packet_cycle_mapping = {
             system_id: str(
                 official_lineage["run_cycle_by_system"].get(system_id)
                 or ""
             )
             for system_id in selected_ids
         }
-        selected_cycle_mapping_json = _json(selected_cycle_mapping)
-        selected_cycle_mapping_sha = content_sha256(
-            selected_cycle_mapping
-        )
-        selected_run_cycles = set(selected_cycle_mapping.values())
-        selected_run_cycle = (
-            next(iter(selected_run_cycles))
-            if len(selected_run_cycles) == 1
+        # The activation's identity is the pairing it was fitted and
+        # evaluated under -- its own recorded cycle map -- not whatever runs
+        # today's capture happens to carry.  Requiring the packet's cycles to
+        # equal the fitted map re-imposed same-cycle capture on a lane that
+        # reads each family at its own newest published run, so every daytime
+        # packet (ECMWF/GEFS on 06Z beside ICON/ECCC on 00Z) failed closed.
+        # The fitted identity keeps guarding the certificate below; a system
+        # whose packet run differs from the fitted pairing serves as a named
+        # cycle rider, and activations whose fitted map matches the packet
+        # outrank those that need riders.
+        try:
+            fitted_cycle_mapping = {
+                str(key): str(value)
+                for key, value in json.loads(str(row[9] or "{}")).items()
+            }
+        except ValueError:
+            continue
+        fitted_cycle_mapping_json = _json(fitted_cycle_mapping)
+        fitted_cycle_mapping_sha = content_sha256(fitted_cycle_mapping)
+        fitted_run_cycles = set(fitted_cycle_mapping.values())
+        fitted_run_cycle = (
+            next(iter(fitted_run_cycles))
+            if len(fitted_run_cycles) == 1
             else MIXED_NATIVE_CYCLES
         )
         if (
@@ -1181,14 +1314,22 @@ def compile_native_ensemble_p0(
             or len(set(selected_ids)) != len(selected_ids)
             or str(row[5]) != content_sha256(selected_ids)
             or not set(selected_ids).issubset(observed_set)
-            or not all(selected_cycle_mapping.values())
-            or str(row[8] or "") != selected_run_cycle
-            or str(row[9] or "") != selected_cycle_mapping_json
-            or str(row[10] or "") != selected_cycle_mapping_sha
-            or str(row[11] or "") != selected_cycle_mapping_json
-            or str(row[12] or "") != selected_cycle_mapping_sha
+            or not all(packet_cycle_mapping.values())
+            or sorted(fitted_cycle_mapping) != selected_ids
+            or not all(fitted_cycle_mapping.values())
+            or str(row[8] or "") != fitted_run_cycle
+            or str(row[9] or "") != fitted_cycle_mapping_json
+            or str(row[10] or "") != fitted_cycle_mapping_sha
+            or str(row[11] or "") != fitted_cycle_mapping_json
+            or str(row[12] or "") != fitted_cycle_mapping_sha
         ):
             continue
+        activation_cycle_riders = sorted(
+            system_id
+            for system_id in selected_ids
+            if packet_cycle_mapping[system_id]
+            != fitted_cycle_mapping[system_id]
+        )
         evaluation_rows = conn.execute(
             "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
             "FROM calibration_cross_native_ensemble_oos_evaluation "
@@ -1203,9 +1344,9 @@ def compile_native_ensemble_p0(
                 station_id,
                 season_bin,
                 training_lead_bucket,
-                selected_run_cycle,
-                selected_cycle_mapping_json,
-                selected_cycle_mapping_sha,
+                fitted_run_cycle,
+                fitted_cycle_mapping_json,
+                fitted_cycle_mapping_sha,
                 settlement_definition,
                 _json(selected_ids),
                 str(row[5]),
@@ -1226,11 +1367,14 @@ def compile_native_ensemble_p0(
         ):
             rejected_or_unproven_activation_seen = True
             continue
-        compatible_activations.append((row, selected_ids))
+        compatible_activations.append(
+            (row, selected_ids, activation_cycle_riders)
+        )
     compatible_activations.sort(
         key=lambda item: (
             set(item[1]) == observed_set,
             len(item[1]),
+            -len(item[2]),
             int(item[0][3]),
             str(item[0][0]),
         ),
@@ -1262,7 +1406,9 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:"
             "native_cross_ensemble_activation_not_exact"
         )
-    selected_activation, system_ids = activations[0]
+    selected_activation, system_ids, activation_cycle_riders = (
+        activations[0]
+    )
     systems = {
         system_id: observed_systems[system_id]
         for system_id in system_ids
@@ -1364,16 +1510,14 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:native_cross_ensemble_artifact_missing"
         )
     selected_system_ids = json.loads(str(artifact[0]))
-    expected_cycle_mapping = {
-        system_id: str(
-            official_lineage["run_cycle_by_system"][system_id]
-        )
-        for system_id in system_ids
-    }
-    expected_cycle_mapping_json = _json(expected_cycle_mapping)
-    expected_cycle_mapping_sha = content_sha256(
-        expected_cycle_mapping
-    )
+    # The identity to hold the artifact, evaluation and selection evidence to
+    # is the pairing the activation was fitted under -- its own recorded
+    # cycle map -- not the runs today's capture carries.  Rebuilding the
+    # expectation from the packet re-imposed same-cycle capture here after
+    # the activation match had already tolerated named cycle riders, so the
+    # same daytime split that passed one gate died at the next.
+    expected_cycle_mapping_json = str(selected_activation[11] or "")
+    expected_cycle_mapping_sha = str(selected_activation[12] or "")
     if (
         selected_system_ids != system_ids
         or int(artifact[1]) != len(system_ids)
@@ -1457,7 +1601,23 @@ def compile_native_ensemble_p0(
         str(key): float(value)
         for key, value in json.loads(str(selection[2])).items()
     }
-    if system_weights.keys() != systems.keys():
+    # A provisional rider is selected into the combination to accumulate a
+    # forward record but certifies at zero weight until its own OOS window
+    # fills (the ruling: enter P0 now, samples keep accruing, OOS follows).
+    # It therefore contributes nothing to the served distribution and is
+    # exempt from the per-system calibration demanded of weighted members.
+    # Every *weighted* member must still be among the packet's systems.
+    provisional_rider_ids = {
+        system_id
+        for system_id in systems
+        if float(system_weights.get(system_id) or 0.0) <= EPS
+    }
+    weighted_ids = set(systems) - provisional_rider_ids
+    if not set(system_weights).issubset(systems.keys()):
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:native_selection_mask_mismatch"
+        )
+    if len(weighted_ids) < 2:
         raise ContractError(
             "FAIL_CLOSED_NO_P0:native_selection_mask_mismatch"
         )
@@ -1468,7 +1628,12 @@ def compile_native_ensemble_p0(
     calibrated_system_centers_c: dict[str, float] = {}
     system_bias_c: dict[str, float] = {}
     family_by_system: dict[str, str] = {}
+    provisional_uncalibrated_system_ids: list[str] = []
     for system_id in system_ids:
+        if system_id in provisional_rider_ids:
+            # Zero certified weight: no calibration demanded, no probability
+            # contributed; the member rides for the forward record only.
+            continue
         system_config = conn.execute(
             (
                 "SELECT independence_family_id,expected_member_count "
@@ -1554,6 +1719,48 @@ def compile_native_ensemble_p0(
                 == int(system_activation[1][3])
             )
         ):
+            if official_snapshot:
+                # Provisional member: certified into the combination before
+                # its own per-system calibration exists (the ruling: enter
+                # P0 now at the certified weight, keep accumulating samples,
+                # calibration follows when the OOS window fills).  It serves
+                # its raw member distribution through the same kernel with
+                # identity parameters -- no bias, no spread change -- and is
+                # named in the lineage so nothing mistakes raw for
+                # calibrated.  Republisher packets keep the hard failure:
+                # their members only enter with a strict proof.
+                raw_values = [
+                    float(member["raw_tmax_c"]) for member in members
+                ]
+                # reliability 1.0 zeroes the climate blend term, but the
+                # kernel still demands sample shape; the members themselves
+                # satisfy it without contributing anything.
+                identity_reliability = {
+                    "reliability_weight": 1.0,
+                    "climate_samples_c": raw_values,
+                }
+                system_probabilities[system_id] = (
+                    _calibrated_system_probability(
+                        values=raw_values,
+                        intervals=intervals_raw,
+                        bias_parameters={"bias_c": 0.0},
+                        spread_parameters={"spread_factor": 1.0},
+                        reliability_parameters=identity_reliability,
+                    )
+                )
+                raw_center = sum(raw_values) / len(raw_values)
+                calibrated_system_centers_c[system_id] = raw_center
+                system_bias_c[system_id] = 0.0
+                provisional_marker = content_sha256({
+                    "provisional_uncalibrated_system": system_id,
+                    "station_id": station_id,
+                    "lead_bucket": training_lead_bucket,
+                    "run_cycle": system_run_cycle,
+                })
+                system_artifact_shas[system_id] = provisional_marker
+                system_activation_shas[system_id] = provisional_marker
+                provisional_uncalibrated_system_ids.append(system_id)
+                continue
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:"
                 "native_system_activation_not_exact"
@@ -1708,6 +1915,15 @@ def compile_native_ensemble_p0(
             bucket: value / total
             for bucket, value in probability.items()
         }
+    # The tail-reliability lift is keyed on the artifact's combination-method
+    # tag exactly like the bridge: it is served only when the holdout that
+    # admitted this artifact was scored with it, so the live math never
+    # diverges from the gated math while pre-lift artifacts roll off.
+    tail_reliability_receipt = None
+    if TAIL_RELIABILITY_METHOD_TAG in artifact_combination_method:
+        probability, tail_reliability_receipt = apply_tail_reliability(
+            probability
+        )
     # The basket anchor is where the models actually point, not whichever
     # bucket holds the most mass.  An open-ended edge bucket ("35°C or higher")
     # covers an unbounded interval, so it accumulates the entire upper tail of
@@ -1838,6 +2054,9 @@ def compile_native_ensemble_p0(
         "system_probabilities": system_probabilities,
         "calibrated_system_centers_c": calibrated_system_centers_c,
         "system_weights": system_weights,
+        "provisional_uncalibrated_system_ids": sorted(
+            provisional_uncalibrated_system_ids
+        ),
         "family_weights": weight_receipt["family_weights"],
         "observed_ensemble_system_ids": observed_system_ids,
         "excluded_observed_system_ids": excluded_observed_system_ids,
@@ -2086,6 +2305,15 @@ def compile_native_ensemble_p0(
         )),
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
+        "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
+        "training_lead_bucket": training_lead_bucket,
+        "provisional_lead_fallback_json": _json(
+            {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
+            if provisional_lead_fallback else None
+        ),
+        "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
+        "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
+        "activation_cycle_riders_json": _json(activation_cycle_riders),
         "family_weight_caps_json": _json(family_caps),
         "family_weights_json": _json(
             weight_receipt["family_weights"]
@@ -2180,6 +2408,11 @@ def compile_native_ensemble_p0(
         **({"consensus_bridge_json": json.dumps(
             consensus_bridge_receipt, sort_keys=True
         )} if consensus_bridge_receipt is not None else {}),
+        # What the tail-reliability lift did, or absent when the serving
+        # artifact predates it and its holdout scored the unlifted blend.
+        **({"tail_reliability_json": json.dumps(
+            tail_reliability_receipt, sort_keys=True
+        )} if tail_reliability_receipt is not None else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
@@ -2287,6 +2520,15 @@ def compile_native_ensemble_p0(
         )),
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
+        "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
+        "training_lead_bucket": training_lead_bucket,
+        "provisional_lead_fallback_json": _json(
+            {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
+            if provisional_lead_fallback else None
+        ),
+        "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
+        "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
+        "activation_cycle_riders_json": _json(activation_cycle_riders),
         "family_weight_caps_json": _json(family_caps),
         "system_member_set_shas_json": _json({
             system_id: str(

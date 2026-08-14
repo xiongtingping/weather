@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
+    TAIL_RELIABILITY_METHOD_TAG,
+    apply_tail_reliability,
     bridged_cross_probability,
 )
 from .dwd_icon_eps_archive import (
@@ -133,6 +135,15 @@ DEFAULT_VALID_DAYS = 30
 # outright.  Leaving this empty restores the symmetric 0.75 diversity bound and
 # lets skill decide.
 DEFAULT_FAMILY_WEIGHT_CAPS: dict[str, float] = {}
+# The one family allowed to take a cross-ensemble seat without an exact shared
+# holdout.  ICON is the only family whose archive cannot be backfilled -- DWD
+# publishes one run and keeps it for hours -- so a gap in its history is
+# permanent and the cohort it needs may never assemble.  Everything else earns
+# its seat on the holdout; see ``_provisional_family_share_admission`` for what
+# the seat does and does not certify.  Empty disables the exception entirely.
+PROVISIONAL_CROSS_ENSEMBLE_SYSTEM_ID = "DWD_ICON_GLOBAL_EPS"
+
+
 def _lead_contracts(
     *,
     supported_lead_days,
@@ -762,6 +773,72 @@ def _cycle_mapping_for_rows(
     return mapping, mapping_sha, run_cycle, run_cycle_scope
 
 
+def _provisional_family_share_admission(
+    *,
+    system_rows: Mapping[str, Sequence[tuple[str, Mapping[str, Any]]]],
+    weights: Mapping[str, float],
+    family_by_system: Mapping[str, str],
+    systems: Mapping[str, Mapping[str, Any]],
+    selected_ready_rows: Sequence[tuple[str, str, Mapping[str, Any]]],
+) -> tuple[
+    dict[str, float],
+    dict[str, str],
+    list[tuple[str, str, Mapping[str, Any]]],
+    list[str],
+] | None:
+    """Seat one un-scored family at an equal family share, or return None.
+
+    The weighting machinery is holdout-derived: ``_select_minimum_crps_subset``
+    ranks systems by their predictions over the exact shared cohort, so a
+    system without that cohort has no score and therefore no weight.  This is
+    the deliberate exception for the one family that cannot wait for one --
+    ICON's archive cannot be backfilled, so a gap in it is permanent and the
+    cohort it would need may never assemble.
+
+    The seat is an equal *family* share.  The already-scored systems keep the
+    relative weighting they earned on the holdout and are scaled into the
+    remainder: discarding it would throw away the only externally validated
+    information in the blend to make room for a system that has none.
+    """
+
+    system_id = PROVISIONAL_CROSS_ENSEMBLE_SYSTEM_ID
+    if not system_id or system_id in weights:
+        return None
+    scopes = system_rows.get(system_id) or ()
+    evaluation = next(
+        (row[1] for row in scopes if isinstance(row[1], Mapping)), None
+    )
+    run_cycle = next((str(row[0]) for row in scopes), "")
+    if evaluation is None or run_cycle not in VALID_NATIVE_RUN_CYCLES:
+        return None
+    system = systems.get(system_id)
+    if not isinstance(system, Mapping):
+        return None
+    family = str(system.get("independence_family_id") or "").strip()
+    seated_families = set(family_by_system.values())
+    # Only a family that is not already seated earns a provisional share.  A
+    # second system inside a seated family adds no independence, which is the
+    # only thing an unscored seat can be justified by.
+    if not family or family in seated_families:
+        return None
+    share = 1.0 / float(len(seated_families) + 1)
+    remainder = 1.0 - share
+    total = sum(float(value) for value in weights.values())
+    if total <= 0.0:
+        return None
+    admitted = {
+        seated: float(value) / total * remainder
+        for seated, value in weights.items()
+    }
+    admitted[system_id] = share
+    return (
+        admitted,
+        {**family_by_system, system_id: family},
+        list(selected_ready_rows) + [(system_id, run_cycle, evaluation)],
+        [system_id],
+    )
+
+
 def _candidate_cycle_mapping(candidate: Mapping[str, Any]) -> tuple[
     dict[str, str], str, str, str
 ]:
@@ -927,6 +1004,7 @@ def _select_minimum_crps_subset(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
+            probability, _tail_receipt = apply_tail_reliability(probability)
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
             )
@@ -2294,117 +2372,6 @@ def _select_exact_shared_holdout_cohort(
     )[0]
 
 
-# P0 resolves its parameters along four dimensions: season, station, system
-# and lead.  Bias uses all four; weights use the same key but with the station
-# slot set to this sentinel until that station has enough training days of its
-# own, because a per-station weight fit is noise-dominated at small n.
-POOLED_STATION_SENTINEL = "__POOLED__"
-# Below this many training days a station's own weights are not trusted.
-#
-# Measured on 45 stations x 33 days: per-station weights moved by a median of
-# 0.148 (max 0.459) between the first and second half of the same period --
-# LIMC's ECMWF share fell 0.45 -> 0.22 while NOAA rose 0.25 -> 0.71 -- whereas
-# pooled weights moved 0.018.  At that sample size the station-to-station
-# spread is estimation noise, and it buys only brier -0.005 out of sample
-# against pooled weights.  Per-station bias, by contrast, buys brier -0.068.
-#
-# The dimension is kept rather than removed: real climate differences between,
-# say, a tropical maritime station and a temperate continental one are
-# plausible, they are simply not measurable in a month.  The threshold lets a
-# station graduate to its own weights once it can support the fit.
-MIN_STATION_WEIGHT_TRAIN_DAYS = 200
-
-
-def pooled_train_rmse_by_system(
-    conn: sqlite3.Connection,
-    *,
-    station_ids: Sequence[str],
-    as_of_utc: str,
-    min_train_days: int = DEFAULT_MIN_TRAIN_DAYS,
-    min_holdout_days: int = DEFAULT_MIN_HOLDOUT_DAYS,
-    max_event_date: str | None = None,
-) -> dict[tuple[str, str, str, str], float]:
-    """Training RMSE keyed by (season, station slot, system, lead).
-
-    Each station is evaluated on its own split exactly as before; only the
-    resulting residuals are combined.  Pooling the errors rather than averaging
-    the per-station RMSEs keeps stations with more training days weighted
-    accordingly, and keeps a station with an unusually hard climate from
-    counting the same as one with an easy one.
-
-    Bias is deliberately not pooled -- it is where the per-station signal
-    actually lives.
-    """
-
-    # Keyed by (season_bin, lead_bucket, system_id).  Season and lead are kept
-    # as dimensions even though weights pool across stations: a model's
-    # relative skill genuinely differs between summer and winter, and between a
-    # three-day-old run and a same-day one, whereas it does not differ enough
-    # between stations to be worth the sample cost.
-    squared: dict[tuple[str, str, str, str], float] = defaultdict(float)
-    counts: dict[tuple[str, str, str, str], int] = defaultdict(int)
-    for station in station_ids:
-        try:
-            report = build_native_ensemble_oos(
-                conn,
-                station_id=str(station),
-                as_of_utc=as_of_utc,
-                min_train_days=min_train_days,
-                min_holdout_days=min_holdout_days,
-                max_event_date=max_event_date,
-            )
-        except ContractError:
-            # One station failing its own OOS contract must not deny every
-            # other station a pooled fit; it simply contributes nothing.  Only
-            # contract failures are absorbed: a programming error or a broken
-            # database would otherwise be laundered into weights fitted on
-            # whatever subset happened to survive, with nothing in the result
-            # to say so.
-            continue
-        for candidate in report.get("cross_candidates") or []:
-            season_bin = str(candidate.get("season_bin") or "")
-            lead_bucket = str(candidate.get("lead_bucket") or "")
-            for system_id, evaluation in (
-                candidate.get("system_evaluations") or {}
-            ).items():
-                parameters = evaluation.get("parameters") or {}
-                try:
-                    rmse = float(parameters["train_rmse_c"])
-                    # ``train_n`` sits on the evaluation, not in parameters.
-                    n = int(evaluation.get("train_n") or 0)
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if n <= 0:
-                    continue
-                # Accumulate both slots.  The pooled entry always exists;
-                # the per-station entry is emitted too, so a station that has
-                # graduated can be served from the same table without a second
-                # pass.
-                for station_slot in (
-                    POOLED_STATION_SENTINEL,
-                    str(station),
-                ):
-                    key = (
-                        season_bin,
-                        station_slot,
-                        str(system_id),
-                        lead_bucket,
-                    )
-                    squared[key] += rmse * rmse * n
-                    counts[key] += n
-    return {
-        key: (squared[key] / counts[key]) ** 0.5
-        for key in sorted(counts)
-        if counts[key] > 0
-        # A per-station entry is only published once it clears the threshold,
-        # so a caller cannot accidentally read an under-sampled fit.
-        and (
-            key[1] == POOLED_STATION_SENTINEL
-            or counts[key] >= MIN_STATION_WEIGHT_TRAIN_DAYS
-        )
-    }
-
-
 def build_native_ensemble_oos(
     conn: sqlite3.Connection,
     *,
@@ -2415,13 +2382,11 @@ def build_native_ensemble_oos(
     family_weight_caps: Mapping[str, float] | None = None,
     system_mask: Sequence[str] | None = None,
     max_event_date: str | None = None,
-    pooled_train_rmse: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Build candidate artifacts; perform no writes.
 
-    ``pooled_train_rmse`` supplies cross-station training RMSE per system so
-    weights can be fitted on all stations at once while bias stays per station.
-    Omitting it reproduces the previous per-station behaviour exactly.
+    Bias and weights are both fitted from this station's own record; weights
+    must never borrow other stations' errors (user ruling, 2026-08-14).
     """
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
@@ -2645,33 +2610,15 @@ def build_native_ensemble_oos(
             raise ContractError(
                 "native_ensemble_oos_cross_holdout_window_invalid"
             )
-        # Weights come from pooled cross-station RMSE when it is supplied,
-        # and fall back to this station's own train RMSE when it is not.
-        #
-        # Measured on 45 stations x 33 days: fitting weights per station buys
-        # brier -0.005 / crps -0.008 over pooled weights, while per-station
-        # bias correction buys brier -0.068 / crps -0.203.  Nearly all the
-        # value is in the bias, and per-station weights cost an order of
-        # magnitude in sample size -- 33 station-days instead of 1320.
-        #
-        # That matters beyond tidiness: once P0 recomputes on every model run,
-        # a per-station-per-lead weight fit would have almost no samples left,
-        # whereas pooled weights keep theirs.
-        # Look up per-station first, then pooled, then this station's own fit.
-        # The per-station entry only exists once it cleared the sample-size
-        # threshold, so the order encodes the policy without a second check.
-        def _train_rmse(system_id: str, evaluation: Mapping[str, Any]) -> float:
-            table = pooled_train_rmse or {}
-            for station_slot in (station, POOLED_STATION_SENTINEL):
-                value = table.get(
-                    (season_bin, station_slot, system_id, lead_bucket)
-                )
-                if value is not None:
-                    return float(value)
-            return float(evaluation["parameters"]["train_rmse_c"])
-
+        # Weights are fitted from this station's own train RMSE, never a
+        # cross-station pool (user ruling, 2026-08-14).  A pooled lane was
+        # built for this lookup and never wired to a caller; it has been
+        # removed so the ruling is structural rather than an accident of
+        # which arguments the callers pass.  Thin per-station samples are
+        # priced by the maturity ramp, not by borrowing other stations'
+        # errors.
         train_rmse = {
-            system_id: _train_rmse(system_id, evaluation)
+            system_id: float(evaluation["parameters"]["train_rmse_c"])
             for system_id, evaluation in rows
         }
         weights = _bounded_family_weights(
@@ -2765,6 +2712,9 @@ def build_native_ensemble_oos(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
+            # Serving applies the tail-reliability transform under the same
+            # tag, so the gate must score exactly what will be served.
+            probability, _tail_receipt = apply_tail_reliability(probability)
             actual = float(
                 predictions_by_system[
                     next(iter(weights))
@@ -2809,6 +2759,51 @@ def build_native_ensemble_oos(
             row["metrics"] for row in cross_predictions
         ])
         climate_metrics = _mean_metrics(baseline_metrics)
+        # Provisional admission, deliberately after the holdout has been
+        # scored.  The metrics above certify the blend of systems that have an
+        # exact shared holdout; a provisional system has none by definition, so
+        # it cannot be scored and must not silently enter the numbers that
+        # certify the gate.  It enters the *served* weights only, and both sets
+        # are persisted so the divergence is visible rather than implied.
+        #
+        # This is a standing exception for one family, not a general relaxation.
+        # ICON is the only family that cannot be backfilled -- DWD keeps one
+        # run -- so a gap in its history is permanent, and waiting for it to
+        # accumulate an exact shared holdout costs more than the other three
+        # families would.  Every other system still earns its seat.
+        certified_weights = dict(weights)
+        provisional_system_ids: list[str] = []
+        provisional = _provisional_family_share_admission(
+            system_rows=system_rows,
+            weights=weights,
+            family_by_system=family_by_system,
+            systems=systems,
+            selected_ready_rows=selected_ready_rows,
+        )
+        if provisional is not None:
+            (
+                weights,
+                family_by_system,
+                selected_ready_rows,
+                provisional_system_ids,
+            ) = provisional
+            # ``rows`` stays the certified cohort deliberately.  Everything
+            # derived from it -- the train window, the residuals, the holdout
+            # metrics -- describes systems that were actually trained and
+            # scored, and a provisional seat has none of those.  Folding it in
+            # here would not just crash on the missing fields; it would let a
+            # seat with no train window widen the window the artifact claims.
+            #
+            # Reuse the same identity resolver the validated cohort used: a
+            # provisional seat changes what is blended, so the activation's
+            # cycle identity has to follow it -- including picking up the
+            # MIXED label if the provisional family runs a different cycle.
+            (
+                cycle_by_system,
+                cycle_mapping_sha,
+                run_cycle,
+                run_cycle_scope,
+            ) = _cycle_mapping_for_rows(selected_ready_rows)
         selected_system_ids = sorted(weights)
         family_caps_exact = {
             family: float(configured_caps.get(family, 0.75))
@@ -2820,7 +2815,15 @@ def build_native_ensemble_oos(
             family_weight_caps=family_caps_exact,
         )
         residuals: dict[str, dict[str, float]] = {}
-        for system_id, _evaluation in rows:
+        # Over every blended system, not just the certified ones: the
+        # correlation matrix below is keyed on ``selected_system_ids``, and a
+        # provisional seat is in that list.  Its own cases are read the same
+        # way; where it has none inside the certified train window the series
+        # is empty and ``_correlation`` reports 0.0, exactly as it does for any
+        # other pair too short to measure.  This is evidence, not a weight --
+        # nothing here feeds the blend.
+        certified_train_end = rows[0][1]["train_end_date"]
+        for system_id in selected_system_ids:
             scope = (
                 system_id,
                 season_bin,
@@ -2833,9 +2836,8 @@ def build_native_ensemble_oos(
                     - sum(float(value) for value in case["values"])
                     / len(case["values"])
                 )
-                for case in cases_by_scope[scope]
-                if case["event_date"]
-                <= rows[0][1]["train_end_date"]
+                for case in cases_by_scope.get(scope, ())
+                if case["event_date"] <= certified_train_end
             }
         correlations: dict[str, dict[str, float]] = {}
         for left in selected_system_ids:
@@ -2953,7 +2955,18 @@ def build_native_ensemble_oos(
                     if str(evaluation["transport_provider_id"]) == "OPEN_METEO"
                     else "official_native_archive"
                 )
-                for system_id, evaluation in rows
+                for system_id, evaluation in (
+                    # A provisional seat is absent from ``rows`` -- it has no
+                    # certified evaluation -- but it is in ``system_weights``,
+                    # so a role map built only from ``rows`` would name a
+                    # blended system nowhere in it.
+                    list(rows)
+                    + [
+                        (system_id, evaluation)
+                        for system_id, _cycle, evaluation in selected_ready_rows
+                        if system_id in provisional_system_ids
+                    ]
+                )
                 if system_id in weights
             },
             "independence_family_ids": sorted(
@@ -2972,6 +2985,15 @@ def build_native_ensemble_oos(
                 native_ensemble_family_set_hash(
                     list(family_by_system.values())
                 ),
+            # ``system_weights`` is what P0 blends.  When a provisional seat is
+            # present these are NOT the weights the metrics above were computed
+            # from, and that has to be stated rather than inferred: the gate
+            # certified ``certified_system_weights`` on the shared holdout, and
+            # the systems named here as provisional were never scored on it.
+            # A reader comparing the two sets can see exactly how much of the
+            # served blend the gate actually covers.
+            "provisional_system_ids": sorted(provisional_system_ids),
+            "certified_system_weights": certified_weights,
             "system_weights": weights,
             "family_weights": weight_receipt["family_weights"],
             "family_weight_caps": family_caps_exact,
@@ -3797,6 +3819,10 @@ def persist_native_ensemble_oos(
                     # which is what keeps the served math identical to the
                     # gated math while pre-bridge artifacts roll off.
                     + "::" + CONSENSUS_BRIDGE_METHOD_TAG
+                    # Same admission pattern as the bridge: the holdout above
+                    # scored the tail-lifted blend, so the artifact says so
+                    # and P0 keys the serving transform on this tag.
+                    + "::" + TAIL_RELIABILITY_METHOD_TAG
                 ),
                 "family_weight_caps_json": _json(
                     candidate["family_weight_caps"]

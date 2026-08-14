@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -591,7 +592,7 @@ def test_mixed_native_cycles_missing_system_lineage_fail_closed() -> None:
         )
 
 
-def test_mixed_native_cycles_without_one_system_oos_activation_fail_closed() -> None:
+def test_mixed_native_cycles_serve_with_named_riders() -> None:
     conn = sqlite3.connect(":memory:")
     _install_mixed_cycle_calibrations(conn)
     packet = _mixed_packet()
@@ -620,15 +621,43 @@ def test_mixed_native_cycles_without_one_system_oos_activation_fail_closed() -> 
         if key != "snapshot_content_sha256"
     }
     broken["snapshot_content_sha256"] = content_sha256(identity)
-    with pytest.raises(
-        ContractError,
-        match="native_cross_ensemble_activation_not_exact",
-    ):
-        compile_native_ensemble_p0(
-            conn,
-            forward_packet=broken,
-            decision_at_utc="2026-07-01T13:00:00Z",
-        )
+    # A split packet is no longer unresolvable on its face: captures read
+    # each family at its own newest published run, so adjacent-bucket splits
+    # are the ordinary daytime state.  Every bucket the packet touches is
+    # tried freshest-first, the certified activation keeps its fitted
+    # identity, and the shifted system serves as a named rider -- once
+    # through the split (its run sits outside the served bucket), once
+    # through the cycle map (its run differs from the fitted pairing), and
+    # once provisionally (it lacks its own per-system calibration).  The
+    # old fixture asserted fail-closed here; that premise was retired by
+    # the entry doctrine, and what the lineage must now do is name every
+    # borrow instead of refusing the packet.
+    out = compile_native_ensemble_p0(
+        conn,
+        forward_packet=broken,
+        decision_at_utc="2026-07-01T13:00:00Z",
+    )
+
+    def _lineage_value(obj: object, key: str) -> object:
+        if isinstance(obj, Mapping):
+            if key in obj:
+                return obj[key]
+            for value in obj.values():
+                found = _lineage_value(value, key)
+                if found is not None:
+                    return found
+        return None
+
+    assert _lineage_value(out, "training_lead_bucket") == "h24_48"
+    assert json.loads(
+        str(_lineage_value(out, "activation_cycle_riders_json"))
+    ) == ["ECMWF_AIFS_TEST"]
+    assert json.loads(
+        str(_lineage_value(out, "hour_bucket_split_riders_json"))
+    ) == ["ECMWF_AIFS_TEST"]
+    assert json.loads(
+        str(_lineage_value(out, "provisional_uncalibrated_system_ids_json"))
+    ) == ["ECMWF_AIFS_TEST"]
 
 
 def test_official_native_p0_rejects_open_meteo_transport_forgery() -> None:

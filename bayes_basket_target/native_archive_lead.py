@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError
 
@@ -134,21 +135,51 @@ def capture_lead_and_run(
     describes the object that was downloaded.
     """
 
-    lead_days = capture_lead_days(
-        capture,
-        supported_lead_days=supported_lead_days,
-        default_lead_days=default_lead_days,
-        error_code=error_code,
-    )
     run_init = capture_run_init(capture, error_code=error_code)
-    if (
-        date.fromisoformat(str(capture["event_date"]))
-        - run_init.date()
-    ).days != lead_days:
-        # The stated lead and the stated run disagree.  Trusting either one
-        # would be a guess about which the members came from.
+    # The calendar lead is derived from the run, which every capture states;
+    # the label no longer encodes it.  Captures now stamp the hour bucket --
+    # per station, measured to its own local day -- so parsing the label for a
+    # day count reads vocabulary, not evidence.
+    lead_days = (
+        date.fromisoformat(str(capture["event_date"])) - run_init.date()
+    ).days
+    if lead_days not in supported_lead_days:
         raise ContractError(error_code)
-    return lead_days, f"d{lead_days}", run_init, run_cycle_label(run_init)
+    raw = str(capture.get("archive_lead_bucket") or "").strip()
+    hour_bucket_names = {
+        name for name, _upper in LEAD_HOUR_BUCKETS
+    } | {LONGEST_LEAD_HOUR_BUCKET}
+    if raw.lower().startswith("d") and raw[1:].isdigit():
+        # Calendar-era capture: its stated label must agree with its stated
+        # run.  Trusting either one alone would be a guess about which the
+        # members came from.
+        if int(raw[1:]) != lead_days:
+            raise ContractError(error_code)
+        bucket = f"d{lead_days}"
+    elif raw in hour_bucket_names:
+        # Hour-era capture: the same agreement, in the new vocabulary.  The
+        # stated bucket must be the one this capture's own run and timezone
+        # derive to; a label that disagrees with the object is unusable
+        # evidence in either vocabulary.
+        derived = capture_lead_bucket(
+            event_date=str(capture["event_date"]),
+            settlement_timezone=str(
+                capture.get("settlement_timezone") or ""
+            ),
+            run_init=run_init,
+        )
+        if raw != derived:
+            raise ContractError(error_code)
+        bucket = raw
+    elif not raw:
+        # Pre-label archives: the run is the only statement, and it must match
+        # the collector's default lead, exactly as before.
+        if lead_days != int(default_lead_days):
+            raise ContractError(error_code)
+        bucket = f"d{lead_days}"
+    else:
+        raise ContractError(error_code)
+    return lead_days, bucket, run_init, run_cycle_label(run_init)
 
 
 # Training groups are keyed by how far ahead a run was issued, not by the
@@ -228,9 +259,46 @@ def lead_hour_bucket_for_run(
     )
 
 
+def capture_lead_bucket(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init: datetime,
+) -> str:
+    """The lead bucket one station-day capture is stamped with.
+
+    This is the hour bucket, not the calendar ``d`` label.  The calendar label
+    is a property of which UTC date the run fell on; skill is a property of how
+    far ahead of the station's own local day the run was issued, and the two
+    disagree badly enough to corrupt training groups -- ``d1`` and ``d2``
+    overlap across 18-31h and ``d2`` alone spans 37 hours, so a group's
+    internal spread exceeds the gap between groups.
+
+    It is therefore per station, not per archive.  One run reaches a station at
+    UTC+8 and a station at UTC-4 with lead hours that differ by half a day, so
+    a single archive-level label cannot describe both -- which is exactly what
+    the ``d`` label was doing.
+    """
+
+    try:
+        day_start = datetime.fromisoformat(str(event_date)).replace(
+            tzinfo=ZoneInfo(str(settlement_timezone))
+        ).astimezone(timezone.utc)
+    except (ValueError, TypeError, KeyError, ZoneInfoNotFoundError) as exc:
+        raise ContractError(
+            "native_archive_capture_lead_scope_invalid"
+        ) from exc
+    if run_init.tzinfo is None or run_init.utcoffset() is None:
+        raise ContractError("native_archive_capture_run_init_invalid")
+    return lead_hour_bucket_for_run(
+        day_start_utc=day_start, run_init=run_init
+    )
+
+
 __all__ = [
     "LEAD_HOUR_BUCKETS",
     "LONGEST_LEAD_HOUR_BUCKET",
+    "capture_lead_bucket",
     "capture_lead_and_run",
     "capture_lead_days",
     "capture_run_init",

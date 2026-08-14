@@ -27,6 +27,57 @@ from typing import Any, Mapping, Sequence
 
 CONSENSUS_BRIDGE_METHOD_TAG = "consensus_bridge_v1"
 
+# Measured over 175 settled station-days (P0 calibration audit, 2026-08-13,
+# recomputed after the truth-revision repair): buckets this pathway priced
+# under five percent realised 1.38x the frequency it assigned them, while the
+# market's asks on the same buckets sat near zero.  The served tail was the
+# one part of the distribution that systematically lied, and the strategy's
+# measured edge lives exactly there.  The correction is admitted the same way
+# the bridge was: it rides the combination-method tag, every new artifact's
+# holdout is scored WITH it, the per-scope OOS gate accepts or rejects the
+# pair, and serving applies it only when the artifact's tag says the gate
+# measured it.  The transform is continuous and monotone: deep tails lift by
+# the measured factor, buckets near the threshold taper to it, nothing ever
+# re-ranks across the boundary, and the lifted mass is paid for by
+# renormalisation.
+TAIL_RELIABILITY_METHOD_TAG = "tail_reliability_v1"
+TAIL_RELIABILITY_FACTOR = 1.38
+TAIL_RELIABILITY_THRESHOLD = 0.05
+
+
+def apply_tail_reliability(
+    probability: "Mapping[str, float]",
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Lift the measured tail under-estimate, renormalise, and say so."""
+
+    lifted: dict[str, float] = {}
+    lifted_buckets: list[str] = []
+    for key, raw in probability.items():
+        value = float(raw)
+        if value < TAIL_RELIABILITY_THRESHOLD:
+            corrected = min(
+                value * TAIL_RELIABILITY_FACTOR,
+                TAIL_RELIABILITY_THRESHOLD,
+            )
+            if corrected > value:
+                lifted_buckets.append(str(key))
+            lifted[str(key)] = corrected
+        else:
+            lifted[str(key)] = value
+    total = sum(lifted.values())
+    if total <= 0:
+        raise ValueError("tail_reliability_probability_empty")
+    normalized = {key: value / total for key, value in lifted.items()}
+    receipt = {
+        "schema": "tail_reliability_receipt_v1",
+        "method_tag": TAIL_RELIABILITY_METHOD_TAG,
+        "factor": TAIL_RELIABILITY_FACTOR,
+        "threshold": TAIL_RELIABILITY_THRESHOLD,
+        "lifted_buckets": sorted(lifted_buckets),
+        "pre_normalisation_mass": total,
+    }
+    return normalized, receipt
+
 # Zero through the strata the mixture already predicts correctly (<1C and
 # 1-2C measured 0.0%/0.0% and 5.0%/5.5% valley hit against prediction), full
 # strength by 2C where under-prediction is unambiguous.  0.4 reproduces the

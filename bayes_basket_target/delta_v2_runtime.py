@@ -22,8 +22,7 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel.delta_v2 import (
-    MIN_SUPPORT_EDGE_FRACTION,
-    MIN_SUPPORT_WIN_PROBABILITY,
+    SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
@@ -116,8 +115,6 @@ def _support_windows(
     snapshot: TargetBasketSnapshot,
     desired: set[str],
     probabilities: Mapping[str, float],
-    minimum_win_probability: float,
-    minimum_edge_fraction: float,
     fee_rate: float,
     maximum_support_buckets: int,
 ) -> list[dict[str, Any]]:
@@ -207,25 +204,38 @@ def _support_windows(
             price = sum(quote for quote in quotes if quote is not None)
             edge = win - price if priced else None
             is_incumbent = window == incumbent
-            # The incumbent is always offered so the optimizer can keep it;
-            # every other window has to be fully priced and clear both rails.
-            # A window priced at zero cannot be measured as a fraction of its
-            # price, and free optionality needs no edge test.
+            # The incumbent is always offered so the optimizer can keep it.
+            # The only hard admission floor is friction: the all-in price
+            # already carries the fee, so an edge smaller than tick-rounding
+            # across the legs is quantisation noise, not signal.  Everything
+            # else is ranking -- the seat belongs to the curve score alone.
+            friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
+                float(by_bucket[bucket].price_tick_size)
+                for bucket in window
+            )
             admissible = is_incumbent or (
-                priced
-                and win + EPS >= minimum_win_probability
-                and (
-                    price <= EPS
-                    or edge >= minimum_edge_fraction * price
-                )
+                priced and edge is not None and edge > friction + EPS
             )
             if not admissible:
                 continue
+            kl = None
+            if priced:
+                # Clipping implements the 0*log(0)=0 limits: a full-partition
+                # window (win=1) is the certainty-harvest shape and must rank
+                # by log(1/cost), not fall off the shortlist as unrankable.
+                clipped_win = min(max(win, EPS), 1.0 - EPS)
+                cost = min(max(price, EPS), 1.0 - EPS)
+                kl = (
+                    clipped_win * math.log(clipped_win / cost)
+                    + (1.0 - clipped_win)
+                    * math.log((1.0 - clipped_win) / (1.0 - cost))
+                )
             windows.append({
                 "buckets": window,
                 "win_probability": win,
                 "all_in_price": price if priced else None,
                 "edge": edge,
+                "log_growth_rank": kl,
                 "is_incumbent": is_incumbent,
             })
     if incumbent not in seen:
@@ -242,20 +252,35 @@ def _support_windows(
         priced = all(quote is not None for quote in quotes)
         price = sum(quote for quote in quotes if quote is not None)
         win = sum(float(probabilities[bucket]) for bucket in incumbent)
+        incumbent_kl = None
+        if priced:
+            clipped_win = min(max(win, EPS), 1.0 - EPS)
+            cost = min(max(price, EPS), 1.0 - EPS)
+            incumbent_kl = (
+                clipped_win * math.log(clipped_win / cost)
+                + (1.0 - clipped_win)
+                * math.log((1.0 - clipped_win) / (1.0 - cost))
+            )
         windows.append({
             "buckets": incumbent,
             "win_probability": win,
             "all_in_price": price if priced else None,
             "edge": (win - price) if priced else None,
+            "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
         })
     # An unpriced window has no edge to rank on, so it sorts last rather than
     # being compared against numbers it does not have; the objective still
     # scores it, and its own curve decides whether it is seated.
+    # Rank by the objective's own quantity: the curve score at optimal stake
+    # is the KL divergence between our belief and the market's implied odds
+    # (charter 35), so the shortlist order is the seat contest itself run on
+    # the cheap.  Raw edge over-ranks penny lotteries; KL prices the whole
+    # win/lose geometry.
     windows.sort(
         key=lambda row: (
-            row["edge"] is None,
-            -(row["edge"] or 0.0),
+            row["log_growth_rank"] is None,
+            -(row["log_growth_rank"] or 0.0),
             len(row["buckets"]),
             row["buckets"],
         )
@@ -371,9 +396,8 @@ def _solve_over_support_windows(
         ),
     )
     selection = {
-        "rule": "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V1",
-        "minimum_win_probability": MIN_SUPPORT_WIN_PROBABILITY,
-        "minimum_edge_fraction": MIN_SUPPORT_EDGE_FRACTION,
+        "rule": "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2",
+        "edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
         "admissible_window_count": len(windows),
         "solved_window_count": len(scored),
         "unsolvable_windows": failures,
@@ -736,6 +760,43 @@ def _hard_gates(
     }
 
 
+def _market_center_ordinal(
+    snapshot: TargetBasketSnapshot,
+) -> tuple[int | None, str | None]:
+    """The bucket the book prices richest, or None on an unquoted market.
+
+    Prices are implied probabilities, so the richest mid is where the market
+    puts the day.  A one-sided book still carries an opinion (its one side);
+    a book with no quotes at all carries none, and the gate that consumes
+    this cannot evaluate -- which is harmless, because there is also nothing
+    to buy.
+    """
+
+    mids: list[tuple[float, int, str]] = []
+    for row in snapshot.buckets:
+        bid = float(row.bid_price) if row.bid_levels else None
+        ask = float(row.ask_price) if row.ask_available else None
+        if bid is not None and ask is not None:
+            mid = (bid + ask) / 2.0
+        elif bid is not None:
+            mid = bid
+        elif ask is not None:
+            mid = ask
+        else:
+            continue
+        if mid > EPS:
+            mids.append((mid, int(row.ordinal), row.bucket))
+    if not mids:
+        return None, None
+    top = max(mid for mid, _, _ in mids)
+    leaders = [item for item in mids if item[0] >= top - EPS]
+    if len(leaders) != 1:
+        # A tied top is a market without a unique opinion, not a market
+        # disagreeing with the model; the gate has nothing to act on.
+        return None, None
+    return leaders[0][1], leaders[0][2]
+
+
 def compile_delta_v2_runtime_plan(
     *,
     snapshot: TargetBasketSnapshot,
@@ -770,6 +831,27 @@ def compile_delta_v2_runtime_plan(
         expansion_layers,
         core_transition,
     ) = _choose_support(snapshot, basket_policy)
+    market_center_ordinal, market_center_bucket = _market_center_ordinal(
+        snapshot
+    )
+    # Hard entry gate: when the market's own center sits outside the model
+    # envelope (the disagreement-expanded candidate boundary, which already
+    # unions TAF TX), the market is telling us it holds information our
+    # evidence layer does not.  ZUUU 2026-08-13 is the type specimen: a
+    # starved two-system root centred at 35 while the book centred on 37 --
+    # the "+0.154 edge" window it implied was phantom belief, not mispricing.
+    # The gate blocks NEW money only, same philosophy as the breaker's
+    # STOP_NEW_INTENTS_ONLY and the hard bound's "constrain additions":
+    # probabilities are untouched, held inventory is untouched, and the
+    # baseline (hold, add nothing) remains the seat.
+    envelope_entry_blocked = (
+        market_center_ordinal is not None
+        and not (
+            int(candidate_lower)
+            <= market_center_ordinal
+            <= int(candidate_upper)
+        )
+    )
     shortfall, breakthrough = _derive_dual_risk_scope(snapshot, center)
     # Risk families classify already-admitted support; they never bypass the
     # continuous-core candidate boundary or its evidence/price/Maker gates.
@@ -840,8 +922,6 @@ def compile_delta_v2_runtime_plan(
         snapshot=snapshot,
         desired=desired,
         probabilities=probabilities,
-        minimum_win_probability=MIN_SUPPORT_WIN_PROBABILITY,
-        minimum_edge_fraction=MIN_SUPPORT_EDGE_FRACTION,
         fee_rate=basket_policy.fee_rate,
         maximum_support_buckets=basket_policy.maximum_support_buckets,
     )
@@ -1179,6 +1259,19 @@ def compile_delta_v2_runtime_plan(
                     "execution_mode": "SINGLE_BUCKET_FOK",
                 }),
             }
+    if envelope_entry_blocked and selection.get("authorized") is True:
+        selection = {
+            **selection,
+            "selected_actions": [],
+            "selected_bundle": None,
+            "selected_action_sha256s": [],
+            "selected_score": 0.0,
+            "capital_reserved_usdc": 0.0,
+            "basket_complete": False,
+            "authorized": False,
+            "blockers": ["market_center_outside_model_envelope"],
+            "hold_selected": True,
+        }
     if not regime_direction_allowed and selection.get("authorized") is True:
         selection = {
             **selection,
@@ -1321,6 +1414,8 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("center_probability_lead_unstable")
     if not regime_direction_allowed:
         reason_codes.append("regime_direction_not_allowed")
+    if envelope_entry_blocked:
+        reason_codes.append("market_center_outside_model_envelope")
     delta_v2_audit = {
         "schema": "delta_basket_score_authorization_v2",
         "selected_actions": selected_evaluations,
@@ -1387,6 +1482,16 @@ def compile_delta_v2_runtime_plan(
         "diagnostic_upper_ordinal": snapshot.evidence.model_envelope_upper_ordinal,
         "candidate_lower_ordinal": candidate_lower,
         "candidate_upper_ordinal": candidate_upper,
+        "market_center_ordinal": market_center_ordinal,
+        "market_center_bucket": market_center_bucket,
+        "envelope_entry_gate": {
+            "blocked": envelope_entry_blocked,
+            "market_center_ordinal": market_center_ordinal,
+            "market_center_bucket": market_center_bucket,
+            "candidate_lower_ordinal": int(candidate_lower),
+            "candidate_upper_ordinal": int(candidate_upper),
+            "blocks_new_intents_only": True,
+        },
         "disagreement_expansion_layers": expansion_layers,
         "underreach_risk_buckets": sorted(shortfall),
         "upside_breakthrough_risk_buckets": sorted(breakthrough),

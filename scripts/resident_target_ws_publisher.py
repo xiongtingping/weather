@@ -75,7 +75,9 @@ MANIFEST_SCHEMA = "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
 # domain.  A station may contribute exactly one current open scope and one
 # fresh not-started scope; it cannot silently rotate through additional days.
 MAX_TARGET_STATIONS = 45
-MAX_TARGET_SCOPES = MAX_TARGET_STATIONS * 2
+# Three concurrent dates per station once listing-day subscription landed:
+# the day being settled, tomorrow, and the day after (markets list at D-2).
+MAX_TARGET_SCOPES = MAX_TARGET_STATIONS * 3
 MAX_TARGET_TOKENS = 2048
 MAX_TOKENS_PER_CONNECTION = 400
 CANONICAL_TARGET_STATIONS = frozenset(
@@ -220,6 +222,12 @@ def _future_probability_expired(
     observed = _parse_utc(observed_at_utc)
     return any(
         str(scope.get("event_day_state") or "") == "not_started"
+        # A listing-day scope carries no probability claim at all; an empty
+        # fresh-until is absence, not expiry, and must not churn the
+        # connection.  Stale-rooted future scopes never reach this gate --
+        # the catalog admission skips them -- so this remains a no-op in
+        # steady state either way.
+        and str(scope.get("probability_fresh_until_utc") or "").strip()
         and observed >= _parse_utc(
             str(scope["probability_fresh_until_utc"])
         )
@@ -312,7 +320,25 @@ def _scope(
             rows_by_scope.setdefault((station_id, event_date), []).append(row)
 
         scopes: list[dict[str, Any]] = []
-        for (station_id, event_date), probability in sorted(current_probability.items()):
+        # Listing-day scopes (registry-only, no envelope) were unioned in
+        # here on 2026-08-14 and reverted the same hour: with ~300 bookless
+        # tokens subscribed the manifest write gate never completed and the
+        # whole publisher output froze, starving every consumer of current
+        # quotes.  The listing-first subscription is still the right goal --
+        # it returns behind a write path that publishes unmaterialized
+        # tokens without waiting for them.
+        # The catalog is the union of what we believe (envelope scopes) and
+        # what the exchange lists (registry scopes).  Rootless listing-day
+        # scopes subscribe with no probability claims; stale-rooted future
+        # scopes are still skipped by the admission below, which is what
+        # keeps the expired-probability gate a no-op in steady state.
+        catalog_keys = sorted(
+            set(current_probability) | set(rows_by_scope)
+        )
+        for station_id, event_date in catalog_keys:
+            probability = current_probability.get(
+                (station_id, event_date)
+            )
             rows = rows_by_scope.get((station_id, event_date)) or []
             if not rows:
                 continue
@@ -325,20 +351,35 @@ def _scope(
                     "resident_target_ws_settlement_timezone_invalid"
                 )
             timezone_name = next(iter(timezones))
-            probability_timezone = str(
-                probability["settlement_timezone"] or ""
-            ).strip()
-            if probability_timezone != timezone_name:
-                raise ContractError(
-                    "resident_target_ws_probability_registry_timezone_mismatch"
-                )
+            if probability is not None:
+                probability_timezone = str(
+                    probability["settlement_timezone"] or ""
+                ).strip()
+                if probability_timezone != timezone_name:
+                    raise ContractError(
+                        "resident_target_ws_probability_registry_timezone_mismatch"
+                    )
             state = str(settlement_day_state(
                 event_date,
                 as_of_utc=as_of_utc,
                 settlement_timezone=timezone_name,
             )["state"])
-            stage = str(probability["stage"])
-            fresh_until = _parse_utc(str(probability["fresh_until_utc"]))
+            if probability is None:
+                # Listed but not yet believed: subscribe to the book, carry
+                # no probability claims, and let the preselection's own
+                # evidence gate keep it un-actionable until a root lands.
+                stage = ""
+                probability_age_seconds = 0.0
+                within_cadence = False
+                probability_evidence_fresh = False
+                probability_past_cadence = False
+            else:
+                stage = str(probability["stage"])
+            fresh_until = (
+                _parse_utc(str(probability["fresh_until_utc"]))
+                if probability is not None
+                else None
+            )
             # The envelope selected above is already the latest committed one
             # for this scope; ``fresh_until`` is the cadence P1 re-rolls on,
             # not an expiry of what it says.  Past that instant the latest
@@ -360,23 +401,35 @@ def _scope(
             # already ruled out.  The bound is re-derived from current
             # observations downstream and is never carried along with the
             # envelope; nothing here relaxes it.
-            probability_age_seconds = max(
-                0.0, (as_of - fresh_until).total_seconds()
-            )
-            within_cadence = as_of < fresh_until
-            probability_evidence_fresh = within_cadence or (
-                stage in STAGES_SERVABLE_PAST_CADENCE
-                and probability_age_seconds
-                <= P1_PROBABILITY_MAX_STALE_SECONDS
-            )
-            probability_past_cadence = (
-                probability_evidence_fresh and not within_cadence
-            )
+            if probability is not None:
+                probability_age_seconds = max(
+                    0.0, (as_of - fresh_until).total_seconds()
+                )
+                within_cadence = as_of < fresh_until
+                probability_evidence_fresh = within_cadence or (
+                    stage in STAGES_SERVABLE_PAST_CADENCE
+                    and probability_age_seconds
+                    <= P1_PROBABILITY_MAX_STALE_SECONDS
+                )
+                probability_past_cadence = (
+                    probability_evidence_fresh and not within_cadence
+                )
             if state == "closed":
                 continue
-            if state == "not_started" and stage not in {"P0", "P0-M"}:
+            if state == "not_started" and stage not in {"P0", "P0-M", ""}:
                 continue
-            if state == "not_started" and not probability_evidence_fresh:
+            if (
+                state == "not_started"
+                and probability is not None
+                and not probability_evidence_fresh
+            ):
+                # This admission line doubles as the safety for the
+                # ``_future_probability_expired`` gate downstream: with
+                # stale-future scopes excluded here, that gate is a no-op in
+                # steady state.  Removing this line (2026-08-14, listing-day
+                # subscription attempt) made one expired overnight American
+                # scope raise ScopeCatalogChanged on every frame and froze
+                # the entire publisher output for all scopes.
                 continue
             if state not in {"not_started", "open"}:
                 continue
@@ -412,11 +465,13 @@ def _scope(
                 "target_timezone": timezone_name,
                 "event_day_state": state,
                 "probability_stage": stage,
-                "probability_envelope_id": str(
-                    probability["envelope_id"]
+                "probability_envelope_id": (
+                    str(probability["envelope_id"])
+                    if probability is not None else ""
                 ),
-                "probability_fresh_until_utc": str(
-                    probability["fresh_until_utc"]
+                "probability_fresh_until_utc": (
+                    str(probability["fresh_until_utc"])
+                    if probability is not None else ""
                 ),
                 "probability_evidence_fresh": probability_evidence_fresh,
                 # Visible so a consumer, and an audit, can tell a reading
@@ -755,6 +810,23 @@ def _confirm_shard_stream(
     for token_id in shard_tokens:
         if token_id in quotes:
             quotes[token_id]["_stream_confirmed_at"] = observed_at
+        else:
+            # A confirmed shard stream that has produced no book event for a
+            # token is reporting a real market state: a freshly listed
+            # bucket with an empty book.  Materialise it as an explicitly
+            # empty quote so the completeness invariant -- every token
+            # accounted for before the manifest writes -- holds for listing
+            # -day scopes instead of freezing the entire publisher output
+            # until the last penny bucket trades.  The reader's
+            # ``_quote_is_complete`` classifies these as unmaterialized, so
+            # nothing downstream mistakes an empty book for a price.
+            quotes[token_id] = {
+                "token_id": token_id,
+                "side": "YES",
+                "book_observed_at": observed_at,
+                "created_at": observed_at,
+                "_stream_confirmed_at": observed_at,
+            }
 
 
 async def _text_ping(ws: Any) -> None:
@@ -794,8 +866,13 @@ async def _receive_connection_shard(
         "close_timeout": ONE_SHOT_CLOSE_TIMEOUT_SEC,
         "max_size": MAX_FRAME_BYTES,
     }
-    if proxy:
-        connect_kwargs["proxy"] = proxy
+    # Always pass the proxy explicitly.  Omitting the kwarg does not mean
+    # "direct": websockets defaults to ``proxy=True`` and silently honours
+    # whatever HTTPS_PROXY the process inherited -- which is how a "direct"
+    # publisher spent four hours dialling a dead local proxy on 7897 while
+    # the listener beside it, which passes the kwarg, stayed connected.
+    # ``None`` is the explicit spelling of direct.
+    connect_kwargs["proxy"] = proxy if proxy else None
     async with websockets.connect(WS_URL, **connect_kwargs) as ws:
         await ws.send(json.dumps(subscription))
         ping_task = asyncio.create_task(_text_ping(ws))

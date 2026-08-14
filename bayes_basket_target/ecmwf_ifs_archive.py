@@ -25,15 +25,21 @@ from .contracts import ContractError, content_sha256
 from .ecmwf_pf50_raw_reuse import (
     RetainedMemberField,
     find_content_addressed_message,
+    find_range_addressed_message,
     load_retained_field_index,
     store_content_addressed_message,
+    store_range_alias,
 )
 from .future_temperature_curve import (
     MIN_CURVE_POINTS,
     MIN_SAME_DAY_CURVE_POINTS,
     build_native_family_temperature_curve,
 )
-from .native_archive_lead import capture_lead_and_run, run_cycle_label
+from .native_archive_lead import (
+    capture_lead_and_run,
+    capture_lead_bucket,
+    run_cycle_label,
+)
 from .native_ensemble_store import _insert_content_addressed
 from .noaa_gefs_archive import decode_nearest_temperatures_c
 from .p0_producer import bucket_intervals_from_registry_rows
@@ -65,7 +71,11 @@ DEFAULT_LEAD_DAYS = 2
 # eight -- so the shorter leads take the day's first cycle instead.
 RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
 # ECMWF open data publishes four cycles; these are the two this lane reads.
-SUPPORTED_RUN_CYCLE_HOURS = (0, 18)
+# All four published cycles.  06Z and 12Z were excluded while the run
+# ladder only asked for 00Z/18Z; the ladder now follows every cycle the
+# publisher issues, and the coverage check below still rejects any cycle
+# that cannot cover a station's local day.
+SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
 ARCHIVE_LEAD_BUCKET = f"d{DEFAULT_LEAD_DAYS}"
 
 
@@ -470,15 +480,49 @@ def _download_message(
     retained: RetainedMemberField | None = None,
     raw_roots: Sequence[Path] = (),
     raw_store: Path | None = None,
-) -> tuple[bytes, dict[str, Any]]:
+) -> tuple[bytes, dict[str, Any], bool]:
     if retained is not None:
         local = find_content_addressed_message(
             retained.message_sha256, raw_roots
         )
         if local is not None:
-            return local.read_bytes(), dict(retained.receipt)
+            return local.read_bytes(), dict(retained.receipt), True
     offset = int(row["_offset"])
     length = int(row["_length"])
+    member_number = int(row["number"])
+    # No retained receipt, but this range may still have been fetched before:
+    # captures for two event dates served by the same run share roughly half
+    # their forecast steps, and each step is the same immutable object range.
+    # The digest is only known after a download, so the store is asked by
+    # source coordinate instead; the bytes it returns are verified against
+    # that digest before they are used.
+    if retained is None and raw_roots:
+        cached = find_range_addressed_message(
+            object_key=object_key,
+            range_start=offset,
+            range_end=offset + length - 1,
+            roots=raw_roots,
+        )
+        if cached is not None:
+            path, record = cached
+            message = path.read_bytes()
+            if len(message) == length:
+                return message, {
+                    "member_id": f"perturbed_{member_number:02d}",
+                    "member_number": member_number,
+                    "forecast_step": int(row["step"]),
+                    "object_key": object_key,
+                    "index_sha256": index_sha256,
+                    "index_row_sha256": content_sha256(dict(row)),
+                    "range_start": offset,
+                    "range_end": offset + length - 1,
+                    "message_sha256": str(record["message_sha256"]),
+                    # The object's own header, recorded when these bytes were
+                    # first fetched.  ECMWF objects are immutable, so it still
+                    # describes them; inventing a fresh value here would claim
+                    # a response that was never made.
+                    "last_modified": str(record.get("last_modified") or ""),
+                }, True
     message, headers = _get_bytes(
         grib_url,
         timeout_seconds=timeout_seconds,
@@ -487,7 +531,6 @@ def _download_message(
     )
     if len(message) != length:
         raise ContractError("ecmwf_archive_range_length_mismatch")
-    member_number = int(row["number"])
     receipt = {
         "member_id": f"perturbed_{member_number:02d}",
         "member_number": member_number,
@@ -513,7 +556,15 @@ def _download_message(
             root=raw_store,
             expected_sha256=str(receipt["message_sha256"]),
         )
-    return message, receipt
+        store_range_alias(
+            object_key=object_key,
+            range_start=offset,
+            range_end=offset + length - 1,
+            message_sha256=str(receipt["message_sha256"]),
+            root=raw_store,
+            last_modified=str(receipt.get("last_modified") or ""),
+        )
+    return message, receipt, False
 
 
 def _retained_packet_dir() -> Path:
@@ -719,9 +770,15 @@ def _build_station_capture(
         "run_cycle": run_cycle_label(run_init),
         # Derived from the run actually used rather than from the module
         # default, so a capture can never advertise a lead its run does not
-        # carry.
-        "archive_lead_bucket": _lead_bucket_for_run(
-            event_date=event_date, run_init=run_init
+        # carry -- and stated in hours ahead of this station's own local day,
+        # not as a calendar ``d`` label.  One run reaches a station at UTC+8
+        # and one at UTC-4 with lead hours half a day apart, so the label has
+        # to be per station; the calendar label called all of them the same
+        # thing and put them in one training group.
+        "archive_lead_bucket": capture_lead_bucket(
+            event_date=event_date,
+            settlement_timezone=str(scope["settlement_timezone"]),
+            run_init=run_init,
         ),
         "forecast_steps": steps,
         "ensemble_system_id": SYSTEM_ID,
@@ -874,6 +931,12 @@ def capture_ecmwf_station_days(
     }
     receipts = []
     total_bytes = 0
+    # Fields served from the local raw store rather than fetched.  Counted
+    # apart from ``total_bytes`` so the archive cannot claim a network response
+    # it never made: the field count is what the capture read, the network
+    # figure is what it actually cost.
+    raw_cache_hits = 0
+    network_bytes = 0
     index_rows: list[
         tuple[str, str, str, Mapping[str, Any], RetainedMemberField | None]
     ] = []
@@ -1001,7 +1064,11 @@ def capture_ecmwf_station_days(
             )
             for future in done:
                 step = pending.pop(future)
-                message, receipt = future.result()
+                message, receipt, from_local_store = future.result()
+                if from_local_store:
+                    raw_cache_hits += 1
+                else:
+                    network_bytes += len(message)
                 total_bytes += len(message)
                 if total_bytes > MAX_TOTAL_RESPONSE_BYTES:
                     raise ContractError(
@@ -1070,6 +1137,8 @@ def capture_ecmwf_station_days(
             receipts
         ),
         "total_response_bytes": total_bytes,
+        "network_response_bytes": network_bytes,
+        "local_raw_store_hit_count": raw_cache_hits,
         "captures": captures,
         "archive_query_at_utc": query_at.isoformat().replace(
             "+00:00", "Z"

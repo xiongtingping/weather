@@ -313,7 +313,12 @@ TARGET_SCOPE_KEYS = ("season_bin", "maturity_bin", "liquidity_bin", "strategy_ve
 MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
     "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
 )
-MAX_RESIDENT_WS_SCOPES = 90
+# Three concurrent event days per station is the steady state now that the
+# catalog subscribes at listing: the listing day, today and tomorrow all
+# carry scopes at once.  The publisher's own cap (MAX_TARGET_SCOPES) moved to
+# 45x3 for the same reason; a reader stricter than the writer turns a bigger
+# catalog into a global WS-path outage.
+MAX_RESIDENT_WS_SCOPES = 135
 
 
 def insert_probability_envelope(
@@ -1250,12 +1255,29 @@ def _upsert_native_p0_inbox(
             # is never admitted to hard-NO/P1 or native-arrival indexes.
             continue
         current = merged_by_scope.get(scope)
+
+        def _decided_at(row: Mapping[str, Any]) -> str:
+            envelope = (row.get("packet") or {}).get(
+                "native_probability_envelope"
+            )
+            if not isinstance(envelope, Mapping):
+                return ""
+            return str(envelope.get("decision_at_utc") or "")
+
         if (
             current is None
-            # SAME and MIXED are one official authority tier.  Keep the
-            # already selected official packet on a tie so a replay of an
-            # older SAME-cycle packet cannot replace a current MIXED packet.
             or source_priority(candidate_row) > source_priority(current)
+            or (
+                # SAME and MIXED are one official authority tier.  Within the
+                # tier the newer decision wins: a replayed older packet
+                # carries an older decision instant and stays out, which is
+                # all the previous keep-the-incumbent tie rule was protecting
+                # -- but that rule also discarded genuinely newer compiles,
+                # so a P0-M confirm could never supersede the P0 it confirms.
+                source_priority(candidate_row)
+                == source_priority(current)
+                and _decided_at(candidate_row) > _decided_at(current)
+            )
         ):
             merged_by_scope[scope] = candidate_row
         accepted_count += 1
@@ -1498,12 +1520,39 @@ def _active_registry_scopes(path: Path, *, horizon: date) -> set[tuple[str, str]
     return scopes
 
 
+def _fitted_lead_buckets(
+    conn: sqlite3.Connection | None, *, as_of_utc: str
+) -> set[tuple[str, str]] | None:
+    """``(station, lead_bucket)`` pairs that currently have fitted weights.
+
+    None when unavailable, which the caller reads as "do not filter".
+    """
+
+    if conn is None:
+        return None
+    try:
+        return {
+            (str(row[0]), str(row[1]))
+            for row in conn.execute(
+                "SELECT DISTINCT station_id,lead_bucket "
+                "FROM calibration_native_ensemble_activation "
+                "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+                "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+                "AND valid_from_utc<=? AND valid_until_utc>?",
+                (as_of_utc, as_of_utc),
+            )
+        }
+    except Exception:
+        return None
+
+
 def _merge_official_native_inbox(
     inbox_path: Path,
     *,
     staging_path: Path,
     as_of_utc: str,
     allowed_scopes: set[tuple[str, str]] | None = None,
+    fitted_lead_buckets: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Merge a freshly captured packet into the shared official-native inbox.
 
@@ -1537,32 +1586,59 @@ def _merge_official_native_inbox(
             str(packet.get("event_date") or "").strip(),
         )
 
-    def _lead_days_of(packet: Any) -> int:
-        """Lead the packet was captured at; unreadable counts as the oldest.
+    def _freshness_of(packet: Any) -> tuple[int, float]:
+        """How fresh this packet's evidence is; unreadable counts as oldest.
 
-        A station-day is captured once per lead and the captures run
-        concurrently, so a slow d2 fetch can finish after the d1 fetch for the
-        same day.  The inbox holds one packet per station-day, so without this
-        the later-finishing capture would win on arrival order and quietly
-        replace fresher evidence with a run made a day earlier.
+        Captures run concurrently, so a slow older-run fetch can finish after
+        a fresher one for the same day.  The inbox holds one packet per
+        station-day, so without this the later-finishing capture would win on
+        arrival order and quietly replace fresher evidence with an older run.
+
+        Freshness is the newest run the packet carries, not its lead label.
+        The label used to be a calendar day count and now is an hour bucket,
+        and a comparator parsing the old spelling read every new packet as
+        "oldest" -- a freshly captured 06Z packet lost the merge to the 00Z
+        packet it had just superseded.  The run identity is spelling-proof and
+        is the same fact the supersedence probe already compares.  Packets
+        stating no run fall back to the calendar label, so republisher-era
+        entries keep their old ordering among themselves.
         """
 
         if not isinstance(packet, Mapping):
-            return MAX_RUN_AGE_DAYS
+            return (0, float("-inf"))
+        run_init = _native_packet_run_init(packet)
+        if run_init is not None:
+            # Tier 1: a stated run always outranks a mere label.
+            return (1, run_init.timestamp())
         bucket = str(packet.get("lead_bucket") or "").strip().lower()
         if bucket.startswith("d") and bucket[1:].isdigit():
-            return int(bucket[1:])
-        return MAX_RUN_AGE_DAYS
+            # Smaller lead = fresher; negate so bigger-is-fresher throughout.
+            return (0, -float(int(bucket[1:])))
+        return (0, float("-inf"))
 
-    staged_lead_by_scope: dict[tuple[str, str], int] = {}
+    def _servable(packet: Any) -> bool:
+        """Whether P0 has fitted weights for this packet's own training group."""
+
+        if fitted_lead_buckets is None:
+            return True
+        if not isinstance(packet, Mapping):
+            return False
+        return (
+            str(packet.get("station_id") or "").strip().upper(),
+            str(packet.get("lead_bucket") or "").strip(),
+        ) in fitted_lead_buckets
+
+    staged_rank_by_scope: dict[
+        tuple[str, str], tuple[bool, tuple[int, float]]
+    ] = {}
     for packet in staged_packets:
         scope = _scope_of(packet)
         if scope is None:
             continue
-        staged_lead_by_scope[scope] = min(
-            staged_lead_by_scope.get(scope, MAX_RUN_AGE_DAYS),
-            _lead_days_of(packet),
-        )
+        rank = (_servable(packet), _freshness_of(packet))
+        held = staged_rank_by_scope.get(scope)
+        if held is None or rank > held:
+            staged_rank_by_scope[scope] = rank
     merged: list[Any] = []
     pruned = 0
     superseded: set[tuple[str, str]] = set()
@@ -1574,11 +1650,21 @@ def _merge_official_native_inbox(
         if event_day is not None and event_day < horizon:
             pruned += 1
             continue
-        staged_lead = staged_lead_by_scope.get(scope)
-        if staged_lead is not None:
-            # Ties go to the staged packet: a fresh capture at the same lead is
-            # a re-read of a run whose members may have been incomplete before.
-            if staged_lead <= _lead_days_of(packet):
+        staged_rank = staged_rank_by_scope.get(scope)
+        if staged_rank is not None:
+            # Servable first, then freshest.  The lead bucket is per station
+            # and derived from the run, so following a new publication cycle
+            # can land a station in a training group its own history never
+            # populated -- reading 06Z for the first time moved thirteen
+            # American station-days into ``h12_24``, where nothing had ever
+            # been fitted because 06Z had never been read.  A fresher run
+            # there serves no P0 at all, so freshness cannot be the outer key.
+            # The archive still ingests every run, so the empty group fills
+            # and this preference dissolves on its own once weights exist.
+            #
+            # Ties go to the staged packet: a fresh capture of the same run is
+            # a re-read whose members may have been incomplete before.
+            if staged_rank >= (_servable(packet), _freshness_of(packet)):
                 continue
             superseded.add(scope)
         merged.append(packet)
@@ -1650,7 +1736,51 @@ def _official_native_run_ladder(
         as_of_utc.replace("Z", "+00:00")
     ).astimezone(timezone.utc)
     ladder: list[tuple[int, int | None, datetime]] = []
-    for rung_lead, rung_cycle in ((0, None), (1, 18), (1, None), (2, None)):
+    # Six-hourly, matching what ECMWF and GEFS actually publish.  The old
+    # 00Z/18Z-only rungs followed half their cycles: 06Z and 12Z published
+    # daily and were never read, which capped every station-day's training
+    # archive at roughly two runs when the publishers were issuing four.
+    # ECCC and ICON ignore the rung's cycle -- the capture resolves their run
+    # from their own per-lead contracts -- so rungs their publishers do not
+    # serve cost them nothing.
+    #
+    # Same-day rungs past 00Z serve whoever they can still cover.  The batch
+    # is all-or-nothing across its stations, and a same-day 06Z rung once
+    # died whole on ``native_family_temperature_curve_point_count_invalid``
+    # because the easternmost stations had two 3-hourly points left; the
+    # capture now excludes structurally uncoverable stations up front
+    # (deterministic from run time and settlement timezone, before any
+    # download), so a 06Z/12Z/18Z rung captures the western remainder of the
+    # network instead of failing on its eastern edge.  Excluded stations
+    # keep their previous packet -- the freshest run that can actually cover
+    # them -- and the training archive accumulates every (run, station-day)
+    # pair a cycle can legitimately describe.
+    # The three deep d2 rungs exist for the easternmost stations.  The lead
+    # bucket is measured to the station's local day start, so the same d2 18Z
+    # run that lands at 28-40h (h24_48) for Europe and the Americas is only
+    # 22h (h12_24) at UTC+8 -- east of roughly UTC+3, no rung above reaches
+    # the 24-48h band at all, which left ZUUU's h24_48 training bucket with
+    # no ECMWF/GEFS material ever.  Publication order gives each rung its own
+    # capture window: a d2 06Z run is the newest published run for a few
+    # hours, is captured then, and the fresher-run filter retires it once
+    # 12Z lands.  Western stations read the same captures as extra samples in
+    # buckets they already serve; coverage is never at risk on a deep rung
+    # (the farthest case, a UTC-8 day end from a d2 00Z init, is 56h, inside
+    # every family's horizon).
+    for rung_lead, rung_cycle in (
+        (0, 18),
+        (0, 12),
+        (0, 6),
+        (0, None),
+        (1, 18),
+        (1, 12),
+        (1, 6),
+        (1, None),
+        (2, None),
+        (2, 12),
+        (2, 6),
+        (2, 0),
+    ):
         cycle_hour = (
             {2: 18, 1: 0, 0: 0}[rung_lead]
             if rung_cycle is None else rung_cycle
@@ -1663,9 +1793,13 @@ def _official_native_run_ladder(
         if run_init < now_dt:
             ladder.append((rung_lead, rung_cycle, run_init))
     ladder.sort(key=lambda rung: rung[2], reverse=True)
-    # Bounded: the freshest rungs are the ones worth spending the deadline on;
-    # anything older is yesterday's capture already retained.
-    return ladder[:3]
+    # Bounded, but wide enough to always reach a servable rung.  At six-hourly
+    # cycles with a ~7.5h publication delay, up to two of the newest rungs are
+    # initialised but not yet published, and a same-day 06Z rung can still fail
+    # coverage for the easternmost stations -- three misses ahead of the rung
+    # that works.  A bound of three could spend itself entirely on those misses
+    # and lock a scope out of the run it can actually have.
+    return ladder[:4]
 
 
 def _native_forward_packet_is_stale(
@@ -1720,6 +1854,32 @@ def _event_date_or_none(value: str) -> date | None:
         return date.fromisoformat(str(value).strip())
     except ValueError:
         return None
+
+
+def _native_packet_run_init(packet: Mapping[str, Any]) -> datetime | None:
+    """The run this packet's members came from, or None if it does not say.
+
+    Packets are built at one shared cycle (``run_cycle_scope`` is
+    ``SAME_NATIVE_CYCLE``), so the systems agree; the newest is taken anyway so
+    a mixed packet is judged by the freshest evidence it holds rather than by
+    its most stale.  A packet that names no run is treated as unjudgeable, not
+    as superseded -- that keeps an unreadable field from forcing a download.
+    """
+
+    raw = packet.get("run_init_utc_by_system")
+    if not isinstance(raw, Mapping) or not raw:
+        return None
+    parsed: list[datetime] = []
+    for value in raw.values():
+        try:
+            parsed.append(
+                datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+            )
+        except (TypeError, ValueError):
+            return None
+    return max(parsed) if parsed else None
 
 
 def _resident_open_event_dates(
@@ -2261,6 +2421,34 @@ class TargetProductionWorker:
                 "calls_order_gateway": False,
                 "places_orders": False,
             }
+        # Only rungs newer than what this date already holds are worth trying.
+        # The freshest run is the last to finish uploading, so an attempt on it
+        # failing is ordinary -- but without this the ladder would then fall
+        # back onto the run already captured and download it a second time,
+        # which is the opposite of what the fallback is for.  Falling through
+        # to nothing is the correct outcome: the date keeps what it has and
+        # retries after its floor.
+        held_run_init = captured_runs.get(event_date)
+        if held_run_init:
+            try:
+                held = datetime.fromisoformat(
+                    held_run_init.replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+            except ValueError:
+                held = None
+            if held is not None:
+                run_ladder = [
+                    rung for rung in run_ladder if rung[2] > held
+                ]
+                if not run_ladder:
+                    return {
+                        "state": "RUN_ALREADY_CAPTURED",
+                        "station_id": station_id,
+                        "event_date": event_date,
+                        "captured_run_init_utc": held_run_init,
+                        "calls_order_gateway": False,
+                        "places_orders": False,
+                    }
         last_attempt = throttle.get(scope_key)
         if (
             last_attempt is not None
@@ -2434,6 +2622,11 @@ class TargetProductionWorker:
                         allowed_scopes=_active_registry_scopes(
                             registry_path,
                             horizon=horizon,
+                        ),
+                        # Read here rather than inside the merge so the merge
+                        # stays a pure function of what it is handed.
+                        fitted_lead_buckets=_fitted_lead_buckets(
+                            self.conn, as_of_utc=as_of_utc
                         ),
                     )
             except Exception as exc:
@@ -3945,15 +4138,33 @@ class TargetProductionWorker:
                     self.commit_conn,
                     compiled,
                 )
-            compiled_packets.append(compiled)
-            consumed[(station, event_date)] = snapshot_sha
+            compiled_packets.append(
+                (station, event_date, snapshot_sha, compiled)
+            )
             receipt["compiled_count"] += 1
         if compiled_packets and self.commit_conn is not None:
-            receipt["p0_inbox_merge"] = _upsert_native_p0_inbox(
+            merge = _upsert_native_p0_inbox(
                 self.p0_inbox_path,
-                compiled_packets=compiled_packets,
+                compiled_packets=[item[3] for item in compiled_packets],
                 generated_at_utc=as_of_utc,
             )
+            receipt["p0_inbox_merge"] = merge
+            # Consumption follows delivery, not compilation.  A packet the
+            # inbox declines -- a P0-M confirm the P0 inbox has no seat for,
+            # say -- must stay unconsumed so the next cycle retries or routes
+            # it, instead of evaporating behind a dedupe mark.
+            if int(merge.get("accepted_count") or 0) == len(
+                compiled_packets
+            ):
+                for station, event_date, snapshot_sha, _packet in (
+                    compiled_packets
+                ):
+                    consumed[(station, event_date)] = snapshot_sha
+        elif compiled_packets:
+            for station, event_date, snapshot_sha, _packet in (
+                compiled_packets
+            ):
+                consumed[(station, event_date)] = snapshot_sha
         return receipt
 
     def _persist_nwp_rotation(
@@ -4299,6 +4510,10 @@ class TargetProductionWorker:
             / "official_native_ensemble_forward_inbox.json"
         )
         official_packet: Mapping[str, Any] | None = None
+        # A usable packet whose run a newer cycle has superseded.  Kept so the
+        # scope can keep compiling from it while the fresher capture is still
+        # in flight; see where it is consumed below.
+        superseded_packet: Mapping[str, Any] | None = None
         official_probe_reason = "official_native_packet_missing"
         if official_inbox_path.is_file():
             try:
@@ -4342,6 +4557,37 @@ class TargetProductionWorker:
                     ):
                         official_probe_reason = (
                             "taf_arrival_recompile_pending"
+                        )
+                        continue
+                    # A newer cycle has published since this packet was built.
+                    # Staleness alone did not catch that: these families issue
+                    # on a fixed schedule, and a packet from the 00Z run stays
+                    # inside its freshness window for hours after 06Z lands, so
+                    # the scope would sit on superseded fields until the clock
+                    # -- not the publisher -- decided otherwise.  Treating a
+                    # superseded packet as absent is what makes the lane follow
+                    # publication instead of expiry.  The capture keys on run
+                    # identity, so the first scope of the day pays for the new
+                    # run and its siblings ride the same pass.
+                    packet_run_init = _native_packet_run_init(candidate)
+                    newest_rung = _official_native_run_ladder(
+                        event_date=native_event_date, as_of_utc=as_of_utc
+                    )
+                    if (
+                        packet_run_init is not None
+                        and newest_rung
+                        and newest_rung[0][2] > packet_run_init
+                    ):
+                        # Held, not discarded.  The capture runs off-thread and
+                        # takes minutes, so treating this packet as simply
+                        # absent would leave every scope of the date with no
+                        # official evidence between the new cycle publishing
+                        # and its capture landing -- trading a stale-by-minutes
+                        # packet for none at all.  It is superseded, which is a
+                        # reason to fetch, not a reason to stop reading.
+                        superseded_packet = candidate
+                        official_probe_reason = (
+                            "official_native_packet_superseded_by_newer_run"
                         )
                         continue
                     official_packet = candidate
@@ -4409,6 +4655,17 @@ class TargetProductionWorker:
                         "official_native_packet_unavailable:"
                         f"{type(exc).__name__}:{exc}"
                     )
+        if official_packet is None and superseded_packet is not None:
+            # The fresher run was asked for above and is still on its way.  Its
+            # arrival is what this scope wants, but not at the cost of having
+            # no official evidence until it lands: the packet in hand is the
+            # previous cycle's, which is exactly what the scope would have been
+            # using had the new cycle not published yet.  The compiler's own
+            # staleness gate still governs how old is too old.
+            official_packet = superseded_packet
+            official_probe_reason = (
+                "official_native_packet_superseded_run_capture_pending"
+            )
         # A capture performed inside this cycle finishes *after* the cycle's
         # ``as_of_utc`` was taken, and the compiler rejects a packet captured
         # later than the decision instant (`native_ensemble_p0_future_capture_
@@ -8603,6 +8860,21 @@ class TargetProductionWorker:
                     raise ContractError(
                         "resident_p0_calibrated_native_cross_ensemble_required"
                     )
+                if str(packet.get("stage") or "") != "P0":
+                    # A confirm-stage (P0-M) compile shares the inbox but
+                    # belongs to the P0-M lane, which supplies its own
+                    # predecessor and TAF revision chain.  This lane refusing
+                    # to skip it turned one confirm packet into a network-wide
+                    # P0 materialization outage: the whole ingress fail-closed
+                    # on ``materialization_predecessor_missing`` and healthy
+                    # P0 packets behind it never materialized.
+                    receipts.append({
+                        "station_id": str(packet.get("station_id") or ""),
+                        "event_date": str(packet.get("event_date") or ""),
+                        "state": "SKIPPED_NON_P0_STAGE",
+                        "stage": str(packet.get("stage") or ""),
+                    })
+                    continue
                 if (
                     packet.get("probability_pathway")
                     != P0_PROBABILITY_PATHWAY

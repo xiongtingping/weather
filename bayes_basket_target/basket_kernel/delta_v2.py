@@ -477,33 +477,23 @@ DEFAULT_KELLY_FRACTION = 0.25
 # mispriced bucket; the zero-cost baseline always satisfies it, so a book
 # that only offers lottery shapes resolves to HOLD instead of a lottery.
 SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
-# The support must clear this much of our own probability before it may be
-# seated.  It is a variance preference, not a source of return: the measured
-# frontier over 37 station-days runs +0.271 mean edge at no floor, +0.060 at
-# 0.45, and turns negative past 0.50, because a wide central basket is exactly
-# what the market prices richest.  0.45 is where a realised win rate lands
-# near 0.55 while the edge is still positive -- the ruling's shape, priced.
+# Retired hard rails (2026-08-14 ruling).  The 0.45 win-probability gate was
+# a portfolio-level target (55% book win rate) misapplied per window: it
+# forbade the base+tail mixing the doctrine explicitly wants, contradicted
+# clause 37's "no shape-class bans", and its variance-control job was already
+# held by fractional Kelly sizing, the scenario floor and the portfolio
+# walls.  The 10%-of-cost edge gate was worse than redundant -- proportional
+# to cost, it bound hardest on the expensive high-win windows the strategy
+# exists to buy (0.90 cost demanded 9 points of edge) while waving through
+# penny lotteries (0.05 cost demanded half a cent).  Both now rank the
+# shortlist only; the objective's curve score against the no-new-action
+# baseline is the sole seat authority, and the win-rate target lives where a
+# portfolio average belongs: in the clause-40 dials.
 #
-# What this rail guards against was measured after it was set, and the answer
-# was not the one it was set for.  The tails are *not* overestimated -- over
-# 175 settled station-days, buckets we priced under 5% realised 1.38x what we
-# predicted, and the ZUUU sub-32C mass (7.2%) sat beside an 11% base rate for
-# a 4C day-over-day drop against a market ask implying 0.1% on a book whose
-# extreme bids were literally 0.000.  What the same measurement did find is
-# fat tails in the *conditional* sense: |z|>3 residuals occur at 13x the rate
-# the model's own spread implies, because it does not know which day the
-# front arrives.  So the rail stays, for the corrected reason: below this
-# line our per-day tail estimates are unconditionally right and conditionally
-# blind, and a seat should not be won by a number the model cannot defend on
-# the day it matters.
-MIN_SUPPORT_WIN_PROBABILITY = 0.45
-# How much of our belief must exceed the market's before a basket is worth
-# seating at all, as a share of the support's price.  The edge that survives
-# at the win-rate floor is thin (~6 points), and the measured error scale is
-# 2.7x the bucket width (median |error| 1.04C, sigma 2.69C against 1C
-# buckets), so a basket whose entire advantage is smaller than the model's
-# own error is noise being traded as signal.
-MIN_SUPPORT_EDGE_FRACTION = 0.10
+# The only hard admission floor left is friction.  All-in prices already
+# carry the fee, so what remains is tick-rounding noise: a basket whose whole
+# edge is smaller than one tick per leg is quantisation, not signal.
+SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = 1.0
 # ``candidate_kind`` is a load-bearing activation signal, not a label: the
 # state machine reads it to decide TRADE versus HOLD, and this kernel reads it
 # to know which candidate is the "spend nothing" option the floor exempts.

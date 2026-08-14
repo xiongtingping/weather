@@ -22,7 +22,7 @@ import pytest
 
 from bayes_basket_target.native_ensemble_p0 import (
     _activated_lead_bucket,
-    _hour_lead_bucket,
+    _hour_lead_buckets,
 )
 
 
@@ -177,14 +177,16 @@ def test_hour_bucket_is_measured_to_the_local_day_not_utc_midnight() -> None:
     the bucket exists to draw.
     """
 
-    assert _hour_lead_bucket(
+    buckets, by_system = _hour_lead_buckets(
         event_date="2026-08-11",
         timezone_name="America/New_York",
         run_init_utc_by_system={
             system_id: "2026-08-09T18:00:00Z" for system_id in SYSTEMS
         },
         observed_system_ids=SYSTEMS,
-    ) == "h24_48"
+    )
+    assert buckets == ("h24_48",)
+    assert set(by_system.values()) == {"h24_48"}
 
 
 @pytest.mark.parametrize(
@@ -192,36 +194,44 @@ def test_hour_bucket_is_measured_to_the_local_day_not_utc_midnight() -> None:
     [
         pytest.param({}, id="aggregator_packet_states_no_run"),
         pytest.param(
-            # 34h ahead of the 04:00Z local day start, against 16h: two
-            # groups.  Runs a few hours apart would share one, which is why
-            # this needs a pair that actually straddles a boundary.
-            {
-                "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-09T18:00:00Z",
-                "NOAA_GEFS_05": "2026-08-10T12:00:00Z",
-            },
-            id="systems_issued_into_different_groups",
-        ),
-        pytest.param(
             {system_id: "" for system_id in SYSTEMS},
             id="run_stated_but_empty",
         ),
     ],
 )
-def test_no_hour_bucket_when_the_packet_does_not_support_one(
+def test_no_hour_bucket_when_the_packet_states_no_runs(
     run_init_utc_by_system: dict[str, str],
 ) -> None:
-    """A cross artifact holds systems that share one bucket by construction.
+    """No run stated means no bucket claim at all -- an empty resolution."""
 
-    So a packet whose systems straddle two groups cannot match one, and saying
-    so is different from guessing which half to believe.
-    """
-
-    assert _hour_lead_bucket(
+    assert _hour_lead_buckets(
         event_date="2026-08-11",
         timezone_name="America/New_York",
         run_init_utc_by_system=run_init_utc_by_system,
         observed_system_ids=SYSTEMS,
-    ) is None
+    ) == ((), {})
+
+
+def test_a_split_packet_names_every_bucket_it_touches_freshest_first() -> None:
+    """Captures read each family at its own newest published run, so a packet
+    that straddles two adjacent groups is the ordinary daytime state.  Both
+    groups are real trained keys; the caller tries them in freshness order
+    and the per-system map names who sits where."""
+
+    buckets, by_system = _hour_lead_buckets(
+        event_date="2026-08-11",
+        timezone_name="America/New_York",
+        run_init_utc_by_system={
+            "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-09T18:00:00Z",
+            "NOAA_GEFS_05": "2026-08-10T12:00:00Z",
+        },
+        observed_system_ids=SYSTEMS,
+    )
+    assert buckets == ("h12_24", "h24_48")
+    assert by_system == {
+        "ECMWF_IFS_ENS_OPEN_PF50": "h24_48",
+        "NOAA_GEFS_05": "h12_24",
+    }
 
 
 def test_a_system_stating_no_run_does_not_veto_the_others() -> None:
@@ -234,7 +244,7 @@ def test_a_system_stating_no_run_does_not_veto_the_others() -> None:
     calendar label, under which nothing is fitted any more.
     """
 
-    assert _hour_lead_bucket(
+    buckets, by_system = _hour_lead_buckets(
         event_date="2026-08-10",
         timezone_name="Asia/Shanghai",
         run_init_utc_by_system={
@@ -242,13 +252,16 @@ def test_a_system_stating_no_run_does_not_veto_the_others() -> None:
             "NOAA_GEFS_05": "2026-08-08T18:00:00Z",
         },
         observed_system_ids=["ECCC_GEM_GLOBAL_ENS", *SYSTEMS],
-    ) == "h12_24"
+    )
+    assert buckets == ("h12_24",)
+    assert "ECCC_GEM_GLOBAL_ENS" not in by_system
 
 
-def test_a_real_straddle_is_still_refused_when_a_bystander_is_present() -> None:
-    # Skipping the silent system must not soften the guard for the ones that
-    # do state a run.
-    assert _hour_lead_bucket(
+def test_a_real_straddle_is_reported_whole_when_a_bystander_is_present() -> None:
+    # Skipping the silent system must not blur what the speaking systems
+    # said: both touched buckets are reported, and the bystander stays out
+    # of the map.
+    buckets, by_system = _hour_lead_buckets(
         event_date="2026-08-11",
         timezone_name="America/New_York",
         run_init_utc_by_system={
@@ -256,4 +269,6 @@ def test_a_real_straddle_is_still_refused_when_a_bystander_is_present() -> None:
             "NOAA_GEFS_05": "2026-08-10T12:00:00Z",
         },
         observed_system_ids=["ECCC_GEM_GLOBAL_ENS", *SYSTEMS],
-    ) is None
+    )
+    assert buckets == ("h12_24", "h24_48")
+    assert "ECCC_GEM_GLOBAL_ENS" not in by_system

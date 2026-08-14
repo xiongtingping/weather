@@ -560,6 +560,7 @@ def test_clause_35_candidate_domain_is_the_reachable_day_not_the_core() -> None:
 
     clause = _clause(35)
     assert "定义域不得收窄为概率核" in clause
+    assert "入围只排序、不排除" in clause
 
     from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
     from bayes_basket_target.delta_v2_runtime import _support_windows
@@ -583,8 +584,6 @@ def test_clause_35_candidate_domain_is_the_reachable_day_not_the_core() -> None:
         snapshot=snapshot,
         desired={"34"},
         probabilities=by_bucket,
-        minimum_win_probability=0.45,
-        minimum_edge_fraction=0.10,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
     )
@@ -626,8 +625,6 @@ def test_clause_37_window_enumeration_respects_the_four_bucket_cap() -> None:
         snapshot=snapshot,
         desired={"33", "34"},
         probabilities=by_bucket,
-        minimum_win_probability=0.45,
-        minimum_edge_fraction=0.10,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
     )
@@ -674,8 +671,6 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         snapshot=snapshot,
         desired={"33", "35"},
         probabilities=by_bucket,
-        minimum_win_probability=0.45,
-        minimum_edge_fraction=0.10,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
     )
@@ -687,8 +682,6 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         snapshot=snapshot,
         desired={"32", "33", "34", "35", "36"},
         probabilities=by_bucket,
-        minimum_win_probability=0.45,
-        minimum_edge_fraction=0.10,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
     )
@@ -699,3 +692,379 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         for seat, row in zip(seats, oversized)
         if not row["is_incumbent"]
     ), "only the incumbent may exceed the cap, and only because it already does"
+
+
+def test_clause_45_market_center_outside_envelope_blocks_new_money_only() -> None:
+    """The gate stops new intents; it never touches p or holdings.
+
+    ZUUU 2026-08-13 is the type specimen: a starved two-system root centred
+    at 35 against a book centred at 37.  Every "edge" the optimizer saw in
+    the low buckets was phantom belief, and the one supervisor positioned to
+    notice -- the market's own center leaving the model envelope -- was
+    diagnostic-only.  Clause 45 makes it a capital gate: same snapshot, same
+    probabilities, and the only thing that changes when the market center
+    walks out of the envelope is that no new buy is authorized.
+    """
+
+    clause = _clause(45)
+    assert "只挡新钱" in clause
+    assert "market_center_outside_model_envelope" in clause
+
+    from bayes_basket_target.basket_kernel.contracts import (
+        TargetBasketPolicy,
+        TargetBasketSnapshot,
+    )
+    from bayes_basket_target.delta_v2_runtime import (
+        compile_delta_v2_runtime_plan,
+    )
+    from tests.test_bayes_basket_target_delta_v2_runtime import (
+        _basket_policy,
+        _delta_policy,
+        _fill_resolver,
+    )
+
+    def plan_with_market_center(outside: bool) -> dict:
+        raw = TargetBasketSnapshot.from_mapping({
+            "schema": "target_basket_snapshot_v6",
+            "snapshot_id": "doctrine-envelope-gate",
+            "sequence": 1,
+            "observed_at": "2026-08-13T03:00:00Z",
+            "market_id": "doctrine-market",
+            "station_id": "RKPK",
+            "event_date": "2026-08-13",
+            "quote_version": "quote-v1",
+            "quote_observed_at": "2026-08-13T03:00:00Z",
+            "quote_source": "OFFICIAL_CLOB_WS",
+            "inventory_version": "inventory-v1",
+            "order_state_version": "order-v1",
+            "evidence": {
+                "probability_stage": "P0",
+                "posterior_version": "p0-v1",
+                "posterior_sha256": "a" * 64,
+            },
+            "buckets": [
+                {
+                    "bucket": "35",
+                    "ordinal": 35,
+                    "probability": 0.3,
+                    "bid_price": 0.04,
+                    "bid_levels": [{"price": 0.04, "shares": 10.0}],
+                    "ask_levels": [{"price": 0.20, "shares": 100.0}],
+                    "price_tick_size": 0.01,
+                    "maker_queue_ahead_shares": 2.0,
+                    "maker_queue_known": True,
+                },
+                {
+                    "bucket": "36",
+                    "ordinal": 36,
+                    "probability": 0.7,
+                    "bid_price": 0.05,
+                    "bid_levels": [{"price": 0.05, "shares": 10.0}],
+                    "ask_levels": [{"price": 0.20, "shares": 100.0}],
+                    "price_tick_size": 0.01,
+                    "maker_queue_ahead_shares": 2.0,
+                    "maker_queue_known": True,
+                },
+                {
+                    # An evidence-dead bucket the model gives nothing; when
+                    # the book prices it richest, the market center has left
+                    # the model envelope.
+                    "bucket": "39",
+                    "ordinal": 39,
+                    "probability": 0.0,
+                    "bid_price": 0.80 if outside else 0.01,
+                    "bid_levels": [{
+                        "price": 0.80 if outside else 0.01,
+                        "shares": 10.0,
+                    }],
+                    "ask_levels": [{
+                        "price": 0.90 if outside else 0.02,
+                        "shares": 100.0,
+                    }],
+                    "price_tick_size": 0.01,
+                    "maker_queue_ahead_shares": 2.0,
+                    "maker_queue_known": True,
+                },
+            ],
+            "checkpoint_changed": True,
+            "quote_changed": True,
+            "fill_changed": True,
+            "time_gate_changed": True,
+            "evidence_fresh": True,
+            "contract_matches": True,
+            "order_state_known": True,
+            "risk_inputs_complete": True,
+            "time_left_minutes": 1440.0,
+        })
+        return compile_delta_v2_runtime_plan(
+            snapshot=raw,
+            basket_policy=_basket_policy(),
+            delta_policy=_delta_policy(),
+            fill_resolver=_fill_resolver,
+            capital_available_usdc=5.0,
+            minimum_profit_floor=-5.0,
+            resource_probe_ok=True,
+        )
+
+    inside = plan_with_market_center(outside=False)
+    outside = plan_with_market_center(outside=True)
+
+    assert inside["envelope_entry_gate"]["blocked"] is False
+    assert inside["delta_v2_action_selection"]["selected_actions"]
+
+    gate = outside["envelope_entry_gate"]
+    assert gate["blocked"] is True
+    assert gate["blocks_new_intents_only"] is True
+    assert outside["market_center_bucket"] == "39"
+    assert outside["delta_v2_action_selection"]["selected_actions"] == []
+    assert outside["delta_v2_audit"]["authorized"] is False
+    assert "market_center_outside_model_envelope" in (
+        outside["delta_v2_action_selection"]["blockers"]
+    )
+    # Probabilities are untouched: the gate is a capital gate, not a p(t)
+    # channel.
+    assert outside["candidate_support"] == inside["candidate_support"]
+
+
+def test_clause_42_taf_is_mandatory_envelope_evidence_and_fails_closed() -> None:
+    """TAF reaches the envelope by evidence, never by price.
+
+    The envelope's only legal widener is evidence; a swallowed query error
+    used to compile a narrower envelope that forbade the forecaster's bucket
+    for the rest of the root's life.  Absence (no table, no TX issued) stays
+    a legitimate None; an unanswerable question fails closed.
+    """
+
+    clause = _clause(42)
+    assert "TAF 是强制包络证据" in clause
+    assert "不得为容纳市场中心而扩张" in clause
+
+    import sqlite3 as _sqlite3
+
+    from bayes_basket_target.native_ensemble_p0 import (
+        _station_issues_taf_tx,
+        _taf_envelope_witness,
+    )
+
+    # Absence: a deployment without the TAF lane has no TAF evidence.
+    bare = _sqlite3.connect(":memory:")
+    assert _taf_envelope_witness(
+        bare,
+        station_id="ZUUU",
+        event_date="2026-08-13",
+        decision_at_utc="2026-08-13T00:00:00Z",
+    ) is None
+    assert _station_issues_taf_tx(bare, station_id="ZUUU") is False
+
+    # Failure: the table exists but cannot be read -> fail closed, both ways.
+    broken = _sqlite3.connect(":memory:")
+    broken.execute(
+        "CREATE TABLE calibration_forward_taf_capture (wrong_shape TEXT)"
+    )
+    with pytest.raises(
+        DomainContractError, match="taf_envelope_witness_query_failed"
+    ):
+        _taf_envelope_witness(
+            broken,
+            station_id="ZUUU",
+            event_date="2026-08-13",
+            decision_at_utc="2026-08-13T00:00:00Z",
+        )
+    with pytest.raises(
+        DomainContractError, match="taf_station_capability_query_failed"
+    ):
+        _station_issues_taf_tx(broken, station_id="ZUUU")
+
+
+def test_clause_42_envelope_compiler_source_is_price_blind() -> None:
+    """The evidence compiler must not even know the book's vocabulary.
+
+    Clause 42 says the envelope never reads prices and clause 45 says the
+    market center may legitimately sit outside it; both collapse if a later
+    edit lets the P0 compiler peek at quotes to "fix" a disagreement.  Same
+    enforcement idiom as the strategy layer's weather-blindness: the source
+    may not contain book identifiers at all.
+    """
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "native_ensemble_p0.py"
+    ).read_text(encoding="utf-8")
+    for token in (
+        "bid_price",
+        "ask_price",
+        "bid_levels",
+        "ask_levels",
+        "order_book",
+        "market_center",
+    ):
+        assert token not in source, (
+            f"price vocabulary {token!r} leaked into the envelope compiler"
+        )
+
+
+def test_clause_35_objective_owns_seat_quantity_price_and_dials() -> None:
+    """The model nominates; the objective decides all five powers.
+
+    Fixture: the inherited core is {36} but both buckets offer at 0.20
+    against 0.30/0.70 of belief, so the pair is strictly better.  Every
+    decision the plan carries must then come from the objective's seated
+    solution, not from the core's nomination: the support is the pair, each
+    seated bucket gets a positive objective-solved quantity, every limit
+    price is a legal post bounded by the book, and the clause-40 dials are
+    published for the seated basket.
+    """
+
+    clause = _clause(35)
+    assert "模型选桶仅是参考与提名" in clause
+    assert "五项全部唯一归本条目标函数" in clause
+
+    from bayes_basket_target.basket_kernel.contracts import (
+        TargetBasketSnapshot,
+    )
+    from bayes_basket_target.delta_v2_runtime import (
+        compile_delta_v2_runtime_plan,
+    )
+    from tests.test_bayes_basket_target_delta_v2_runtime import (
+        _basket_policy,
+        _delta_policy,
+        _fill_resolver,
+        _snapshot,
+    )
+
+    raw = _snapshot().to_dict()
+    raw["current_core_buckets"] = ["36"]
+    plan = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+
+    seated = plan["basket_support_selection"]["seated"]
+    # Power 1: the seat, not the core's nomination.
+    assert seated["buckets"] == ["35", "36"]
+    assert plan["candidate_support"] == seated["buckets"]
+    # Power 2: quantities are the objective's solve, positive on every
+    # seated bucket.
+    shares = {
+        row["bucket"]: float(row["target_shares"])
+        for row in plan["targets"]
+    }
+    for bucket in seated["buckets"]:
+        assert shares.get(bucket, 0.0) > 0.0
+    # Power 3: every offered price is a legal post bounded by the book --
+    # never the static reservation grid floor, never a crossing price.
+    actions = plan["delta_v2_action_selection"]["selected_actions"]
+    assert actions
+    by_bucket = {row.bucket: row for row in TargetBasketSnapshot.from_mapping(
+        raw
+    ).buckets}
+    for entry in actions:
+        action = entry["action"]
+        row = by_bucket[str(action["bucket"])]
+        assert float(action["limit_price"]) < float(row.ask_price) + 1e-9
+        assert float(action["limit_price"]) > 0.0
+    # Powers 4 and 5: EV and the clause-40 dials are published for the
+    # seated basket.
+    assert isinstance(seated["edge"], float)
+    assert plan["basket_win_probability"] == pytest.approx(
+        seated["win_probability"]
+    )
+    # A full-partition basket has no losing scenario, so the odds ratio is
+    # legitimately undefined (None) -- that is the certainty-harvest shape,
+    # not a missing dial.
+    assert plan["basket_odds_ratio"] is None or plan["basket_odds_ratio"] > 0.0
+    assert plan["basket_support_floor_pnl_usdc"] > 0.0
+
+
+def test_clause_46_p0_opens_positions_without_waiting_for_p1() -> None:
+    """Stage-open is the first path; preliminary is a recorded failure.
+
+    The drift this clause kills: treating ``preliminary_no_live_p1_pending``
+    as a stage gate ("P0 waits for P1") when it is the fallback receipt for
+    a stage-open that concretely failed.  The worker source must attempt the
+    atomic open before it may write the preliminary record, and the fallback
+    must record why the open failed.
+    """
+
+    clause = _clause(46)
+    assert "P0 建仓、P0-M 确认调仓、P1 动态调仓" in clause
+    assert "永不允许作为先验门" in clause
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    open_at = source.index("commit_production_candidate_atomic(")
+    preliminary_at = source.index("commit_preliminary_scope_decision(")
+    assert open_at < preliminary_at, (
+        "the atomic stage-open must be attempted before the preliminary "
+        "fallback record"
+    )
+    assert "stage_open_blocker" in source, (
+        "a failed stage-open must record why, or the fallback becomes an "
+        "unexplained gate again"
+    )
+
+
+def test_clause_48_listing_window_opens_positions() -> None:
+    """Listing-at-entry: subscribe rootless, cold-start virgin leads, serve
+    split packets with named riders.
+
+    The drifts this clause kills: an empty probability claim treated as an
+    expired one (catalog circuit-break on rootless listing scopes), a virgin
+    lead bucket starving its own listing window while its forward window
+    fills, and any gate that rebuilds its expected cycle map from the
+    packet's current runs instead of the activation's fitted pairing.
+    """
+
+    clause = _clause(48)
+    assert "订阅面 = 概率信封 ∪ registry 挂牌面" in clause
+    assert "虚桶冷启动" in clause
+    assert "分裂包照常服务" in clause
+
+    from bayes_basket_target.native_ensemble_p0 import (
+        HOUR_LEAD_BUCKET_FRESHNESS_ORDER,
+        HOUR_LEAD_FALLBACK_CHAIN,
+    )
+
+    # Every chain starts at its own bucket (exact bucket auto-takes-over)
+    # and borrows only strictly shorter trained groups.
+    order = {
+        bucket: index
+        for index, bucket in enumerate(HOUR_LEAD_BUCKET_FRESHNESS_ORDER)
+    }
+    for bucket, chain in HOUR_LEAD_FALLBACK_CHAIN.items():
+        assert chain[0] == bucket
+        assert all(
+            order[candidate] <= order[bucket] for candidate in chain
+        )
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "native_ensemble_p0.py"
+    ).read_text(encoding="utf-8")
+    for lineage_key in (
+        "provisional_lead_fallback_json",
+        "hour_bucket_split_riders_json",
+        "activation_cycle_riders_json",
+    ):
+        assert lineage_key in source, (
+            "every borrow must be named in lineage: " + lineage_key
+        )
+
+    publisher = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "resident_target_ws_publisher.py"
+    ).read_text(encoding="utf-8")
+    assert "set(current_probability) | set(rows_by_scope)" in publisher, (
+        "the catalog must union envelope scopes with registry listing scopes"
+    )

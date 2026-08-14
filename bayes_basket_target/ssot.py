@@ -365,8 +365,13 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
     REFERENCES calibration_native_ensemble_system(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
+  -- Hours ahead of the station's own local day.  The calendar labels stay
+  -- admissible so rows ingested before the vocabulary switch remain valid;
+  -- nothing writes them any more.
   archive_lead_bucket TEXT NOT NULL CHECK(
-    archive_lead_bucket IN ('d0','d1','d2')
+    archive_lead_bucket IN (
+      'h00_12','h12_24','h24_48','h48_plus','d0','d1','d2'
+    )
   ),
   run_cycle TEXT NOT NULL CHECK(
     run_cycle IN (
@@ -421,8 +426,13 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_bucket 
     REFERENCES calibration_native_ensemble_system(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
+  -- Hours ahead of the station's own local day.  The calendar labels stay
+  -- admissible so rows ingested before the vocabulary switch remain valid;
+  -- nothing writes them any more.
   archive_lead_bucket TEXT NOT NULL CHECK(
-    archive_lead_bucket IN ('d0','d1','d2')
+    archive_lead_bucket IN (
+      'h00_12','h12_24','h24_48','h48_plus','d0','d1','d2'
+    )
   ),
   archive_query_at_utc TEXT NOT NULL,
   member_set_sha256 TEXT NOT NULL CHECK(length(member_set_sha256)=64),

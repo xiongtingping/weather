@@ -110,3 +110,57 @@ def test_gefs_retained_inventory_accepts_both_approved_prefixes(
     finally:
         noaa_gefs_archive._retained_fields.cache_clear()
     assert {key[2] for key in fields} == {"control", "perturbed_01"}
+
+
+def test_a_repeat_range_is_served_from_the_store_without_the_message_fetch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    # GEFS names its range in a per-object index, so the index is fetched
+    # either way -- but once named, the message may already be in the store.
+    # Two event dates served by the same run share roughly half their forecast
+    # hours, and each shared hour is this same immutable object range.
+    from bayes_basket_target import noaa_gefs_archive
+
+    body = b"GRIB message for a shared forecast hour" * 8
+    index_raw = (
+        b"1:0:d=2026081300:TMP:2 m above ground:24 hour fcst:ENS=+1\n"
+        b"2:" + str(len(body)).encode() + b":d=2026081300:x\n"
+    )
+
+    def transport(url, **kwargs):
+        if url.endswith(".idx"):
+            return index_raw, {}
+        return body, {"last-modified": "Wed, 13 Aug 2026 00:00:00 GMT"}
+
+    monkeypatch.setattr(noaa_gefs_archive, "_get_bytes", transport)
+    kwargs = dict(
+        client=None,
+        run_day="20260813",
+        cycle="00",
+        object_member="gep01",
+        member_id="member_01",
+        forecast_hour=24,
+        timeout_seconds=1.0,
+        raw_roots=(tmp_path,),
+        raw_store=tmp_path,
+    )
+    first, first_receipt, first_bytes = noaa_gefs_archive._download_gefs_field(
+        **kwargs
+    )
+    assert first == body
+    assert first_bytes == len(index_raw) + len(body)
+
+    def index_only(url, **kwargs):
+        if url.endswith(".idx"):
+            return index_raw, {}
+        raise AssertionError("the message must not be fetched a second time")
+
+    monkeypatch.setattr(noaa_gefs_archive, "_get_bytes", index_only)
+    second, second_receipt, second_bytes = noaa_gefs_archive._download_gefs_field(
+        **kwargs
+    )
+    assert second == body
+    # Only the index crossed the network the second time.
+    assert second_bytes == len(index_raw)
+    assert second_receipt == first_receipt

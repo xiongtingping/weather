@@ -1080,6 +1080,19 @@ def insert_probability_envelope(
             ):
                 if str(row[1]) == envelope.content_sha256:
                     return {"schema": MATERIALIZATION_SCHEMA, "state": "ALREADY_COMMITTED", "wrote": False, "envelope_id": envelope.checkpoint_id}
+                if envelope.lineage.get("reaffirmation_of_checkpoint_id"):
+                    # A reaffirmation is the declared exception to
+                    # consume-once: same observation prefix, same root,
+                    # deliberately re-clocked because the staleness gate
+                    # measures time since evidence was examined, not time
+                    # since the answer moved.  Its lineage names what it
+                    # re-examined, so it is auditable rather than the silent
+                    # nondeterminism this gate exists to kill.  Without this
+                    # branch every hot night wedged P1 permanently: no new
+                    # daily high -> no packets -> reaffirm -> same event and
+                    # root with a new clock -> killed as corruption -> retry
+                    # forever while the served P1 aged past its grace.
+                    continue
                 raise ContractError("p1_canonical_event_already_consumed")
     conn.execute(
         """INSERT INTO basket_probability_envelope(
