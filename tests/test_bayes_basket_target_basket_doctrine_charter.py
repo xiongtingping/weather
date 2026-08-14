@@ -1493,8 +1493,9 @@ def test_clause_42_seat_must_touch_the_probability_core() -> None:
     1.02-1.09) and over-claims on the shoulder (0.08-0.12 realizes 0.77), so a
     window sharing no bucket with the core is bidding its own over-claim.
 
-    The incumbent is exempt, because taking "hold what we hold" off the menu is
-    the escape clause 38 scopes the floor to live buckets to prevent.
+    The incumbent -- the continuous core's own support, not held inventory --
+    is exempt, because it was admitted on evidence and this filter is about
+    price.
     """
 
     assert "席位触核门" in _clause(42)
@@ -1550,7 +1551,13 @@ def test_clause_42_seat_must_touch_the_probability_core() -> None:
 
 
 def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
-    """Whatever we already hold stays on the menu, core or not."""
+    """The continuous core's own support stays on the menu, core-touching or not.
+
+    ``desired`` is what ``_choose_support`` admitted on evidence, not filled
+    inventory.  In practice it is mass-selected and so touches the probability
+    core anyway; the exemption exists so that a coverage target which drifted
+    off it shows up as a visible seat rather than an empty menu.
+    """
 
     from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
     from bayes_basket_target.delta_v2_runtime import _support_windows
@@ -1580,7 +1587,7 @@ def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
         center_bucket="34",
     )
     seats = [tuple(row["buckets"]) for row in windows]
-    assert ("37",) in seats, "the incumbent is exempt from the touch rule"
+    assert ("37",) in seats, "the evidence-admitted support is exempt"
     held = next(row for row in windows if row["buckets"] == ("37",))
     assert held["is_incumbent"] is True
     assert held["holds_probability_core"] is False

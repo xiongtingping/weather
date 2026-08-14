@@ -243,10 +243,14 @@ def _support_windows(
             price = sum(quote for quote in quotes if quote is not None)
             edge = win - price if priced else None
             is_incumbent = window == incumbent
-            # The incumbent is always offered so the optimizer can keep it:
-            # taking "hold what we hold" off the menu is the same escape the
-            # floor's live-bucket scope exists to close, so it is exempt from
-            # both floors below.
+            # The incumbent -- the continuous core's own support, not held
+            # inventory -- is exempt from both floors below, because it was
+            # admitted on evidence and this function is a price filter rather
+            # than a second opinion on that.  The exemption is a belt, not a
+            # bypass: the core resolver selects by mass, so its support
+            # touches the probability core on every live scope checked
+            # (ZUUU/VILK/LEMD/LTAC 2026-08-15), and a coverage target that
+            # drifted off it would be a fault to see, not to hide.
             #
             # There are exactly two hard admission floors, and everything else
             # is ranking -- the seat belongs to the curve score alone.  First,
