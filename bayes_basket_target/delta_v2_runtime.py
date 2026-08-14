@@ -290,10 +290,17 @@ def _support_windows(
 
 # Enumerating quantities is exponential in the window's width, so the shortlist
 # is bounded rather than the whole lattice being expanded.  The ordering above
-# is by the same quantity the objective maximises, so a deeper shortlist buys
-# progressively less; four keeps the incumbent plus the leading alternatives
-# inside the existing candidate ceiling.
-MAX_SUPPORT_WINDOWS_SOLVED = 4
+# is by the same quantity the objective maximises -- but that ranking is
+# depth-blind: on a listing-thin book the highest-KL windows can all contain
+# a leg whose entire visible book is smaller than the smallest cash clip, and
+# such a window solves to exactly the baseline.  At four, ZUUU 2026-08-15's
+# top three alternatives all carried the 0.75-USDC 33C book and scored zero
+# while the depth-feasible {34,35} pair (edge +0.18) sat unsolved at rank
+# five -- a HOLD manufactured by the cutoff, not by the objective.  Twelve
+# keeps the solve bounded (each window's own candidate lattice is already
+# capped at 4096) while letting the first depth-feasible alternatives reach
+# the solver.
+MAX_SUPPORT_WINDOWS_SOLVED = 12
 
 
 def _solve_over_support_windows(
