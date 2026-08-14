@@ -23,6 +23,8 @@ the gate actually measured; the rollout follows artifact regeneration.
 
 from __future__ import annotations
 
+import math
+
 from typing import Any, Mapping, Sequence
 
 CONSENSUS_BRIDGE_METHOD_TAG = "consensus_bridge_v1"
@@ -123,6 +125,70 @@ SYNOPTIC_COOLING_METHOD_TAG = "synoptic_cooling_shift_v1"
 # between them).  That is the argument for capturing the models' own radiation
 # and wind forecasts, which this lane does not extract today.
 SYNOPTIC_COOLING_SHIFT_SIGMA = 0.15
+# The models' own forecast of the day's shortwave radiation is the stronger
+# reading of the same physics, and it subsumes the forecaster's fields.
+# Measured 2026-08-14 over 5,230 station-days: forecast radiation correlates
+# +0.189 with the standardised residual against +0.191 for the reanalysis
+# actual -- the forecast loses essentially nothing, because the models get
+# the radiation right and mis-translate it to screen temperature.  Shifting
+# by 0.15 sigma per standardised unit gains 2.07% CRPS and 12.7% NLL (peak
+# 2.09% at 0.20, a flat plateau; 0.15 is the shrunk choice).  Adding the TAF
+# cooling index on top moves it to 2.10% -- nothing -- so radiation leads and
+# the forecaster's fields are the fallback for a day the radiation capture
+# missed.  Radiation also covers every station-day, where a TX exists for
+# seventeen stations only.
+RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
+RADIATION_SHIFT_SIGMA = 0.15
+RADIATION_MIN_HISTORY_SAMPLES = 30
+
+
+def forecast_radiation_shift_sigma(
+    *,
+    radiation_sum: float | None,
+    station_history: "Sequence[float]",
+) -> tuple[float | None, dict[str, Any]]:
+    """Standardise the day's forecast radiation against the station's own.
+
+    Radiation is a site quantity -- latitude, season and climate set its
+    scale -- so it is standardised per station against that station's own
+    captured history rather than against a fleet constant.  Returns the shift
+    in ensemble sigmas (positive means warmer than the models say), or None
+    when the day or the history is missing.
+    """
+
+    if radiation_sum is None:
+        return None, {
+            "schema": "forecast_radiation_receipt_v1",
+            "method_tag": RADIATION_SHIFT_METHOD_TAG,
+            "state": "NO_FORECAST_RADIATION",
+        }
+    values = [float(value) for value in station_history]
+    if len(values) < RADIATION_MIN_HISTORY_SAMPLES:
+        return None, {
+            "schema": "forecast_radiation_receipt_v1",
+            "method_tag": RADIATION_SHIFT_METHOD_TAG,
+            "state": "HISTORY_TOO_THIN",
+            "sample_count": len(values),
+        }
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    deviation = math.sqrt(variance)
+    if deviation <= 0.0:
+        return None, {
+            "schema": "forecast_radiation_receipt_v1",
+            "method_tag": RADIATION_SHIFT_METHOD_TAG,
+            "state": "HISTORY_DEGENERATE",
+        }
+    standardised = (float(radiation_sum) - mean) / deviation
+    return RADIATION_SHIFT_SIGMA * standardised, {
+        "schema": "forecast_radiation_receipt_v1",
+        "method_tag": RADIATION_SHIFT_METHOD_TAG,
+        "state": "RESOLVED",
+        "radiation_sum": float(radiation_sum),
+        "standardised": standardised,
+        "sample_count": len(values),
+        "shift_sigma": RADIATION_SHIFT_SIGMA * standardised,
+    }
 SYNOPTIC_COOLING_NORMALISATION = {
     # field: (fleet mean, fleet standard deviation) over 2,121 TAF captures
     "cloud_cover_fraction": (0.3557, 0.3102),

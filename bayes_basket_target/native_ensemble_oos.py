@@ -25,6 +25,7 @@ from .cross_consensus import (
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
 )
@@ -1028,6 +1029,23 @@ def _holdout_conditioning_signals(
                 truth_rows[key] = (revision, float(tmax_c))
     except sqlite3.Error:
         pass
+    # Radiation leads and the forecaster's fields are the fallback, the same
+    # precedence the serving path applies.
+    radiation_by_day: dict[str, float] = {}
+    radiation_history: list[float] = []
+    try:
+        for local_date, radiation in conn.execute(
+            "SELECT local_date,shortwave_radiation_sum "
+            "FROM calibration_station_forecast_physics "
+            "WHERE station_id=? AND reference_only=1 "
+            "AND shortwave_radiation_sum IS NOT NULL",
+            (station_id,),
+        ):
+            radiation_by_day[str(local_date)] = float(radiation)
+            radiation_history.append(float(radiation))
+    except sqlite3.Error:
+        radiation_by_day = {}
+        radiation_history = []
     taf_by_day: dict[str, float] = {}
     cooling_by_day: dict[str, float] = {}
     try:
@@ -1090,14 +1108,24 @@ def _holdout_conditioning_signals(
         if sigma > 0.0 and key in taf_by_day:
             taf_gap = (taf_by_day[key] - center) / sigma
         cooling = cooling_by_day.get(key)
-        if headroom is None and taf_gap is None and cooling is None:
+        shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
+            radiation_sum=radiation_by_day.get(key),
+            station_history=[
+                value
+                for other, value in radiation_by_day.items()
+                if other != key
+            ],
+        )
+        if shift_sigma is None and cooling is not None:
+            shift_sigma = -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling
+        if headroom is None and taf_gap is None and shift_sigma is None:
             continue
         signals[key] = {
             "climatology_headroom_sigma": headroom,
             "taf_gap_sigma": taf_gap,
             "synoptic_cooling_shift_c": (
-                -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling * sigma
-                if cooling is not None and sigma > 0.0
+                shift_sigma * sigma
+                if shift_sigma is not None and sigma > 0.0
                 else None
             ),
         }

@@ -1268,3 +1268,65 @@ def test_clause_43_synoptic_cooling_is_a_centre_shift_inside_p_of_t() -> None:
         source = (root / rel).read_text(encoding="utf-8")
         for name in SYNOPTIC_COOLING_NORMALISATION:
             assert name not in source, f"{rel} reads {name}"
+
+
+def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
+    """The models' own radiation forecast, not the forecaster's proxy fields.
+
+    Measured over 5,230 station-days: forecast daily shortwave radiation
+    correlates +0.189 with the standardised residual against +0.191 for the
+    reanalysis actual -- the forecast loses essentially nothing, because the
+    models get the radiation right and mis-translate it to screen
+    temperature.  It gains 2.12% CRPS over every station-day, twice what the
+    TAF fields reach over the seventeen stations that publish a TX, and
+    adding those fields on top of it gains nothing.
+    """
+
+    clause = _clause(43)
+    assert "辐射领跑" in clause
+
+    from bayes_basket_target.cross_consensus import (
+        RADIATION_MIN_HISTORY_SAMPLES,
+        RADIATION_SHIFT_SIGMA,
+        forecast_radiation_shift_sigma,
+    )
+
+    assert 0.0 < RADIATION_SHIFT_SIGMA <= 0.25
+    assert RADIATION_MIN_HISTORY_SAMPLES >= 30
+
+    history = [20.0 + (index % 11) - 5 for index in range(60)]
+    bright, bright_receipt = forecast_radiation_shift_sigma(
+        radiation_sum=40.0, station_history=history
+    )
+    dull, _receipt = forecast_radiation_shift_sigma(
+        radiation_sum=5.0, station_history=history
+    )
+    # A brighter day than this station usually gets runs warmer than the
+    # models say, and a duller one colder.
+    assert bright > 0.0 > dull
+    assert bright_receipt["state"] == "RESOLVED"
+
+    # A station whose history is too thin has no scale to standardise
+    # against, and must not be shifted on a guess.
+    thin, thin_receipt = forecast_radiation_shift_sigma(
+        radiation_sum=40.0, station_history=[20.0, 21.0, 19.0]
+    )
+    assert thin is None
+    assert thin_receipt["state"] == "HISTORY_TOO_THIN"
+
+    # Reference covariates only: the capture must never write the truth
+    # table, and the strategy layer must never read the field.
+    capture = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "capture_station_forecast_physics.py"
+    ).read_text(encoding="utf-8")
+    assert "calibration_station_daily_high_truth" not in capture
+    assert "reference_only" in capture
+    root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "bayes_basket_target/basket_kernel/delta_v2.py",
+        "bayes_basket_target/delta_v2_runtime.py",
+    ):
+        source = (root / rel).read_text(encoding="utf-8")
+        assert "shortwave_radiation" not in source

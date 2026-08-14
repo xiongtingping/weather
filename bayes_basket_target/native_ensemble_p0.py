@@ -17,9 +17,11 @@ EPS = 1e-9
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
+    RADIATION_SHIFT_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
 )
@@ -451,6 +453,51 @@ def _ordered_buckets(
     if len(ordered) != len(set(ordered)):
         raise ContractError("native_ensemble_p0_bucket_duplicate")
     return ordered
+
+
+FORECAST_PHYSICS_HISTORY_DAYS = 180
+
+
+def _forecast_radiation_sum(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> float | None:
+    """The models' forecast daily shortwave radiation for this station-day."""
+
+    try:
+        row = conn.execute(
+            "SELECT shortwave_radiation_sum "
+            "FROM calibration_station_forecast_physics "
+            "WHERE station_id=? AND local_date=? AND reference_only=1",
+            (station_id, event_date),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return float(row[0]) if row and row[0] is not None else None
+
+
+def _forecast_radiation_history(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str
+) -> list[float]:
+    """This station's own recent radiation record, excluding the event day.
+
+    Radiation is a site quantity -- latitude, season and climate set its
+    scale -- so it is standardised against the station's own history rather
+    than a fleet constant, and the day being scored is excluded so it cannot
+    standardise itself.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT shortwave_radiation_sum "
+            "FROM calibration_station_forecast_physics "
+            "WHERE station_id=? AND local_date<>? AND reference_only=1 "
+            "AND shortwave_radiation_sum IS NOT NULL "
+            "ORDER BY local_date DESC LIMIT ?",
+            (station_id, event_date, FORECAST_PHYSICS_HISTORY_DAYS),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [float(row[0]) for row in rows]
 
 
 def _shift_probability_c(
@@ -2199,26 +2246,40 @@ def compile_native_ensemble_p0(
     # method tag so the holdout that admitted the artifact scored it too.
     synoptic_cooling_receipt = None
     synoptic_cooling_shift_c = 0.0
-    if (
-        SYNOPTIC_COOLING_METHOD_TAG in artifact_combination_method
-        and taf_witness is not None
-    ):
-        cooling_index, synoptic_cooling_receipt = synoptic_cooling_index(
-            cloud_cover_fraction=taf_witness.get("cloud_cover_fraction"),
-            precipitation_probability=taf_witness.get(
-                "precipitation_probability"
-            ),
-            wind_speed_mps=taf_witness.get("wind_speed_mps"),
+    if SYNOPTIC_COOLING_METHOD_TAG in artifact_combination_method:
+        # Radiation leads: it is the same physics read from the models
+        # themselves, twice as strong as the forecaster's fields, available
+        # for every station-day rather than the seventeen that publish a TX,
+        # and adding the TAF index on top of it gains nothing.  The
+        # forecaster's fields are the fallback for a day whose radiation
+        # capture is missing or whose station history is still too thin.
+        shift_sigma, synoptic_cooling_receipt = (
+            forecast_radiation_shift_sigma(
+                radiation_sum=_forecast_radiation_sum(
+                    conn, station_id=station_id, event_date=event_date
+                ),
+                station_history=_forecast_radiation_history(
+                    conn, station_id=station_id, event_date=event_date
+                ),
+            )
         )
-        if cooling_index is not None:
+        if shift_sigma is None and taf_witness is not None:
+            cooling_index, synoptic_cooling_receipt = synoptic_cooling_index(
+                cloud_cover_fraction=taf_witness.get("cloud_cover_fraction"),
+                precipitation_probability=taf_witness.get(
+                    "precipitation_probability"
+                ),
+                wind_speed_mps=taf_witness.get("wind_speed_mps"),
+            )
+            if cooling_index is not None:
+                shift_sigma = (
+                    -SYNOPTIC_COOLING_SHIFT_SIGMA * float(cooling_index)
+                )
+        if shift_sigma is not None:
             member_spread_c = _distribution_sigma_c(
                 probability, _bucket_centers(intervals_raw, ordered)
             )
-            synoptic_cooling_shift_c = (
-                -SYNOPTIC_COOLING_SHIFT_SIGMA
-                * float(cooling_index)
-                * member_spread_c
-            )
+            synoptic_cooling_shift_c = float(shift_sigma) * member_spread_c
             if abs(synoptic_cooling_shift_c) > EPS:
                 shifted_centers = [
                     value + synoptic_cooling_shift_c
