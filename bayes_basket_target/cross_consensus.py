@@ -239,99 +239,71 @@ def synoptic_cooling_index(
 
 
 NEIGHBOUR_DIRECTION_METHOD_TAG = "neighbour_direction_v1"
-# The served distribution is symmetric about its centre and the truth is not.
-# Measured in-pipeline over 5,233 station-days with a bootstrap over days --
+# The served distribution is symmetric about its centre and the truth is not,
+# and how far it leans depends on where the station sits.  Every number here
+# is measured in-pipeline -- this ensemble, this inflation, this truth lane --
+# because the factors describe our own distribution's defect rather than the
+# atmosphere: a pipeline scoring a single Gaussian against a reanalysis
+# disagrees with this one in sign on two of the four offsets, for reasons
+# that are mechanical (its far buckets are under-claimed where our inflated
+# mixture over-claims them, and it scores against a grid box where we score
+# against an airport thermometer that runs hot on clear calm afternoons).
+#
+# Fitted over 5,233 station-days with intervals bootstrapped over days --
 # stations on one day share weather, so the day is the independent unit and
-# there are 47 of them:
+# there are 47 of them.  A band-offset cell has to clear two hurdles to be
+# served on its own: its interval must exclude 1.0, and its conservative end
+# (the end nearest one) must be at least as strong as the fleet factor.  The
+# second hurdle is what keeps 1,500 station-days of one band from overriding
+# 5,233 of all of them on a weaker reading.
 #
-#   two below  x0.769 [0.663, 0.867]   one below  x0.901 [0.830, 0.980]
-#   one above  x1.114 [1.030, 1.179]   two above  x0.894 [0.804, 1.009]
+#   band      offset  claimed  factor  width  own evidence  beats fleet
+#   00-25     -2       9.4%    0.66    0.35      yes           yes
+#   00-25     -1/+1   20-23%   ~1.01   0.32      no             -
+#   25-35     -2      10.4%    0.71    0.31      yes           no
+#   25-35     +1      21.0%    1.14    0.24      yes           no
+#   35-45     -2       9.7%    0.66    0.38      yes           yes
+#   35-45     -1      22.1%    0.88    0.23      yes           no
+#   45+       -1      23.0%    0.64    0.28      yes           yes
+#   45+       +1      19.1%    1.57    0.45      yes           yes
+#   every band +2      ~9%     0.80-0.88  0.33-0.64  no        -
 #
-# The first three exclude 1.0; the fourth does not and serves 1.0.  Each
-# served factor is the end of its interval nearest one -- the least effect
-# the data supports at 95%, not a point estimate and an invented shrink.  The
-# centre is excluded: it is the largest factor and the only one that will not
-# hold still (1.149 fitted early against 1.005 late), and carrying it costs
-# 0.67% CRPS out of sample against +0.17% for these four.
+# Four of sixteen cells clear both.  The rest are not silent for one reason
+# but three: some bands genuinely have no lean at that offset (the tropics at
+# plus or minus one), some have a real lean the fleet factor already carries
+# better, and every plus-or-minus-two cell is simply too thin -- nine percent
+# of claimed mass makes a ratio whose interval spans 0.33 to 0.64, wide
+# enough to swallow the effect.  As truth accumulates those intervals narrow
+# and cells qualify on their own; the rule does not change, the table does.
 #
-# A research lane was built to fit this by latitude and season on years
-# rather than weeks -- past ECMWF forecasts against the ERA5 analysis,
-# 38,207 station-days -- and it does not transfer.  On the offsets that
-# matter it disagrees in sign with the pipeline it would be serving: the
-# research pair reads one above at x0.91 and two above at x1.06 where
-# production reads x1.21 and x0.88.  Applied to the production holdout it
-# gains 0.19% CRPS while *losing* 0.09% NLL, against 0.17%/0.11% for these
-# in-pipeline factors.  Different forecast, different analysis, different
-# error structure; the shape is a property of our own distributions, not of
-# the atmosphere, so it must be fitted on our own.
-#
-# (An earlier banded version was served for two hours on 2026-08-14 and is
-# withdrawn.  It scored better on the same holdout, but it was fitted on a
-# contaminated sample: the archive's default model selection returns the
-# reanalysis itself at low latitude, so twenty-one of forty-five stations had
-# a residual of zero by construction and dropped out silently, biasing the
-# bands toward the high-latitude stations that remained.  The capture now
-# names its model and refuses an analysis echo; the clean refit is what says
-# the prior does not transfer.)
-NEIGHBOUR_DIRECTION_FACTORS = {
+# Measured on the production temporal holdout: 0.247% CRPS and 0.277% NLL,
+# against 0.189%/0.167% for banding the lower neighbour alone and
+# 0.133%/0.098% fleet-wide.
+NEIGHBOUR_DIRECTION_FLEET = {
     -2: 0.867,
     -1: 0.980,
     1: 1.030,
     2: 1.000,
 }
-# One offset carries latitude, and only one.  Comparing the two pipelines'
-# *relative* band structure -- each band against its own fleet mean, so the
-# level difference cancels -- the agreement is not uniform:
-#
-#   offset -1  4 of 4 bands agree in direction
-#   offset -2  2 of 4        offset +2  2 of 4
-#   offset +1  0 of 4        (production says high latitude leans warm, the
-#                             research pair says the opposite)
-#
-# So -1 is the one place where latitude is a shared physical fact rather than
-# a property of one pipeline, and it is where both say the same thing: the
-# further from the equator, the more the bucket below the centre is
-# over-claimed.  Production measures it on its own truth (1.003, 0.963,
-# 0.879, 0.642 by band, day-bootstrapped), which is where the served levels
-# come from; the research pair's independent agreement is what says the
-# monotonicity is not 47 days of noise.
-#
-# Bands whose own interval contains 1.0 keep the fleet factor rather than
-# their point estimate -- the band evidence has to beat the fleet evidence to
-# replace it -- and the significant bands serve the end of their interval
-# nearest one, or the fleet factor where that end is weaker still.  Without
-# that last clause 35-45 would serve 0.996 against 0.980 for the equator,
-# i.e. less deflation further from it, which is the opposite of the fact
-# being encoded: a conservative reading of one band must not undo what the
-# fleet already established.  Measured on the production temporal holdout this nearly
-# doubles the layer: 0.226% CRPS and 0.179% NLL against 0.133%/0.098% for
-# the fleet-wide version, and it also beats banding every offset (0.145%),
-# which spends four times the parameters on structure three of them do not
-# have.
-#
-# +1 is deliberately left fleet-wide.  Its band structure disagrees with the
-# research pair on every band, and there is a mechanism for that: production
-# scores against an airport point observation, which on clear calm summer
-# days runs hotter than any grid box by an amount a mean bias correction
-# cannot remove.  That warm lean is real for us and absent from a
-# reanalysis-scored pipeline, so nothing outside this pipeline can confirm it.
-NEIGHBOUR_DIRECTION_LOWER_BY_BAND = {
-    "lat_00_25": 0.980,
-    "lat_25_35": 0.980,
-    "lat_35_45": 0.980,
-    "lat_45_plus": 0.774,
+NEIGHBOUR_DIRECTION_BY_BAND = {
+    "lat_00_25": {-2: 0.838, -1: 0.980, 1: 1.030, 2: 1.000},
+    "lat_25_35": {-2: 0.867, -1: 0.980, 1: 1.030, 2: 1.000},
+    "lat_35_45": {-2: 0.852, -1: 0.980, 1: 1.030, 2: 1.000},
+    "lat_45_plus": {-2: 0.867, -1: 0.797, 1: 1.348, 2: 1.000},
 }
 
 
 def neighbour_direction_band(latitude: float | None) -> str:
-    """The latitude band whose lower-neighbour factor a station is served.
+    """The latitude band whose factors a station is served.
 
-    An unknown latitude serves the fleet band: not knowing where a station is
-    is not evidence about its shape.
+    Hemispheres share a band -- the lean tracks distance from the equator,
+    not which side of it -- and an unknown latitude serves the band whose
+    cells are closest to the fleet, since not knowing where a station is is
+    not evidence about its shape.
     """
 
     if latitude is None:
-        return "lat_00_25"
+        return "lat_25_35"
     magnitude = abs(float(latitude))
     if magnitude < 25.0:
         return "lat_00_25"
@@ -360,10 +332,7 @@ def apply_neighbour_direction_tilt(
             "state": "NO_CENTER_BUCKET",
         }
     band = neighbour_direction_band(latitude)
-    factors = {
-        **NEIGHBOUR_DIRECTION_FACTORS,
-        -1: NEIGHBOUR_DIRECTION_LOWER_BY_BAND[band],
-    }
+    factors = NEIGHBOUR_DIRECTION_BY_BAND[band]
     center_ordinal = int(ordinals[center_bucket])
     tilted: dict[str, float] = {}
     applied: dict[str, float] = {}

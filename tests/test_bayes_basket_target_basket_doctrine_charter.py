@@ -1396,44 +1396,47 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     assert "neighbour_direction_v1" in clause
 
     from bayes_basket_target.cross_consensus import (
-        NEIGHBOUR_DIRECTION_FACTORS,
+        NEIGHBOUR_DIRECTION_BY_BAND,
+        NEIGHBOUR_DIRECTION_FLEET,
         apply_neighbour_direction_tilt,
+        neighbour_direction_band,
     )
 
     # The centre is never reweighted here; position is the radiation shift's
     # job and the centre factor does not hold still.
-    assert 0 not in NEIGHBOUR_DIRECTION_FACTORS
-    # Warm side up, cold side down -- the direction this pipeline's own
-    # record shows.
-    assert NEIGHBOUR_DIRECTION_FACTORS[-1] < 1.0 < NEIGHBOUR_DIRECTION_FACTORS[1]
-    assert NEIGHBOUR_DIRECTION_FACTORS[-2] < NEIGHBOUR_DIRECTION_FACTORS[-1]
-    # An interval containing 1.0 serves 1.0.
-    assert NEIGHBOUR_DIRECTION_FACTORS[2] == 1.0
+    for cells in NEIGHBOUR_DIRECTION_BY_BAND.values():
+        assert 0 not in cells
+        assert set(cells) == set(NEIGHBOUR_DIRECTION_FLEET)
 
-    from bayes_basket_target.cross_consensus import (
-        NEIGHBOUR_DIRECTION_LOWER_BY_BAND,
-        neighbour_direction_band,
-    )
-
-    # Latitude conditions exactly one offset: the lower neighbour, the only
-    # one whose relative band structure both pipelines agree on (4 of 4
-    # bands, against 0 of 4 for the upper neighbour).  Deflation strengthens
-    # away from the equator.
-    ordered = [
-        NEIGHBOUR_DIRECTION_LOWER_BY_BAND[key]
-        for key in ("lat_00_25", "lat_25_35", "lat_35_45", "lat_45_plus")
+    # A cell that did not clear both hurdles serves the fleet factor, so most
+    # of the table is the fleet and only what earned its own reading differs.
+    differing = [
+        (band, offset)
+        for band, cells in NEIGHBOUR_DIRECTION_BY_BAND.items()
+        for offset, value in cells.items()
+        if value != NEIGHBOUR_DIRECTION_FLEET[offset]
     ]
-    assert ordered == sorted(ordered, reverse=True)
-    assert ordered[-1] < ordered[0]
-    # A band whose own evidence does not beat the fleet's keeps the fleet
-    # factor rather than its point estimate.
-    assert NEIGHBOUR_DIRECTION_LOWER_BY_BAND["lat_00_25"] == (
-        NEIGHBOUR_DIRECTION_FACTORS[-1]
-    )
-    # Southern and northern hemispheres share a band; an unknown latitude is
-    # not evidence about shape.
+    assert len(differing) == 4, differing
+    # Every served cell must lean the same way as the fleet -- a band may
+    # sharpen the fleet's reading, never reverse it.
+    for band, cells in NEIGHBOUR_DIRECTION_BY_BAND.items():
+        for offset, value in cells.items():
+            fleet = NEIGHBOUR_DIRECTION_FLEET[offset]
+            if fleet == 1.0:
+                assert value == 1.0
+            else:
+                assert (value - 1.0) * (fleet - 1.0) > 0
+                assert abs(value - 1.0) >= abs(fleet - 1.0)
+
+    # High latitude is where the lean is strongest, on both neighbours.
+    high = NEIGHBOUR_DIRECTION_BY_BAND["lat_45_plus"]
+    for other in ("lat_00_25", "lat_25_35", "lat_35_45"):
+        assert high[-1] < NEIGHBOUR_DIRECTION_BY_BAND[other][-1]
+        assert high[1] > NEIGHBOUR_DIRECTION_BY_BAND[other][1]
+
+    # Hemispheres share a band; an unknown latitude is not evidence.
     assert neighbour_direction_band(-52.0) == neighbour_direction_band(52.0)
-    assert neighbour_direction_band(None) == "lat_00_25"
+    assert neighbour_direction_band(None) == "lat_25_35"
 
     raw = {
         "33": 0.04, "34": 0.09, "35": 0.19, "36": 0.34,
@@ -1444,6 +1447,7 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
         raw, ordinals=ordinals, center_bucket="36", latitude=52.3
     )
     assert receipt["state"] == "APPLIED"
+    assert receipt["band"] == "lat_45_plus"
     assert abs(sum(tilted.values()) - 1.0) < 1e-9
     # The high band's lean lives in the inner pair: one bucket above gains
     # against one below.  It is deliberately not asserted that this makes a
