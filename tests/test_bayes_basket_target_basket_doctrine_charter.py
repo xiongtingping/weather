@@ -443,7 +443,27 @@ def test_clause_43_no_weather_branch_in_the_strategy_layer() -> None:
 
     clause = _clause(43)
     assert "双重计数" in clause
-    assert "环流条件化" in clause
+    # The approved successor is no longer a plan: the conditional tail layer
+    # is live inside p(t), with its measurements and its four rejected
+    # candidates recorded in the clause itself.
+    assert "conditional_tail_skew_v1" in clause
+    assert "同日气候余量" in clause
+
+    from bayes_basket_target.cross_consensus import (
+        CLIMATOLOGY_HEADROOM_BANDS,
+        TAF_DIRECTION_COLD,
+        TAF_DIRECTION_WARM,
+    )
+
+    # Width: the band a day falls in must matter, and a day at the top of its
+    # own record must widen more than an ordinary one.
+    factors = [factor for _bound, factor in CLIMATOLOGY_HEADROOM_BANDS]
+    assert factors[0] > factors[-1]
+    # Skew: the two TAF directions must be mirror images, or the layer is
+    # scaling rather than pointing.
+    assert TAF_DIRECTION_WARM[0] > 1.0 > TAF_DIRECTION_WARM[1]
+    assert TAF_DIRECTION_COLD[1] > 1.0 > TAF_DIRECTION_COLD[0]
+    assert TAF_DIRECTION_WARM == TAF_DIRECTION_COLD[::-1]
 
     strategy_files = (
         "bayes_basket_target/basket_kernel/delta_v2.py",

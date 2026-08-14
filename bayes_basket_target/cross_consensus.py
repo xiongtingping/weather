@@ -54,19 +54,24 @@ CONDITIONAL_SKEW_FACTOR_CEILING = 2.0
 # inside the station's own same-calendar-day record, in sigmas of headroom to
 # that record's high.  Realized-over-claimed hit rate for tail buckets:
 #
-#   headroom < 0     (above the same-day record)   warm 2.17x  cold 2.17x
-#   0.00 - 0.75      (at the record)               warm 1.99x  cold 2.15x
-#   0.75 - 1.75      (moderate room)               warm 2.12x  cold 1.75x
-#   >= 1.75          (ample room)                  warm 1.41x  cold 1.16x
+#   headroom < 0     (above the same-day record)   warm 2.54x  cold 2.50x
+#   0.00 - 0.75      (at the record)               warm 1.93x  cold 1.92x
+#   0.75 - 1.75      (moderate room)               warm 2.06x  cold 1.50x
+#   >= 1.75          (ample room)                  warm 1.39x  cold 1.32x
 #
-# A day forecast at the top of its own seasonal envelope is a volatile day in
-# both directions; an ordinary day is already close to calibrated.
+# A day forecast at the top of its own calendar-day record is a volatile day
+# in both directions; an ordinary day is already close to calibrated.  The
+# record is ten years of daily maxima at the station's own coordinates
+# (``calibration_station_same_day_climatology``, reference covariates only).
+# Measured first against one season's seven-day window instead, the same
+# bands read 2.17x/1.41x -- the real climatology sharpened the gradient from
+# 1.5x to 1.8x across the bands, which is what the multi-year capture bought.
 CLIMATOLOGY_HEADROOM_BANDS = (
     # (headroom_upper_bound_sigma, base_tail_factor)
-    (0.0, 1.7),
-    (0.75, 1.65),
+    (0.0, 2.0),
+    (0.75, 1.7),
     (1.75, 1.7),
-    (float("inf"), 1.25),
+    (float("inf"), 1.3),
 )
 CLIMATOLOGY_ABSENT_BASE_FACTOR = 1.4
 # SKEW (which side that width belongs to) comes from the airport forecaster's

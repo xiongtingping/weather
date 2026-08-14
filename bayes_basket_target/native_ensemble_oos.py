@@ -951,6 +951,18 @@ def _holdout_conditioning_signals(
                 continue
             centers_by_day.setdefault(str(day), []).append(float(center))
     truth_rows: dict[str, tuple[int, float]] = {}
+    # Multi-year reference climatology first, settled truth overriding it for
+    # the days it covers -- the same precedence the serving path uses.
+    try:
+        for local_date, high_c in conn.execute(
+            "SELECT local_date,daily_high_c "
+            "FROM calibration_station_same_day_climatology "
+            "WHERE station_id=? AND reference_only=1",
+            (station_id,),
+        ):
+            truth_rows[str(local_date)] = (-1, float(high_c))
+    except sqlite3.Error:
+        truth_rows = {}
     try:
         for local_date, tmax_c, revision_no in conn.execute(
             "SELECT local_date,official_tmax_c,revision_no "
@@ -963,7 +975,7 @@ def _holdout_conditioning_signals(
             if key not in truth_rows or revision > truth_rows[key][0]:
                 truth_rows[key] = (revision, float(tmax_c))
     except sqlite3.Error:
-        truth_rows = {}
+        pass
     taf_by_day: dict[str, float] = {}
     try:
         for event_date, tx_c in conn.execute(

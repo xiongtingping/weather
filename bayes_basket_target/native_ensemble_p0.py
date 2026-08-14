@@ -512,6 +512,26 @@ def _same_day_climatology_headroom(
         )
     }
     latest: dict[str, tuple[int, float]] = {}
+    # The multi-year reference record first: ten years of daily maxima at this
+    # station's coordinates make "same calendar day" a real climatology rather
+    # than this season's seven-day window.  These rows are reference
+    # covariates only -- never truth, never a probability authority -- and the
+    # settled truth below still contributes its own days, so a station whose
+    # reference capture is missing degrades to the in-season window instead of
+    # losing the signal.
+    try:
+        for local_date, high_c in conn.execute(
+            "SELECT local_date,daily_high_c "
+            "FROM calibration_station_same_day_climatology "
+            "WHERE station_id=? AND reference_only=1",
+            (station_id,),
+        ):
+            key = str(local_date)
+            if key == str(event_date) or key[5:] not in window:
+                continue
+            latest[key] = (-1, float(high_c))
+    except sqlite3.Error:
+        latest = {}
     try:
         rows = conn.execute(
             "SELECT local_date,official_tmax_c,revision_no "
@@ -520,12 +540,14 @@ def _same_day_climatology_headroom(
             (station_id,),
         ).fetchall()
     except sqlite3.Error:
-        return None
+        rows = []
     for local_date, tmax_c, revision_no in rows:
         key = str(local_date)
         if key == str(event_date) or key[5:] not in window:
             continue
         revision = int(revision_no or 0)
+        # Settled truth outranks the reanalysis for a day both cover: the
+        # station's own observation is the better record of that day.
         if key not in latest or revision > latest[key][0]:
             latest[key] = (revision, float(tmax_c))
     if len(latest) < SAME_DAY_CLIMATOLOGY_MIN_SAMPLES:
