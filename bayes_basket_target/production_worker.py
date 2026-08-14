@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import traceback
 import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -10954,6 +10955,7 @@ class TargetProductionWorker:
             registry_snapshot_path = (
                 self.nwp_runtime_root / "market_registry_forward.json"
             )
+            preselection_catalog_read_mono = time.monotonic()
             for ws_scope in ws_scope_catalog:
                 if (
                     ws_scope["event_day_state"] != "not_started"
@@ -10961,6 +10963,31 @@ class TargetProductionWorker:
                     or ws_scope.get("scope_blocker")
                 ):
                     continue
+                # The catalog was snapshotted at loop entry, but each scope
+                # evaluates at its own now(): forty-odd compiles later the
+                # snapshot's connection clock is past the strict-as-of age
+                # budget and every remaining scope dies manifest_stale.  The
+                # publisher republishes every few seconds, so re-reading is
+                # cheap; a scope that vanished or grew a blocker in the
+                # meantime is skipped on the fresh answer.
+                if time.monotonic() - preselection_catalog_read_mono > 60.0:
+                    try:
+                        refreshed_catalog = {
+                            item["scope_key"]: item
+                            for item in self._resident_ws_scope_catalog()
+                        }
+                    except ContractError:
+                        refreshed_catalog = {}
+                    preselection_catalog_read_mono = time.monotonic()
+                    refreshed = refreshed_catalog.get(ws_scope["scope_key"])
+                    if (
+                        refreshed is None
+                        or refreshed["event_day_state"] != "not_started"
+                        or not refreshed["probability_evidence_fresh"]
+                        or refreshed.get("scope_blocker")
+                    ):
+                        continue
+                    ws_scope = refreshed
                 try:
                     preselection_evaluation_at = utc_now()
                     with self._temporary_scope_manifest(
@@ -10988,6 +11015,15 @@ class TargetProductionWorker:
                             station_id=str(ws_scope["station_id"]),
                             event_date=str(ws_scope["event_date"]),
                         ),
+                        # A bare exception name is undiagnosable from the
+                        # status file, and this receipt is the only trace a
+                        # failed forward scope leaves.  Keep the innermost
+                        # frames so the site is readable without reproducing
+                        # the exact drain race that triggered it.
+                        "blocked_traceback_tail": [
+                            line.strip()
+                            for line in traceback.format_exception(exc)[-4:]
+                        ],
                         "preliminary_decision_count": 0,
                         "intents_written": 0,
                         "reservations_written": 0,

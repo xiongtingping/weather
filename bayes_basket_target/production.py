@@ -400,6 +400,13 @@ def commit_production_candidate_atomic(
     if compiled_plan.get("boundary", {}).get("calls_order_gateway") is not False:
         raise ContractError("production_gateway_boundary_invalid")
     lineage = plan.get("lineage")
+    # A P0 forward plan carries no ``plan.lineage`` at all.  Normalize once:
+    # every downstream read in this function then degrades to the empty
+    # string and its own envelope/plan fallback, instead of each new field
+    # read rediscovering the None crash one production day at a time
+    # (probability_stage, then settlement_timezone, then posterior_sha256).
+    if not isinstance(lineage, Mapping):
+        lineage = {}
     # All three stages may hold a position: P0 opens on the ensemble, P0-M
     # re-confirms on the TAF revision, P1 adjusts on observed METAR.  The
     # chain head each one roots on differs and is chosen below; the stage
@@ -437,9 +444,23 @@ def commit_production_candidate_atomic(
     market_timezone = str(
         market_snapshot.get("settlement_timezone") or ""
     ).strip()
+    # Same shape as the stage read above: a P0 forward plan carries no
+    # ``plan.lineage`` at all, so the timezone is read from where each
+    # compiler actually puts it -- lineage, then the plan itself, then the
+    # probability envelope the stage was already resolved from.
+    candidate_probability_envelope = compiled_plan.get("probability_envelope")
     probability_timezone = str(
-        lineage.get("settlement_timezone")
+        (
+            lineage.get("settlement_timezone")
+            if isinstance(lineage, Mapping)
+            else ""
+        )
         or plan.get("settlement_timezone")
+        or (
+            candidate_probability_envelope.get("settlement_timezone")
+            if isinstance(candidate_probability_envelope, Mapping)
+            else ""
+        )
         or ""
     ).strip()
     assert_probability_timezone_matches_market(
@@ -457,7 +478,7 @@ def commit_production_candidate_atomic(
     plan_payload["upstream_plan_id"] = upstream_plan_id
     plan_payload["production_cycle_sha256"] = compiled_plan.get("production_cycle_sha256")
     plan_payload["settlement_timezone"] = market_timezone
-    plan_lineage = dict(lineage)
+    plan_lineage = dict(lineage) if isinstance(lineage, Mapping) else {}
     plan_lineage["settlement_timezone"] = probability_timezone
     # P1 roots on the observation the day produced; the two stages that run
     # before one exists root on their own evidence instead.  Both are derived
