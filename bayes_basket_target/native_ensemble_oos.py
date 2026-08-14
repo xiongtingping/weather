@@ -22,9 +22,11 @@ from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
+    NEIGHBOUR_DIRECTION_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    apply_neighbour_direction_tilt,
     forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
@@ -937,6 +939,14 @@ def _weight_maturity(train_n: int | None) -> float:
     )
 
 
+def _nearest_key(ordered_keys: Sequence[str], value: float) -> str:
+    """The integer-labelled bucket a temperature rounds to."""
+
+    labels = [float(int(key)) for key in ordered_keys]
+    best = min(range(len(labels)), key=lambda i: abs(labels[i] - value))
+    return str(ordered_keys[best])
+
+
 def _shift_bucketed_probability(
     probability: Mapping[str, float],
     *,
@@ -1222,12 +1232,26 @@ def _select_minimum_crps_subset(
                     ordered_keys=ordered_keys,
                     shift_c=float(cooling_shift),
                 )
+            ordinal_map = {
+                str(key): index
+                for index, key in enumerate(ordered_keys)
+            }
+            probability, _direction_receipt = (
+                apply_neighbour_direction_tilt(
+                    probability,
+                    ordinals=ordinal_map,
+                    center_bucket=_nearest_key(
+                        ordered_keys,
+                        sum(
+                            probability[str(key)] * float(int(key))
+                            for key in ordered_keys
+                        ),
+                    ),
+                )
+            )
             probability, _skew_receipt = apply_conditional_tail_skew(
                 probability,
-                ordinals={
-                    str(key): index
-                    for index, key in enumerate(ordered_keys)
-                },
+                ordinals=ordinal_map,
                 **day_signals,
             )
             actual = float(
@@ -2961,12 +2985,26 @@ def build_native_ensemble_oos(
                     ordered_keys=ordered_keys,
                     shift_c=float(cooling_shift),
                 )
+            ordinal_map = {
+                str(key): index
+                for index, key in enumerate(ordered_keys)
+            }
+            probability, _direction_receipt = (
+                apply_neighbour_direction_tilt(
+                    probability,
+                    ordinals=ordinal_map,
+                    center_bucket=_nearest_key(
+                        ordered_keys,
+                        sum(
+                            probability[str(key)] * float(int(key))
+                            for key in ordered_keys
+                        ),
+                    ),
+                )
+            )
             probability, _skew_receipt = apply_conditional_tail_skew(
                 probability,
-                ordinals={
-                    str(key): index
-                    for index, key in enumerate(ordered_keys)
-                },
+                ordinals=ordinal_map,
                 **day_signals,
             )
             actual = float(
@@ -4077,6 +4115,7 @@ def persist_native_ensemble_oos(
                     # above scored the conditionally skewed blend with this
                     # day's own signals, so the artifact says so and P0 keys
                     # the serving transform on this tag.
+                    + "::" + NEIGHBOUR_DIRECTION_METHOD_TAG
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
                 ),

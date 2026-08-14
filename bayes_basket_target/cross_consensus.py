@@ -238,6 +238,81 @@ def synoptic_cooling_index(
     }
 
 
+NEIGHBOUR_DIRECTION_METHOD_TAG = "neighbour_direction_v1"
+# The served distribution is symmetric about its centre where the truth is
+# not.  Measured over 5,233 station-days, realized landing rate against what
+# the distribution claimed, by offset from the centre bucket, with 95%
+# intervals from a bootstrap over *days* (stations on one day share weather,
+# so the day is the independent unit -- 47 of them, not 5,233):
+#
+#   two buckets below  x0.769  [0.663, 0.867]   significant
+#   one bucket below   x0.901  [0.830, 0.980]   significant
+#   one bucket above   x1.114  [1.030, 1.179]   significant
+#   two buckets above  x0.894  [0.804, 1.009]   not significant
+#   the centre         x1.195  [1.137, 1.260]   significant, and excluded
+#
+# The truth leans one bucket warm and falls away faster on the cold side
+# than the served distribution says.  The centre is excluded deliberately:
+# it is the one factor that does not hold still -- 1.149 fitted on the first
+# 60% of each station's record against 1.005 on the last 40%, a two-sigma
+# drift -- and carrying it costs 0.67% CRPS out of sample.  The four
+# offsets around it gain 0.17% CRPS and 0.19% NLL on the same holdout
+# (against 0.06%/0.11% for the inner pair alone).
+#
+# Served factors are the conservative end of each interval -- the least
+# effect the data supports at 95%, not a point estimate and an invented
+# shrink -- and an interval containing 1.0 serves 1.0.
+#
+# The asymmetry at two buckets out is what makes the placement visible: a
+# four-bucket window sitting [-1,+2] and the same window sitting [-2,+1]
+# share the three inner offsets and differ only at +2 against -2, so a
+# distribution symmetric there cannot tell them apart.  The record can:
+# 86.2% against 84.6% over the last month.
+NEIGHBOUR_DIRECTION_FACTORS = {
+    -2: 0.867,
+    -1: 0.980,
+    1: 1.030,
+    2: 1.000,
+}
+
+
+def apply_neighbour_direction_tilt(
+    probability: "Mapping[str, float]",
+    *,
+    ordinals: "Mapping[str, int]",
+    center_bucket: str,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Lean the two buckets either side of the centre, then renormalise."""
+
+    if not probability:
+        raise ValueError("neighbour_direction_probability_empty")
+    if center_bucket not in ordinals:
+        return {str(k): float(v) for k, v in probability.items()}, {
+            "schema": "neighbour_direction_receipt_v1",
+            "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
+            "state": "NO_CENTER_BUCKET",
+        }
+    center_ordinal = int(ordinals[center_bucket])
+    tilted: dict[str, float] = {}
+    applied: dict[str, float] = {}
+    for key, raw in probability.items():
+        offset = int(ordinals[key]) - center_ordinal
+        factor = NEIGHBOUR_DIRECTION_FACTORS.get(offset, 1.0)
+        if factor != 1.0:
+            applied[str(key)] = factor
+        tilted[str(key)] = float(raw) * factor
+    total = sum(tilted.values())
+    if total <= 0:
+        raise ValueError("neighbour_direction_probability_empty")
+    return {key: value / total for key, value in tilted.items()}, {
+        "schema": "neighbour_direction_receipt_v1",
+        "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
+        "state": "APPLIED" if applied else "NO_NEIGHBOUR_IN_SUPPORT",
+        "center_bucket": str(center_bucket),
+        "applied_factors": applied,
+    }
+
+
 def apply_conditional_tail_skew(
     probability: "Mapping[str, float]",
     *,

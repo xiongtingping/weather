@@ -1373,3 +1373,64 @@ def test_off_centre_windows_are_deflated_not_forbidden() -> None:
     assert "window_probabilities" in source
     # It corrects, it does not forbid: no admission branch may key on it.
     assert "if not holds_center:\n                continue" not in source
+
+
+def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
+    """The one static directional regularity, served where clause 43 puts it.
+
+    Measured over 5,233 station-days with a bootstrap over days (stations on
+    one day share weather, so the day is the independent unit and there are
+    47 of them): the truth leans one bucket warm and falls away faster on the
+    cold side than the served distribution says.  Offsets minus two, minus
+    one and plus one each exclude 1.0; plus two does not and therefore
+    serves 1.0.  The centre is excluded on purpose -- it is the factor that
+    drifts (1.149 fitted early, 1.005 late) and carrying it costs 0.67% CRPS
+    out of sample, against +0.17% for the four offsets around it.
+    """
+
+    clause = _clause(43)
+    assert "neighbour_direction_v1" in clause
+
+    from bayes_basket_target.cross_consensus import (
+        NEIGHBOUR_DIRECTION_FACTORS,
+        apply_neighbour_direction_tilt,
+    )
+
+    # The centre is never reweighted here; position is the radiation shift's
+    # job and the centre factor does not hold still.
+    assert 0 not in NEIGHBOUR_DIRECTION_FACTORS
+    # Warm side up, cold side down -- the direction the record shows.
+    assert NEIGHBOUR_DIRECTION_FACTORS[-1] < 1.0 < NEIGHBOUR_DIRECTION_FACTORS[1]
+    assert NEIGHBOUR_DIRECTION_FACTORS[-2] < NEIGHBOUR_DIRECTION_FACTORS[-1]
+    # An interval containing 1.0 serves 1.0.
+    assert NEIGHBOUR_DIRECTION_FACTORS[2] == 1.0
+
+    raw = {
+        "33": 0.04, "34": 0.09, "35": 0.19, "36": 0.34,
+        "37": 0.26, "38": 0.06, "39": 0.02,
+    }
+    ordinals = {key: index for index, key in enumerate(sorted(raw))}
+    tilted, receipt = apply_neighbour_direction_tilt(
+        raw, ordinals=ordinals, center_bucket="36"
+    )
+    assert receipt["state"] == "APPLIED"
+    assert abs(sum(tilted.values()) - 1.0) < 1e-9
+    # The point of carrying offset two: a four-bucket window placed [-1,+2]
+    # and the same window placed [-2,+1] share their three inner offsets and
+    # differ only at +2 against -2, so the warm placement can only gain if
+    # that pair is asymmetric.
+    warm_before = sum(raw[key] for key in ("35", "36", "37", "38"))
+    cold_before = sum(raw[key] for key in ("34", "35", "36", "37"))
+    warm_after = sum(tilted[key] for key in ("35", "36", "37", "38"))
+    cold_after = sum(tilted[key] for key in ("34", "35", "36", "37"))
+    assert (warm_after - cold_after) > (warm_before - cold_before)
+
+    # It lives in p(t).  The objective must not learn a placement rule.
+    root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "bayes_basket_target/basket_kernel/delta_v2.py",
+        "bayes_basket_target/delta_v2_runtime.py",
+    ):
+        source = (root / rel).read_text(encoding="utf-8")
+        assert "NEIGHBOUR_DIRECTION" not in source
+        assert "neighbour_direction" not in source

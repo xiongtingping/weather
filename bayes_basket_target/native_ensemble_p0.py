@@ -17,10 +17,12 @@ EPS = 1e-9
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
+    NEIGHBOUR_DIRECTION_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    apply_neighbour_direction_tilt,
     forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
@@ -2292,6 +2294,23 @@ def compile_native_ensemble_p0(
                     intervals=intervals_raw,
                 )
             synoptic_cooling_receipt["shift_c"] = synoptic_cooling_shift_c
+    # Shape after position: the radiation shift above moves the centre, this
+    # leans the buckets around wherever it landed, and the tail layer below
+    # conditions what is further out.  Each touches a region the others do
+    # not -- offsets one and two here, beyond that there -- so the order is
+    # fixed only so the three never read each other's residue.
+    neighbour_direction_receipt = None
+    if NEIGHBOUR_DIRECTION_METHOD_TAG in artifact_combination_method:
+        probability, neighbour_direction_receipt = (
+            apply_neighbour_direction_tilt(
+                probability,
+                ordinals={
+                    str(bucket): index
+                    for index, bucket in enumerate(ordered)
+                },
+                center_bucket=model_center_bucket,
+            )
+        )
     tail_reliability_receipt = None
     if CONDITIONAL_SKEW_METHOD_TAG in artifact_combination_method:
         bucket_centers_c = _bucket_centers(intervals_raw, ordered)
@@ -2673,6 +2692,7 @@ def compile_native_ensemble_p0(
             if provisional_lead_fallback else None
         ),
         "synoptic_cooling_json": _json(synoptic_cooling_receipt),
+        "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
         "activation_cycle_riders_json": _json(activation_cycle_riders),
@@ -2890,6 +2910,7 @@ def compile_native_ensemble_p0(
             if provisional_lead_fallback else None
         ),
         "synoptic_cooling_json": _json(synoptic_cooling_receipt),
+        "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
         "activation_cycle_riders_json": _json(activation_cycle_riders),
