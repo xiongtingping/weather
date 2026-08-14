@@ -7461,20 +7461,36 @@ class TargetProductionWorker:
                 raise ContractError(
                     "resident_target_ws_scope_binding_invalid"
                 )
-            if day_state == "not_started" and stage not in {"P0", "P0-M"}:
+            if day_state == "not_started" and stage not in {"P0", "P0-M", ""}:
                 raise ContractError(
                     "resident_target_ws_future_stage_forbidden"
                 )
             scope_blocker = ""
-            if day_state == "not_started" and probability_evidence_fresh is not True:
+            if day_state == "not_started" and not stage:
+                # A rootless listing-day scope: subscribed at listing (charter
+                # 48) so its book records from the first quote, while no
+                # probability claim exists yet to preselect from.  It must be
+                # observational, not fatal -- treating it as a forbidden stage
+                # killed this whole catalog on the first rootless scope, which
+                # silenced every healthy scope's preselection and open-day
+                # decision for as long as one unrooted listing existed.
+                scope_blocker = "resident_target_ws_future_scope_rootless"
+            elif day_state == "not_started" and probability_evidence_fresh is not True:
                 # A stale future scope is observational only.  Keep it in the
                 # catalog for auditability, but do not let one station-day
                 # suppress healthy open scopes or create a future P0 action.
                 scope_blocker = "resident_target_ws_future_probability_stale"
-            if day_state == "open" and stage not in {"P0", "P0-M", "P1"}:
+            if day_state == "open" and stage not in {"P0", "P0-M", "P1", ""}:
                 raise ContractError(
                     "resident_target_ws_open_scope_probability_stage_invalid"
                 )
+            if day_state == "open" and not stage:
+                # A rootless open scope: the market trades but no probability
+                # root ever compiled for it (a listing-day subscription whose
+                # station never landed a packet).  Same doctrine as the
+                # rootless future scope above -- keep recording its book,
+                # block decisions on it alone, never let it kill the catalog.
+                scope_blocker = "resident_target_ws_open_scope_rootless"
             if (
                 day_state == "open"
                 and stage in {"P0", "P0-M"}

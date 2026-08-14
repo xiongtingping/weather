@@ -3576,10 +3576,14 @@ def test_default_market_manifest_is_target_owned() -> None:
     assert DEFAULT_TARGET_MARKET_MANIFEST.resolve() != PROTECTED_RESIDENT_WS_MANIFEST
 
 
-def test_resident_consumer_capacity_matches_canonical_45station_two_day_scope() -> None:
+def test_resident_consumer_capacity_matches_canonical_45station_three_day_scope() -> None:
+    # Listing-at-entry (charter 48) makes three concurrent event days the
+    # steady state: the listing day, today and tomorrow.  The reader's cap
+    # must match the publisher's (MAX_TARGET_SCOPES = 45 x 3); a stricter
+    # reader turns a bigger catalog into a global WS-path outage.
     assert len(CANONICAL_TARGET_STATIONS) == 45
     assert len(set(CANONICAL_TARGET_STATIONS)) == 45
-    assert MAX_RESIDENT_WS_SCOPES == 90
+    assert MAX_RESIDENT_WS_SCOPES == 135
 
 
 def test_production_default_station_scope_is_canonical_45(
