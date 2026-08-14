@@ -593,8 +593,16 @@ def _fit_parameters(
     bias = sum(errors) / len(errors)
     rmse = math.sqrt(sum(error * error for error in errors) / len(errors))
     mean_spread = sum(spreads) / len(spreads)
+    # The cap was 3.0 and it bound: 199 of 614 fitted parameter sets sat on
+    # it, and that group measured a z standard deviation of 1.66 -- still
+    # 66% too narrow after the largest inflation the cap allowed -- while the
+    # sets that landed near 2.0 measured 1.03 with 95% interval coverage of
+    # exactly 95%.  The mechanism works; it was being truncated.  Measured
+    # requirements per system run 2.5x to 4.7x (GEFS_SEAMLESS 4.7x, UKMO
+    # 4.0x, GEFS 3.4x), so 5.0 clears every observed case while still
+    # refusing a runaway fit on a degenerate spread.
     spread_factor = min(
-        3.0,
+        5.0,
         max(0.5, rmse / max(mean_spread, 0.1)),
     )
     reliability_weight = len(cases) / (len(cases) + 10.0)

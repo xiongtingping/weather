@@ -1123,3 +1123,50 @@ def test_clause_38_floor_scope_follows_coverability() -> None:
         "the window solver must scope the floor by coverability, not "
         "unconditionally by the live set"
     )
+
+
+def test_uncalibrated_member_never_serves_identity_parameters() -> None:
+    """A provisional member is uncertified, not neutral.
+
+    Measured 2026-08-14 across 6,933 station-day-system cases: served with
+    identity parameters (no bias, no spread change) ICON ran a z standard
+    deviation of 2.88 with its 95% interval covering 61% of outcomes and a
+    +0.85 sigma cold bias, while holding a third of ZUUU's combination
+    weight.  Every system in this fleet needs 2.5x-4.7x spread inflation and
+    runs cold by 0.3C-1.9C, so identity parameters assert the opposite of
+    both measurements.  The provisional member borrows its station's own
+    certified peers' median instead, and never serves narrower than the raw
+    member cloud.
+    """
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "native_ensemble_p0.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"spread_factor": 1.0' not in source, (
+        "an uncalibrated member must not serve an identity spread"
+    )
+    assert '"bias_c": 0.0' not in source, (
+        "an uncalibrated member must not serve an identity bias"
+    )
+    assert "PEER_MEDIAN_STATION_LOCAL" in source
+    # The borrow is station-local (the weights ruling) and floored at the raw
+    # cloud, and it stays named as provisional rather than becoming a
+    # certificate.
+    assert "provisional_parameter_sources_json" in source
+    assert "provisional_uncalibrated_system_ids_json" in source
+
+    from bayes_basket_target.native_ensemble_oos import (
+        build_native_ensemble_oos,  # noqa: F401
+    )
+
+    oos_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "native_ensemble_oos.py"
+    ).read_text(encoding="utf-8")
+    # The inflation cap must clear the measured requirement (4.7x worst
+    # case); a cap that binds is a distribution knowingly served too narrow.
+    assert "spread_factor = min(\n        5.0," in oos_source

@@ -1735,6 +1735,9 @@ def compile_native_ensemble_p0(
     system_bias_c: dict[str, float] = {}
     family_by_system: dict[str, str] = {}
     provisional_uncalibrated_system_ids: list[str] = []
+    provisional_parameter_sources: dict[str, dict[str, Any]] = {}
+    system_spread_factor: dict[str, float] = {}
+    deferred_provisional: list[tuple[str, Any, str]] = []
     for system_id in system_ids:
         if system_id in provisional_rider_ids:
             # Zero certified weight: no calibration demanded, no probability
@@ -1829,43 +1832,15 @@ def compile_native_ensemble_p0(
                 # Provisional member: certified into the combination before
                 # its own per-system calibration exists (the ruling: enter
                 # P0 now at the certified weight, keep accumulating samples,
-                # calibration follows when the OOS window fills).  It serves
-                # its raw member distribution through the same kernel with
-                # identity parameters -- no bias, no spread change -- and is
-                # named in the lineage so nothing mistakes raw for
-                # calibrated.  Republisher packets keep the hard failure:
-                # their members only enter with a strict proof.
-                raw_values = [
-                    float(member["raw_tmax_c"]) for member in members
-                ]
-                # reliability 1.0 zeroes the climate blend term, but the
-                # kernel still demands sample shape; the members themselves
-                # satisfy it without contributing anything.
-                identity_reliability = {
-                    "reliability_weight": 1.0,
-                    "climate_samples_c": raw_values,
-                }
-                system_probabilities[system_id] = (
-                    _calibrated_system_probability(
-                        values=raw_values,
-                        intervals=intervals_raw,
-                        bias_parameters={"bias_c": 0.0},
-                        spread_parameters={"spread_factor": 1.0},
-                        reliability_parameters=identity_reliability,
-                    )
+                # calibration follows when the OOS window fills).  Serving is
+                # deferred to a second pass below because the parameters it
+                # borrows are the station's certified peers', and those are
+                # only complete once every certified system has loaded its
+                # own.  Republisher packets keep the hard failure: their
+                # members only enter with a strict proof.
+                deferred_provisional.append(
+                    (system_id, members, system_run_cycle)
                 )
-                raw_center = sum(raw_values) / len(raw_values)
-                calibrated_system_centers_c[system_id] = raw_center
-                system_bias_c[system_id] = 0.0
-                provisional_marker = content_sha256({
-                    "provisional_uncalibrated_system": system_id,
-                    "station_id": station_id,
-                    "lead_bucket": training_lead_bucket,
-                    "run_cycle": system_run_cycle,
-                })
-                system_artifact_shas[system_id] = provisional_marker
-                system_activation_shas[system_id] = provisional_marker
-                provisional_uncalibrated_system_ids.append(system_id)
                 continue
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:"
@@ -1977,10 +1952,74 @@ def compile_native_ensemble_p0(
                 raw_center + float(bias_parameters["bias_c"])
             )
         system_bias_c[system_id] = float(bias_parameters["bias_c"])
+        system_spread_factor[system_id] = float(
+            json.loads(str(system_artifact[1]))["spread_factor"]
+        )
         system_artifact_shas[system_id] = str(system_artifact[3])
         system_activation_shas[system_id] = str(
             system_activation[0][2]
         )
+    for system_id, members, system_run_cycle in deferred_provisional:
+        # An uncalibrated member served with identity parameters is not
+        # neutral, it is confidently wrong.  Measured 2026-08-14: ICON served
+        # that way ran z-sd 2.88 with its 95% interval covering 61% of
+        # outcomes and a +0.85 sigma cold bias while carrying a third of
+        # ZUUU's weight.  Every system in this fleet needs 2.5x-4.7x spread
+        # inflation and runs cold by 0.3-1.9C; identity parameters assert the
+        # opposite of both.  The station's own certified peers in this same
+        # combination have already measured both quantities here, so the
+        # provisional member borrows their median -- station-local (the
+        # weights ruling), bounded, and never narrower than the raw member
+        # cloud.  Borrowed parameters are not a certificate: the member stays
+        # named as provisional and its own fit replaces them the moment its
+        # OOS window fills.
+        raw_values = [float(member["raw_tmax_c"]) for member in members]
+        peer_biases = sorted(system_bias_c.values())
+        peer_spreads = sorted(system_spread_factor.values())
+        provisional_bias_c = (
+            peer_biases[len(peer_biases) // 2] if peer_biases else 0.0
+        )
+        provisional_spread_factor = max(
+            1.0,
+            peer_spreads[len(peer_spreads) // 2] if peer_spreads else 1.0,
+        )
+        # reliability 1.0 zeroes the climate blend term, but the kernel still
+        # demands sample shape; the members themselves satisfy it without
+        # contributing anything.
+        system_probabilities[system_id] = _calibrated_system_probability(
+            values=raw_values,
+            intervals=intervals_raw,
+            bias_parameters={"bias_c": provisional_bias_c},
+            spread_parameters={
+                "spread_factor": provisional_spread_factor,
+            },
+            reliability_parameters={
+                "reliability_weight": 1.0,
+                "climate_samples_c": raw_values,
+            },
+        )
+        calibrated_system_centers_c[system_id] = (
+            sum(raw_values) / len(raw_values) + provisional_bias_c
+        )
+        system_bias_c[system_id] = provisional_bias_c
+        system_spread_factor[system_id] = provisional_spread_factor
+        provisional_marker = content_sha256({
+            "provisional_uncalibrated_system": system_id,
+            "station_id": station_id,
+            "lead_bucket": training_lead_bucket,
+            "run_cycle": system_run_cycle,
+            "borrowed_bias_c": provisional_bias_c,
+            "borrowed_spread_factor": provisional_spread_factor,
+        })
+        system_artifact_shas[system_id] = provisional_marker
+        system_activation_shas[system_id] = provisional_marker
+        provisional_uncalibrated_system_ids.append(system_id)
+        provisional_parameter_sources[system_id] = {
+            "source": "PEER_MEDIAN_STATION_LOCAL",
+            "bias_c": provisional_bias_c,
+            "spread_factor": provisional_spread_factor,
+            "peer_count": len(peer_spreads),
+        }
     weight_receipt = validate_cross_native_ensemble_weights(
         system_weights=system_weights,
         systems_by_id={
@@ -2434,6 +2473,7 @@ def compile_native_ensemble_p0(
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
+        "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "training_lead_bucket": training_lead_bucket,
         "provisional_lead_fallback_json": _json(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
@@ -2649,6 +2689,7 @@ def compile_native_ensemble_p0(
         "system_family_ids_json": _json(family_by_system),
         "system_weights_json": _json(system_weights),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
+        "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "training_lead_bucket": training_lead_bucket,
         "provisional_lead_fallback_json": _json(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
