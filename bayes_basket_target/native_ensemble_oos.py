@@ -13,7 +13,7 @@ import math
 import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from itertools import product
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,8 +21,8 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
-    TAIL_RELIABILITY_METHOD_TAG,
-    apply_tail_reliability,
+    CONDITIONAL_SKEW_METHOD_TAG,
+    apply_conditional_tail_skew,
     bridged_cross_probability,
 )
 from .dwd_icon_eps_archive import (
@@ -925,6 +925,101 @@ def _weight_maturity(train_n: int | None) -> float:
     )
 
 
+def _holdout_conditioning_signals(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    holdout_days: Sequence[str],
+    predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> dict[str, dict[str, float | None]]:
+    """Per-day direction signals for the conditional tail skew.
+
+    Two signals survived measurement (see ``apply_conditional_tail_skew``):
+    where the forecast centre sits against this station's own same-calendar-day
+    record, and where the airport forecaster's TX sits against that centre.
+    Both are resolved here from the archives so the holdout scores the same
+    transform serving will apply, day for day.
+    """
+
+    from .cross_consensus import apply_conditional_tail_skew  # noqa: F401
+
+    centers_by_day: dict[str, list[float]] = {}
+    for day_rows in predictions_by_system.values():
+        for day, row in day_rows.items():
+            center = row.get("calibrated_center_c")
+            if center is None:
+                continue
+            centers_by_day.setdefault(str(day), []).append(float(center))
+    truth_rows: dict[str, tuple[int, float]] = {}
+    try:
+        for local_date, tmax_c, revision_no in conn.execute(
+            "SELECT local_date,official_tmax_c,revision_no "
+            "FROM calibration_station_daily_high_truth "
+            "WHERE station_id=? AND official_tmax_c IS NOT NULL",
+            (station_id,),
+        ):
+            key = str(local_date)
+            revision = int(revision_no or 0)
+            if key not in truth_rows or revision > truth_rows[key][0]:
+                truth_rows[key] = (revision, float(tmax_c))
+    except sqlite3.Error:
+        truth_rows = {}
+    taf_by_day: dict[str, float] = {}
+    try:
+        for event_date, tx_c in conn.execute(
+            "SELECT event_date,tx_c FROM calibration_historical_taf_capture "
+            "WHERE station_id=? AND tx_c IS NOT NULL",
+            (station_id,),
+        ):
+            taf_by_day.setdefault(str(event_date), float(tx_c))
+    except sqlite3.Error:
+        taf_by_day = {}
+    signals: dict[str, dict[str, float | None]] = {}
+    for day in holdout_days:
+        key = str(day)
+        centers = centers_by_day.get(key) or []
+        if not centers:
+            continue
+        center = sum(centers) / len(centers)
+        # The systems' own disagreement is the only scale available here;
+        # it stands in for the served distribution's spread, and a single
+        # -system day has no scale at all.
+        spread = (
+            max(centers) - min(centers)
+            if len(centers) > 1
+            else 0.0
+        )
+        sigma = spread / 2.0 if spread > 0.0 else 0.0
+        headroom: float | None = None
+        if sigma > 0.0:
+            try:
+                event_day = date.fromisoformat(key)
+            except ValueError:
+                event_day = None
+            if event_day is not None:
+                window = {
+                    (event_day + timedelta(days=offset)).isoformat()[5:]
+                    for offset in range(-7, 8)
+                }
+                same_day = [
+                    value
+                    for other, (_revision, value) in truth_rows.items()
+                    if other != key and other[5:] in window
+                ]
+                if len(same_day) >= 8:
+                    headroom = (max(same_day) - center) / sigma
+        taf_gap: float | None = None
+        if sigma > 0.0 and key in taf_by_day:
+            taf_gap = (taf_by_day[key] - center) / sigma
+        if headroom is None and taf_gap is None:
+            continue
+        signals[key] = {
+            "climatology_headroom_sigma": headroom,
+            "taf_gap_sigma": taf_gap,
+        }
+    return signals
+
+
 def _select_minimum_crps_subset(
     *,
     ready_system_ids: Sequence[str],
@@ -934,6 +1029,7 @@ def _select_minimum_crps_subset(
     configured_caps: Mapping[str, float],
     train_rmse: Mapping[str, float],
     train_n_by_system: Mapping[str, int],
+    conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Choose the subset of ready systems whose blend scores best out of sample.
 
@@ -1004,7 +1100,14 @@ def _select_minimum_crps_subset(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
-            probability, _tail_receipt = apply_tail_reliability(probability)
+            probability, _skew_receipt = apply_conditional_tail_skew(
+                probability,
+                ordinals={
+                    str(key): index
+                    for index, key in enumerate(ordered_keys)
+                },
+                **(dict(conditioning_by_day.get(str(day)) or {})),
+            )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
             )
@@ -2641,10 +2744,21 @@ def build_native_ensemble_oos(
         # of the ready systems is scored on this exact holdout and the best
         # blend takes the weights.  ``weights`` from the full set above stays
         # only as the enumeration's starting vocabulary.
+        # The conditioning signals the serving transform will read, resolved
+        # per holdout day from the same sources P0 uses: this station's own
+        # same-calendar-day truth record and the TAF TX issued for that day.
+        # Scoring must see exactly what serving will see.
+        conditioning_by_day = _holdout_conditioning_signals(
+            conn,
+            station_id=station_id,
+            holdout_days=common_holdout,
+            predictions_by_system=predictions_by_system,
+        )
         weights, subset_selection = _select_minimum_crps_subset(
             ready_system_ids=[system_id for system_id, _e in rows],
             predictions_by_system=predictions_by_system,
             common_holdout=common_holdout,
+            conditioning_by_day=conditioning_by_day,
             family_by_system=family_by_system,
             configured_caps=configured_caps,
             train_rmse=train_rmse,
@@ -2712,9 +2826,17 @@ def build_native_ensemble_oos(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
-            # Serving applies the tail-reliability transform under the same
-            # tag, so the gate must score exactly what will be served.
-            probability, _tail_receipt = apply_tail_reliability(probability)
+            # Serving applies the conditional tail skew under the same tag
+            # with the same per-day signals, so the gate scores exactly what
+            # will be served.
+            probability, _skew_receipt = apply_conditional_tail_skew(
+                probability,
+                ordinals={
+                    str(key): index
+                    for index, key in enumerate(ordered_keys)
+                },
+                **(dict(conditioning_by_day.get(str(day)) or {})),
+            )
             actual = float(
                 predictions_by_system[
                     next(iter(weights))
@@ -3819,10 +3941,11 @@ def persist_native_ensemble_oos(
                     # which is what keeps the served math identical to the
                     # gated math while pre-bridge artifacts roll off.
                     + "::" + CONSENSUS_BRIDGE_METHOD_TAG
-                    # Same admission pattern as the bridge: the holdout above
-                    # scored the tail-lifted blend, so the artifact says so
-                    # and P0 keys the serving transform on this tag.
-                    + "::" + TAIL_RELIABILITY_METHOD_TAG
+                    # Same admission pattern as the bridge: the holdout
+                    # above scored the conditionally skewed blend with this
+                    # day's own signals, so the artifact says so and P0 keys
+                    # the serving transform on this tag.
+                    + "::" + CONDITIONAL_SKEW_METHOD_TAG
                 ),
                 "family_weight_caps_json": _json(
                     candidate["family_weight_caps"]

@@ -40,43 +40,165 @@ CONSENSUS_BRIDGE_METHOD_TAG = "consensus_bridge_v1"
 # the measured factor, buckets near the threshold taper to it, nothing ever
 # re-ranks across the boundary, and the lifted mass is paid for by
 # renormalisation.
-TAIL_RELIABILITY_METHOD_TAG = "tail_reliability_v1"
-TAIL_RELIABILITY_FACTOR = 1.38
-TAIL_RELIABILITY_THRESHOLD = 0.05
+CONDITIONAL_SKEW_METHOD_TAG = "conditional_tail_skew_v1"
+CONDITIONAL_SKEW_THRESHOLD = 0.05
+CONDITIONAL_SKEW_FACTOR_FLOOR = 0.25
+CONDITIONAL_SKEW_FACTOR_CEILING = 2.0
+# Both conditioning terms are measured on the *calibrated* distribution --
+# per-station bias and spread applied, leave-one-out -- because that is what
+# production serves.  Measured on raw member histograms the same day looks
+# entirely different, which is how the retired unconditional lift came to be
+# calibrated against the wrong object.
+#
+# WIDTH (how badly the tails are under-stated) tracks where the forecast sits
+# inside the station's own same-calendar-day record, in sigmas of headroom to
+# that record's high.  Realized-over-claimed hit rate for tail buckets:
+#
+#   headroom < 0     (above the same-day record)   warm 2.17x  cold 2.17x
+#   0.00 - 0.75      (at the record)               warm 1.99x  cold 2.15x
+#   0.75 - 1.75      (moderate room)               warm 2.12x  cold 1.75x
+#   >= 1.75          (ample room)                  warm 1.41x  cold 1.16x
+#
+# A day forecast at the top of its own seasonal envelope is a volatile day in
+# both directions; an ordinary day is already close to calibrated.
+CLIMATOLOGY_HEADROOM_BANDS = (
+    # (headroom_upper_bound_sigma, base_tail_factor)
+    (0.0, 1.7),
+    (0.75, 1.65),
+    (1.75, 1.7),
+    (float("inf"), 1.25),
+)
+CLIMATOLOGY_ABSENT_BASE_FACTOR = 1.4
+# SKEW (which side that width belongs to) comes from the airport forecaster's
+# TX against the model centre -- a human reading the same day, and the only
+# tested signal that flips sign rather than merely scaling.  Same metric,
+# n=3,611 tail buckets:
+#
+#   TAF warmer than models   warm 1.94x   cold 0.65x
+#   TAF with the models      warm 1.53x   cold 2.02x
+#   TAF colder than models   warm 0.73x   cold 2.38x
+#
+# The side the forecaster points at is under-stated about twofold; the far
+# side is over-stated.  Four other candidates were tested and rejected as
+# null before this one was kept: the member cloud's own skew (correlation
+# with residual +0.009), ensemble spread (+0.013), cross-system centre
+# disagreement (+0.032), and day-to-day persistence at the lag actually
+# available when a forward decision is made (+0.074; the +0.202 at lag one is
+# not knowable at decision time and belongs to the same-day METAR path).
+TAF_DIRECTION_GATE_SIGMA = 0.5
+TAF_DIRECTION_WARM = (1.25, 0.5)
+TAF_DIRECTION_COLD = (0.5, 1.25)
 
 
-def apply_tail_reliability(
+def apply_conditional_tail_skew(
     probability: "Mapping[str, float]",
+    *,
+    ordinals: "Mapping[str, int]",
+    climatology_headroom_sigma: float | None = None,
+    taf_gap_sigma: float | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Lift the measured tail under-estimate, renormalise, and say so."""
+    """Skew the tails toward the side the day's own evidence points at.
 
-    lifted: dict[str, float] = {}
-    lifted_buckets: list[str] = []
+    This replaces an unconditional symmetric lift (every tail bucket under
+    5% multiplied by 1.38).  That correction was measured on a pooled
+    average and therefore fattened both tails on every day alike, which is
+    wrong twice over: it invents mass on the side the day's evidence argues
+    against, and -- because a penny bucket is exactly where the market is
+    most confident -- it manufactured cheap seats precisely on the days the
+    market had the strongest reason to price them at a cent.  Adverse
+    selection, not edge.
+
+    Direction comes only from measured conditioning signals.  Four candidates
+    were tested and rejected as null before these two were kept: the member
+    cloud's own skew (correlation with residual +0.009), ensemble spread
+    (+0.013), cross-system centre disagreement (+0.032), and day-to-day
+    persistence at the lag actually available when a forward decision is made
+    (+0.074; the +0.202 at lag one is not knowable at decision time and
+    belongs to the same-day METAR path instead).
+
+    With no signal present the distribution is returned unchanged.  Absence
+    of evidence about direction is not evidence for symmetry.
+    """
+
+    if not probability:
+        raise ValueError("conditional_skew_probability_empty")
+    center = max(probability, key=lambda key: float(probability[key]))
+    center_ordinal = int(ordinals[center])
+    signals: list[str] = []
+    if climatology_headroom_sigma is not None:
+        headroom = float(climatology_headroom_sigma)
+        base_factor = CLIMATOLOGY_ABSENT_BASE_FACTOR
+        for bound, factor in CLIMATOLOGY_HEADROOM_BANDS:
+            if headroom < bound:
+                base_factor = factor
+                break
+        signals.append("same_day_climatology_headroom")
+    else:
+        base_factor = CLIMATOLOGY_ABSENT_BASE_FACTOR
+    warm_factor = base_factor
+    cold_factor = base_factor
+    if taf_gap_sigma is not None:
+        gap = float(taf_gap_sigma)
+        if gap > TAF_DIRECTION_GATE_SIGMA:
+            warm_factor *= TAF_DIRECTION_WARM[0]
+            cold_factor *= TAF_DIRECTION_WARM[1]
+            signals.append("taf_direction_warm")
+        elif gap < -TAF_DIRECTION_GATE_SIGMA:
+            warm_factor *= TAF_DIRECTION_COLD[0]
+            cold_factor *= TAF_DIRECTION_COLD[1]
+            signals.append("taf_direction_cold")
+        else:
+            signals.append("taf_direction_neutral")
+    warm_factor = min(
+        max(warm_factor, CONDITIONAL_SKEW_FACTOR_FLOOR),
+        CONDITIONAL_SKEW_FACTOR_CEILING,
+    )
+    cold_factor = min(
+        max(cold_factor, CONDITIONAL_SKEW_FACTOR_FLOOR),
+        CONDITIONAL_SKEW_FACTOR_CEILING,
+    )
+    receipt: dict[str, Any] = {
+        "schema": "conditional_tail_skew_receipt_v1",
+        "method_tag": CONDITIONAL_SKEW_METHOD_TAG,
+        "threshold": CONDITIONAL_SKEW_THRESHOLD,
+        "center_bucket": str(center),
+        "signals": signals,
+        "warm_tail_factor": warm_factor,
+        "cold_tail_factor": cold_factor,
+        "base_tail_factor": base_factor,
+        "climatology_headroom_sigma": climatology_headroom_sigma,
+        "taf_gap_sigma": taf_gap_sigma,
+    }
+    if not signals:
+        receipt["adjusted_buckets"] = []
+        receipt["state"] = "NO_CONDITIONING_SIGNAL"
+        return {str(k): float(v) for k, v in probability.items()}, receipt
+    adjusted: dict[str, float] = {}
+    touched: list[str] = []
     for key, raw in probability.items():
         value = float(raw)
-        if value < TAIL_RELIABILITY_THRESHOLD:
-            corrected = min(
-                value * TAIL_RELIABILITY_FACTOR,
-                TAIL_RELIABILITY_THRESHOLD,
-            )
-            if corrected > value:
-                lifted_buckets.append(str(key))
-            lifted[str(key)] = corrected
-        else:
-            lifted[str(key)] = value
-    total = sum(lifted.values())
+        if value >= CONDITIONAL_SKEW_THRESHOLD or value <= 0.0:
+            adjusted[str(key)] = value
+            continue
+        factor = (
+            warm_factor
+            if int(ordinals[key]) > center_ordinal
+            else cold_factor
+            if int(ordinals[key]) < center_ordinal
+            else 1.0
+        )
+        scaled = min(value * factor, CONDITIONAL_SKEW_THRESHOLD)
+        if abs(scaled - value) > 1e-12:
+            touched.append(str(key))
+        adjusted[str(key)] = scaled
+    total = sum(adjusted.values())
     if total <= 0:
-        raise ValueError("tail_reliability_probability_empty")
-    normalized = {key: value / total for key, value in lifted.items()}
-    receipt = {
-        "schema": "tail_reliability_receipt_v1",
-        "method_tag": TAIL_RELIABILITY_METHOD_TAG,
-        "factor": TAIL_RELIABILITY_FACTOR,
-        "threshold": TAIL_RELIABILITY_THRESHOLD,
-        "lifted_buckets": sorted(lifted_buckets),
-        "pre_normalisation_mass": total,
-    }
-    return normalized, receipt
+        raise ValueError("conditional_skew_probability_empty")
+    receipt["adjusted_buckets"] = sorted(touched)
+    receipt["state"] = "APPLIED"
+    receipt["pre_normalisation_mass"] = total
+    return {key: value / total for key, value in adjusted.items()}, receipt
+
 
 # Zero through the strata the mixture already predicts correctly (<1C and
 # 1-2C measured 0.0%/0.0% and 5.0%/5.5% valley hit against prediction), full

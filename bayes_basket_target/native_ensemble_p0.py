@@ -6,7 +6,7 @@ import json
 import math
 import sqlite3
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,8 +16,8 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 EPS = 1e-9
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
-    TAIL_RELIABILITY_METHOD_TAG,
-    apply_tail_reliability,
+    CONDITIONAL_SKEW_METHOD_TAG,
+    apply_conditional_tail_skew,
     bridged_cross_probability,
 )
 from .future_temperature_curve import (
@@ -448,6 +448,90 @@ def _ordered_buckets(
     if len(ordered) != len(set(ordered)):
         raise ContractError("native_ensemble_p0_bucket_duplicate")
     return ordered
+
+
+def _distribution_sigma_c(
+    probability: Mapping[str, float],
+    bucket_centers_c: Sequence[float],
+) -> float:
+    """The served distribution's own spread in degrees.
+
+    Used only to express the conditioning signals in a scale-free way (a
+    2C gap means something different on a 1C-spread day than on a 4C one).
+    """
+
+    ordered_values = list(probability.values())
+    if len(ordered_values) != len(bucket_centers_c):
+        raise ContractError("native_ensemble_p0_bucket_center_count_invalid")
+    mean = sum(
+        float(weight) * float(center)
+        for weight, center in zip(ordered_values, bucket_centers_c)
+    )
+    variance = sum(
+        float(weight) * (float(center) - mean) ** 2
+        for weight, center in zip(ordered_values, bucket_centers_c)
+    )
+    return math.sqrt(variance) if variance > 0.0 else 0.0
+
+
+SAME_DAY_CLIMATOLOGY_WINDOW_DAYS = 7
+SAME_DAY_CLIMATOLOGY_MIN_SAMPLES = 8
+
+
+def _same_day_climatology_headroom(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    model_center_c: float,
+    sigma_c: float,
+) -> float | None:
+    """Headroom to this station's own same-calendar-day record, in sigmas.
+
+    The window is the calendar day plus or minus a week, at this station
+    only, across every year the truth archive holds, and the event date
+    itself is excluded -- a day cannot be its own climatology.  Only the
+    latest revision of each station-day counts (the truth table is
+    append-only with revisions, and an unfiltered read returns superseded
+    values).  Returns ``None`` when the window is too thin to speak.
+    """
+
+    if sigma_c <= EPS:
+        return None
+    try:
+        event_day = date.fromisoformat(str(event_date))
+    except ValueError:
+        return None
+    window = {
+        (
+            event_day + timedelta(days=offset)
+        ).isoformat()[5:]
+        for offset in range(
+            -SAME_DAY_CLIMATOLOGY_WINDOW_DAYS,
+            SAME_DAY_CLIMATOLOGY_WINDOW_DAYS + 1,
+        )
+    }
+    latest: dict[str, tuple[int, float]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT local_date,official_tmax_c,revision_no "
+            "FROM calibration_station_daily_high_truth "
+            "WHERE station_id=? AND official_tmax_c IS NOT NULL",
+            (station_id,),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    for local_date, tmax_c, revision_no in rows:
+        key = str(local_date)
+        if key == str(event_date) or key[5:] not in window:
+            continue
+        revision = int(revision_no or 0)
+        if key not in latest or revision > latest[key][0]:
+            latest[key] = (revision, float(tmax_c))
+    if len(latest) < SAME_DAY_CLIMATOLOGY_MIN_SAMPLES:
+        return None
+    record_high = max(value for _revision, value in latest.values())
+    return (record_high - float(model_center_c)) / sigma_c
 
 
 def _bucket_centers(
@@ -1915,15 +1999,6 @@ def compile_native_ensemble_p0(
             bucket: value / total
             for bucket, value in probability.items()
         }
-    # The tail-reliability lift is keyed on the artifact's combination-method
-    # tag exactly like the bridge: it is served only when the holdout that
-    # admitted this artifact was scored with it, so the live math never
-    # diverges from the gated math while pre-lift artifacts roll off.
-    tail_reliability_receipt = None
-    if TAIL_RELIABILITY_METHOD_TAG in artifact_combination_method:
-        probability, tail_reliability_receipt = apply_tail_reliability(
-            probability
-        )
     # The basket anchor is where the models actually point, not whichever
     # bucket holds the most mass.  An open-ended edge bucket ("35°C or higher")
     # covers an unbounded interval, so it accumulates the entire upper tail of
@@ -1958,6 +2033,37 @@ def compile_native_ensemble_p0(
     else:
         envelope_lower_c = lower_center_c
         envelope_upper_c = upper_center_c
+    # The conditional tail skew is applied here, after the day's two
+    # measured direction signals exist: the same-day climatological headroom
+    # and the forecaster's TX against the model centre.  Keyed on the
+    # artifact's combination-method tag exactly like the bridge, so the live
+    # math never diverges from the holdout math that admitted the artifact.
+    tail_reliability_receipt = None
+    if CONDITIONAL_SKEW_METHOD_TAG in artifact_combination_method:
+        bucket_centers_c = _bucket_centers(intervals_raw, ordered)
+        distribution_sigma = _distribution_sigma_c(
+            probability, bucket_centers_c
+        )
+        probability, tail_reliability_receipt = apply_conditional_tail_skew(
+            probability,
+            ordinals={
+                str(bucket): index
+                for index, bucket in enumerate(ordered)
+            },
+            climatology_headroom_sigma=_same_day_climatology_headroom(
+                conn,
+                station_id=station_id,
+                event_date=event_date,
+                model_center_c=model_center_c,
+                sigma_c=distribution_sigma,
+            ),
+            taf_gap_sigma=(
+                (float(taf_witness["tx_c"]) - model_center_c)
+                / distribution_sigma
+                if taf_witness is not None and distribution_sigma > EPS
+                else None
+            ),
+        )
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,
