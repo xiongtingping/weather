@@ -345,12 +345,56 @@ def _market_snapshot(
                     continue
                 if price > 0.0 and size > 0.0:
                     scope_prices.append(price)
+    declared_unmaterialized = {
+        str(value)
+        for value in manifest.get("unmaterialized_tokens") or []
+        if str(value)
+    }
     for bucket in sorted(envelope.probabilities, key=envelope.bucket_ordinals.__getitem__):
         registry_row = by_bucket[bucket]
         token_id = str(registry_row.get("yes_token") or "")
         quote = quotes.get(token_id)
         if quote is None:
-            raise ContractError("p0_preselection_official_ws_token_missing")
+            # A listing-day book nobody has quoted yet.  The publisher
+            # subscribes at listing (charter 48) and names such tokens
+            # explicitly; a named bookless bucket is a legal market state --
+            # unbuyable this cycle, never a scope blocker.  An *unnamed*
+            # missing token is still a defect: the scope claimed a bucket
+            # the stream is not carrying.
+            if (
+                token_id not in declared_unmaterialized
+                and token_id not in manifest_quotes
+            ):
+                raise ContractError(
+                    "p0_preselection_official_ws_token_missing"
+                )
+            buckets.append({
+                "bucket": bucket,
+                "bid_price": 0.0,
+                "ask_levels": [],
+                "ask_available": False,
+                "bid_levels": [],
+                "price_tick_size": 0.0,
+                "tick_size_source": "UNMATERIALIZED_BOOK",
+                "maker_queue_ahead_shares": 0.0,
+                "maker_queue_known": False,
+                "filled_shares": 0.0,
+                "filled_cost_usdc": 0.0,
+                "pending_shares": 0.0,
+                "pending_notional_usdc": 0.0,
+                "active_before": False,
+                "token_id": token_id,
+            })
+            raw_registry = registry_row.get("registry_json")
+            if isinstance(raw_registry, str):
+                raw_registry = json.loads(raw_registry)
+            if isinstance(raw_registry, Mapping):
+                market_labels.add(str(
+                    raw_registry.get("event_id")
+                    or raw_registry.get("slug")
+                    or ""
+                ))
+            continue
         manifest_quote = manifest_quotes.get(token_id)
         if (
             not isinstance(manifest_quote, Mapping)
@@ -454,6 +498,12 @@ def _market_snapshot(
         })
     if len(market_labels) != 1 or not next(iter(market_labels)):
         raise ContractError("p0_preselection_market_identity_ambiguous")
+    if not quote_times:
+        # Every bucket of the scope is bookless.  There is nothing to price
+        # against and no quote clock to anchor strict-as-of, so the scope is
+        # not compilable yet -- distinct from a missing token, which is a
+        # stream defect rather than an empty market.
+        raise ContractError("p0_preselection_official_ws_scope_bookless")
     quote_observed = max(
         quote_times,
         key=lambda value: _utc(
