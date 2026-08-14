@@ -1396,28 +1396,19 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     assert "neighbour_direction_v1" in clause
 
     from bayes_basket_target.cross_consensus import (
-        NEIGHBOUR_DIRECTION_BANDS,
+        NEIGHBOUR_DIRECTION_FACTORS,
         apply_neighbour_direction_tilt,
-        neighbour_direction_band,
     )
 
     # The centre is never reweighted here; position is the radiation shift's
     # job and the centre factor does not hold still.
-    for factors in NEIGHBOUR_DIRECTION_BANDS.values():
-        assert 0 not in factors
-    # A station's tilt follows its latitude band, and an unknown latitude
-    # serves the neutral one rather than a guess.
-    assert neighbour_direction_band(None) == "lat_00_25"
-    assert NEIGHBOUR_DIRECTION_BANDS["lat_00_25"] == {
-        -2: 1.0, -1: 1.0, 1: 1.0, 2: 1.0
-    }
-    assert neighbour_direction_band(-52.0) == neighbour_direction_band(52.0)
-    # High latitude leans warm hard; the mid band does not.  This is the
-    # structure both pipelines agree on and the reason the prior is banded.
-    high = NEIGHBOUR_DIRECTION_BANDS["lat_45_plus"]
-    mid = NEIGHBOUR_DIRECTION_BANDS["lat_25_35"]
-    assert high[-1] < 1.0 < high[1]
-    assert (high[1] / high[-1]) > (mid[1] / mid[-1])
+    assert 0 not in NEIGHBOUR_DIRECTION_FACTORS
+    # Warm side up, cold side down -- the direction this pipeline's own
+    # record shows.
+    assert NEIGHBOUR_DIRECTION_FACTORS[-1] < 1.0 < NEIGHBOUR_DIRECTION_FACTORS[1]
+    assert NEIGHBOUR_DIRECTION_FACTORS[-2] < NEIGHBOUR_DIRECTION_FACTORS[-1]
+    # An interval containing 1.0 serves 1.0.
+    assert NEIGHBOUR_DIRECTION_FACTORS[2] == 1.0
 
     raw = {
         "33": 0.04, "34": 0.09, "35": 0.19, "36": 0.34,
@@ -1428,7 +1419,6 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
         raw, ordinals=ordinals, center_bucket="36", latitude=52.3
     )
     assert receipt["state"] == "APPLIED"
-    assert receipt["band"] == "lat_45_plus"
     assert abs(sum(tilted.values()) - 1.0) < 1e-9
     # The high band's lean lives in the inner pair: one bucket above gains
     # against one below.  It is deliberately not asserted that this makes a
@@ -1449,8 +1439,8 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
         assert "NEIGHBOUR_DIRECTION" not in source
         assert "neighbour_direction" not in source
 
-    # The banded prior is fitted off-pipeline on years of data and must say
-    # so: it is a reference covariate pair, never settlement truth.
+    # The research lane that failed to transfer is kept for re-measurement,
+    # and must never write the truth table.
     capture = (
         Path(__file__).resolve().parents[1]
         / "scripts"

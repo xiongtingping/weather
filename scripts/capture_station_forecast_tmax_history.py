@@ -47,6 +47,18 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 )
 
 BASE_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+# The default ``best_match`` selection silently returns the reanalysis itself
+# at many low-latitude sites -- measured 2026-08-14, twenty-one of forty-five
+# stations came back byte-identical to the ERA5 analysis they were meant to
+# be scored against, so their residual was zero by construction and they
+# dropped out of the fit without saying so.  The stations it happened to were
+# not random: median latitude 25 against 40 for the rest, which silently made
+# the low-latitude bands "no tilt" when what they had was no data.  Naming a
+# model avoids the fallback, and the capture verifies per station that what
+# came back is a forecast and not an echo.
+FORECAST_MODEL = "ecmwf_ifs04"
+ANALYSIS_ECHO_TOLERANCE_C = 1e-9
+MIN_ECHO_CHECK_DAYS = 30
 USER_AGENT = "weather-tilt-research/1.0"
 SOURCE_ID = "OPEN_METEO_HISTORICAL_FORECAST"
 TABLE = "research_station_forecast_tmax_history"
@@ -134,6 +146,7 @@ def capture_station(
             "end_date": end_date,
             "daily": "temperature_2m_max",
             "timezone": settlement_timezone,
+            "models": FORECAST_MODEL,
         }),
         timeout_seconds=timeout_seconds,
     )
@@ -142,6 +155,32 @@ def capture_station(
     values = daily.get("temperature_2m_max") or []
     if len(days) != len(values):
         raise ValueError("tilt_research_series_length_mismatch")
+    # Refuse an echo of the analysis before writing any of it.  A station
+    # whose "forecast" equals the ERA5 daily maximum on every comparable day
+    # carries no forecast information, and letting it into the study is worse
+    # than having no rows: it drops out of the fit silently and biases which
+    # stations the fit is made of.
+    comparable = conn.execute(
+        "SELECT local_date,daily_high_c "
+        "FROM calibration_station_same_day_climatology "
+        "WHERE station_id=? AND reference_only=1",
+        (station_id,),
+    ).fetchall()
+    analysis = {str(row[0]): float(row[1]) for row in comparable}
+    deltas = [
+        abs(float(value) - analysis[str(local_date)])
+        for local_date, value in zip(days, values)
+        if value is not None and str(local_date) in analysis
+    ]
+    if len(deltas) >= MIN_ECHO_CHECK_DAYS and max(deltas) <= ANALYSIS_ECHO_TOLERANCE_C:
+        return {
+            "station_id": station_id,
+            "rows": 0,
+            "days": len(days),
+            "state": "DEGENERATE_ANALYSIS_ECHO",
+            "compared_days": len(deltas),
+            "model": FORECAST_MODEL,
+        }
     captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     written = 0
     for local_date, value in zip(days, values):
@@ -175,7 +214,14 @@ def capture_station(
             ),
         )
         written += 1
-    return {"station_id": station_id, "rows": written, "days": len(days)}
+    return {
+        "station_id": station_id,
+        "rows": written,
+        "days": len(days),
+        "model": FORECAST_MODEL,
+        "echo_check_days": len(deltas),
+        "max_delta_c": round(max(deltas), 3) if deltas else None,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -248,7 +294,10 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout_seconds,
             )
             conn.commit()
-            receipts.append({**receipt, "state": "CAPTURED"})
+            receipts.append({
+                **receipt,
+                "state": receipt.get("state") or "CAPTURED",
+            })
         except Exception as exc:  # noqa: BLE001 -- per-station isolation
             conn.rollback()
             reason = f"{type(exc).__name__}:{str(exc)[:160]}"
@@ -274,6 +323,12 @@ def main(argv: list[str] | None = None) -> int:
         "window": {"start_date": args.start_date, "end_date": end_date},
         "station_count": len(stations),
         "captured": sum(1 for r in receipts if r.get("state") == "CAPTURED"),
+        "degenerate_analysis_echo": [
+            r["station_id"]
+            for r in receipts
+            if r.get("state") == "DEGENERATE_ANALYSIS_ECHO"
+        ],
+        "forecast_model": FORECAST_MODEL,
         "already_covered": sum(
             1 for r in receipts if r.get("state") == "ALREADY_COVERED"
         ),

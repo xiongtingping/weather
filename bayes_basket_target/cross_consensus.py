@@ -239,69 +239,46 @@ def synoptic_cooling_index(
 
 
 NEIGHBOUR_DIRECTION_METHOD_TAG = "neighbour_direction_v1"
-# The served distribution is symmetric about its centre and the truth is not,
-# and how far it leans depends on where the station is.
+# The served distribution is symmetric about its centre and the truth is not.
+# Measured in-pipeline over 5,233 station-days with a bootstrap over days --
+# stations on one day share weather, so the day is the independent unit and
+# there are 47 of them:
 #
-# Fitted on a research pair with years rather than weeks -- 75,915
-# station-days over 2021-2025, the archived past forecast of the daily
-# maximum against the ERA5 analysis, with a Gaussian standing in for the
-# served belief so the symmetry under test is the property being measured.
-# Neither input is settlement truth.  Intervals are bootstrapped over days,
-# and a factor whose interval contains 1.0 serves 1.0:
+#   two below  x0.769 [0.663, 0.867]   one below  x0.901 [0.830, 0.980]
+#   one above  x1.114 [1.030, 1.179]   two above  x0.894 [0.804, 1.009]
 #
-#   |lat| 25-35 (23,618 d)   -2 x1.00   -1 x1.068  +1 x1.00   +2 x0.890
-#   |lat| 35-45 (21,931 d)   -2 x0.851  -1 x0.962  +1 x0.910  +2 x0.926
-#   |lat| 45+   (13,496 d)   -2 x1.00   -1 x0.687  +1 x1.115  +2 x0.681
+# The first three exclude 1.0; the fourth does not and serves 1.0.  Each
+# served factor is the end of its interval nearest one -- the least effect
+# the data supports at 95%, not a point estimate and an invented shrink.  The
+# centre is excluded: it is the largest factor and the only one that will not
+# hold still (1.149 fitted early against 1.005 late), and carrying it costs
+# 0.67% CRPS out of sample against +0.17% for these four.
 #
-# The high band leans warm hard and the mid bands do not, which is what the
-# production pipeline's own 47 days say too (-1 x0.64, +1 x1.57 at high
-# latitude against 0.94/1.05 elsewhere) -- same sign, same rank, different
-# level, which is what a different pipeline should give.  Structure transfers
-# and level does not, so the research factors are served rather than the
-# production ones only because they are measured on 14x the days: on the
-# production temporal holdout the banded prior gains 0.35% CRPS and 0.25%
-# NLL against 0.17%/0.11% for the fleet-wide constant fitted in-pipeline.
+# A research lane was built to fit this by latitude and season on years
+# rather than weeks -- past ECMWF forecasts against the ERA5 analysis,
+# 38,207 station-days -- and it does not transfer.  On the offsets that
+# matter it disagrees in sign with the pipeline it would be serving: the
+# research pair reads one above at x0.91 and two above at x1.06 where
+# production reads x1.21 and x0.88.  Applied to the production holdout it
+# gains 0.19% CRPS while *losing* 0.09% NLL, against 0.17%/0.11% for these
+# in-pipeline factors.  Different forecast, different analysis, different
+# error structure; the shape is a property of our own distributions, not of
+# the atmosphere, so it must be fitted on our own.
 #
-# What this does not buy, contrary to the fleet-wide reading it replaces: a
-# universal placement preference.  On the 47 production days the fleet
-# factors made a four-bucket window sitting [-1,+2] outscore the same window
-# at [-2,+1], and the banded fit says that is band-dependent and mostly the
-# other way -- only 35-45 favours the warm placement, while 25-35 and 45+
-# favour the cold one, because the high band's warm lean lives in the inner
-# pair while its outer pair leans cold (+2 x0.681 against -2 x1.00).  The
-# tilt is a calibration of the shape, not a rule about where to sit; where
-# to sit stays the objective's, priced.
-#
-# Season is left out on purpose.  The research data says it is real and
-# reverses sign -- the warm half of the year runs +1 x1.07 and the cold half
-# x0.91 -- but every day of settled production truth is one August, so a
-# seasonal split cannot be validated here and costs 0.13% CRPS when applied
-# blind.  It waits for truth that spans a winter.
-NEIGHBOUR_DIRECTION_BANDS = {
-    "lat_00_25": {-2: 1.0, -1: 1.0, 1: 1.0, 2: 1.0},
-    "lat_25_35": {-2: 1.0, -1: 1.068, 1: 1.0, 2: 0.890},
-    "lat_35_45": {-2: 0.851, -1: 0.962, 1: 0.910, 2: 0.926},
-    "lat_45_plus": {-2: 1.0, -1: 0.687, 1: 1.115, 2: 0.681},
+# (An earlier banded version was served for two hours on 2026-08-14 and is
+# withdrawn.  It scored better on the same holdout, but it was fitted on a
+# contaminated sample: the archive's default model selection returns the
+# reanalysis itself at low latitude, so twenty-one of forty-five stations had
+# a residual of zero by construction and dropped out silently, biasing the
+# bands toward the high-latitude stations that remained.  The capture now
+# names its model and refuses an analysis echo; the clean refit is what says
+# the prior does not transfer.)
+NEIGHBOUR_DIRECTION_FACTORS = {
+    -2: 0.867,
+    -1: 0.980,
+    1: 1.030,
+    2: 1.000,
 }
-
-
-def neighbour_direction_band(latitude: float | None) -> str:
-    """The latitude band whose tilt a station is served.
-
-    An unknown latitude serves the neutral band: the tilt is a property of
-    where the station is, and not knowing that is not a reason to guess.
-    """
-
-    if latitude is None:
-        return "lat_00_25"
-    magnitude = abs(float(latitude))
-    if magnitude < 25.0:
-        return "lat_00_25"
-    if magnitude < 35.0:
-        return "lat_25_35"
-    if magnitude < 45.0:
-        return "lat_35_45"
-    return "lat_45_plus"
 
 
 def apply_neighbour_direction_tilt(
@@ -320,10 +297,8 @@ def apply_neighbour_direction_tilt(
             "schema": "neighbour_direction_receipt_v1",
             "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
             "state": "NO_CENTER_BUCKET",
-            "band": neighbour_direction_band(latitude),
         }
-    band = neighbour_direction_band(latitude)
-    factors = NEIGHBOUR_DIRECTION_BANDS[band]
+    factors = NEIGHBOUR_DIRECTION_FACTORS
     center_ordinal = int(ordinals[center_bucket])
     tilted: dict[str, float] = {}
     applied: dict[str, float] = {}
@@ -340,7 +315,6 @@ def apply_neighbour_direction_tilt(
         "schema": "neighbour_direction_receipt_v1",
         "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
         "state": "APPLIED" if applied else "NO_NEIGHBOUR_IN_SUPPORT",
-        "band": band,
         "latitude": None if latitude is None else float(latitude),
         "center_bucket": str(center_bucket),
         "applied_factors": applied,
