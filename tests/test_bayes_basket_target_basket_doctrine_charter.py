@@ -1170,3 +1170,35 @@ def test_uncalibrated_member_never_serves_identity_parameters() -> None:
     # The inflation cap must clear the measured requirement (4.7x worst
     # case); a cap that binds is a distribution knowingly served too narrow.
     assert "spread_factor = min(\n        5.0," in oos_source
+
+
+def test_borrowed_bias_needs_a_real_median_and_a_measured_ceiling() -> None:
+    """Borrowing spread and borrowing bias are not the same act.
+
+    Spread widens an uncertified member, which makes it claim less -- borrow
+    it freely.  Bias moves the centre, which moves seats, and a median over
+    two peers is their midpoint with no breakdown point.  ZUUU 2026-08-14:
+    two peers handed ICON +3.09C where ICON's own measured offset at that
+    station was +1.29C, and the served 39C+ bucket went 14.7% -> 30.8% on
+    borrowed arithmetic rather than evidence.
+    """
+
+    from bayes_basket_target.native_ensemble_p0 import (
+        PROVISIONAL_BIAS_ABS_CAP_C,
+        PROVISIONAL_BIAS_MIN_PEERS,
+    )
+
+    assert PROVISIONAL_BIAS_MIN_PEERS >= 3
+    # The ceiling is the largest per-system offset measured anywhere in the
+    # fleet; a borrow beyond it is arithmetic, not evidence.
+    assert 1.94 <= PROVISIONAL_BIAS_ABS_CAP_C <= 2.5
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "native_ensemble_p0.py"
+    ).read_text(encoding="utf-8")
+    # Refusing to borrow a bias must leave the member at its raw centre,
+    # never silently at some other number, and must say so in the receipt.
+    assert "bias_refused_peer_count_" in source
+    assert "bias_capped_from_" in source

@@ -474,6 +474,11 @@ def _distribution_sigma_c(
     return math.sqrt(variance) if variance > 0.0 else 0.0
 
 
+# A median needs three points to be a median; over two peers it is their
+# midpoint and one outlier carries it.  The cap is the largest per-system
+# offset measured anywhere in this fleet (+1.94C for NOAA_AIGEFS_025).
+PROVISIONAL_BIAS_MIN_PEERS = 3
+PROVISIONAL_BIAS_ABS_CAP_C = 2.0
 SAME_DAY_CLIMATOLOGY_WINDOW_DAYS = 7
 SAME_DAY_CLIMATOLOGY_MIN_SAMPLES = 8
 
@@ -1976,9 +1981,40 @@ def compile_native_ensemble_p0(
         raw_values = [float(member["raw_tmax_c"]) for member in members]
         peer_biases = sorted(system_bias_c.values())
         peer_spreads = sorted(system_spread_factor.values())
-        provisional_bias_c = (
-            peer_biases[len(peer_biases) // 2] if peer_biases else 0.0
-        )
+        # The two borrows are not symmetric and must not be governed alike.
+        #
+        # Borrowing spread is conservative: it widens a distribution that is
+        # measured too narrow, and a wider uncertified member simply claims
+        # less.  Borrow it whenever any peer has one.
+        #
+        # Borrowing bias moves the centre, which moves seats directly, and a
+        # median over two peers is just their midpoint -- no breakdown point
+        # at all.  ZUUU 2026-08-14 is the specimen: two peers whose own
+        # fitted offsets are large handed ICON +3.09C when ICON's own
+        # measured offset at that station is +1.29C, and the served
+        # distribution's 39C+ bucket jumped from 14.7% to 30.8% on borrowed
+        # arithmetic rather than evidence.  So bias needs three peers before
+        # a median means anything, and is capped at the largest offset any
+        # system in this fleet has actually been measured to need (+1.94C,
+        # rounded to 2.0).  Under-correcting an uncertified member is the
+        # safe error: it stays near its raw centre while its borrowed spread
+        # covers the difference.  Over-correcting is not.
+        borrow_notes: list[str] = []
+        if len(peer_biases) >= PROVISIONAL_BIAS_MIN_PEERS:
+            median_bias = peer_biases[len(peer_biases) // 2]
+            provisional_bias_c = max(
+                -PROVISIONAL_BIAS_ABS_CAP_C,
+                min(PROVISIONAL_BIAS_ABS_CAP_C, median_bias),
+            )
+            if provisional_bias_c != median_bias:
+                borrow_notes.append(
+                    f"bias_capped_from_{median_bias:.2f}C"
+                )
+        else:
+            provisional_bias_c = 0.0
+            borrow_notes.append(
+                f"bias_refused_peer_count_{len(peer_biases)}"
+            )
         provisional_spread_factor = max(
             1.0,
             peer_spreads[len(peer_spreads) // 2] if peer_spreads else 1.0,
@@ -2019,6 +2055,8 @@ def compile_native_ensemble_p0(
             "bias_c": provisional_bias_c,
             "spread_factor": provisional_spread_factor,
             "peer_count": len(peer_spreads),
+            "bias_peer_count": len(peer_biases),
+            "notes": borrow_notes,
         }
     weight_receipt = validate_cross_native_ensemble_weights(
         system_weights=system_weights,
