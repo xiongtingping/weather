@@ -9819,6 +9819,45 @@ class TargetProductionWorker:
                             "stage_open_blocker"
                         ] = f"{type(exc).__name__}:{exc}"
                 if opened is not None:
+                    # The submission receipt is the only record of what
+                    # happened at the exchange boundary -- which intents were
+                    # gated, which reached the send and stopped there, and the
+                    # payload hash a live run would have to reproduce byte for
+                    # byte.  It rides the preselection receipt so it is
+                    # readable from the status file without opening the
+                    # ledger.
+                    submission = opened.get("order_submission")
+                    if isinstance(submission, Mapping):
+                        preselection_receipt["order_submission"] = {
+                            "cycle_id": submission.get("cycle_id"),
+                            "intent_count": submission.get("intent_count"),
+                            "orders_submitted": submission.get(
+                                "orders_submitted"
+                            ),
+                            "live_submit_authorized": submission.get(
+                                "live_submit_authorized"
+                            ),
+                            "calls_order_gateway": submission.get(
+                                "calls_order_gateway"
+                            ),
+                            "submissions": [
+                                {
+                                    key: entry.get(key)
+                                    for key in (
+                                        "order_intent_id",
+                                        "state",
+                                        "reason",
+                                        "payload_sha256",
+                                        "exchange_post_started",
+                                    )
+                                    if key in entry
+                                }
+                                for entry in (
+                                    submission.get("submissions") or ()
+                                )
+                                if isinstance(entry, Mapping)
+                            ][:8],
+                        }
                     decision_receipts.append(opened)
                     continue
                 decision_receipts.append(
