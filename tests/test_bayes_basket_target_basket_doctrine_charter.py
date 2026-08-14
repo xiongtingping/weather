@@ -1068,3 +1068,38 @@ def test_clause_48_listing_window_opens_positions() -> None:
     assert "set(current_probability) | set(rows_by_scope)" in publisher, (
         "the catalog must union envelope scopes with registry listing scopes"
     )
+
+
+def test_clause_38_floor_scope_follows_coverability() -> None:
+    """The floor protects the whole live set exactly when a window can span it.
+
+    The drift this kills in both directions: scoping the floor to the
+    optimizer's window while the live set is coverable (self-written
+    constraints, the original clause 38 concern), and scoping it to a live
+    set wider than any legal window (a ban dressed as a floor -- eleven
+    listing-day live buckets against a four-bucket support made every
+    spending candidate illegal and the opening stage structurally unable
+    to buy, colliding with charters 46 and 48).
+    """
+
+    clause = _clause(38)
+    assert "可覆盖性" in clause
+    assert "支持窗自身" in clause
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    conditional = (
+        "protected_buckets=(\n"
+        "                    live_buckets\n"
+        "                    if len(live_buckets)\n"
+        "                    <= max(1, int(basket_policy.maximum_support_buckets))\n"
+        "                    else window\n"
+        "                ),"
+    )
+    assert conditional in source, (
+        "the window solver must scope the floor by coverability, not "
+        "unconditionally by the live set"
+    )

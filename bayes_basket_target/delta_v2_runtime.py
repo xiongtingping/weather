@@ -350,17 +350,33 @@ def _solve_over_support_windows(
                         basket_policy.clip_min_notional_usdc
                     ),
                 ),
-                # The floor's scope is every bucket the evidence still holds
-                # live, never the window the optimizer just chose.  Those two
-                # were the same thing while the support was fixed upstream;
-                # now that the optimizer picks the window, tying the floor to
-                # its choice would let it escape the constraint by narrowing
-                # -- shrink to one bucket and the floor protects nothing.
-                # Charter clause 38 relaxes the floor as the *hard bound*
-                # kills buckets, which is certainty arriving; a voluntarily
-                # narrower bet is not that, and the outcomes it walks away
-                # from still cost the whole premium when they settle.
-                protected_buckets=live_buckets,
+                # The floor guards the whole live set exactly when full
+                # coverage is structurally possible (charter 38, amended
+                # 2026-08-14).  While the hard bound still holds more live
+                # buckets than a window may span, demanding every one be
+                # protected is not a floor but a ban: eleven live buckets
+                # against a four-bucket support means some uncovered bucket
+                # always settles at minus the whole cost, so every spending
+                # candidate was illegal and the opening stage could never
+                # buy -- a direct collision with charters 46/48.  The risk
+                # the floor was double-charging is already priced inside the
+                # objective: an uncovered live bucket enters the log-wealth
+                # curve at minus the basket's cost with its own probability,
+                # and the fractional-Kelly stake shrinks accordingly.  So:
+                # live set coverable (<= the window width cap) -> protect
+                # all of it, which keeps the anti-narrowing rule exactly
+                # where it can bind; wider than coverable -> protect the
+                # window's own tail, and let sizing price the rest.  The
+                # hard bound pruning live buckets flips this back to
+                # full-scope automatically, which is clause 38's original
+                # "the floor relaxes as certainty arrives" reading run in
+                # both directions.
+                protected_buckets=(
+                    live_buckets
+                    if len(live_buckets)
+                    <= max(1, int(basket_policy.maximum_support_buckets))
+                    else window
+                ),
                 shortfall_buckets=tuple(sorted(shortfall & set(window))),
                 breakthrough_buckets=tuple(
                     sorted(breakthrough & set(window))
