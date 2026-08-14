@@ -279,6 +279,67 @@ NEIGHBOUR_DIRECTION_FACTORS = {
     1: 1.030,
     2: 1.000,
 }
+# One offset carries latitude, and only one.  Comparing the two pipelines'
+# *relative* band structure -- each band against its own fleet mean, so the
+# level difference cancels -- the agreement is not uniform:
+#
+#   offset -1  4 of 4 bands agree in direction
+#   offset -2  2 of 4        offset +2  2 of 4
+#   offset +1  0 of 4        (production says high latitude leans warm, the
+#                             research pair says the opposite)
+#
+# So -1 is the one place where latitude is a shared physical fact rather than
+# a property of one pipeline, and it is where both say the same thing: the
+# further from the equator, the more the bucket below the centre is
+# over-claimed.  Production measures it on its own truth (1.003, 0.963,
+# 0.879, 0.642 by band, day-bootstrapped), which is where the served levels
+# come from; the research pair's independent agreement is what says the
+# monotonicity is not 47 days of noise.
+#
+# Bands whose own interval contains 1.0 keep the fleet factor rather than
+# their point estimate -- the band evidence has to beat the fleet evidence to
+# replace it -- and the significant bands serve the end of their interval
+# nearest one, or the fleet factor where that end is weaker still.  Without
+# that last clause 35-45 would serve 0.996 against 0.980 for the equator,
+# i.e. less deflation further from it, which is the opposite of the fact
+# being encoded: a conservative reading of one band must not undo what the
+# fleet already established.  Measured on the production temporal holdout this nearly
+# doubles the layer: 0.226% CRPS and 0.179% NLL against 0.133%/0.098% for
+# the fleet-wide version, and it also beats banding every offset (0.145%),
+# which spends four times the parameters on structure three of them do not
+# have.
+#
+# +1 is deliberately left fleet-wide.  Its band structure disagrees with the
+# research pair on every band, and there is a mechanism for that: production
+# scores against an airport point observation, which on clear calm summer
+# days runs hotter than any grid box by an amount a mean bias correction
+# cannot remove.  That warm lean is real for us and absent from a
+# reanalysis-scored pipeline, so nothing outside this pipeline can confirm it.
+NEIGHBOUR_DIRECTION_LOWER_BY_BAND = {
+    "lat_00_25": 0.980,
+    "lat_25_35": 0.980,
+    "lat_35_45": 0.980,
+    "lat_45_plus": 0.774,
+}
+
+
+def neighbour_direction_band(latitude: float | None) -> str:
+    """The latitude band whose lower-neighbour factor a station is served.
+
+    An unknown latitude serves the fleet band: not knowing where a station is
+    is not evidence about its shape.
+    """
+
+    if latitude is None:
+        return "lat_00_25"
+    magnitude = abs(float(latitude))
+    if magnitude < 25.0:
+        return "lat_00_25"
+    if magnitude < 35.0:
+        return "lat_25_35"
+    if magnitude < 45.0:
+        return "lat_35_45"
+    return "lat_45_plus"
 
 
 def apply_neighbour_direction_tilt(
@@ -298,7 +359,11 @@ def apply_neighbour_direction_tilt(
             "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
             "state": "NO_CENTER_BUCKET",
         }
-    factors = NEIGHBOUR_DIRECTION_FACTORS
+    band = neighbour_direction_band(latitude)
+    factors = {
+        **NEIGHBOUR_DIRECTION_FACTORS,
+        -1: NEIGHBOUR_DIRECTION_LOWER_BY_BAND[band],
+    }
     center_ordinal = int(ordinals[center_bucket])
     tilted: dict[str, float] = {}
     applied: dict[str, float] = {}
@@ -315,6 +380,7 @@ def apply_neighbour_direction_tilt(
         "schema": "neighbour_direction_receipt_v1",
         "method_tag": NEIGHBOUR_DIRECTION_METHOD_TAG,
         "state": "APPLIED" if applied else "NO_NEIGHBOUR_IN_SUPPORT",
+        "band": band,
         "latitude": None if latitude is None else float(latitude),
         "center_bucket": str(center_bucket),
         "applied_factors": applied,

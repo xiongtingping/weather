@@ -1410,6 +1410,31 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     # An interval containing 1.0 serves 1.0.
     assert NEIGHBOUR_DIRECTION_FACTORS[2] == 1.0
 
+    from bayes_basket_target.cross_consensus import (
+        NEIGHBOUR_DIRECTION_LOWER_BY_BAND,
+        neighbour_direction_band,
+    )
+
+    # Latitude conditions exactly one offset: the lower neighbour, the only
+    # one whose relative band structure both pipelines agree on (4 of 4
+    # bands, against 0 of 4 for the upper neighbour).  Deflation strengthens
+    # away from the equator.
+    ordered = [
+        NEIGHBOUR_DIRECTION_LOWER_BY_BAND[key]
+        for key in ("lat_00_25", "lat_25_35", "lat_35_45", "lat_45_plus")
+    ]
+    assert ordered == sorted(ordered, reverse=True)
+    assert ordered[-1] < ordered[0]
+    # A band whose own evidence does not beat the fleet's keeps the fleet
+    # factor rather than its point estimate.
+    assert NEIGHBOUR_DIRECTION_LOWER_BY_BAND["lat_00_25"] == (
+        NEIGHBOUR_DIRECTION_FACTORS[-1]
+    )
+    # Southern and northern hemispheres share a band; an unknown latitude is
+    # not evidence about shape.
+    assert neighbour_direction_band(-52.0) == neighbour_direction_band(52.0)
+    assert neighbour_direction_band(None) == "lat_00_25"
+
     raw = {
         "33": 0.04, "34": 0.09, "35": 0.19, "36": 0.34,
         "37": 0.26, "38": 0.06, "39": 0.02,
