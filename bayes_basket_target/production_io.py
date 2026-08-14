@@ -1812,6 +1812,45 @@ def load_production_market_snapshot(
     }
 
 
+def derive_policy_maturity_bin(
+    lead_label: str,
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    evaluation_at_utc: str,
+) -> str:
+    """Policy maturity from the calendar distance to the event.
+
+    The run-lead vocabulary moved to hour buckets (charter 47), but policy
+    maturity was never really the run's lead -- it is how far the *event*
+    is, which is what the d-keyed policy scopes, cash phases and staging
+    were fitted against.  Copying an artifact's hour label into a policy
+    lookup makes every migrated envelope unmatchable (station policy and
+    delta-v2 policy both fail closed on it, at two different call sites).
+    A calendar label passes through unchanged.
+    """
+
+    label = str(lead_label or "").strip()
+    if not label:
+        raise ContractError("probability_policy_maturity_bin_missing")
+    if not label.startswith("h"):
+        return label
+    event_day = date.fromisoformat(str(event_date))
+    decision_local_day = (
+        datetime.fromisoformat(evaluation_at_utc.replace("Z", "+00:00"))
+        .astimezone(ZoneInfo(str(settlement_timezone)))
+        .date()
+    )
+    days_out = (event_day - decision_local_day).days
+    if days_out <= 0:
+        return "d0"
+    if days_out == 1:
+        return "d1"
+    if days_out == 2:
+        return "d2"
+    return "d2_fallback"
+
+
 def resolve_delta_v2_runtime_authority(
     conn: sqlite3.Connection,
     *,
@@ -1954,39 +1993,12 @@ def compile_production_cycle_from_ssot(
         probability=current_envelope,
         evaluation_at_utc=evaluation_at_utc,
     )
-    probability_maturity_bin = str(
-        current_envelope.lineage.get("lead_bucket") or ""
-    ).strip()
-    if not probability_maturity_bin:
-        raise ContractError("probability_policy_maturity_bin_missing")
-    if probability_maturity_bin.startswith("h"):
-        # The run-lead vocabulary moved to hour buckets (charter 47), but
-        # policy maturity was never really the run's lead -- it is how far
-        # the *event* is, which is what the d-keyed policy scopes, cash
-        # phases and staging were fitted against.  Copying the artifact's
-        # hour label into the policy lookup made every migrated envelope
-        # unmatchable and the whole open-day chain failed closed with
-        # FAIL_CLOSED_NO_STATION_POLICY.  Derive maturity from the calendar
-        # distance to the event in the station's own timezone instead; the
-        # probability artifact keeps owning the run lead, the policy layer
-        # keeps its own vocabulary.
-        event_day = date.fromisoformat(str(current_envelope.event_date))
-        decision_local_day = (
-            datetime.fromisoformat(
-                evaluation_at_utc.replace("Z", "+00:00")
-            )
-            .astimezone(ZoneInfo(str(current_envelope.settlement_timezone)))
-            .date()
-        )
-        days_out = (event_day - decision_local_day).days
-        if days_out <= 0:
-            probability_maturity_bin = "d0"
-        elif days_out == 1:
-            probability_maturity_bin = "d1"
-        elif days_out == 2:
-            probability_maturity_bin = "d2"
-        else:
-            probability_maturity_bin = "d2_fallback"
+    probability_maturity_bin = derive_policy_maturity_bin(
+        str(current_envelope.lineage.get("lead_bucket") or ""),
+        event_date=str(current_envelope.event_date),
+        settlement_timezone=str(current_envelope.settlement_timezone),
+        evaluation_at_utc=evaluation_at_utc,
+    )
     market_snapshot = load_production_market_snapshot(
         conn, station_id=station_id, event_date=event_date, evaluation_at_utc=evaluation_at_utc
     )

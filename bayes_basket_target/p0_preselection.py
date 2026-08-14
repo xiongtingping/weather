@@ -24,6 +24,7 @@ from .market_registry import load_market_registry_snapshot
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
+    derive_policy_maturity_bin,
     assert_current_probability_bridge,
     assert_formal_probability_model_authority,
     load_materialized_probability_envelopes,
@@ -555,11 +556,14 @@ def compile_p0_preselection(
     )
     if envelope.stage not in {"P0", "P0-M"}:
         raise ContractError("p0_preselection_p1_is_final_authority")
-    probability_maturity_bin = str(
-        envelope.lineage.get("lead_bucket") or ""
-    ).strip()
-    if not probability_maturity_bin:
-        raise ContractError("probability_policy_maturity_bin_missing")
+    # Same seam as the open-day chain: the envelope's lead is hour-bucket
+    # vocabulary, the policy layer speaks calendar maturity (charter 47).
+    probability_maturity_bin = derive_policy_maturity_bin(
+        str(envelope.lineage.get("lead_bucket") or ""),
+        event_date=str(envelope.event_date),
+        settlement_timezone=str(envelope.settlement_timezone),
+        evaluation_at_utc=evaluation_at_utc,
+    )
     regime_artifact = load_regime_artifact(
         conn,
         probability=envelope,
