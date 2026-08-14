@@ -74,6 +74,8 @@ from .production_io import (
     target_registry_source_lane,
     target_stage_zero_execution_anchor_from_cycle,
 )
+from .quote_freshness import QuoteFreshnessPolicy
+from .market_materialization import insert_market_evidence_bundle
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m
 from .probability_bridge import materialize_probability_bridge
@@ -9698,10 +9700,99 @@ class TargetProductionWorker:
                             self.commit_conn,
                             savepoint="basket_target_p0_stage_open",
                         ):
+                            # The atomic open binds to persisted evidence
+                            # rows, not to the in-memory snapshot: the
+                            # forward validation joins the quote by
+                            # snapshot_id and the inventory/order state by
+                            # version.  A forward day has no resident
+                            # ingress writing that trio, so the stage-open
+                            # persists it here from its own snapshot -- the
+                            # inventory and order state are the opening
+                            # stage's true zeros, and _insert_once makes the
+                            # write idempotent across recompiles of the same
+                            # quote version.
+                            quote_raw = dict(market_snapshot)
+                            quote_raw[
+                                "quote_freshness_policy_sha256"
+                            ] = QuoteFreshnessPolicy.from_mapping(
+                                activation.get("quote_freshness_policy")
+                            ).content_sha256
+                            zero_by_bucket = {
+                                str(entry.get("bucket") or ""): 0.0
+                                for entry in (
+                                    market_snapshot.get("buckets") or ()
+                                )
+                            }
+                            evidence_scope = {
+                                "station_id": str(
+                                    market_snapshot.get("station_id") or ""
+                                ),
+                                "event_date": str(
+                                    market_snapshot.get("event_date") or ""
+                                ),
+                                "settlement_timezone": str(
+                                    market_snapshot.get(
+                                        "settlement_timezone"
+                                    )
+                                    or ""
+                                ),
+                                "observed_at": str(
+                                    market_snapshot.get("quote_observed_at")
+                                    or ""
+                                ),
+                            }
+                            insert_market_evidence_bundle(
+                                self.commit_conn,
+                                quote_raw,
+                                {
+                                    **evidence_scope,
+                                    "inventory_snapshot_id": (
+                                        "p0presel-inv-"
+                                        + str(
+                                            market_snapshot.get(
+                                                "quote_version"
+                                            )
+                                            or ""
+                                        )
+                                    ),
+                                    "inventory_version": str(
+                                        market_snapshot.get(
+                                            "inventory_version"
+                                        )
+                                        or ""
+                                    ),
+                                    "complete": 1,
+                                    "inventory_json": {
+                                        "filled_by_bucket": zero_by_bucket,
+                                    },
+                                },
+                                {
+                                    **evidence_scope,
+                                    "order_state_snapshot_id": (
+                                        "p0presel-ord-"
+                                        + str(
+                                            market_snapshot.get(
+                                                "quote_version"
+                                            )
+                                            or ""
+                                        )
+                                    ),
+                                    "order_state_version": str(
+                                        market_snapshot.get(
+                                            "order_state_version"
+                                        )
+                                        or ""
+                                    ),
+                                    "known": 1,
+                                    "order_state_json": {
+                                        "pending_by_bucket": zero_by_bucket,
+                                    },
+                                },
+                            )
                             opened = commit_production_candidate_atomic(
                                 self.commit_conn,
                                 compiled_plan=compiled_plan,
-                                market_snapshot=market_snapshot,
+                                market_snapshot=quote_raw,
                                 awc_observation_contract=None,
                                 truth_observation_revision_content_sha256="",
                                 bound=None,

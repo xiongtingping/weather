@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Mapping
 
 from .cash_phase import BasketCashPhaseInput, CashPhase
@@ -370,6 +370,8 @@ def _market_snapshot(
                 )
             buckets.append({
                 "bucket": bucket,
+                "ordinal": int(envelope.bucket_ordinals[bucket]),
+                "unmaterialized_book": True,
                 "bid_price": 0.0,
                 "ask_levels": [],
                 "ask_available": False,
@@ -481,6 +483,7 @@ def _market_snapshot(
             market_labels.add(str(raw_registry.get("event_id") or raw_registry.get("slug") or ""))
         buckets.append({
             "bucket": bucket,
+            "ordinal": int(envelope.bucket_ordinals[bucket]),
             "bid_price": float(bid_levels[0]["price"]) if bid_levels else 0.0,
             "ask_levels": ask_levels,
             "ask_available": bool(ask_levels),
@@ -546,6 +549,19 @@ def _market_snapshot(
         "official_ws_quote_sha256": economic_quote_sha256,
         "economic_quote_sha256": economic_quote_sha256,
         "quote_observed_at": quote_observed,
+        # A streaming book has no exchange-stated expiry; what bounds its
+        # actionability is the same strict-as-of freshness budget that
+        # gates staleness above.  The forward evidence binding requires an
+        # explicit expiry clock (decision must precede it), and leaving the
+        # field absent failed every listing-day stage-open as an invalid
+        # timestamp -- the whole fleet fell back to preliminary records.
+        "quote_expires_at": (
+            _utc(
+                quote_observed,
+                reason="p0_preselection_quote_observed_at_missing",
+            )
+            + timedelta(seconds=maximum_age)
+        ).isoformat().replace("+00:00", "Z"),
         "quote_source": "OFFICIAL_CLOB_WS",
         "inventory_version": "p0_preselection_q0",
         "order_state_version": "p0_preselection_known_zero",
@@ -668,6 +684,10 @@ def compile_p0_preselection(
         "station_timezone": cash_policy.station_timezone,
         "checkpoint_id": "p0_cash_" + envelope.checkpoint_id,
     })
+    # The stage-open persists this snapshot as the forward evidence trio
+    # (charter 46/48); the materializer requires the cash-phase input bound
+    # into the quote row itself.
+    market["cash_phase_input"] = phase_input.to_dict()
     (
         delta_v2_artifact,
         delta_v2_fill_resolver,

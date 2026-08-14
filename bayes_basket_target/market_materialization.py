@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 from .cash_phase import BasketCashPhaseInput
 from .contracts import ContractError, content_sha256
-from .et_history import assert_event_day_started
+from .et_history import event_day_window, assert_event_day_started
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
 from .settlement_time import settlement_day_window
@@ -111,7 +111,11 @@ def _normalize_buckets(raw: Any) -> list[dict[str, Any]]:
         if bid_available != bool(bids_raw):
             raise ContractError("official_ws_bid_availability_mismatch")
         if not ask_available and not bid_available:
-            raise ContractError("official_ws_book_empty")
+            # A listing-day bucket nobody has quoted yet is a legal market
+            # state when it names itself (charter 48); an unnamed empty book
+            # is still a defect.
+            if not bool(item.get("unmaterialized_book")):
+                raise ContractError("official_ws_book_empty")
         result.append({
             **dict(item),
             "bucket": bucket,
@@ -183,7 +187,13 @@ def build_official_ws_snapshot(raw: Mapping[str, Any]) -> dict[str, Any]:
         raise ContractError(
             "official_ws_quote_expiry_must_follow_observation"
         )
-    assert_event_day_started(
+    # Forward days are first-class evidence surfaces (charter 46/48): the
+    # opening stage prices a listing-day book one or two local days before
+    # the settlement day starts, and its snapshot must persist so the
+    # atomic stage-open can bind to it.  The window is still resolved --
+    # a malformed date or timezone fails here as before -- but a
+    # not-started day is no longer a rejection.
+    event_day_window(
         event_date,
         as_of_utc=row["observed_at"],
         target_timezone=settlement_timezone,
@@ -245,7 +255,8 @@ def _build_state_snapshot(
         raise ContractError("confirmed_inventory_incomplete")
     if kind == "order_state" and row[known_key] != 1:
         raise ContractError("order_state_unknown")
-    assert_event_day_started(
+    # Same forward-day admission as the quote snapshot above (charter 48).
+    event_day_window(
         event_date,
         as_of_utc=row["observed_at"],
         target_timezone=settlement_timezone,
