@@ -14,6 +14,7 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 
 # Weight-zero tolerance for provisional riders; matches the kernel's EPS.
 EPS = 1e-9
+from .station_registry import station_coordinates
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
@@ -2301,6 +2302,15 @@ def compile_native_ensemble_p0(
     # fixed only so the three never read each other's residue.
     neighbour_direction_receipt = None
     if NEIGHBOUR_DIRECTION_METHOD_TAG in artifact_combination_method:
+        # The tilt is a property of where the station is, so it is served by
+        # latitude band.  An unresolvable registry scope serves the neutral
+        # band rather than guessing.
+        try:
+            station_latitude = float(
+                station_coordinates(station_id)["latitude"]
+            )
+        except Exception:  # noqa: BLE001 -- unknown latitude is neutral
+            station_latitude = None
         probability, neighbour_direction_receipt = (
             apply_neighbour_direction_tilt(
                 probability,
@@ -2309,6 +2319,7 @@ def compile_native_ensemble_p0(
                     for index, bucket in enumerate(ordered)
                 },
                 center_bucket=model_center_bucket,
+                latitude=station_latitude,
             )
         )
     tail_reliability_receipt = None

@@ -19,6 +19,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
+from .station_registry import station_coordinates
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
@@ -1039,6 +1040,12 @@ def _holdout_conditioning_signals(
                 truth_rows[key] = (revision, float(tmax_c))
     except sqlite3.Error:
         pass
+    try:
+        station_latitude = float(
+            station_coordinates(station_id)["latitude"]
+        )
+    except Exception:  # noqa: BLE001 -- unknown latitude is neutral
+        station_latitude = None
     # Radiation leads and the forecaster's fields are the fallback, the same
     # precedence the serving path applies.
     radiation_by_day: dict[str, float] = {}
@@ -1152,6 +1159,7 @@ def _select_minimum_crps_subset(
     train_rmse: Mapping[str, float],
     train_n_by_system: Mapping[str, int],
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
+    station_latitude: float | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Choose the subset of ready systems whose blend scores best out of sample.
 
@@ -1247,6 +1255,7 @@ def _select_minimum_crps_subset(
                             for key in ordered_keys
                         ),
                     ),
+                    latitude=station_latitude,
                 )
             )
             probability, _skew_receipt = apply_conditional_tail_skew(
@@ -2638,6 +2647,12 @@ def build_native_ensemble_oos(
     must never borrow other stations' errors (user ruling, 2026-08-14).
     """
 
+    try:
+        station_latitude = float(
+            station_coordinates(station_id)["latitude"]
+        )
+    except Exception:  # noqa: BLE001 -- unknown latitude serves neutral
+        station_latitude = None
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
     if min_train_days < 2 or min_holdout_days < 1:
@@ -2901,6 +2916,7 @@ def build_native_ensemble_oos(
             predictions_by_system=predictions_by_system,
         )
         weights, subset_selection = _select_minimum_crps_subset(
+            station_latitude=station_latitude,
             ready_system_ids=[system_id for system_id, _e in rows],
             predictions_by_system=predictions_by_system,
             common_holdout=common_holdout,
@@ -3000,6 +3016,7 @@ def build_native_ensemble_oos(
                             for key in ordered_keys
                         ),
                     ),
+                    latitude=station_latitude,
                 )
             )
             probability, _skew_receipt = apply_conditional_tail_skew(

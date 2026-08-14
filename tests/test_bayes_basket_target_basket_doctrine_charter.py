@@ -1325,7 +1325,11 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
         / "scripts"
         / "capture_station_forecast_physics.py"
     ).read_text(encoding="utf-8")
-    assert "calibration_station_daily_high_truth" not in capture
+    # The name may appear in prose saying it is never written; what must not
+    # appear is a write to it.
+    assert "INSERT" in capture
+    for statement in capture.split("INSERT")[1:]:
+        assert "calibration_station_daily_high_truth" not in statement[:200]
     assert "reference_only" in capture
     root = Path(__file__).resolve().parents[1]
     for rel in (
@@ -1392,18 +1396,28 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     assert "neighbour_direction_v1" in clause
 
     from bayes_basket_target.cross_consensus import (
-        NEIGHBOUR_DIRECTION_FACTORS,
+        NEIGHBOUR_DIRECTION_BANDS,
         apply_neighbour_direction_tilt,
+        neighbour_direction_band,
     )
 
     # The centre is never reweighted here; position is the radiation shift's
     # job and the centre factor does not hold still.
-    assert 0 not in NEIGHBOUR_DIRECTION_FACTORS
-    # Warm side up, cold side down -- the direction the record shows.
-    assert NEIGHBOUR_DIRECTION_FACTORS[-1] < 1.0 < NEIGHBOUR_DIRECTION_FACTORS[1]
-    assert NEIGHBOUR_DIRECTION_FACTORS[-2] < NEIGHBOUR_DIRECTION_FACTORS[-1]
-    # An interval containing 1.0 serves 1.0.
-    assert NEIGHBOUR_DIRECTION_FACTORS[2] == 1.0
+    for factors in NEIGHBOUR_DIRECTION_BANDS.values():
+        assert 0 not in factors
+    # A station's tilt follows its latitude band, and an unknown latitude
+    # serves the neutral one rather than a guess.
+    assert neighbour_direction_band(None) == "lat_00_25"
+    assert NEIGHBOUR_DIRECTION_BANDS["lat_00_25"] == {
+        -2: 1.0, -1: 1.0, 1: 1.0, 2: 1.0
+    }
+    assert neighbour_direction_band(-52.0) == neighbour_direction_band(52.0)
+    # High latitude leans warm hard; the mid band does not.  This is the
+    # structure both pipelines agree on and the reason the prior is banded.
+    high = NEIGHBOUR_DIRECTION_BANDS["lat_45_plus"]
+    mid = NEIGHBOUR_DIRECTION_BANDS["lat_25_35"]
+    assert high[-1] < 1.0 < high[1]
+    assert (high[1] / high[-1]) > (mid[1] / mid[-1])
 
     raw = {
         "33": 0.04, "34": 0.09, "35": 0.19, "36": 0.34,
@@ -1411,19 +1425,19 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     }
     ordinals = {key: index for index, key in enumerate(sorted(raw))}
     tilted, receipt = apply_neighbour_direction_tilt(
-        raw, ordinals=ordinals, center_bucket="36"
+        raw, ordinals=ordinals, center_bucket="36", latitude=52.3
     )
     assert receipt["state"] == "APPLIED"
+    assert receipt["band"] == "lat_45_plus"
     assert abs(sum(tilted.values()) - 1.0) < 1e-9
-    # The point of carrying offset two: a four-bucket window placed [-1,+2]
-    # and the same window placed [-2,+1] share their three inner offsets and
-    # differ only at +2 against -2, so the warm placement can only gain if
-    # that pair is asymmetric.
-    warm_before = sum(raw[key] for key in ("35", "36", "37", "38"))
-    cold_before = sum(raw[key] for key in ("34", "35", "36", "37"))
-    warm_after = sum(tilted[key] for key in ("35", "36", "37", "38"))
-    cold_after = sum(tilted[key] for key in ("34", "35", "36", "37"))
-    assert (warm_after - cold_after) > (warm_before - cold_before)
+    # The high band's lean lives in the inner pair: one bucket above gains
+    # against one below.  It is deliberately not asserted that this makes a
+    # [-1,+2] window beat a [-2,+1] one -- the banded fit says that is
+    # band-dependent and mostly the other way, because the high band's outer
+    # pair leans cold.  The tilt calibrates shape; placement stays priced.
+    ratio_before = raw["37"] / raw["35"]
+    ratio_after = tilted["37"] / tilted["35"]
+    assert ratio_after > ratio_before
 
     # It lives in p(t).  The objective must not learn a placement rule.
     root = Path(__file__).resolve().parents[1]
@@ -1434,3 +1448,17 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
         source = (root / rel).read_text(encoding="utf-8")
         assert "NEIGHBOUR_DIRECTION" not in source
         assert "neighbour_direction" not in source
+
+    # The banded prior is fitted off-pipeline on years of data and must say
+    # so: it is a reference covariate pair, never settlement truth.
+    capture = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "capture_station_forecast_tmax_history.py"
+    ).read_text(encoding="utf-8")
+    # The name may appear in prose saying it is never written; what must not
+    # appear is a write to it.
+    assert "INSERT" in capture
+    for statement in capture.split("INSERT")[1:]:
+        assert "calibration_station_daily_high_truth" not in statement[:200]
+    assert "reference_only" in capture
