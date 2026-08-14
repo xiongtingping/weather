@@ -75,7 +75,7 @@ from .production_io import (
     target_stage_zero_execution_anchor_from_cycle,
 )
 from .quote_freshness import QuoteFreshnessPolicy
-from .market_materialization import insert_market_evidence_bundle
+from .market_materialization import insert_market_evidence_bundle, build_confirmed_inventory_snapshot, build_order_state_snapshot
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m
 from .probability_bridge import materialize_probability_bridge
@@ -9741,53 +9741,68 @@ class TargetProductionWorker:
                                     or ""
                                 ),
                             }
+                            inventory_raw = {
+                                **evidence_scope,
+                                "inventory_snapshot_id": (
+                                    "p0presel-inv-"
+                                    + str(
+                                        market_snapshot.get(
+                                            "quote_version"
+                                        )
+                                        or ""
+                                    )
+                                ),
+                                "inventory_version": str(
+                                    market_snapshot.get(
+                                        "inventory_version"
+                                    )
+                                    or ""
+                                ),
+                                "complete": 1,
+                                "inventory_json": {
+                                    "filled_by_bucket": zero_by_bucket,
+                                },
+                            }
+                            order_state_raw = {
+                                **evidence_scope,
+                                "order_state_snapshot_id": (
+                                    "p0presel-ord-"
+                                    + str(
+                                        market_snapshot.get(
+                                            "quote_version"
+                                        )
+                                        or ""
+                                    )
+                                ),
+                                "order_state_version": str(
+                                    market_snapshot.get(
+                                        "order_state_version"
+                                    )
+                                    or ""
+                                ),
+                                "known": 1,
+                                "order_state_json": {
+                                    "pending_by_bucket": zero_by_bucket,
+                                },
+                            }
                             insert_market_evidence_bundle(
                                 self.commit_conn,
                                 quote_raw,
-                                {
-                                    **evidence_scope,
-                                    "inventory_snapshot_id": (
-                                        "p0presel-inv-"
-                                        + str(
-                                            market_snapshot.get(
-                                                "quote_version"
-                                            )
-                                            or ""
-                                        )
-                                    ),
-                                    "inventory_version": str(
-                                        market_snapshot.get(
-                                            "inventory_version"
-                                        )
-                                        or ""
-                                    ),
-                                    "complete": 1,
-                                    "inventory_json": {
-                                        "filled_by_bucket": zero_by_bucket,
-                                    },
-                                },
-                                {
-                                    **evidence_scope,
-                                    "order_state_snapshot_id": (
-                                        "p0presel-ord-"
-                                        + str(
-                                            market_snapshot.get(
-                                                "quote_version"
-                                            )
-                                            or ""
-                                        )
-                                    ),
-                                    "order_state_version": str(
-                                        market_snapshot.get(
-                                            "order_state_version"
-                                        )
-                                        or ""
-                                    ),
-                                    "known": 1,
-                                    "order_state_json": {
-                                        "pending_by_bucket": zero_by_bucket,
-                                    },
-                                },
+                                inventory_raw,
+                                order_state_raw,
+                            )
+                            # The forward binding names the persisted rows by
+                            # content hash; recompute them through the same
+                            # builders the insert used.
+                            quote_raw["inventory_sha256"] = (
+                                build_confirmed_inventory_snapshot(
+                                    inventory_raw
+                                )["content_sha256"]
+                            )
+                            quote_raw["order_state_sha256"] = (
+                                build_order_state_snapshot(
+                                    order_state_raw
+                                )["content_sha256"]
                             )
                             opened = commit_production_candidate_atomic(
                                 self.commit_conn,
