@@ -17,7 +17,10 @@ EPS = 1e-9
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
+    SYNOPTIC_COOLING_METHOD_TAG,
+    SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    synoptic_cooling_index,
     bridged_cross_probability,
 )
 from .future_temperature_curve import (
@@ -450,6 +453,53 @@ def _ordered_buckets(
     return ordered
 
 
+def _shift_probability_c(
+    probability: Mapping[str, float],
+    *,
+    ordered: Sequence[str],
+    bucket_centers_c: Sequence[float],
+    intervals: Mapping[str, Sequence[float | None]],
+) -> dict[str, float]:
+    """Move a bucketed distribution along the temperature axis.
+
+    Each bucket's mass is carried to where its centre lands after the shift
+    and split linearly between the two buckets it falls between, so a shift
+    smaller than a bucket width still moves mass rather than rounding to
+    nothing.  Mass leaving the edge stays in the edge bucket: the open-ended
+    buckets are unbounded, so nothing falls off the end.
+    """
+
+    original_centers = _bucket_centers(intervals, ordered)
+    shifted = {str(bucket): 0.0 for bucket in ordered}
+    for index, bucket in enumerate(ordered):
+        mass = float(probability[str(bucket)])
+        if mass <= 0.0:
+            continue
+        target = float(bucket_centers_c[index])
+        position = 0
+        while (
+            position + 1 < len(original_centers)
+            and original_centers[position + 1] <= target
+        ):
+            position += 1
+        if target <= original_centers[0]:
+            shifted[str(ordered[0])] += mass
+            continue
+        if target >= original_centers[-1]:
+            shifted[str(ordered[-1])] += mass
+            continue
+        lower_c = original_centers[position]
+        upper_c = original_centers[position + 1]
+        span = upper_c - lower_c
+        weight_upper = (target - lower_c) / span if span > EPS else 0.0
+        shifted[str(ordered[position])] += mass * (1.0 - weight_upper)
+        shifted[str(ordered[position + 1])] += mass * weight_upper
+    total = sum(shifted.values())
+    if total <= 0.0:
+        raise ContractError("native_ensemble_p0_shift_probability_empty")
+    return {key: value / total for key, value in shifted.items()}
+
+
 def _distribution_sigma_c(
     probability: Mapping[str, float],
     bucket_centers_c: Sequence[float],
@@ -679,7 +729,8 @@ def _taf_envelope_witness(
     try:
         row = conn.execute(
             "SELECT tx_c, content_sha256, issued_at_utc, revision_sequence, "
-            "revision_id "
+            "revision_id, "
+            "cloud_cover_fraction, precipitation_probability, wind_speed_mps "
             "FROM calibration_forward_taf_capture "
             "WHERE station_id=? AND event_date=? AND tx_c IS NOT NULL "
             "AND issued_at_utc<=? "
@@ -698,6 +749,9 @@ def _taf_envelope_witness(
         return None
     return {
         "tx_c": f"{float(row[0]):.12g}",
+        "cloud_cover_fraction": row[5],
+        "precipitation_probability": row[6],
+        "wind_speed_mps": row[7],
         "capture_content_sha256": str(row[1] or ""),
         "issued_at_utc": str(row[2] or ""),
         "revision_sequence": str(row[3] if row[3] is not None else ""),
@@ -2137,6 +2191,46 @@ def compile_native_ensemble_p0(
     # and the forecaster's TX against the model centre.  Keyed on the
     # artifact's combination-method tag exactly like the bridge, so the live
     # math never diverges from the holdout math that admitted the artifact.
+    # Cloud, rain and mixing move the day in a direction the models miss, and
+    # the forecaster publishes all three beside the TX.  This is a centre
+    # shift, not a tail transform: the whole distribution is colder on a
+    # cloudy windy day, so it rides on the calibrated bias rather than on the
+    # tails.  Applied here, after the witness resolves, and keyed on its own
+    # method tag so the holdout that admitted the artifact scored it too.
+    synoptic_cooling_receipt = None
+    synoptic_cooling_shift_c = 0.0
+    if (
+        SYNOPTIC_COOLING_METHOD_TAG in artifact_combination_method
+        and taf_witness is not None
+    ):
+        cooling_index, synoptic_cooling_receipt = synoptic_cooling_index(
+            cloud_cover_fraction=taf_witness.get("cloud_cover_fraction"),
+            precipitation_probability=taf_witness.get(
+                "precipitation_probability"
+            ),
+            wind_speed_mps=taf_witness.get("wind_speed_mps"),
+        )
+        if cooling_index is not None:
+            member_spread_c = _distribution_sigma_c(
+                probability, _bucket_centers(intervals_raw, ordered)
+            )
+            synoptic_cooling_shift_c = (
+                -SYNOPTIC_COOLING_SHIFT_SIGMA
+                * float(cooling_index)
+                * member_spread_c
+            )
+            if abs(synoptic_cooling_shift_c) > EPS:
+                shifted_centers = [
+                    value + synoptic_cooling_shift_c
+                    for value in _bucket_centers(intervals_raw, ordered)
+                ]
+                probability = _shift_probability_c(
+                    probability,
+                    ordered=ordered,
+                    bucket_centers_c=shifted_centers,
+                    intervals=intervals_raw,
+                )
+            synoptic_cooling_receipt["shift_c"] = synoptic_cooling_shift_c
     tail_reliability_receipt = None
     if CONDITIONAL_SKEW_METHOD_TAG in artifact_combination_method:
         bucket_centers_c = _bucket_centers(intervals_raw, ordered)
@@ -2517,6 +2611,7 @@ def compile_native_ensemble_p0(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
             if provisional_lead_fallback else None
         ),
+        "synoptic_cooling_json": _json(synoptic_cooling_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
         "activation_cycle_riders_json": _json(activation_cycle_riders),
@@ -2733,6 +2828,7 @@ def compile_native_ensemble_p0(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
             if provisional_lead_fallback else None
         ),
+        "synoptic_cooling_json": _json(synoptic_cooling_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
         "hour_bucket_split_riders_json": _json(hour_bucket_split_riders),
         "activation_cycle_riders_json": _json(activation_cycle_riders),

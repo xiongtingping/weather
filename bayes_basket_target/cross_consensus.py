@@ -95,6 +95,83 @@ TAF_DIRECTION_WARM = (1.25, 0.5)
 TAF_DIRECTION_COLD = (0.5, 1.25)
 
 
+SYNOPTIC_COOLING_METHOD_TAG = "synoptic_cooling_shift_v1"
+# Cloud, rain and wind are the physics the models get wrong in a direction we
+# can read.  Measured 2026-08-14 against the standardised residual (truth
+# minus calibrated centre, in ensemble sigmas), using the fields the airport
+# forecaster publishes with the TX -- available at decision time, unlike the
+# reanalysis:
+#
+#   cloud cover           corr -0.094   increment over the TX gap -0.072
+#   precipitation prob.   corr -0.128   increment                 -0.111
+#   wind speed            corr -0.137   increment                 -0.142
+#   equal-weight index    corr -0.170   increment                 -0.154
+#
+# Every sign is the physical one: more cloud, rain or mixing and the day runs
+# colder than the models say.  Wind carries the most increment, which is the
+# interesting part -- the mixing depth is what decides how far the surface can
+# run, and it is the least emphasised quantity in a TX forecast.
+#
+# The index is near-orthogonal to the TX gap itself (increment barely below
+# the raw correlation), so it is a second reading of the day rather than the
+# same one.  Shifting the centre by 0.15 sigma per index unit gains 0.46%
+# CRPS over 1,791 station-days, a smooth interior optimum.
+#
+# The ceiling for this family is higher than what these fields reach.  With
+# perfect foresight of the day's actual shortwave radiation the same shift
+# gains 1.35% and correlates +0.293, near-orthogonal to the TX gap (+0.069
+# between them).  That is the argument for capturing the models' own radiation
+# and wind forecasts, which this lane does not extract today.
+SYNOPTIC_COOLING_SHIFT_SIGMA = 0.15
+SYNOPTIC_COOLING_NORMALISATION = {
+    # field: (fleet mean, fleet standard deviation) over 2,121 TAF captures
+    "cloud_cover_fraction": (0.3557, 0.3102),
+    "precipitation_probability": (0.0933, 0.2155),
+    "wind_speed_mps": (3.7880, 1.4831),
+}
+
+
+def synoptic_cooling_index(
+    *,
+    cloud_cover_fraction: float | None,
+    precipitation_probability: float | None,
+    wind_speed_mps: float | None,
+) -> tuple[float | None, dict[str, Any]]:
+    """Equal-weight standardised cloud/rain/wind index, or None.
+
+    All three fields are required: the index is an average of standardised
+    parts and dropping one silently reweights the other two.  A day with no
+    forecaster fields simply has no reading, which is different from a calm
+    clear one.
+    """
+
+    parts = {
+        "cloud_cover_fraction": cloud_cover_fraction,
+        "precipitation_probability": precipitation_probability,
+        "wind_speed_mps": wind_speed_mps,
+    }
+    standardised: dict[str, float] = {}
+    for field, raw in parts.items():
+        if raw is None:
+            return None, {
+                "schema": "synoptic_cooling_receipt_v1",
+                "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
+                "state": "INCOMPLETE_FIELDS",
+                "missing_field": field,
+            }
+        mean, deviation = SYNOPTIC_COOLING_NORMALISATION[field]
+        standardised[field] = (float(raw) - mean) / deviation
+    index = sum(standardised.values()) / len(standardised)
+    return index, {
+        "schema": "synoptic_cooling_receipt_v1",
+        "method_tag": SYNOPTIC_COOLING_METHOD_TAG,
+        "state": "RESOLVED",
+        "index": index,
+        "standardised": standardised,
+        "shift_sigma_per_unit": SYNOPTIC_COOLING_SHIFT_SIGMA,
+    }
+
+
 def apply_conditional_tail_skew(
     probability: "Mapping[str, float]",
     *,

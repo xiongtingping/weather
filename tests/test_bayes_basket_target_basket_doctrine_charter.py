@@ -1202,3 +1202,69 @@ def test_borrowed_bias_needs_a_real_median_and_a_measured_ceiling() -> None:
     # never silently at some other number, and must say so in the receipt.
     assert "bias_refused_peer_count_" in source
     assert "bias_capped_from_" in source
+
+
+def test_clause_43_synoptic_cooling_is_a_centre_shift_inside_p_of_t() -> None:
+    """Cloud, rain and mixing enter p(t), never the strategy layer.
+
+    This is the one physical-evidence direction term that survived: the three
+    fields the airport forecaster publishes beside the TX, standardised and
+    averaged, correlate -0.170 with the standardised residual and keep -0.154
+    of that as an increment over the TX gap itself -- a second reading of the
+    day, not the same one.  Every sign is physical: more cloud, rain or wind
+    and the day runs colder than the models say.
+    """
+
+    clause = _clause(43)
+    assert "synoptic_cooling_shift_v1" in clause
+    assert "双重计数" in clause
+
+    from bayes_basket_target.cross_consensus import (
+        SYNOPTIC_COOLING_NORMALISATION,
+        SYNOPTIC_COOLING_SHIFT_SIGMA,
+        synoptic_cooling_index,
+    )
+
+    assert set(SYNOPTIC_COOLING_NORMALISATION) == {
+        "cloud_cover_fraction",
+        "precipitation_probability",
+        "wind_speed_mps",
+    }
+    assert 0.0 < SYNOPTIC_COOLING_SHIFT_SIGMA <= 0.25
+
+    # A cloudy, wet, windy day reads warm-side-negative; a clear calm one the
+    # other way.  The shift is the index times a negative coefficient, so the
+    # index itself must rise with cooling.
+    wet, _receipt = synoptic_cooling_index(
+        cloud_cover_fraction=0.9,
+        precipitation_probability=0.6,
+        wind_speed_mps=7.0,
+    )
+    dry, _receipt = synoptic_cooling_index(
+        cloud_cover_fraction=0.0,
+        precipitation_probability=0.0,
+        wind_speed_mps=2.0,
+    )
+    assert wet > 0.0 > dry
+
+    # All three fields are required: an average of standardised parts
+    # silently reweights itself when one is missing.
+    missing, receipt = synoptic_cooling_index(
+        cloud_cover_fraction=None,
+        precipitation_probability=0.0,
+        wind_speed_mps=2.0,
+    )
+    assert missing is None
+    assert receipt["state"] == "INCOMPLETE_FIELDS"
+
+    # The strategy layer still may not read any of it (clause 43's original
+    # prohibition, unchanged).
+    root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "bayes_basket_target/basket_kernel/delta_v2.py",
+        "bayes_basket_target/basket_kernel/support.py",
+        "bayes_basket_target/delta_v2_runtime.py",
+    ):
+        source = (root / rel).read_text(encoding="utf-8")
+        for name in SYNOPTIC_COOLING_NORMALISATION:
+            assert name not in source, f"{rel} reads {name}"

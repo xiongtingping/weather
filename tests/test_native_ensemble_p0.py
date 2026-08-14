@@ -694,16 +694,23 @@ def test_taf_envelope_witness_time_precedence_and_absence() -> None:
     conn.execute(
         "CREATE TABLE calibration_forward_taf_capture ("
         "station_id TEXT, event_date TEXT, tx_c REAL, issued_at_utc TEXT,"
-        "revision_sequence INTEGER, content_sha256 TEXT, revision_id TEXT)"
+        "revision_sequence INTEGER, content_sha256 TEXT, revision_id TEXT,"
+        "cloud_cover_fraction REAL, precipitation_probability REAL,"
+        "wind_speed_mps REAL)"
     )
     rows = [
-        ("ZUUU", "2026-08-12", 34.0, "2026-08-11T09:00:00Z", 3, "a" * 64, "r3"),
-        ("ZUUU", "2026-08-12", 35.0, "2026-08-11T21:02:00Z", 5, "b" * 64, "r5"),
-        ("ZUUU", "2026-08-12", None, "2026-08-11T23:00:00Z", 6, "c" * 64, "r6"),
-        ("KLGA", "2026-08-12", None, "2026-08-11T21:00:00Z", 1, "d" * 64, "r1"),
+        ("ZUUU", "2026-08-12", 34.0, "2026-08-11T09:00:00Z", 3, "a" * 64, "r3",
+         0.2, 0.0, 3.0),
+        ("ZUUU", "2026-08-12", 35.0, "2026-08-11T21:02:00Z", 5, "b" * 64, "r5",
+         0.4, 0.1, 4.0),
+        ("ZUUU", "2026-08-12", None, "2026-08-11T23:00:00Z", 6, "c" * 64, "r6",
+         0.5, 0.2, 5.0),
+        ("KLGA", "2026-08-12", None, "2026-08-11T21:00:00Z", 1, "d" * 64, "r1",
+         None, None, None),
     ]
     conn.executemany(
-        "INSERT INTO calibration_forward_taf_capture VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO calibration_forward_taf_capture "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
         rows,
     )
     late = _taf_envelope_witness(

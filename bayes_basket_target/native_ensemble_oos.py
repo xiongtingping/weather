@@ -22,7 +22,10 @@ from .contracts import ContractError, content_sha256
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
+    SYNOPTIC_COOLING_METHOD_TAG,
+    SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_conditional_tail_skew,
+    synoptic_cooling_index,
     bridged_cross_probability,
 )
 from .dwd_icon_eps_archive import (
@@ -933,6 +936,47 @@ def _weight_maturity(train_n: int | None) -> float:
     )
 
 
+def _shift_bucketed_probability(
+    probability: Mapping[str, float],
+    *,
+    ordered_keys: Sequence[str],
+    shift_c: float,
+) -> dict[str, float]:
+    """Move a bucketed distribution along the temperature axis.
+
+    The holdout's keys are integer degree labels, so a bucket's centre after
+    the shift falls between two of them and its mass splits linearly.  Same
+    transform the serving path applies; the edges absorb what leaves them.
+    """
+
+    labels = [float(int(key)) for key in ordered_keys]
+    shifted = {str(key): 0.0 for key in ordered_keys}
+    for index, key in enumerate(ordered_keys):
+        mass = float(probability[str(key)])
+        if mass <= 0.0:
+            continue
+        target = labels[index] + shift_c
+        if target <= labels[0]:
+            shifted[str(ordered_keys[0])] += mass
+            continue
+        if target >= labels[-1]:
+            shifted[str(ordered_keys[-1])] += mass
+            continue
+        position = 0
+        while (
+            position + 1 < len(labels) and labels[position + 1] <= target
+        ):
+            position += 1
+        span = labels[position + 1] - labels[position]
+        weight = (target - labels[position]) / span if span > 0 else 0.0
+        shifted[str(ordered_keys[position])] += mass * (1.0 - weight)
+        shifted[str(ordered_keys[position + 1])] += mass * weight
+    total = sum(shifted.values())
+    if total <= 0.0:
+        raise ContractError("native_ensemble_oos_shift_probability_empty")
+    return {key: value / total for key, value in shifted.items()}
+
+
 def _holdout_conditioning_signals(
     conn: sqlite3.Connection,
     *,
@@ -985,15 +1029,29 @@ def _holdout_conditioning_signals(
     except sqlite3.Error:
         pass
     taf_by_day: dict[str, float] = {}
+    cooling_by_day: dict[str, float] = {}
     try:
-        for event_date, tx_c in conn.execute(
-            "SELECT event_date,tx_c FROM calibration_historical_taf_capture "
-            "WHERE station_id=? AND tx_c IS NOT NULL",
+        for event_date, tx_c, cloud, precip, wind in conn.execute(
+            "SELECT event_date,tx_c,cloud_cover_fraction,"
+            "precipitation_probability,wind_speed_mps "
+            "FROM calibration_historical_taf_capture "
+            "WHERE station_id=?",
             (station_id,),
         ):
-            taf_by_day.setdefault(str(event_date), float(tx_c))
+            key = str(event_date)
+            if tx_c is not None:
+                taf_by_day.setdefault(key, float(tx_c))
+            if key not in cooling_by_day:
+                index, _receipt = synoptic_cooling_index(
+                    cloud_cover_fraction=cloud,
+                    precipitation_probability=precip,
+                    wind_speed_mps=wind,
+                )
+                if index is not None:
+                    cooling_by_day[key] = index
     except sqlite3.Error:
         taf_by_day = {}
+        cooling_by_day = {}
     signals: dict[str, dict[str, float | None]] = {}
     for day in holdout_days:
         key = str(day)
@@ -1031,11 +1089,17 @@ def _holdout_conditioning_signals(
         taf_gap: float | None = None
         if sigma > 0.0 and key in taf_by_day:
             taf_gap = (taf_by_day[key] - center) / sigma
-        if headroom is None and taf_gap is None:
+        cooling = cooling_by_day.get(key)
+        if headroom is None and taf_gap is None and cooling is None:
             continue
         signals[key] = {
             "climatology_headroom_sigma": headroom,
             "taf_gap_sigma": taf_gap,
+            "synoptic_cooling_shift_c": (
+                -SYNOPTIC_COOLING_SHIFT_SIGMA * cooling * sigma
+                if cooling is not None and sigma > 0.0
+                else None
+            ),
         }
     return signals
 
@@ -1120,13 +1184,23 @@ def _select_minimum_crps_subset(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
+            day_signals = dict(conditioning_by_day.get(str(day)) or {})
+            cooling_shift = day_signals.pop(
+                "synoptic_cooling_shift_c", None
+            )
+            if cooling_shift:
+                probability = _shift_bucketed_probability(
+                    probability,
+                    ordered_keys=ordered_keys,
+                    shift_c=float(cooling_shift),
+                )
             probability, _skew_receipt = apply_conditional_tail_skew(
                 probability,
                 ordinals={
                     str(key): index
                     for index, key in enumerate(ordered_keys)
                 },
-                **(dict(conditioning_by_day.get(str(day)) or {})),
+                **day_signals,
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -2849,13 +2923,23 @@ def build_native_ensemble_oos(
             # Serving applies the conditional tail skew under the same tag
             # with the same per-day signals, so the gate scores exactly what
             # will be served.
+            day_signals = dict(conditioning_by_day.get(str(day)) or {})
+            cooling_shift = day_signals.pop(
+                "synoptic_cooling_shift_c", None
+            )
+            if cooling_shift:
+                probability = _shift_bucketed_probability(
+                    probability,
+                    ordered_keys=ordered_keys,
+                    shift_c=float(cooling_shift),
+                )
             probability, _skew_receipt = apply_conditional_tail_skew(
                 probability,
                 ordinals={
                     str(key): index
                     for index, key in enumerate(ordered_keys)
                 },
-                **(dict(conditioning_by_day.get(str(day)) or {})),
+                **day_signals,
             )
             actual = float(
                 predictions_by_system[
@@ -3965,6 +4049,7 @@ def persist_native_ensemble_oos(
                     # above scored the conditionally skewed blend with this
                     # day's own signals, so the artifact says so and P0 keys
                     # the serving transform on this tag.
+                    + "::" + SYNOPTIC_COOLING_METHOD_TAG
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
                 ),
                 "family_weight_caps_json": _json(
