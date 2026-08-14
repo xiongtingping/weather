@@ -22,6 +22,7 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel.delta_v2 import (
+    off_center_claim_factor,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
@@ -117,6 +118,7 @@ def _support_windows(
     probabilities: Mapping[str, float],
     fee_rate: float,
     maximum_support_buckets: int,
+    center_bucket: str,
 ) -> list[dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -198,7 +200,19 @@ def _support_windows(
             if window in seen:
                 continue
             seen.add(window)
-            win = sum(float(probabilities[bucket]) for bucket in window)
+            raw_win = sum(
+                float(probabilities[bucket]) for bucket in window
+            )
+            # A window that does not hold the model's own centre is
+            # over-claimed by a measured amount; the objective must rank and
+            # size on the corrected number, not on the raw one.
+            holds_center = center_bucket in window
+            claim_factor = (
+                1.0
+                if holds_center
+                else off_center_claim_factor(raw_win)
+            )
+            win = min(1.0 - EPS, raw_win * claim_factor)
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
             price = sum(quote for quote in quotes if quote is not None)
@@ -233,6 +247,8 @@ def _support_windows(
             windows.append({
                 "buckets": window,
                 "win_probability": win,
+                "raw_win_probability": raw_win,
+                "off_center_claim_factor": claim_factor,
                 "all_in_price": price if priced else None,
                 "edge": edge,
                 "log_growth_rank": kl,
@@ -338,9 +354,39 @@ def _solve_over_support_windows(
     failures: list[dict[str, Any]] = []
     for row in shortlist:
         window = tuple(row["buckets"])
+        claim_factor = float(row.get("off_center_claim_factor") or 1.0)
+        if abs(claim_factor - 1.0) > EPS:
+            # The same correction the ranking used, expressed on the
+            # distribution this window is solved against: the window's own
+            # buckets are deflated and the mass they give up returns to the
+            # buckets outside it, so the scenario space stays a partition and
+            # the curve score is computed on one consistent belief.
+            inside = sum(
+                float(probabilities[bucket]) for bucket in window
+            )
+            outside = max(0.0, 1.0 - inside)
+            corrected_inside = min(1.0 - EPS, inside * claim_factor)
+            outside_scale = (
+                (1.0 - corrected_inside) / outside if outside > EPS else 0.0
+            )
+            window_probabilities = {
+                bucket: (
+                    float(value) * claim_factor
+                    if bucket in set(window)
+                    else float(value) * outside_scale
+                )
+                for bucket, value in probabilities.items()
+            }
+            total = sum(window_probabilities.values())
+            window_probabilities = {
+                bucket: value / total
+                for bucket, value in window_probabilities.items()
+            }
+        else:
+            window_probabilities = dict(probabilities)
         try:
             solution = solve_target_inventory_v2(
-                probabilities=probabilities,
+                probabilities=window_probabilities,
                 feasible_inventory_candidates=_target_candidates(
                     snapshot=snapshot,
                     desired=window,
@@ -947,6 +993,7 @@ def compile_delta_v2_runtime_plan(
         probabilities=probabilities,
         fee_rate=basket_policy.fee_rate,
         maximum_support_buckets=basket_policy.maximum_support_buckets,
+        center_bucket=center.bucket,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --

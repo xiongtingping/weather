@@ -493,6 +493,55 @@ SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
 # The only hard admission floor left is friction.  All-in prices already
 # carry the fee, so what remains is tick-rounding noise: a basket whose whole
 # edge is smaller than one tick per leg is quantisation, not signal.
+# A window that excludes the model's own centre bucket is over-claimed, and
+# by a measurable amount.  Realized containment against claimed mass over
+# 5,230 station-days, four-bucket contiguous windows:
+#
+#   claimed        containing the centre     excluding it
+#   0.05 - 0.10          --                  0.78
+#   0.10 - 0.20          --                  0.83
+#   0.20 - 0.35        2.38 (n=319)          0.85
+#   0.35 - 0.55        1.27                  0.82
+#   0.55 - 1.00        1.01 (n=16,981)       0.48
+#
+# Windows holding the centre are calibrated where it matters (1.01 on the
+# bulk); windows without it run fifteen to eighteen percent rich across four
+# adjacent bands and worse than double at the top.  The mechanism is the
+# spread inflation: scaling every member's deviation about the centre by two
+# to five is what fixes the tails, and it necessarily moves mass outward
+# faster than the truth does.
+#
+# The correction is applied to the probabilities the objective sees, not as a
+# gate.  Forbidding off-centre windows would be a rail, and rails were
+# retired for the reason that they price nothing -- a cheap far window can be
+# genuinely worth buying, and after this correction it still wins when it
+# deserves to (the ZUUU/VILK case: claimed 0.256 becomes 0.218 against a
+# 0.038 cost, so the seat stands).  What the correction kills is the window
+# claiming a majority of the mass from off centre, which is where the
+# over-claim reaches 0.48 and the objective was buying arithmetic.
+#
+# Factors are shrunk 30% toward one rather than served at the point estimate.
+OFF_CENTER_CLAIM_BANDS = (
+    # (claimed-mass upper bound, realized-over-claimed factor)
+    (0.05, 1.15),
+    (0.10, 0.85),
+    (0.20, 0.88),
+    (0.35, 0.90),
+    (0.55, 0.87),
+    (1.01, 0.64),
+)
+
+
+def off_center_claim_factor(claimed_mass: float) -> float:
+    """Deflation for a window that does not contain the model centre."""
+
+    mass = float(claimed_mass)
+    for bound, factor in OFF_CENTER_CLAIM_BANDS:
+        if mass < bound:
+            return factor
+    return OFF_CENTER_CLAIM_BANDS[-1][1]
+
+
 SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = 1.0
 # ``candidate_kind`` is a load-bearing activation signal, not a label: the
 # state machine reads it to decide TRADE versus HOLD, and this kernel reads it

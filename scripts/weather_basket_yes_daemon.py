@@ -10,6 +10,7 @@ import math
 import os
 import signal
 import sqlite3
+import subprocess
 import sys
 import time
 import math
@@ -507,6 +508,80 @@ def _atomic_json(path: Path, value: Any) -> None:
     print(f"[weather_basket_yes] status_write_deferred:{type(last_error).__name__}:{last_error}", file=sys.stderr)
 
 
+FORECAST_PHYSICS_REFRESH_SECONDS = 6 * 60 * 60
+
+
+def _refresh_forecast_physics(
+    worker: TargetProductionWorker,
+) -> dict[str, Any]:
+    """Capture the models' forward radiation/wind, at most once per interval.
+
+    Bounded, isolated and best effort: it writes only the reference-covariate
+    table, never truth, never a probability authority, and a failure is
+    recorded rather than raised so the rest of this cycle proceeds.
+    """
+
+    now_mono = time.monotonic()
+    due = float(getattr(worker, "_next_forecast_physics_mono", 0.0) or 0.0)
+    if now_mono < due:
+        previous = getattr(worker, "_last_forecast_physics_state", None)
+        return dict(previous) if isinstance(previous, Mapping) else {
+            "state": "not_due",
+            "next_in_seconds": round(due - now_mono, 1),
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    setattr(
+        worker,
+        "_next_forecast_physics_mono",
+        now_mono + FORECAST_PHYSICS_REFRESH_SECONDS,
+    )
+    started = utc_now()
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "capture_station_forecast_physics.py"),
+                "--mode", "forward",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=300,
+        )
+        if completed.returncode != 0:
+            raise OSError(
+                "forecast_physics_exit_"
+                f"{completed.returncode}:"
+                + completed.stderr.decode("utf-8", "replace")[:200]
+            )
+        receipt = json.loads(
+            completed.stdout.decode("utf-8", "replace").strip().splitlines()[-1]
+        )
+        state = {
+            "state": "captured",
+            "started_at_utc": started,
+            "completed_at_utc": utc_now(),
+            "station_count": receipt.get("station_count"),
+            "captured": receipt.get("captured"),
+            "table_rows": receipt.get("table_rows"),
+            "reference_only": True,
+            "writes_truth_table": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    except Exception as exc:  # noqa: BLE001 -- observational lane
+        state = {
+            "state": "failed_isolated",
+            "started_at_utc": started,
+            "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    setattr(worker, "_last_forecast_physics_state", dict(state))
+    return state
+
+
 def run_target_forecast_refresh_cycle(
     worker: TargetProductionWorker,
 ) -> dict[str, Any]:
@@ -840,9 +915,18 @@ def run_target_forecast_refresh_cycle(
         attempt_receipt = dict(capture_state)
         capture_state["last_attempt"] = attempt_receipt
         setattr(worker, "_last_forward_taf_state", dict(capture_state))
+    # The physical covariate the cooling shift reads.  It rides this same
+    # bounded off-path worker rather than a separate timer: it is one bounded
+    # HTTPS read per station, it must land before the day it describes is
+    # traded, and a failure here must not touch P1, truth, labels, WS or any
+    # decision -- exactly the contract this cycle already carries.  Once a
+    # day is enough; the forecast for a day two days out does not move
+    # faster than the capture window.
+    forecast_physics_state = _refresh_forecast_physics(worker)
     return {
         "schema": "reported_trajectory_forecast_prefetch_v1",
         "resident_nwp_capture": nwp_state,
+        "forecast_physics_capture": forecast_physics_state,
         # ICON had its own receipt here while it had its own capture pass.  It
         # is now one of the four families the native capture reads in a single
         # run, so ``resident_nwp_capture`` below is its instrument; a separate

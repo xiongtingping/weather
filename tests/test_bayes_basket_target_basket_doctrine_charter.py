@@ -606,6 +606,7 @@ def test_clause_35_candidate_domain_is_the_reachable_day_not_the_core() -> None:
         probabilities=by_bucket,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="36",
     )
     seats = [tuple(window["buckets"]) for window in windows]
     assert ("34",) in seats, "the incumbent is always available"
@@ -647,6 +648,7 @@ def test_clause_37_window_enumeration_respects_the_four_bucket_cap() -> None:
         probabilities=by_bucket,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="36",
     )
     assert windows, "cheap uniform book must admit something"
     for window in windows:
@@ -693,6 +695,7 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         probabilities=by_bucket,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="36",
     )
     assert ("33", "35") in [tuple(row["buckets"]) for row in gapped]
 
@@ -704,6 +707,7 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         probabilities=by_bucket,
         fee_rate=0.0,
         maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="36",
     )
     seats = [tuple(row["buckets"]) for row in oversized]
     assert ("32", "33", "34", "35", "36") in seats
@@ -1330,3 +1334,42 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
     ):
         source = (root / rel).read_text(encoding="utf-8")
         assert "shortwave_radiation" not in source
+
+
+def test_off_centre_windows_are_deflated_not_forbidden() -> None:
+    """A window without the model's centre is over-claimed, not illegal.
+
+    Measured over 5,230 station-days on four-bucket contiguous windows:
+    windows holding the centre realize 1.01 of their claimed mass on the
+    bulk band, windows without it run 0.78-0.85 across four adjacent bands
+    and 0.48 above 0.55 claimed.  The spread inflation that fixes the tails
+    moves mass outward faster than the truth does.
+
+    The answer is a corrected probability, not a rail.  Rails were retired
+    because they price nothing: a cheap far window can be genuinely worth
+    buying and still wins after the correction, while a window claiming the
+    majority of the mass from off centre goes negative on its own arithmetic.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        off_center_claim_factor,
+    )
+
+    # Deflation across the measured plateau, sharper where the over-claim is.
+    assert off_center_claim_factor(0.30) < 1.0
+    assert off_center_claim_factor(0.45) < 1.0
+    assert off_center_claim_factor(0.70) < off_center_claim_factor(0.30)
+    # Shrunk toward one rather than served at the point estimate.
+    assert off_center_claim_factor(0.70) > 0.48
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    # Ranking and sizing must see the same corrected belief, or the seat and
+    # the stake disagree about what is being bought.
+    assert "off_center_claim_factor(raw_win)" in source
+    assert "window_probabilities" in source
+    # It corrects, it does not forbid: no admission branch may key on it.
+    assert "if not holds_center:\n                continue" not in source
