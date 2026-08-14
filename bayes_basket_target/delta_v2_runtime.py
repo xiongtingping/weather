@@ -953,17 +953,18 @@ def compile_delta_v2_runtime_plan(
     market_center_ordinal, market_center_bucket = _market_center_ordinal(
         snapshot
     )
-    # Hard entry gate: when the market's own center sits outside the model
-    # envelope (the disagreement-expanded candidate boundary, which already
-    # unions TAF TX), the market is telling us it holds information our
-    # evidence layer does not.  ZUUU 2026-08-13 is the type specimen: a
-    # starved two-system root centred at 35 while the book centred on 37 --
-    # the "+0.154 edge" window it implied was phantom belief, not mispricing.
-    # The gate blocks NEW money only, same philosophy as the breaker's
-    # STOP_NEW_INTENTS_ONLY and the hard bound's "constrain additions":
-    # probabilities are untouched, held inventory is untouched, and the
-    # baseline (hold, add nothing) remains the seat.
-    envelope_entry_blocked = (
+    # Diagnostic only, by the 2026-08-15 ruling: the objective may read
+    # market prices and the market center, and the market center leaving the
+    # model envelope no longer locks new money.  The capital gate this used
+    # to be (established 2026-08-13 on the ZUUU two-system-starvation
+    # specimen) fired exactly once in its whole life -- RCSS 2026-08-15,
+    # unsettled -- so it retired with no measurable protective record.  The
+    # failure it guarded, buying phantom edge against a market that knows
+    # something, is covered where it was actually measured: the seat must
+    # touch the probability core (31 of 40 live seats refused), and an
+    # off-centre window's claim is deflated by the measured factor.  The
+    # disagreement itself stays on the plan for audit.
+    market_center_outside_envelope = (
         market_center_ordinal is not None
         and not (
             int(candidate_lower)
@@ -1393,19 +1394,6 @@ def compile_delta_v2_runtime_plan(
                     "execution_mode": "SINGLE_BUCKET_FOK",
                 }),
             }
-    if envelope_entry_blocked and selection.get("authorized") is True:
-        selection = {
-            **selection,
-            "selected_actions": [],
-            "selected_bundle": None,
-            "selected_action_sha256s": [],
-            "selected_score": 0.0,
-            "capital_reserved_usdc": 0.0,
-            "basket_complete": False,
-            "authorized": False,
-            "blockers": ["market_center_outside_model_envelope"],
-            "hold_selected": True,
-        }
     if not regime_direction_allowed and selection.get("authorized") is True:
         selection = {
             **selection,
@@ -1548,8 +1536,6 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("center_probability_lead_unstable")
     if not regime_direction_allowed:
         reason_codes.append("regime_direction_not_allowed")
-    if envelope_entry_blocked:
-        reason_codes.append("market_center_outside_model_envelope")
     delta_v2_audit = {
         "schema": "delta_basket_score_authorization_v2",
         "selected_actions": selected_evaluations,
@@ -1619,12 +1605,13 @@ def compile_delta_v2_runtime_plan(
         "market_center_ordinal": market_center_ordinal,
         "market_center_bucket": market_center_bucket,
         "envelope_entry_gate": {
-            "blocked": envelope_entry_blocked,
+            "outside": market_center_outside_envelope,
             "market_center_ordinal": market_center_ordinal,
             "market_center_bucket": market_center_bucket,
             "candidate_lower_ordinal": int(candidate_lower),
             "candidate_upper_ordinal": int(candidate_upper),
-            "blocks_new_intents_only": True,
+            "enforced": False,
+            "retired": "2026-08-15_ruling_diagnostic_only",
         },
         "disagreement_expansion_layers": expansion_layers,
         "underreach_risk_buckets": sorted(shortfall),

@@ -1835,6 +1835,48 @@ def _native_forward_packet_is_stale(
     return age_seconds >= NATIVE_P0_COMPILE_FRESH_SECONDS
 
 
+def _packet_taf_superseded(
+    conn: sqlite3.Connection,
+    packet: Mapping[str, Any],
+    *,
+    station_id: str,
+    event_date: str,
+) -> bool:
+    """Whether a newer TAF issuance exists than the one this packet carries.
+
+    The arrival wake (``_taf_arrival_pending``) is process memory: a restart
+    between the ingest and the rebuild drops it, and re-ingesting the same
+    rows writes nothing, so the wake never fires again for that issuance.
+    Measured 2026-08-14 on ZUUU: the 15:02Z TAF (TX 35) was received
+    16:48:45Z under the previous daemon; two restarts later every compile
+    through 17:09Z still served the 09:01Z issuance (TX 37) -- a 21.6%-weight
+    member sitting two degrees warm -- and would have until the packet aged
+    out six hours after build.  This derives the same judgement from durable
+    state instead: the packet names the issuance it holds in
+    ``run_init_utc_by_system``, and the capture table knows the newest one.
+
+    Fail-open on any read problem: a broken probe must degrade to the old
+    behaviour (reuse until TTL), never block the lane.
+    """
+
+    run_init = packet.get("run_init_utc_by_system")
+    if not isinstance(run_init, Mapping):
+        return False
+    packet_taf = str(run_init.get("OFFICIAL_AIRPORT_TAF_TX") or "").strip()
+    if not packet_taf:
+        return False
+    try:
+        row = conn.execute(
+            "SELECT MAX(issued_at_utc) FROM calibration_forward_taf_capture "
+            "WHERE station_id=? AND event_date=? AND tx_available=1",
+            (str(station_id), str(event_date)),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    latest = str(row[0] or "").strip() if row else ""
+    return bool(latest) and latest > packet_taf
+
+
 def _is_republisher_daily_quota_exhausted(exc: BaseException) -> bool:
     """Whether this failure means the republisher is spent for the UTC day.
 
@@ -4111,6 +4153,17 @@ class TargetProductionWorker:
                 candidate, as_of_utc=as_of_utc
             ):
                 continue
+            # Compiling from a packet whose TAF issuance has been superseded
+            # would republish the stale forecaster reading; skipping sends
+            # the scope through the capture lane, which reuses the retained
+            # model archives and refreshes only the TAF entry.
+            if _packet_taf_superseded(
+                read_conn,
+                candidate,
+                station_id=station,
+                event_date=event_date,
+            ):
+                continue
             try:
                 compiled = _compile_native_ensemble_p0_runtime(
                     read_conn,
@@ -4554,9 +4607,16 @@ class TargetProductionWorker:
                     # serve the superseded issuance for hours; treating it
                     # as absent sends the scope through the capture below,
                     # which reuses the retained model archives and only
-                    # refreshes the TAF entry.
+                    # refreshes the TAF entry.  The in-memory wake is the
+                    # fast path; the durable comparison is what survives a
+                    # restart between the ingest and the rebuild.
                     if (native_station, native_event_date) in getattr(
                         self, "_taf_arrival_pending", ()
+                    ) or _packet_taf_superseded(
+                        read_conn,
+                        candidate,
+                        station_id=native_station,
+                        event_date=native_event_date,
                     ):
                         official_probe_reason = (
                             "taf_arrival_recompile_pending"

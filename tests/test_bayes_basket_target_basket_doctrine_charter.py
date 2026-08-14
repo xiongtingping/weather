@@ -718,20 +718,22 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
     ), "only the incumbent may exceed the cap, and only because it already does"
 
 
-def test_clause_45_market_center_outside_envelope_blocks_new_money_only() -> None:
-    """The gate stops new intents; it never touches p or holdings.
+def test_clause_45_market_center_outside_envelope_is_diagnostic_only() -> None:
+    """The disagreement is recorded; it no longer locks new money.
 
-    ZUUU 2026-08-13 is the type specimen: a starved two-system root centred
-    at 35 against a book centred at 37.  Every "edge" the optimizer saw in
-    the low buckets was phantom belief, and the one supervisor positioned to
-    notice -- the market's own center leaving the model envelope -- was
-    diagnostic-only.  Clause 45 makes it a capital gate: same snapshot, same
-    probabilities, and the only thing that changes when the market center
-    walks out of the envelope is that no new buy is authorized.
+    The capital gate this once was (2026-08-13, the ZUUU starved-root
+    specimen) fired exactly once in its life -- RCSS 2026-08-15, unsettled --
+    and retired by the 2026-08-15 ruling with no measurable protective
+    record.  The objective is allowed to read market prices and the market
+    center; what guards against buying phantom edge is the clause-42 seat
+    touch rule and the off-centre claim deflation, both of which were
+    measured.  Same snapshot, same probabilities: when the market center
+    walks out of the envelope the diagnostic flips and nothing else does.
     """
 
     clause = _clause(45)
-    assert "只挡新钱" in clause
+    assert "退役" in clause
+    assert "不再锁新钱" in clause
     assert "market_center_outside_model_envelope" in clause
 
     from bayes_basket_target.basket_kernel.contracts import (
@@ -833,20 +835,26 @@ def test_clause_45_market_center_outside_envelope_blocks_new_money_only() -> Non
     inside = plan_with_market_center(outside=False)
     outside = plan_with_market_center(outside=True)
 
-    assert inside["envelope_entry_gate"]["blocked"] is False
+    assert inside["envelope_entry_gate"]["outside"] is False
     assert inside["delta_v2_action_selection"]["selected_actions"]
 
     gate = outside["envelope_entry_gate"]
-    assert gate["blocked"] is True
-    assert gate["blocks_new_intents_only"] is True
+    assert gate["outside"] is True
+    assert gate["enforced"] is False
     assert outside["market_center_bucket"] == "39"
-    assert outside["delta_v2_action_selection"]["selected_actions"] == []
-    assert outside["delta_v2_audit"]["authorized"] is False
-    assert "market_center_outside_model_envelope" in (
+    # The ruling: reading the market center is allowed, locking new money on
+    # it is not.  Bucket 39 carries no probability, so the touch rule keeps
+    # it unseatable either way; the 35/36 book is identical in both plans and
+    # must authorize identically.
+    assert outside["delta_v2_action_selection"]["selected_actions"]
+    assert outside["delta_v2_audit"]["authorized"] is True
+    assert "market_center_outside_model_envelope" not in (
         outside["delta_v2_action_selection"]["blockers"]
     )
-    # Probabilities are untouched: the gate is a capital gate, not a p(t)
-    # channel.
+    assert "market_center_outside_model_envelope" not in (
+        outside.get("reason_codes") or ()
+    )
+    # Probabilities are untouched: the diagnostic is not a p(t) channel.
     assert outside["candidate_support"] == inside["candidate_support"]
 
 
