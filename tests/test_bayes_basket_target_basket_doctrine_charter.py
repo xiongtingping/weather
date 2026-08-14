@@ -600,7 +600,7 @@ def test_clause_35_candidate_domain_is_the_reachable_day_not_the_core() -> None:
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
-    windows = _support_windows(
+    windows, _ = _support_windows(
         snapshot=snapshot,
         desired={"34"},
         probabilities=by_bucket,
@@ -642,7 +642,7 @@ def test_clause_37_window_enumeration_respects_the_four_bucket_cap() -> None:
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
-    windows = _support_windows(
+    windows, _ = _support_windows(
         snapshot=snapshot,
         desired={"33", "34"},
         probabilities=by_bucket,
@@ -689,7 +689,7 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
     }
 
     # Gapped: 33 is held, 34 is not, 35 is held.
-    gapped = _support_windows(
+    gapped, _ = _support_windows(
         snapshot=snapshot,
         desired={"33", "35"},
         probabilities=by_bucket,
@@ -701,7 +701,7 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
 
     # Wider than the structural cap, because it was inherited from a policy
     # that allowed more.
-    oversized = _support_windows(
+    oversized, _ = _support_windows(
         snapshot=snapshot,
         desired={"32", "33", "34", "35", "36"},
         probabilities=by_bucket,
@@ -1481,3 +1481,111 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     for statement in capture.split("INSERT")[1:]:
         assert "calibration_station_daily_high_truth" not in statement[:200]
     assert "reference_only" in capture
+
+
+def test_clause_42_seat_must_touch_the_probability_core() -> None:
+    """A seat built entirely out of the over-claiming shoulder is refused.
+
+    Clause 42 keeps the *domain* at the whole day -- narrowing enumeration back
+    to the probability core is still unconstitutional, and its EV -0.195 stays
+    on the record.  What the 2026-08-15 amendment binds is the seat: p(t) is
+    calibrated on the buckets it puts real mass on (claims >=0.12 realize
+    1.02-1.09) and over-claims on the shoulder (0.08-0.12 realizes 0.77), so a
+    window sharing no bucket with the core is bidding its own over-claim.
+
+    The incumbent is exempt, because taking "hold what we hold" off the menu is
+    the escape clause 38 scopes the floor to live buckets to prevent.
+    """
+
+    assert "席位触核门" in _clause(42)
+    assert "定义域仍是全域" in _clause(42)
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+    from bayes_basket_target.basket_kernel.delta_v2 import probability_core
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "base_coverage": 0.6,
+        "maximum_coverage": 0.8,
+        "entropy_coverage_gain": 0.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+    # Buckets 32..37.  The mass sits on 34/35; 37 is the penny tail, and the
+    # book is cheap everywhere so price alone would happily seat it.
+    probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
+    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    by_bucket = {
+        row.bucket: float(row.probability) for row in snapshot.buckets
+    }
+    core = probability_core(
+        by_bucket,
+        ordinals={row.bucket: int(row.ordinal) for row in snapshot.buckets},
+    )
+    assert core == {"34", "35"}, "the core is the run p(t) stands behind"
+
+    windows, audit = _support_windows(
+        snapshot=snapshot,
+        desired={"34", "35"},
+        probabilities=by_bucket,
+        fee_rate=0.0,
+        maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="34",
+    )
+    seats = [tuple(row["buckets"]) for row in windows]
+    assert audit["probability_core"] == ["34", "35"]
+    assert audit["core_refused_window_count"] > 0, "the rule must have bitten"
+
+    # The detached penny tail is gone even though it is cheap ...
+    assert ("37",) not in seats
+    assert ("36", "37") not in seats
+    assert ("32",) not in seats
+    # ... while leaning off centre onto a neighbour is still legal, which is
+    # the whole point of the tilt layer.
+    assert ("35", "36", "37") in seats, "an off-centre lean that touches holds"
+    assert all(set(seat) & core for seat in seats)
+
+
+def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
+    """Whatever we already hold stays on the menu, core or not."""
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "base_coverage": 0.6,
+        "maximum_coverage": 0.8,
+        "entropy_coverage_gain": 0.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+    probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
+    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    by_bucket = {
+        row.bucket: float(row.probability) for row in snapshot.buckets
+    }
+    # Held: {37}, which shares nothing with the {34,35} core.
+    windows, audit = _support_windows(
+        snapshot=snapshot,
+        desired={"37"},
+        probabilities=by_bucket,
+        fee_rate=0.0,
+        maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="34",
+    )
+    seats = [tuple(row["buckets"]) for row in windows]
+    assert ("37",) in seats, "the incumbent is exempt from the touch rule"
+    held = next(row for row in windows if row["buckets"] == ("37",))
+    assert held["is_incumbent"] is True
+    assert held["holds_probability_core"] is False
+    assert all(
+        set(seat) & set(audit["probability_core"])
+        for seat, row in zip(seats, windows)
+        if not row["is_incumbent"]
+    )

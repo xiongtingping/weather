@@ -542,6 +542,66 @@ def off_center_claim_factor(claimed_mass: float) -> float:
     return OFF_CENTER_CLAIM_BANDS[-1][1]
 
 
+PROBABILITY_CORE_MASS = 0.50
+
+
+def probability_core(
+    probabilities: Mapping[str, float],
+    *,
+    ordinals: Mapping[str, int],
+    mass: float = PROBABILITY_CORE_MASS,
+) -> frozenset[str]:
+    """The contiguous run p(t) actually stands behind.
+
+    Grown from the modal bucket outward, always taking the heavier
+    neighbour, until the run holds ``mass``.
+
+    This exists because p(t) is not uniformly trustworthy across its own
+    support, and the divergence is sharp.  Measured 2026-08-15 over 2,398
+    bucket-days (218 station-days, 16 days of settled truth), realized over
+    claimed by claim size: buckets claiming 0.12-0.18 realize 1.04, 0.18-0.30
+    realize 1.09, above 0.30 realize 1.02 -- calibrated.  Below that the
+    shoulder over-claims: 0.08-0.12 realizes 0.77, 0.05-0.08 realizes 0.83,
+    0.02-0.05 realizes 0.80.  A window assembled entirely out of shoulder
+    buckets is assembled entirely out of mass we do not have, and its edge is
+    an artifact of the over-claim rather than a disagreement with the market.
+
+    Deflating the shoulder instead would be the direct fix, and it is not
+    available: the 0.08-0.12 band's day-bootstrap interval is [0.54, 1.04],
+    which touches 1.0 and so fails the two-hurdle admission rule that governs
+    every other correction here.  The structural rule is what the evidence
+    can carry.
+
+    Overlap with this run, rather than a floor on the per-bucket claim, is
+    the test because bucket width is not constant across markets: the
+    Fahrenheit books quote 2F buckets, so 0.12 of mass means a different
+    physical interval there than in a Celsius book, while "touches the run
+    p(t) stands behind" means the same thing in both.
+    """
+
+    ordered = sorted(
+        (bucket for bucket in probabilities if bucket in ordinals),
+        key=lambda bucket: (ordinals[bucket], bucket),
+    )
+    if not ordered:
+        return frozenset()
+    values = [max(0.0, float(probabilities[bucket])) for bucket in ordered]
+    peak = max(range(len(ordered)), key=lambda index: values[index])
+    low = high = peak
+    held = values[peak]
+    target = min(max(float(mass), 0.0), 1.0)
+    while held < target and (low > 0 or high < len(ordered) - 1):
+        left = values[low - 1] if low > 0 else -1.0
+        right = values[high + 1] if high < len(ordered) - 1 else -1.0
+        if right >= left:
+            high += 1
+            held += right
+        else:
+            low -= 1
+            held += left
+    return frozenset(ordered[low:high + 1])
+
+
 SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = 1.0
 # ``candidate_kind`` is a load-bearing activation signal, not a label: the
 # state machine reads it to decide TRADE versus HOLD, and this kernel reads it

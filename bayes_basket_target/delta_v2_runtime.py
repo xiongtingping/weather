@@ -23,6 +23,8 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     off_center_claim_factor,
+    probability_core,
+    PROBABILITY_CORE_MASS,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
@@ -119,7 +121,7 @@ def _support_windows(
     fee_rate: float,
     maximum_support_buckets: int,
     center_bucket: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
     The incumbent support stays in the list unconditionally.  It is what the
@@ -187,6 +189,29 @@ def _support_windows(
             return None
         return float(row.ask_price) * (1.0 + float(fee_rate))
 
+    # The domain stays the whole day (above); what the seat must do is stand
+    # on p(t)'s own selection rather than on a detached corner of it.  A
+    # window that shares no bucket with the run p(t) stands behind is built
+    # out of the measured over-claiming shoulder, and its edge is that
+    # over-claim rather than a disagreement with the market.
+    #
+    # This constrains the seat, not the search.  A window may still lean off
+    # centre -- which is the whole point of the neighbour tilt -- so long as
+    # it touches the core: on 2026-08-15's 40 live seats it keeps LTAC's
+    # {23,24,25} against a {23,24,25} core and OPKC's {28,29,30} against a
+    # {30,31} core, and refuses VILK's {28,29,30,31} against a {34,35,36}
+    # core.  Across those 40 the split is 9 kept at a median 0.387 win and a
+    # median 0.205 largest bucket, against 31 refused at a median 0.152 win
+    # and a median 0.067 largest bucket -- the refused side sits almost
+    # entirely inside the band that realizes 0.77-0.83 of what it claims.
+    core = probability_core(
+        probabilities,
+        ordinals={
+            bucket: int(row.ordinal) for bucket, row in by_bucket.items()
+        },
+    )
+    core_refused = 0
+
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     # Contiguous and at most ``maximum_support_buckets`` -- the same structural
@@ -218,11 +243,22 @@ def _support_windows(
             price = sum(quote for quote in quotes if quote is not None)
             edge = win - price if priced else None
             is_incumbent = window == incumbent
-            # The incumbent is always offered so the optimizer can keep it.
-            # The only hard admission floor is friction: the all-in price
-            # already carries the fee, so an edge smaller than tick-rounding
-            # across the legs is quantisation noise, not signal.  Everything
-            # else is ranking -- the seat belongs to the curve score alone.
+            # The incumbent is always offered so the optimizer can keep it:
+            # taking "hold what we hold" off the menu is the same escape the
+            # floor's live-bucket scope exists to close, so it is exempt from
+            # both floors below.
+            #
+            # There are exactly two hard admission floors, and everything else
+            # is ranking -- the seat belongs to the curve score alone.  First,
+            # the window must touch the core: mass p(t) does not have cannot
+            # be sold to the objective as edge.
+            holds_core = bool(core) and bool(set(window) & core)
+            if not is_incumbent and not holds_core:
+                core_refused += 1
+                continue
+            # Second, friction: the all-in price already carries the fee, so an
+            # edge smaller than tick-rounding across the legs is quantisation
+            # noise, not signal.
             friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
                 float(by_bucket[bucket].price_tick_size)
                 for bucket in window
@@ -249,6 +285,7 @@ def _support_windows(
                 "win_probability": win,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
+                "holds_probability_core": holds_core,
                 "all_in_price": price if priced else None,
                 "edge": edge,
                 "log_growth_rank": kl,
@@ -280,6 +317,7 @@ def _support_windows(
         windows.append({
             "buckets": incumbent,
             "win_probability": win,
+            "holds_probability_core": bool(core) and bool(set(incumbent) & core),
             "all_in_price": price if priced else None,
             "edge": (win - price) if priced else None,
             "log_growth_rank": incumbent_kl,
@@ -301,7 +339,13 @@ def _support_windows(
             row["buckets"],
         )
     )
-    return windows
+    return windows, {
+        "probability_core": sorted(
+            core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
+        ),
+        "probability_core_mass": PROBABILITY_CORE_MASS,
+        "core_refused_window_count": core_refused,
+    }
 
 
 # Enumerating quantities is exponential in the window's width, so the shortlist
@@ -322,6 +366,7 @@ MAX_SUPPORT_WINDOWS_SOLVED = 12
 def _solve_over_support_windows(
     *,
     windows: Sequence[Mapping[str, Any]],
+    window_audit: Mapping[str, Any],
     live_buckets: Sequence[str],
     snapshot: TargetBasketSnapshot,
     probabilities: Mapping[str, float],
@@ -469,6 +514,7 @@ def _solve_over_support_windows(
         "edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
         "admissible_window_count": len(windows),
         "solved_window_count": len(scored),
+        **dict(window_audit),
         "unsolvable_windows": failures,
         "seated": {
             "buckets": list(best["window"]["buckets"]),
@@ -987,7 +1033,7 @@ def compile_delta_v2_runtime_plan(
     # choose on edge.  Given the choice it agreed with the mispricing-maximal
     # window on 31 of 37 days and with the incumbent probability-maximal one
     # on 3.
-    support_windows = _support_windows(
+    support_windows, support_window_audit = _support_windows(
         snapshot=snapshot,
         desired=desired,
         probabilities=probabilities,
@@ -1011,6 +1057,7 @@ def compile_delta_v2_runtime_plan(
     seated_support, target_solution, support_selection = (
         _solve_over_support_windows(
             windows=support_windows,
+            window_audit=support_window_audit,
             live_buckets=evidence_live_buckets,
             snapshot=snapshot,
             probabilities=probabilities,
