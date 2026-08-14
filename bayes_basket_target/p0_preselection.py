@@ -611,7 +611,7 @@ def compile_p0_preselection(
         expected_source_lane=expected_source_lane,
     )
     envelope = select_current_stage(envelopes, at_utc=evaluation_at_utc)
-    assert_current_probability_bridge(
+    probability_bridge = assert_current_probability_bridge(
         conn,
         probability=envelope,
         evaluation_at_utc=evaluation_at_utc,
@@ -726,6 +726,58 @@ def compile_p0_preselection(
         delta_v2_owns_cadence=True,
         expected_source_lane=expected_source_lane,
     )
+    # The atomic stage-open validates against ``production_inputs`` -- the
+    # same identity block the open-day compiler attaches.  The forward
+    # preselection resolves every one of these authorities itself, so the
+    # stage-open must not fail closed on an absent mapping.
+    compiled["production_inputs"] = {
+        "probability_envelope_count": len(envelopes),
+        "probability_envelope_ids": [
+            item.checkpoint_id for item in envelopes
+        ],
+        "probability_bridge_history_id": probability_bridge["history_id"],
+        "probability_bridge_projection_sha256": (
+            probability_bridge["projection_sha256"]
+        ),
+        "probability_bridge_checkpoint_id": (
+            probability_bridge["checkpoint_id"]
+        ),
+        "probability_bridge_envelope_content_sha256": (
+            probability_bridge["envelope_content_sha256"]
+        ),
+        "quote_snapshot_id": market["snapshot_id"],
+        "quote_source": market["quote_source"],
+        "inventory_version": market["inventory_version"],
+        "order_state_version": market["order_state_version"],
+        "cash_phase_policy_version": cash_policy.policy_version,
+        "cash_phase_policy_sha256": cash_policy.content_sha256,
+        "probability_maturity_bin": probability_maturity_bin,
+        "regime_artifact_id": regime_artifact.artifact_id,
+        "regime_artifact_sha256": regime_artifact.content_sha256,
+        "regime_probability_sha256": regime_artifact.probability_sha256,
+        "regime_state": regime_artifact.regime,
+        "configured_maturity_bin": maturity_bin,
+        "season_bin": season_bin,
+        "liquidity_bin": liquidity_bin,
+        "strategy_version": strategy_version,
+        "delta_v2_artifact_id": (
+            delta_v2_artifact.artifact_id
+            if delta_v2_artifact is not None
+            else None
+        ),
+        "delta_v2_artifact_sha256": (
+            delta_v2_artifact.content_sha256
+            if delta_v2_artifact is not None
+            else None
+        ),
+        "delta_v2_fill_distribution_artifact_sha256": (
+            delta_v2_artifact.fill_distribution_artifact_sha256
+            if delta_v2_artifact is not None
+            else None
+        ),
+        "delta_v2_resolution_blocker": None,
+        "read_only": True,
+    }
     resolved_policy = compiled.get("resolved_station_policy")
     if (
         not isinstance(resolved_policy, Mapping)
