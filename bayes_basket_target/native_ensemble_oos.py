@@ -2469,7 +2469,7 @@ def _evaluate_system(
     }
 
 
-def _select_exact_shared_holdout_cohort(
+def _eligible_exact_shared_holdout_cohorts(
     *,
     ready_rows: Sequence[tuple[str, str, Mapping[str, Any]]],
     systems: Mapping[str, Mapping[str, Any]],
@@ -2479,7 +2479,7 @@ def _select_exact_shared_holdout_cohort(
     tuple[str, ...],
     list[tuple[str, str, Mapping[str, Any]]],
 ] | None:
-    """Select one bounded availability-only cross-system OOS cohort."""
+    """Every bounded availability-only cross-system OOS cohort, widest first."""
 
     # Do not let the forward packet's two-anchor transport requirement leak
     # into calibration selection.  Every ready official system is eligible;
@@ -2494,6 +2494,20 @@ def _select_exact_shared_holdout_cohort(
         row for row in ready_rows
         if allowed is None or str(row[0]) in allowed
     ]
+    # Grouped by exact shared holdout *and* cycle combination.  Holdout
+    # alone was not enough: the per-system reduction below keeps one row per
+    # system, and it only knows how to break a tie between transports, so
+    # when a system had two official rows differing only in run cycle the
+    # second was dropped on iteration order before any cohort formed.  At
+    # ZUUU h12_24 that silently discarded ECMWF@18Z and GEFS@18Z in favour
+    # of their 00Z rows, so no 18Z cohort could exist, so no 18Z candidate
+    # was ever offered -- and the 18Z weight row the packet actually needed
+    # froze at train_end 08-08 while its correction rows advanced to 08-10.
+    #
+    # Each distinct cycle present becomes its own cohort, plus the mixed
+    # variant that the split-packet contract still needs (charter 48c).
+    # Bounded: at most one cohort per cycle plus one, and cycles are a
+    # closed four-value vocabulary.
     ready_by_holdout: dict[
         tuple[str, ...],
         list[tuple[str, str, Mapping[str, Any]]],
@@ -2508,12 +2522,24 @@ def _select_exact_shared_holdout_cohort(
                 "native_ensemble_oos_ready_holdout_window_invalid"
             )
         ready_by_holdout[holdout_days].append(ready_row)
+    ready_by_group: dict[
+        tuple[tuple[str, ...], str],
+        list[tuple[str, str, Mapping[str, Any]]],
+    ] = {}
+    for holdout_days, holdout_rows in ready_by_holdout.items():
+        for cycle in sorted({str(row[1]) for row in holdout_rows}):
+            ready_by_group[(holdout_days, cycle)] = [
+                row for row in holdout_rows if str(row[1]) == cycle
+            ]
+        ready_by_group[(holdout_days, "*")] = list(holdout_rows)
     eligible_cohorts = []
-    for holdout_days, cohort in ready_by_holdout.items():
-        # A system can have both an official native row and an Open-Meteo
-        # republisher row for the same exact holdout.  Keep at most one scope
-        # per system, preferring the official transport.  This prevents a
-        # republisher copy from creating a mixed transport scope conflict.
+    seen_cohort_shapes: set[tuple[tuple[str, str], ...]] = set()
+    for (holdout_days, _cycle_key), cohort in ready_by_group.items():
+        # Transport tie-break only.  A system can have both an official
+        # native row and an Open-Meteo republisher row inside one group;
+        # keep the official one.  Cycles are no longer a tie to break here
+        # -- the grouping above already separated them -- so this can no
+        # longer discard a cycle by iteration order.
         preferred_by_system: dict[
             str, tuple[str, str, Mapping[str, Any]]
         ] = {}
@@ -2554,9 +2580,19 @@ def _select_exact_shared_holdout_cohort(
             for system_id, _run_cycle, _evaluation in candidate
         }
         if len(cohort_families) >= 2:
+            shape = tuple(sorted(
+                (str(row[0]), str(row[1])) for row in candidate
+            ))
+            if shape in seen_cohort_shapes:
+                continue
+            seen_cohort_shapes.add(shape)
             eligible_cohorts.append((holdout_days, candidate))
-    if not eligible_cohorts:
-        return None
+    # Widest first, then deterministic.  Every cohort is returned rather
+    # than only the widest: cohorts differ by cycle pairing now, so a
+    # narrower one is a different combination and not a worse version of
+    # the wide one.  Downstream already dedupes on (season, lead,
+    # run_cycle, system-set) and ranks the survivors, so offering more
+    # costs a candidate row, never a wrong seat.
     return sorted(
         eligible_cohorts,
         key=lambda item: (
@@ -2564,7 +2600,7 @@ def _select_exact_shared_holdout_cohort(
             tuple(sorted(row[0] for row in item[1])),
             item[0],
         ),
-    )[0]
+    )
 
 
 def build_native_ensemble_oos(
@@ -2785,6 +2821,7 @@ def build_native_ensemble_oos(
         **DEFAULT_FAMILY_WEIGHT_CAPS,
         **dict(family_weight_caps or {}),
     }
+    cohort_tasks: list[tuple[str, str, Any, Any, Any]] = []
     for (
         season_bin,
         lead_bucket,
@@ -2807,17 +2844,28 @@ def build_native_ensemble_oos(
         # otherwise valid cross-native calibration.  Every system evaluation
         # exposes exactly ``min_holdout_days`` latest chronological cases, so
         # grouping by the complete holdout set is a bounded, deterministic
-        # way to select the largest exact common-OOS cohort.  This selection
+        # way to enumerate every exact common-OOS cohort.  This selection
         # uses availability/timing only--never OOS scores--and consequently
         # cannot tune the model on its holdout result.
-        selected_cohort = _select_exact_shared_holdout_cohort(
+        for cohort in _eligible_exact_shared_holdout_cohorts(
             ready_rows=ready_rows,
             systems=systems,
             min_holdout_days=min_holdout_days,
             allowed_system_ids=system_mask,
-        )
-        if selected_cohort is None:
-            continue
+        ):
+            cohort_tasks.append(
+                (season_bin, lead_bucket, system_rows, ready_rows, cohort)
+            )
+    # One candidate attempt per cohort.  Flattened into a task list rather
+    # than nested inside the scope loop so the body below reads the same as
+    # it did when a scope produced exactly one cohort.
+    for (
+        season_bin,
+        lead_bucket,
+        system_rows,
+        ready_rows,
+        selected_cohort,
+    ) in cohort_tasks:
         common_holdout, selected_ready_rows = selected_cohort
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
             _cycle_mapping_for_rows(selected_ready_rows)
