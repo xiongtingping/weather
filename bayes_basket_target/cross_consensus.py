@@ -530,6 +530,14 @@ BAND_RELIABILITY_METHOD_TAG = "band_reliability_v1"
 #   confirms that copying P0's factors onto other stages would be wrong.
 #   ``scripts/refit_band_reliability.py`` re-measures all of this against
 #   accumulated truth; the daily calibration cron flags drift.
+#
+# 2026-08-15, review step removed (user ruling): the LIVE table is
+# DB-resident and refits itself -- the daily cron fits under the same
+# admission rule (band_reliability_store) and activates the result, and
+# every artifact pins the exact table version its holdout was scored
+# against.  The constants below are the bootstrap vintage: they serve
+# artifacts whose method carries the bare tag (pre-store), and tests.
+# They are not maintained by hand any more; the store is the authority.
 BAND_RELIABILITY_FACTORS = (
     ((0.00, 0.02), 1.0),
     ((0.02, 0.12), 0.86),
@@ -541,6 +549,8 @@ BAND_RELIABILITY_FACTORS = (
 
 def apply_band_reliability(
     probability: "Mapping[str, float]",
+    *,
+    factors: "Sequence[tuple[tuple[float, float], float]] | None" = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Rescale each bucket by its claimed-probability band's factor.
 
@@ -548,16 +558,24 @@ def apply_band_reliability(
     this must stay the outermost transform: the factors were measured on
     served distributions, and moving the layer inward would rescale claims
     the measurement never saw.
+
+    ``factors`` defaults to the static bootstrap table below; production
+    passes the DB-resident table the artifact was gated against (see
+    ``band_reliability_store``), so a refit never changes an already-served
+    artifact's math.
     """
 
     if not probability:
         raise ValueError("band_reliability_probability_empty")
+    table = (
+        BAND_RELIABILITY_FACTORS if factors is None else tuple(factors)
+    )
     adjusted: dict[str, float] = {}
     applied: dict[str, float] = {}
     for key, raw in probability.items():
         value = float(raw)
         factor = 1.0
-        for (lower, upper), band_factor in BAND_RELIABILITY_FACTORS:
+        for (lower, upper), band_factor in table:
             if lower <= value < upper:
                 factor = band_factor
                 break

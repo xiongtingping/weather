@@ -15,6 +15,10 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 # Weight-zero tolerance for provisional riders; matches the kernel's EPS.
 EPS = 1e-9
 from .station_registry import station_coordinates
+from .band_reliability_store import (
+    load_band_table,
+    pinned_band_table_sha,
+)
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -2401,11 +2405,24 @@ def compile_native_ensemble_p0(
     # Outermost, after every shape layer: the band factors were measured on
     # final served claims, so the layer must see the claim every inner layer
     # has already finished with -- same reason it runs last in the gate.
+    # The artifact pins the table version its holdout was scored against
+    # (``band_table_sha256=`` in the combination method); a bare tag means
+    # the static bootstrap constants.  A pinned-but-missing table fails
+    # closed inside the loader: serving an approximation of gated math is
+    # exactly what the pin exists to forbid.
     band_reliability_receipt = None
     if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
+        pinned_sha = pinned_band_table_sha(artifact_combination_method)
+        pinned_factors = None
+        if pinned_sha is not None:
+            pinned_factors, _sha = load_band_table(
+                conn, table_sha256=pinned_sha
+            )
         probability, band_reliability_receipt = apply_band_reliability(
-            probability
+            probability, factors=pinned_factors
         )
+        if pinned_sha is not None:
+            band_reliability_receipt["band_table_sha256"] = pinned_sha
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,

@@ -18,6 +18,7 @@ from itertools import product
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .band_reliability_store import load_band_table
 from .contracts import ContractError, content_sha256
 from .station_registry import station_coordinates
 from .cross_consensus import (
@@ -1099,6 +1100,7 @@ def _select_minimum_crps_subset(
     train_n_by_system: Mapping[str, int],
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
     station_latitude: float | None = None,
+    band_factors: Sequence[tuple[tuple[float, float], float]] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Choose the subset of ready systems whose blend scores best out of sample.
 
@@ -1203,7 +1205,7 @@ def _select_minimum_crps_subset(
                 **day_signals,
             )
             probability, _band_receipt = apply_band_reliability(
-                probability
+                probability, factors=band_factors
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -2635,6 +2637,15 @@ def build_native_ensemble_oos(
         station_latitude = None
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("native_ensemble_foundation_schema_required")
+    # The active DB-resident band table, or the static bootstrap constants
+    # when none is activated yet.  The sha rides into every candidate so
+    # each artifact pins the exact table its holdout was scored against.
+    active_band_table = load_band_table(conn)
+    band_factors, band_table_sha = (
+        active_band_table
+        if active_band_table is not None
+        else (None, None)
+    )
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -2958,6 +2969,7 @@ def build_native_ensemble_oos(
             conditioning_by_day=conditioning_by_day,
             family_by_system=family_by_system,
             configured_caps=configured_caps,
+            band_factors=band_factors,
             train_rmse=train_rmse,
             train_n_by_system={
                 system_id: int(evaluation.get("train_n") or 0)
@@ -3063,7 +3075,7 @@ def build_native_ensemble_oos(
             # measured on final served claims, so they must see the claim
             # every inner layer has already finished with.
             probability, _band_receipt = apply_band_reliability(
-                probability
+                probability, factors=band_factors
             )
             actual = float(
                 predictions_by_system[
@@ -3214,6 +3226,7 @@ def build_native_ensemble_oos(
                 for system_id in selected_system_ids
             },
             "run_cycle_by_system_sha256": cycle_mapping_sha,
+            "band_table_sha256": band_table_sha,
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
             "settlement_definition": next(
@@ -4319,6 +4332,15 @@ def persist_native_ensemble_oos(
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
                     + "::" + BAND_RELIABILITY_METHOD_TAG
+                    # Pin the DB table version the holdout above was scored
+                    # against; a bare tag means the static bootstrap
+                    # constants and stays byte-identical for old reports.
+                    + (
+                        "::band_table_sha256="
+                        + str(candidate["band_table_sha256"])
+                        if candidate.get("band_table_sha256")
+                        else ""
+                    )
                 ),
                 "family_weight_caps_json": _json(
                     candidate["family_weight_caps"]

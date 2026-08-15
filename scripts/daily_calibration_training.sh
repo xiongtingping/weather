@@ -71,16 +71,19 @@ else
   echo "[$(date +%H:%M:%S)] ✗ Quote 校准训练失败" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
-# 3. 分档概率校准漂移巡检（只读报告，不改表；表常数在
-#    bayes_basket_target/cross_consensus.py，够格换表要走人工评审）
+# 3. 分档概率校准自动换表（拟合+激活；准入规则在
+#    bayes_basket_target/band_reliability_store.py，规则不变表自动变。
+#    已服务的工件钉住各自评审时的表版本，换表不改历史工件的数学）
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
-echo "[$(date +%H:%M:%S)] 分档校准 (band_reliability) 漂移巡检..." | tee -a "$LOG_DIR/calibration_training.log"
-BAND_REPORT="$("$PY" scripts/refit_band_reliability.py 2>&1)" || true
+echo "[$(date +%H:%M:%S)] 分档校准 (band_reliability) 自动重拟合..." | tee -a "$LOG_DIR/calibration_training.log"
+BAND_REPORT="$("$PY" scripts/refit_band_reliability.py --commit 2>&1)" || true
 echo "$BAND_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
-if echo "$BAND_REPORT" | grep -q '"table_change_suggested": true'; then
-  echo "[$(date +%H:%M:%S)] ⚠ 分档校准表与最新证据有漂移，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
+if echo "$BAND_REPORT" | grep -q '"state": "ACTIVATED"'; then
+  echo "[$(date +%H:%M:%S)] ✓ 分档校准表已按最新证据换代" | tee -a "$LOG_DIR/calibration_training.log"
+elif echo "$BAND_REPORT" | grep -q '"state": "UNCHANGED"'; then
+  echo "[$(date +%H:%M:%S)] ✓ 分档校准表与最新证据一致，无需换代" | tee -a "$LOG_DIR/calibration_training.log"
 else
-  echo "[$(date +%H:%M:%S)] ✓ 分档校准表仍被证据支撑" | tee -a "$LOG_DIR/calibration_training.log"
+  echo "[$(date +%H:%M:%S)] ✗ 分档校准重拟合失败，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
