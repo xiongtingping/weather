@@ -2390,5 +2390,9 @@ def test_the_worker_names_a_blocker_when_stage_open_cannot_be_attempted() -> Non
     ).read_text(encoding="utf-8")
     assert "stage_open_not_attempted:market_snapshot_missing" in worker
     assert "stage_open_not_attempted:compiled_plan_missing" in worker
+    # Attempted-but-returned-nothing is the third path and needs its own
+    # name: without one it hit the ledger's refusal and aborted the whole
+    # production cycle instead of logging a blocked scope.
+    assert "stage_open_returned_no_candidate" in worker
     # And the blocker travels into the record rather than being dropped.
-    assert "stage_open_blocker=str(" in worker
+    assert "stage_open_blocker=(" in worker

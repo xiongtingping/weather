@@ -9963,9 +9963,22 @@ class TargetProductionWorker:
                 decision_receipts.append(
                     commit_preliminary_scope_decision(
                         self.commit_conn,
-                        stage_open_blocker=str(
-                            preselection_receipt.get("stage_open_blocker")
-                            or ""
+                        # Every path to here is a stage-open that did not
+                        # open, and each one has to say which: raised (the
+                        # except branch named it), never attempted (the
+                        # guard above named it), or attempted and returned
+                        # nothing -- the last had no name, and since the
+                        # record now refuses to be written without one, an
+                        # unnamed case aborted the whole production cycle
+                        # rather than logging a blocked scope.
+                        stage_open_blocker=(
+                            str(
+                                preselection_receipt.get(
+                                    "stage_open_blocker"
+                                )
+                                or ""
+                            ).strip()
+                            or "stage_open_returned_no_candidate"
                         ),
                         preselection_id=str(item["preselection_id"]),
                         station_id=str(item["station_id"]),
