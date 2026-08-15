@@ -837,8 +837,8 @@ function daily(){
     </tr>`;
   }).join("");
   return `<h2>六、每日统计</h2>
-  <p class="sub">按事件日汇总，只算可信成交（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
-  挂单，混进来会让当天的盈亏读不出意思。</p>
+  <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
+  挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
   「均桶数」是当天座位平均几桶；「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本；「中心偏差」是模型中心减实测，正数表示我们偏热。</p>
@@ -860,7 +860,7 @@ function coverage(){
   const sd=S.sides||{};const tot=S.position_count||1;
   const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
   return `<h2>七、覆盖 · 价格 · EV</h2>
-  <p class="sub">只算可信成交（整篮 ≥1 分）。三组数回答同一个问题的三面：
+  <p class="sub">只算可成交的（整篮 ≥1 分，排除虚价）。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
   <div class="card"><div class="muted">相对市场的位置（模型质量中心减市场质量中心，单位是桶）</div>
     <div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:7px">
@@ -904,7 +904,9 @@ function roster(){
     if(!s) return `<td class="muted">—${extra||""}</td>`;
     const w=s.window.map(short).join("+");
     const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
-    const dust=s.dust_offer?` <span class="pill red">灰尘</span>`:"";
+    // "Dust offer" is trading jargon and reads as nothing in Chinese; the
+    // thing itself is a price that exists on the book but cannot be filled.
+    const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
     const rung=s.centre_bucket?
       `<div class="muted">横梁 <span class="mono" style="color:#d2a8ff">${short(s.centre_bucket)}</span></div>`:"";
     return `<td><div class="mono">${w}</div>${rung}
@@ -986,10 +988,10 @@ function anomalies(){
     <td class="mono">${a.window.join(" + ")}</td>
     <td class="mono">${a.all_in_cost.toFixed(3)}</td>
     <td>${(a.win_probability*100).toFixed(1)}%</td>
-    <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
+    <td><span class="pill red">${a.kind==="basket_under_one_cent"?"虚价（整篮不足1分）":"声称超市场10倍"}</span></td>
   </tr>`).join("");
   return `<h2>九、异常盘口</h2>
-  <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
+  <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
     <th>站点</th><th>事件日</th><th>阶段</th><th>窗口</th><th>成本</th><th>声称</th><th>类型</th>
