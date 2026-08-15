@@ -1,0 +1,685 @@
+#!/usr/bin/env python3
+"""Paper-trade every station daily and score it after settlement.
+
+What this answers: if the seat the strategy actually picks were bought with
+real money, what would the book look like?  It is a measurement lane, not a
+trading lane -- it authorizes nothing, submits nothing, and writes only its
+own two tables.
+
+Faithfulness is the whole point, so the selection is not re-implemented
+here.  Each scope is priced from the same ``basket_official_ws_snapshot``
+rows production reads, run through the same ``_support_windows`` ladder
+enumeration, and seated on the same ordering: charter 35 establishes that
+the curve score at optimal stake is the KL divergence between belief and
+the market's implied odds, which is exactly the key the enumeration sorts
+by, so the head of that list is the seat.
+
+Each stage is scored as an independent entry rather than as one position
+adjusted three times.  Production opens at P0 and adjusts at P0-M and P1
+(charter 46), so a single running position would mix "was the P0 decision
+good" with "was the adjustment good".  Scoring them separately answers both:
+the P0 lane is the headline account, and the P0-M/P1 lanes say whether the
+later evidence would have entered better.  Probability drift across the
+stages is recorded on every row so the movement itself can be read.
+
+Sizing is fractional Kelly on the basket as a binary bet.  A basket costing
+C all-in and paying 1 when the truth lands inside it has Kelly fraction
+(p - C)/(1 - C); the served fraction is a quarter of that (the same f the
+live objective uses), capped per scope so no single station-day can take a
+large bite of the book.
+
+    python3 scripts/paper_trading_ledger.py --backfill   # score settled days
+    python3 scripts/paper_trading_ledger.py --report     # print the book
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sqlite3
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
+    TargetBasketSnapshot,
+)
+from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    _support_windows,
+)
+
+DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+STAGES = ("P0", "P0-M", "P1")
+INITIAL_CAPITAL_USDC = 1000.0
+# The live objective's fractional Kelly.  A quarter of full Kelly is the
+# stake that made the curve score concave enough to price variance without
+# refusing bets that cannot hurt the book.
+KELLY_FRACTION = 0.25
+# No single station-day may take more than this share of the book, however
+# large its Kelly number: 45 stations trading daily means a full-Kelly
+# outlier would otherwise dominate the curve.
+MAX_STAKE_FRACTION_PER_SCOPE = 0.02
+MAXIMUM_SUPPORT_BUCKETS = 4
+FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
+# A fill must be priced against a book that existed around the decision.
+# Without this the ledger reaches back to the hours just after listing, when
+# a market is quoted at a cent with no size behind it, and manufactures an
+# edge no live book ever offered: measured on the first run, quotes averaged
+# 6.1 hours stale (max 17.8) and produced a 0.158 average cost against a
+# 0.539 claimed win -- a 3.4x mispricing that does not exist.
+MAX_QUOTE_STALENESS_MINUTES = 30.0
+# Below this all-in cost a basket is almost certainly a dust offer on an
+# empty side rather than a price anyone would fill.
+DUST_COST_FLOOR = 0.01
+
+_POSITION_DDL = """
+CREATE TABLE IF NOT EXISTS paper_trade_position (
+  position_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),
+  decision_at_utc TEXT NOT NULL,
+  quote_observed_at_utc TEXT NOT NULL,
+  ladder_center_bucket TEXT NOT NULL,
+  window_buckets_json TEXT NOT NULL,
+  window_size INTEGER NOT NULL,
+  win_probability REAL NOT NULL,
+  all_in_cost REAL NOT NULL,
+  edge REAL NOT NULL,
+  curve_rank REAL,
+  kelly_fraction REAL NOT NULL,
+  stake_usdc REAL NOT NULL,
+  shares REAL NOT NULL,
+  probabilities_json TEXT NOT NULL,
+  prices_json TEXT NOT NULL,
+  center_c REAL,
+  refused_window_count INTEGER NOT NULL,
+  content_sha256 TEXT NOT NULL,
+  UNIQUE(station_id, event_date, stage)
+)
+"""
+_SETTLEMENT_DDL = """
+CREATE TABLE IF NOT EXISTS paper_trade_settlement (
+  settlement_id TEXT PRIMARY KEY,
+  position_id TEXT NOT NULL REFERENCES paper_trade_position(position_id),
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  settled_tmax_c REAL NOT NULL,
+  settled_bucket TEXT NOT NULL,
+  hit INTEGER NOT NULL CHECK(hit IN (0,1)),
+  stake_usdc REAL NOT NULL,
+  payout_usdc REAL NOT NULL,
+  pnl_usdc REAL NOT NULL,
+  claimed_win_probability REAL NOT NULL,
+  center_error_c REAL,
+  bucket_distance INTEGER,
+  settled_at_utc TEXT NOT NULL,
+  UNIQUE(station_id, event_date, stage)
+)
+"""
+
+
+def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
+    if writable:
+        conn = sqlite3.connect(str(db), timeout=60.0)
+    else:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
+    conn.execute("PRAGMA busy_timeout=60000")
+    return conn
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(_POSITION_DDL)
+    conn.execute(_SETTLEMENT_DDL)
+
+
+def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
+    """Latest revision per station-day (charter 44)."""
+
+    out: dict[tuple[str, str], float] = {}
+    for station, day, value in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c"
+        " FROM calibration_station_daily_high_truth t"
+        " WHERE revision_no = ("
+        "   SELECT MAX(revision_no)"
+        "   FROM calibration_station_daily_high_truth x"
+        "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date)"
+    ):
+        out[(str(station), str(day))] = float(value)
+    return out
+
+
+def _stage_distributions(
+    conn: sqlite3.Connection,
+    station_id: str,
+    event_date: str,
+) -> dict[str, dict[str, Any]]:
+    """Last snapshot per stage, with its buckets and decision time."""
+
+    stages: dict[str, dict[str, Any]] = {}
+    for stage in STAGES:
+        row = conn.execute(
+            "SELECT history_id, decision_at_utc, envelope_json"
+            " FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND stage=?"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id, event_date, stage),
+        ).fetchone()
+        if row is None:
+            continue
+        buckets = conn.execute(
+            "SELECT bucket, ordinal, lower_c, upper_c, probability"
+            " FROM basket_probability_bridge_bucket_probability"
+            " WHERE history_id=? ORDER BY ordinal",
+            (row[0],),
+        ).fetchall()
+        if not buckets:
+            continue
+        lineage = (json.loads(row[2]) or {}).get("lineage") or {}
+        stages[stage] = {
+            "decision_at_utc": str(row[1]),
+            "buckets": buckets,
+            "center_bucket": str(lineage.get("model_center_bucket") or ""),
+            "center_c": lineage.get("model_center_c"),
+        }
+    return stages
+
+
+def _quotes_at(
+    conn: sqlite3.Connection,
+    station_id: str,
+    event_date: str,
+    decision_at_utc: str,
+) -> tuple[dict[str, dict[str, Any]], str] | None:
+    """The last market snapshot at or before the decision.
+
+    Pricing a decision on a book that did not exist yet is the one way a
+    paper ledger flatters itself, so the cutoff is strict.
+    """
+
+    row = conn.execute(
+        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND observed_at <= ?"
+        " ORDER BY observed_at DESC LIMIT 1",
+        (station_id, event_date, decision_at_utc),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        quoted = datetime.fromisoformat(
+            str(row[0]).replace("Z", "+00:00")
+        )
+        decided = datetime.fromisoformat(
+            str(decision_at_utc).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+    age_minutes = (decided - quoted).total_seconds() / 60.0
+    if age_minutes > MAX_QUOTE_STALENESS_MINUTES:
+        return None
+    quotes: dict[str, dict[str, Any]] = {}
+    for item in json.loads(row[1]):
+        if not isinstance(item, dict):
+            continue
+        bucket = str(item.get("bucket") or "")
+        if bucket:
+            quotes[bucket] = item
+    return (quotes, str(row[0])) if quotes else None
+
+
+def _build_snapshot(
+    *,
+    station_id: str,
+    event_date: str,
+    observed_at: str,
+    buckets: list[tuple],
+    quotes: dict[str, dict[str, Any]],
+) -> tuple[
+    Any, dict[str, float], dict[str, float],
+    dict[str, list[dict[str, float]]]
+] | None:
+    rows = []
+    probabilities: dict[str, float] = {}
+    prices: dict[str, float] = {}
+    depth: dict[str, list[dict[str, float]]] = {}
+    for bucket, ordinal, _lower, _upper, probability in buckets:
+        quote = quotes.get(str(bucket))
+        if quote is None:
+            return None
+        # The stored snapshot names the best offer ``best_ask``; the kernel's
+        # bucket contract calls it ``ask_price``.  Read both so a schema
+        # change on either side is visible rather than silently unpriceable.
+        ask = quote.get("best_ask", quote.get("ask_price"))
+        bid = quote.get("bid_price", quote.get("best_bid"))
+        if ask is None or not quote.get("ask_available", True):
+            return None
+        ask = float(ask)
+
+        bid = float(bid or 0.0)
+        tick = float(quote.get("price_tick_size") or 0.001)
+        probabilities[str(bucket)] = float(probability)
+        prices[str(bucket)] = ask
+        # Real depth, not an assumed slab.  A penny bucket whose whole book
+        # is twelve shares must not be fillable for hundreds: that fiction
+        # is precisely what turns a thin tail into an infinite-return
+        # lottery on paper.
+        ask_levels = [
+            {"price": float(l["price"]), "shares": float(l["shares"])}
+            for l in (quote.get("ask_levels") or [])
+            if l.get("price") is not None and l.get("shares") is not None
+        ] or [{"price": ask, "shares": 0.0}]
+        bid_levels = [
+            {"price": float(l["price"]), "shares": float(l["shares"])}
+            for l in (quote.get("bid_levels") or [])
+            if l.get("price") is not None and l.get("shares") is not None
+        ]
+        depth[str(bucket)] = ask_levels
+        rows.append({
+            "bucket": str(bucket),
+            "ordinal": int(ordinal),
+            "probability": float(probability),
+            "bid_price": bid,
+            "bid_levels": bid_levels,
+            "ask_levels": ask_levels,
+            "price_tick_size": tick,
+            "maker_queue_ahead_shares": 2.0,
+            "maker_queue_known": True,
+        })
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6",
+        "snapshot_id": "paper-" + content_sha256({
+            "s": station_id, "e": event_date, "o": observed_at
+        })[:24],
+        "sequence": 1,
+        "observed_at": observed_at,
+        "market_id": "paper",
+        "station_id": station_id,
+        "event_date": event_date,
+        "quote_version": "paper",
+        "quote_observed_at": observed_at,
+        "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "paper",
+        "order_state_version": "paper",
+        "evidence": {
+            "probability_stage": "P0",
+            "posterior_version": "paper",
+            "posterior_sha256": "a" * 64,
+        },
+        "buckets": rows,
+        "checkpoint_changed": True,
+        "quote_changed": True,
+        "fill_changed": True,
+        "time_gate_changed": True,
+        "evidence_fresh": True,
+        "contract_matches": True,
+        "order_state_known": True,
+        "risk_inputs_complete": True,
+        "time_left_minutes": 1440.0,
+    })
+    return snapshot, probabilities, prices, depth
+
+
+def _kelly_stake(
+    *, win_probability: float, cost: float, equity: float
+) -> tuple[float, float]:
+    """Fractional Kelly for a basket paying 1 when the truth lands inside."""
+
+    if cost <= 0.0 or cost >= 1.0:
+        return 0.0, 0.0
+    full = (win_probability - cost) / (1.0 - cost)
+    if full <= 0.0:
+        return 0.0, 0.0
+    fraction = min(
+        KELLY_FRACTION * full, MAX_STAKE_FRACTION_PER_SCOPE
+    )
+    return fraction, max(0.0, fraction * equity)
+
+
+def _settled_bucket(
+    buckets: list[tuple], truth_c: float
+) -> tuple[str, int] | None:
+    for bucket, ordinal, lower, upper, _probability in buckets:
+        low = -1e9 if lower is None else float(lower)
+        high = 1e9 if upper is None else float(upper)
+        if low <= truth_c < high:
+            return str(bucket), int(ordinal)
+    return None
+
+
+def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
+    ensure_schema(conn)
+    truth = _truth(conn)
+    scopes = conn.execute(
+        "SELECT DISTINCT station_id, event_date"
+        " FROM basket_probability_bridge_history ORDER BY event_date, station_id"
+    ).fetchall()
+    counts: dict[str, int] = defaultdict(int)
+    # Equity advances a day at a time, and every position opened on a day is
+    # sized off the equity the book held when that day opened.  Compounding
+    # within the day would let a station-day that settles first bankroll the
+    # ones beside it, which no book can do -- they are all opened before any
+    # of them resolve.
+    equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
+    by_day: dict[str, list[str]] = defaultdict(list)
+    for station_id, event_date in scopes:
+        by_day[str(event_date)].append(str(station_id))
+    for event_date in sorted(by_day):
+        day_pnl: dict[str, float] = defaultdict(float)
+        day_staked: dict[str, float] = defaultdict(float)
+        for station_id in sorted(by_day[event_date]):
+            stages = _stage_distributions(conn, station_id, event_date)
+            if not stages:
+                continue
+            for stage, payload in stages.items():
+                existing = conn.execute(
+                    "SELECT 1 FROM paper_trade_position"
+                    " WHERE station_id=? AND event_date=? AND stage=?",
+                    (station_id, event_date, stage),
+                ).fetchone()
+                if existing:
+                    counts["already_recorded"] += 1
+                    continue
+                priced = _quotes_at(
+                    conn, station_id, event_date, payload["decision_at_utc"]
+                )
+                if priced is None:
+                    counts["no_book_at_decision"] += 1
+                    continue
+                quotes, observed_at = priced
+                built = _build_snapshot(
+                    station_id=station_id,
+                    event_date=event_date,
+                    observed_at=observed_at,
+                    buckets=payload["buckets"],
+                    quotes=quotes,
+                )
+                if built is None:
+                    counts["incomplete_book"] += 1
+                    continue
+                snapshot, probabilities, prices, depth = built
+                center = payload["center_bucket"] or max(
+                    probabilities, key=lambda b: probabilities[b]
+                )
+                if center not in probabilities:
+                    center = max(probabilities, key=lambda b: probabilities[b])
+                try:
+                    windows, audit = _support_windows(
+                        snapshot=snapshot,
+                        desired={center},
+                        probabilities=probabilities,
+                        fee_rate=FEE_RATE,
+                        maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
+                        center_bucket=center,
+                    )
+                except Exception:  # noqa: BLE001 -- a scope that cannot price is skipped
+                    counts["selection_failed"] += 1
+                    continue
+                priced_windows = [
+                    row for row in windows
+                    if row.get("all_in_price") is not None
+                    and row.get("edge") is not None
+                ]
+                if not priced_windows:
+                    counts["no_priced_window"] += 1
+                    continue
+                seat = priced_windows[0]
+                # Sized off the book as it stood when the day opened, and
+                # never beyond the equity this day has left to deploy.
+                equity_at_open = equity[stage]
+                fraction, stake = _kelly_stake(
+                    win_probability=float(seat["win_probability"]),
+                    cost=float(seat["all_in_price"]),
+                    equity=equity_at_open,
+                )
+                stake = min(
+                    stake, max(0.0, equity_at_open - day_staked[stage])
+                )
+                if stake <= 0.0:
+                    counts["no_positive_kelly"] += 1
+                    continue
+                # A complete basket buys the same share count on every leg
+                # (atomicity), so the fillable size is set by the thinnest
+                # leg at or below its best offer.  Beyond that the basket
+                # would be walking the book into worse prices, which this
+                # ledger does not model and must not silently assume away.
+                leg_capacity = min(
+                    sum(
+                        level["shares"] for level in depth.get(bucket, [])
+                        if level["price"] <= prices[bucket] + 1e-9
+                    )
+                    for bucket in seat["buckets"]
+                )
+                shares = stake / float(seat["all_in_price"])
+                if leg_capacity <= 0.0:
+                    counts["no_depth"] += 1
+                    continue
+                if shares > leg_capacity:
+                    shares = leg_capacity
+                    stake = shares * float(seat["all_in_price"])
+                    counts["depth_capped"] += 1
+                day_staked[stage] += stake
+                identity = {
+                    "station_id": station_id,
+                    "event_date": event_date,
+                    "stage": stage,
+                    "decision_at_utc": payload["decision_at_utc"],
+                    "window": list(seat["buckets"]),
+                    "stake_usdc": round(stake, 6),
+                }
+                position_id = "paper-pos-" + content_sha256(identity)[:24]
+                conn.execute(
+                    "INSERT OR IGNORE INTO paper_trade_position ("
+                    " position_id, station_id, event_date, stage,"
+                    " decision_at_utc, quote_observed_at_utc,"
+                    " ladder_center_bucket, window_buckets_json, window_size,"
+                    " win_probability, all_in_cost, edge, curve_rank,"
+                    " kelly_fraction, stake_usdc, shares,"
+                    " probabilities_json, prices_json, center_c,"
+                    " refused_window_count, content_sha256"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        position_id, station_id, event_date, stage,
+                        payload["decision_at_utc"], observed_at,
+                        str(audit.get("ladder_center_bucket") or center),
+                        json.dumps(list(seat["buckets"]), ensure_ascii=False),
+                        len(seat["buckets"]),
+                        float(seat["win_probability"]),
+                        float(seat["all_in_price"]),
+                        float(seat["edge"]),
+                        seat.get("log_growth_rank"),
+                        fraction, stake, shares,
+                        json.dumps(probabilities, ensure_ascii=False),
+                        json.dumps(prices, ensure_ascii=False),
+                        payload.get("center_c"),
+                        int(audit.get("center_refused_window_count") or 0),
+                        content_sha256(identity),
+                    ),
+                )
+                counts["positions"] += 1
+                actual = truth.get((station_id, event_date))
+                if actual is None:
+                    counts["open_unsettled"] += 1
+                    continue
+                landed = _settled_bucket(payload["buckets"], actual)
+                if landed is None:
+                    counts["truth_outside_book"] += 1
+                    continue
+                settled_bucket, settled_ordinal = landed
+                hit = 1 if settled_bucket in set(seat["buckets"]) else 0
+                payout = shares if hit else 0.0
+                pnl = payout - stake
+                ordinals = {
+                    str(b): int(o) for b, o, _l, _u, _p in payload["buckets"]
+                }
+                distance = min(
+                    abs(ordinals[b] - settled_ordinal)
+                    for b in seat["buckets"]
+                )
+                center_error = None
+                if payload.get("center_c") is not None:
+                    center_error = float(payload["center_c"]) - actual
+                conn.execute(
+                    "INSERT OR IGNORE INTO paper_trade_settlement ("
+                    " settlement_id, position_id, station_id, event_date, stage,"
+                    " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+                    " payout_usdc, pnl_usdc, claimed_win_probability,"
+                    " center_error_c, bucket_distance, settled_at_utc"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "paper-set-" + content_sha256(
+                            {**identity, "truth": actual}
+                        )[:24],
+                        position_id, station_id, event_date, stage,
+                        actual, settled_bucket, hit, stake, payout, pnl,
+                        float(seat["win_probability"]), center_error,
+                        distance,
+                        datetime.now(timezone.utc)
+                        .isoformat().replace("+00:00", "Z"),
+                    ),
+                )
+                counts["settlements"] += 1
+                day_pnl[stage] += pnl
+        # The day is over: realise it, then let the next day size off the
+        # book it actually leaves behind.
+        for stage in STAGES:
+            equity[stage] = max(0.0, equity[stage] + day_pnl[stage])
+    conn.commit()
+    return dict(counts)
+
+
+def _fill_slice(rows: list) -> dict[str, Any]:
+    """Headline numbers for one credibility slice of the settled book."""
+
+    if not rows:
+        return {"settled_count": 0}
+    hits = sum(int(r[0]) for r in rows)
+    staked = sum(float(r[1]) for r in rows)
+    pnl = sum(float(r[3]) for r in rows)
+    claimed = sum(float(r[4]) for r in rows) / len(rows)
+    return {
+        "settled_count": len(rows),
+        "hit_count": hits,
+        "hit_rate": hits / len(rows),
+        "claimed_win_probability_mean": claimed,
+        "calibration_ratio": (
+            (hits / len(rows)) / claimed if claimed > 0 else None
+        ),
+        "staked_usdc": staked,
+        "pnl_usdc": pnl,
+        "return_on_stake": pnl / staked if staked > 0 else None,
+        "equity_if_only_these_usdc": INITIAL_CAPITAL_USDC + pnl,
+    }
+
+
+def report(conn: sqlite3.Connection) -> dict[str, Any]:
+    ensure_schema(conn)
+    stages: dict[str, Any] = {}
+    for stage in STAGES:
+        rows = conn.execute(
+            "SELECT s.hit, s.stake_usdc, s.payout_usdc, s.pnl_usdc,"
+            " s.claimed_win_probability, s.center_error_c,"
+            " s.bucket_distance, p.all_in_cost"
+            " FROM paper_trade_settlement s"
+            " JOIN paper_trade_position p ON p.position_id=s.position_id"
+            " WHERE s.stage=? ORDER BY s.event_date",
+            (stage,),
+        ).fetchall()
+        open_positions = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_position p WHERE p.stage=?"
+            " AND NOT EXISTS (SELECT 1 FROM paper_trade_settlement s"
+            "  WHERE s.position_id=p.position_id)",
+            (stage,),
+        ).fetchone()[0]
+        if not rows:
+            stages[stage] = {
+                "settled_count": 0, "open_positions": open_positions
+            }
+            continue
+        hits = sum(int(r[0]) for r in rows)
+        staked = sum(float(r[1]) for r in rows)
+        pnl = sum(float(r[3]) for r in rows)
+        claimed = sum(float(r[4]) for r in rows) / len(rows)
+        errors = [float(r[5]) for r in rows if r[5] is not None]
+        distances = [int(r[6]) for r in rows if r[6] is not None]
+        equity = INITIAL_CAPITAL_USDC + pnl
+        stages[stage] = {
+            "settled_count": len(rows),
+            "open_positions": open_positions,
+            "hit_count": hits,
+            "hit_rate": hits / len(rows),
+            "claimed_win_probability_mean": claimed,
+            "calibration_ratio": (
+                (hits / len(rows)) / claimed if claimed > 0 else None
+            ),
+            "staked_usdc": staked,
+            "pnl_usdc": pnl,
+            "return_on_stake": pnl / staked if staked > 0 else None,
+            "equity_usdc": equity,
+            "return_on_capital": pnl / INITIAL_CAPITAL_USDC,
+            "center_bias_c": (
+                sum(errors) / len(errors) if errors else None
+            ),
+            "center_abs_error_c": (
+                sum(abs(e) for e in errors) / len(errors)
+                if errors else None
+            ),
+            "miss_distance_buckets_mean": (
+                sum(distances) / len(distances) if distances else None
+            ),
+            # A basket bought for under a cent is almost always a bucket
+            # offered at the minimum tick with nothing bid against it -- the
+            # known one-sided tail quote, not a tradable price.  Such fills
+            # dominate any P&L they appear in (a 0.001 leg returns 1000x), so
+            # the book is reported with and without them rather than having
+            # them silently set the headline.
+            "credible_fill": _fill_slice(
+                [r for r in rows if float(r[7]) >= DUST_COST_FLOOR]
+            ),
+            "dust_offer_fill": _fill_slice(
+                [r for r in rows if float(r[7]) < DUST_COST_FLOOR]
+            ),
+        }
+    return {
+        "schema": "paper_trading_report_v1",
+        "initial_capital_usdc": INITIAL_CAPITAL_USDC,
+        "kelly_fraction": KELLY_FRACTION,
+        "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
+        "generated_at_utc": datetime.now(timezone.utc)
+        .isoformat().replace("+00:00", "Z"),
+        "stages": stages,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--backfill", action="store_true")
+    parser.add_argument("--report", action="store_true")
+    args = parser.parse_args()
+    database = args.db.expanduser().resolve(strict=True)
+    if args.backfill:
+        conn = _connect(database, writable=True)
+        counts = backfill(conn)
+        print(json.dumps(
+            {"schema": "paper_trading_backfill_v1", "counts": counts},
+            ensure_ascii=False, sort_keys=True,
+        ))
+        if args.report:
+            print(json.dumps(report(conn), ensure_ascii=False, sort_keys=True))
+        return 0
+    conn = _connect(database, writable=False)
+    print(json.dumps(report(conn), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
