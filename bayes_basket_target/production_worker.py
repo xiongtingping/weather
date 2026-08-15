@@ -9908,15 +9908,6 @@ class TargetProductionWorker:
                                     "pending_by_bucket": zero_by_bucket,
                                 },
                             }
-                            insert_market_evidence_bundle(
-                                self.commit_conn,
-                                quote_raw,
-                                inventory_raw,
-                                order_state_raw,
-                            )
-                            # The forward binding names the persisted rows by
-                            # content hash; recompute them through the same
-                            # builders the insert used.
                             # The quote row names the version the reader will
                             # look the inventory up by, so it has to carry the
                             # same quote-keyed value the rows were written
@@ -9927,6 +9918,20 @@ class TargetProductionWorker:
                             quote_raw["order_state_version"] = (
                                 _p0_preselection_scope_version(market_snapshot)
                             )
+                            # Set before the bundle is written, not after:
+                            # the bundle refuses a quote whose version does
+                            # not match the inventory row beside it, and the
+                            # assignment sitting below the call left every
+                            # scope failing that check.
+                            insert_market_evidence_bundle(
+                                self.commit_conn,
+                                quote_raw,
+                                inventory_raw,
+                                order_state_raw,
+                            )
+                            # The forward binding names the persisted rows by
+                            # content hash; recompute them through the same
+                            # builders the insert used.
                             quote_raw["inventory_sha256"] = (
                                 build_confirmed_inventory_snapshot(
                                     inventory_raw
