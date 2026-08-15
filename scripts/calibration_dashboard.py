@@ -845,29 +845,6 @@ function daily(){
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function selection(){
-  const s=D.selection||{};const sd=s.sides||{};
-  if(!s.position_count) return "";
-  const tot=s.position_count||1;
-  const seg=(k,c)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${c}"></i>`;
-  const an=(s.anomalies||[]).length;
-  return `<h2>七、选桶相对市场的位置</h2>
-  <p class="sub">比的是模型的质量中心与市场（按全含费卖价归一）的质量中心，单位是桶。
-  逐笔明细与异常盘口清单在 <span class="mono">:8788</span> 那一页。</p>
-  <div class="card">
-    <div style="display:flex;height:9px;border-radius:99px;overflow:hidden">
-      ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}
-    </div>
-    <div style="margin-top:9px;display:flex;gap:9px;flex-wrap:wrap">
-      <span class="pill" style="background:rgba(188,140,255,.16);color:#d2a8ff">偏上 ${sd.above||0}</span>
-      <span class="pill green">一致 ${sd.aligned||0}</span>
-      <span class="pill amber">偏下 ${sd.below||0}</span>
-      <span style="flex:1"></span>
-      <span class="muted">${s.position_count} 仓位 · ${s.day_count} 天 ·
-        异常盘口 ${an} 条</span>
-    </div>
-  </div>`;
-}
 
 function coverage(){
   const S=D.selection||{};const c=S.coverage_stats||{};
@@ -876,9 +853,20 @@ function coverage(){
   const n=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
   const vig=c.book_ask_total_mean==null?null:(c.book_ask_total_mean-1);
   const rr=c.realization_ratio;
-  return `<h2>八、覆盖 · 价格 · EV</h2>
+  const sd=S.sides||{};const tot=S.position_count||1;
+  const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
+  return `<h2>七、覆盖 · 价格 · EV</h2>
   <p class="sub">只算可信成交（整篮 ≥1 分）。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
+  <div class="card"><div class="muted">相对市场的位置（模型质量中心减市场质量中心，单位是桶）</div>
+    <div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:7px">
+      ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}</div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill" style="background:rgba(188,140,255,.16);color:#d2a8ff">偏上 ${sd.above||0}</span>
+      <span class="pill green">一致 ${sd.aligned||0}</span>
+      <span class="pill amber">偏下 ${sd.below||0}</span>
+      <span style="flex:1"></span>
+      <span class="muted">${S.position_count} 仓位 · ${S.day_count} 天</span></div></div>
   <div class="grid g4">
     <div class="card"><div class="muted">概率覆盖（模型）</div>
       <div class="big">${p(c.model_coverage_mean)}</div>
@@ -937,7 +925,7 @@ function stationStats(){
       <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${s.settled_count?((s.realized_usdc>=0?"+":"")+n(s.realized_usdc,2)):"—"}</td>
     </tr>`;
   }).join("");
-  return `<h2>九、逐站统计</h2>
+  return `<h2>八、逐站统计</h2>
   <p class="sub">同样三组数，按站拆开。全网平均会把不同气候、不同桶宽、不同深度的书混成
   一个谁都不像的数字——一个站真实的覆盖差和另一个站的定价假象，平均完就都看不见了。</p>
   <div class="card scroll"><table><thead><tr>
@@ -971,60 +959,40 @@ function roster(){
       ${any.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[any.side]}</span>`:"";
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
+    const MOVE={unchanged:['<span class="muted">未变</span>',""],
+      wider:['<span class="up">加宽</span>',""],narrower:['<span class="down">收窄</span>',""],
+      shifted:['<span style="color:#d2a8ff">平移</span>',""]};
+    const mv=e.movement?(MOVE[e.movement]||["—"])[0]+
+      (e.width_delta?` <span class="muted">${e.width_delta>0?"+":""}${e.width_delta}</span>`:""):
+      '<span class="muted">—</span>';
+    const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
+      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
     return `<tr>
       <td class="mono">${h(e.station_id)}</td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"])}${cell(e.stages.P1)}
-      <td>${side}${note}</td></tr>`;
+      <td>${mv}</td>
+      <td>${side}${note}</td>
+      <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
+      <td class="mono">${pnl}</td></tr>`;
   }).join("");
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  return `<h2>十、逐站明细（${h(S.roster_event_date)}）</h2>
+  return `<h2>九、逐站明细（${h(S.roster_event_date)}）</h2>
   <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
-  每格上行是桶，下行是胜率 @ 成本 · 赔率。</p>
+  每格上行是桶，下行是胜率 @ 成本 · 赔率。「梯子」列是三阶段之间的变化：
+  证据变多，梯子应当收窄或平移到更有把握的位置，这三种都是概率自己走出来的，
+  没有任何方向规则参与。</p>
   <div class="why">${legend}</div>
   <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th><th>位置</th>
+    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
+    <th>梯子</th><th>位置</th><th>实测</th><th>实得</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function evolution(){
-  const S=D.selection||{};const ev=S.stage_evolution||[];
-  if(!ev.length) return "";
-  const cell=(s)=>{
-    if(!s.present) return `<td class="muted">—</td>`;
-    const w=s.window.map(x=>x.replace("°C","").replace("°F","")).join("+");
-    const badge=s.dust_offer?`<span class="pill red">灰尘</span>`:"";
-    const res=s.hit==null?"":(s.hit?`<span class="up">中</span>`:`<span class="down">未中</span>`);
-    return `<td><div class="mono">${w}</div>
-      <div class="muted">${(s.win_probability*100).toFixed(0)}% @ ${s.all_in_cost.toFixed(3)}
-      ${res} ${badge}</div></td>`;
-  };
-  const rows=ev.map(e=>{
-    const d=e.width_delta;
-    const move=!e.window_changed?`<span class="muted">未变</span>`
-      :(d>0?`<span class="up">加宽 +${d}</span>`:(d<0?`<span class="down">收窄 ${d}</span>`
-      :`<span style="color:#d2a8ff">平移</span>`));
-    return `<tr>
-      <td class="mono">${h(e.station_id)}</td>
-      ${cell(e.steps[0])}${cell(e.steps[1])}${cell(e.steps[2])}
-      <td>${move}</td>
-      <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
-    </tr>`;
-  }).join("");
-  return `<h2>十一、三阶段选桶演变</h2>
-  <p class="sub">同一个站日在 P0（建仓）→ P0-M（TAF 确认）→ P1（实测盯盘）三个时刻各坐了哪个窗口。
-  每格上行是桶，下行是胜率 @ 成本与结果。</p>
-  <div class="why"><b>怎么看：</b>证据变多，梯子应当变窄或平移到更有把握的位置。
-  「加宽」多半是分歧扩大，「收窄」是概率收敛，「平移」是方向被后来的证据改写——
-  这三种都是概率自己走出来的，没有任何方向规则参与。</div>
-  <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th><th>梯子变化</th><th>实测</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
-}
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十二、异常盘口</h2>
+  if(!an.length) return `<h2>十、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -1034,7 +1002,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十二、异常盘口</h2>
+  return `<h2>十、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -1042,37 +1010,10 @@ function anomalies(){
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function detail(){
-  const S=D.selection||{};const rows0=S.rows||[];
-  if(!rows0.length) return "";
-  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"未知"};
-  const rows=rows0.map(r=>`<tr>
-    <td class="mono">${h(r.event_date)}</td><td class="mono">${h(r.station_id)}</td>
-    <td>${h(r.stage)}</td>
-    <td class="mono">${r.window.map(x=>x.replace("°C","").replace("°F","")).join("+")}</td>
-    <td class="mono">${h(r.centre_bucket)}</td>
-    <td><span class="pill ${r.side==="above"?"":r.side==="below"?"amber":"green"}"
-      ${r.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[r.side]}</span>
-      <span class="muted mono">${r.lean_buckets==null?"":(r.lean_buckets>0?"+":"")+r.lean_buckets.toFixed(2)}</span></td>
-    <td>${(r.win_probability*100).toFixed(1)}%</td>
-    <td class="mono">${r.all_in_cost.toFixed(3)}</td>
-    <td class="mono">${r.odds==null?"—":r.odds.toFixed(1)+"x"}</td>
-    <td class="mono">${r.stake_usdc.toFixed(2)}</td>
-    <td>${!r.settled?'<span class="muted">未结算</span>':
-      (r.hit?'<span class="up">命中</span>':'<span class="down">未中</span>')}</td>
-    <td class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${r.pnl_usdc==null?"—":((r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2))}</td>
-  </tr>`).join("");
-  return `<h2>十三、逐笔明细</h2>
-  <p class="sub">「位置」的数字是模型中心减市场中心，单位是桶：正数=我们更热，负数=更冷。</p>
-  <div class="card scroll"><table><thead><tr>
-    <th>事件日</th><th>站点</th><th>阶段</th><th>窗口</th><th>横梁</th><th>位置</th>
-    <th>胜率</th><th>成本</th><th>赔率</th><th>投入</th><th>结果</th><th>盈亏</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
-}
 
 document.getElementById("app").innerHTML =
-  head() + members() + chain() + tables() + stages() + gaps() + daily() + selection() +
-  coverage() + stationStats() + roster() + evolution() + anomalies() + detail() +
+  head() + members() + chain() + tables() + stages() + gaps() + daily() +
+  coverage() + stationStats() + roster() + anomalies() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 

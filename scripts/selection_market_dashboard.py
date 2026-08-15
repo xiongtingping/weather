@@ -238,57 +238,6 @@ def build_payload(db: Path) -> dict[str, Any]:
         if r["dust_offer"]
         or (r["all_in_cost"] > 0 and r["win_probability"] / r["all_in_cost"] > 10.0)
     ]
-    # How the seat moved as evidence arrived: the same station-day read at
-    # each stage it reached, so a widening, a shift or a hold is visible as
-    # one line rather than three rows to cross-reference.
-    scopes: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in rows:
-        key = (row["station_id"], row["event_date"])
-        scopes.setdefault(key, {})[row["stage"]] = row
-    evolution = []
-    for (station, day), by_stage in sorted(
-        scopes.items(), key=lambda kv: (kv[0][1], kv[0][0]), reverse=True
-    ):
-        steps = []
-        for stage in ("P0", "P0-M", "P1"):
-            row = by_stage.get(stage)
-            if row is None:
-                steps.append({"stage": stage, "present": False})
-                continue
-            steps.append({
-                "stage": stage,
-                "present": True,
-                "window": row["window"],
-                "window_size": row["window_size"],
-                "centre_bucket": row["centre_bucket"],
-                "win_probability": row["win_probability"],
-                "all_in_cost": row["all_in_cost"],
-                "side": row["side"],
-                "lean_buckets": row["lean_buckets"],
-                "hit": row["hit"],
-                "pnl_usdc": row["pnl_usdc"],
-                "dust_offer": row["dust_offer"],
-            })
-        seen = [s for s in steps if s.get("present")]
-        first = seen[0]["window"] if seen else []
-        last = seen[-1]["window"] if seen else []
-        evolution.append({
-            "station_id": station,
-            "event_date": day,
-            "steps": steps,
-            "stage_count": len(seen),
-            # Did the ladder move at all, and which way?
-            "window_changed": first != last,
-            "width_delta": (
-                (len(last) - len(first)) if seen else 0
-            ),
-            "settled_tmax_c": next(
-                (s.get("settled_tmax_c") for s in [
-                    by_stage.get(x) or {} for x in ("P1", "P0-M", "P0")
-                ] if s.get("settled_tmax_c") is not None),
-                None,
-            ),
-        })
     # Every registered station, not only the ones that got a seat.  A station
     # missing from the ledger is the more interesting row: it means the
     # objective looked and did not sit, or never got a priced book to look
@@ -331,6 +280,43 @@ def build_payload(db: Path) -> dict[str, Any]:
             )
         entry["seated_stage_count"] = sum(
             1 for v in entry["stages"].values() if v is not None
+        )
+        # The movement between stages belongs on the same row as the stages
+        # themselves: kept separate it was a second table saying the same
+        # thing with the columns rearranged.
+        seen_windows = [
+            v["window"] for v in (
+                entry["stages"][s] for s in ("P0", "P0-M", "P1")
+            ) if v is not None
+        ]
+        if len(seen_windows) >= 2:
+            first, last = seen_windows[0], seen_windows[-1]
+            delta = len(last) - len(first)
+            entry["movement"] = (
+                "unchanged" if first == last
+                else ("wider" if delta > 0
+                      else ("narrower" if delta < 0 else "shifted"))
+            )
+            entry["width_delta"] = delta
+        else:
+            entry["movement"] = None
+            entry["width_delta"] = 0
+        settled = [
+            v for v in entry["stages"].values()
+            if v is not None and v.get("hit") is not None
+        ]
+        entry["settled_tmax_c"] = next(
+            (
+                r["settled_tmax_c"] for r in rows
+                if r["station_id"] == station
+                and r["event_date"] == latest_day
+                and r["settled_tmax_c"] is not None
+            ),
+            None,
+        )
+        entry["realized_usdc"] = (
+            sum(float(v["pnl_usdc"] or 0.0) for v in settled)
+            if settled else None
         )
         # Why a station has nothing: the ledger records a probability
         # snapshot for it or it does not, and a priced book at that moment
@@ -468,7 +454,6 @@ def build_payload(db: Path) -> dict[str, Any]:
         "sides": dict(by_side),
         "stages": stages,
         "anomalies": anomalies[:40],
-        "stage_evolution": evolution[:120],
         "coverage_stats": coverage_stats,
         "station_stats": station_stats,
         "station_roster": roster,
