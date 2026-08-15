@@ -71,6 +71,18 @@ else
   echo "[$(date +%H:%M:%S)] ✗ Quote 校准训练失败" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
+# 3. 分档概率校准漂移巡检（只读报告，不改表；表常数在
+#    bayes_basket_target/cross_consensus.py，够格换表要走人工评审）
+echo "" | tee -a "$LOG_DIR/calibration_training.log"
+echo "[$(date +%H:%M:%S)] 分档校准 (band_reliability) 漂移巡检..." | tee -a "$LOG_DIR/calibration_training.log"
+BAND_REPORT="$("$PY" scripts/refit_band_reliability.py 2>&1)" || true
+echo "$BAND_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
+if echo "$BAND_REPORT" | grep -q '"table_change_suggested": true'; then
+  echo "[$(date +%H:%M:%S)] ⚠ 分档校准表与最新证据有漂移，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
+else
+  echo "[$(date +%H:%M:%S)] ✓ 分档校准表仍被证据支撑" | tee -a "$LOG_DIR/calibration_training.log"
+fi
+
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "========================================" | tee -a "$LOG_DIR/calibration_training.log"
 echo "每日校准模型训练完成: $(date +%Y%m%d_%H%M%S)" | tee -a "$LOG_DIR/calibration_training.log"

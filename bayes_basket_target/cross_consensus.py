@@ -508,6 +508,28 @@ BAND_RELIABILITY_METHOD_TAG = "band_reliability_v1"
 # both and the archive's extra sample cannot help.  As truth accumulates
 # the intervals narrow and cells qualify on their own; the rule does not
 # change, the table does.
+#
+# Two extensions were measured and REJECTED on 2026-08-15; the numbers are
+# recorded so nobody re-litigates them on instinct:
+#
+# * A separate gate-geometry table.  Fitting the archive's own factors and
+#   applying them only in gate scoring measures +3.5 NLL/day on its 60/40
+#   split (10/10 test days) -- and is still wrong, because nothing in
+#   production serves the model-bucket image: the gate would be scoring a
+#   transform that never runs, breaking the one invariant the admission
+#   machinery rests on (the gate scores exactly what serving applies, same
+#   code path, same constants).  The gate keeps applying this serving
+#   table, whose cells never conflict in sign with the gate geometry's own
+#   measurement.  Revisit only if a served consumer of model-bucket
+#   geometry ever exists.
+#
+# * Stage-specific tables for P0-M and P1.  P0-M has 3 settled station-days
+#   (nothing to fit).  P1, at 152 station-days, is simply better
+#   calibrated than P0 -- shoulder 0.72 [0.50, 1.28], core 0.95, and
+#   [0.20, 0.35) at 1.02 -- with no cell clearing both hurdles, which also
+#   confirms that copying P0's factors onto other stages would be wrong.
+#   ``scripts/refit_band_reliability.py`` re-measures all of this against
+#   accumulated truth; the daily calibration cron flags drift.
 BAND_RELIABILITY_FACTORS = (
     ((0.00, 0.02), 1.0),
     ((0.02, 0.12), 0.86),
