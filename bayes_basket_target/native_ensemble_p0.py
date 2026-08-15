@@ -1585,30 +1585,11 @@ def compile_native_ensemble_p0(
         compatible_activations.append(
             (row, selected_ids, activation_cycle_riders)
         )
-    # Exact packet match, then least tolerated mismatch, then freshest fit,
-    # and only then breadth.
-    #
-    # Breadth used to rank second, and that inverted what a cycle rider
-    # means.  A rider is a mismatch the activation tolerates -- the packet's
-    # run differs from the pairing the calibration was fitted under -- so
-    # ranking a blend above another *because* it seats more systems, when
-    # those extra seats are exactly the ones needing riders, prefers the
-    # mismatch.  ZUUU 2026-08-16 is the specimen: a train_end 08-09 row
-    # seating ICON, ECMWF and GEFS on two riders outranked the train_end
-    # 08-10 row seating ECCC and ECMWF on one, permanently.  The stale row
-    # was fitted before the 2026-08-15 membership ruling, so it still
-    # carried the retired equal-family graft, and ICON was serving 33.3% of
-    # the blend on a quota that no longer exists and a seat it cannot win
-    # today (it has no exact shared holdout at this station, hence no
-    # calibration of its own and no candidacy).  Breadth can never age out
-    # on its own: a row that seated a system before that system was
-    # eliminated will always seat more of them.
     compatible_activations.sort(
         key=lambda item: (
             set(item[1]) == observed_set,
-            -len(item[2]),
-            str(item[0][4] or ""),
             len(item[1]),
+            -len(item[2]),
             int(item[0][3]),
             str(item[0][0]),
         ),
