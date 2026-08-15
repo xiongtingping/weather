@@ -1642,3 +1642,49 @@ def test_clause_42_p0_membership_is_won_never_granted() -> None:
     )
     assert "p0_membership_demotions" in serve_source
     assert "p0_membership_demotions_json" in serve_source
+
+
+def test_clause_42_core_is_seeded_on_the_point_estimate_not_the_argmax() -> None:
+    """One anchor for the run and the deflation, so they cannot disagree.
+
+    An open-ended edge bucket spans an unbounded interval and collects the
+    whole tail, so it wins the argmax on shape rather than on conviction --
+    the exact anchor ``_center`` refuses.  Seeding the core there let the
+    gate bless what it exists to stop: LIMC and VILK 2026-08-16 both seated
+    a lone edge bucket, legitimised by a core the edge bucket had itself
+    seeded.  Grown from the point estimate, both seats move onto three
+    bounded buckets that reach the core.
+    """
+
+    clause = _clause(42)
+    assert "点估计" in clause
+
+    from bayes_basket_target.basket_kernel.delta_v2 import probability_core
+
+    # Buckets 32..37, mass piled on the open-ended top while the stage's own
+    # estimate sits at 33.
+    probabilities = {
+        "32": 0.05, "33": 0.14, "34": 0.12,
+        "35": 0.10, "36": 0.11, "37+": 0.48,
+    }
+    ordinals = {b: i for i, b in enumerate(probabilities)}
+
+    # Argmax seeding anchors on the unbounded bucket and never reaches 33.
+    assert probability_core(probabilities, ordinals=ordinals) == {"36", "37+"}
+
+    # Point-estimate seeding grows from 33 and holds the buckets between.
+    seeded = probability_core(
+        probabilities, ordinals=ordinals, center_bucket="33"
+    )
+    assert "33" in seeded
+    assert seeded == {"33", "34", "35", "36", "37+"}
+
+    # An edge bucket is still a legitimate seed when the estimate is in it.
+    assert probability_core(
+        probabilities, ordinals=ordinals, center_bucket="37+"
+    ) == {"36", "37+"}
+
+    # A caller with no anchor keeps the argmax fallback.
+    assert probability_core(
+        probabilities, ordinals=ordinals, center_bucket="not-a-bucket"
+    ) == {"36", "37+"}

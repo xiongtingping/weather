@@ -209,6 +209,10 @@ def _support_windows(
         ordinals={
             bucket: int(row.ordinal) for bucket, row in by_bucket.items()
         },
+        # One anchor for both layers: the run is grown from the same point
+        # estimate the off-centre deflation measures against, so the two can
+        # never disagree about where the middle is.
+        center_bucket=center_bucket,
     )
     core_refused = 0
 

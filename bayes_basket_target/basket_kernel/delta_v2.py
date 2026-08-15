@@ -550,11 +550,27 @@ def probability_core(
     *,
     ordinals: Mapping[str, int],
     mass: float = PROBABILITY_CORE_MASS,
+    center_bucket: str | None = None,
 ) -> frozenset[str]:
     """The contiguous run p(t) actually stands behind.
 
-    Grown from the modal bucket outward, always taking the heavier
-    neighbour, until the run holds ``mass``.
+    Grown outward from the stage's own point estimate -- for P0 the bucket
+    holding the weight-averaged calibrated system centers -- always taking
+    the heavier neighbour, until the run holds ``mass``.
+
+    The seed is the point estimate rather than the probability argmax, and
+    the distinction is load-bearing: an open-ended edge bucket ("35C or
+    higher") spans an unbounded interval, collects the whole upper tail of
+    every member, and is not commensurable with the 1C buckets it is ranked
+    against.  Seeding on the argmax inherits exactly the anchor ``_center``
+    exists to refuse -- measured 2026-08-15 over 69 live station-days, the
+    argmax sat on an edge bucket in 9% of them and the core disagreed with
+    the point estimate in 4%, including ZGGG 2026-08-15 (centre 30C, core
+    {33C, 34C}): a gate meant to keep the seat on trustworthy mass was
+    instead forbidding every window that held the model's own best guess.
+    An edge bucket is still a legitimate seed when the point estimate
+    genuinely falls inside it.  The argmax remains the fallback for a caller
+    with no anchor to offer.
 
     This exists because p(t) is not uniformly trustworthy across its own
     support, and the divergence is sharp.  Measured 2026-08-15 over 2,398
@@ -586,9 +602,13 @@ def probability_core(
     if not ordered:
         return frozenset()
     values = [max(0.0, float(probabilities[bucket])) for bucket in ordered]
-    peak = max(range(len(ordered)), key=lambda index: values[index])
-    low = high = peak
-    held = values[peak]
+    seed = (
+        ordered.index(center_bucket)
+        if center_bucket is not None and center_bucket in ordered
+        else max(range(len(ordered)), key=lambda index: values[index])
+    )
+    low = high = seed
+    held = values[seed]
     target = min(max(float(mass), 0.0), 1.0)
     while held < target and (low > 0 or high < len(ordered) - 1):
         left = values[low - 1] if low > 0 else -1.0
