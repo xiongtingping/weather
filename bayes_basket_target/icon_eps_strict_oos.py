@@ -277,7 +277,10 @@ def _fit(values: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     mean_spread = sum(spreads) / len(spreads)
     return {
         "bias_c": bias,
-        "spread_factor": min(3.0, max(0.5, rmse / max(mean_spread, 0.1))),
+        # Same bound as the cross-ensemble fit (5.0, raised from 3.0 in
+        # aaecfc76).  This site was missed by that change, so it kept
+        # truncating a spread the evidence asked to widen.
+        "spread_factor": min(5.0, max(0.5, rmse / max(mean_spread, 0.1))),
         "reliability_weight": len(rows) / (len(rows) + 10.0),
         "climate_samples_c": climate[-180:],
         "train_rmse_c": rmse,
