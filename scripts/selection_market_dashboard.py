@@ -114,7 +114,39 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         else:
             side = "aligned"
         cost = float(r[7])
+        win = float(r[6])
+        # What the seat covers, what it costs, and what that pair is worth.
+        #
+        # Coverage is the model's mass inside the window against the market's
+        # own implied mass over the same buckets: the market quotes a book
+        # whose asks sum to more than one (the vig), so its implied coverage
+        # is normalised by that sum rather than taken raw -- otherwise every
+        # seat would look cheap by the width of the spread.
+        book_ask_total = sum(max(0.0, v) for v in prices.values())
+        seat_ask_total = sum(
+            max(0.0, prices.get(b, 0.0)) for b in json.loads(r[4])
+        )
+        market_coverage = (
+            seat_ask_total / book_ask_total if book_ask_total > 0 else None
+        )
+        # EV per USDC staked.  A basket costing C pays 1 when the truth lands
+        # inside it, so a unit of stake buys 1/C of payout and returns
+        # p/C - 1 in expectation.  This is the same quantity the edge (p - C)
+        # describes, restated per unit of capital, which is what makes two
+        # seats at different price levels comparable.
+        ev_per_usdc = (win / cost - 1.0) if cost > 0 else None
+        stake = float(r[9])
         out.append({
+            "market_coverage": market_coverage,
+            "book_ask_total": book_ask_total,
+            "seat_ask_total": seat_ask_total,
+            "coverage_gap": (
+                None if market_coverage is None else win - market_coverage
+            ),
+            "ev_per_usdc": ev_per_usdc,
+            "ev_usdc": (
+                None if ev_per_usdc is None else stake * ev_per_usdc
+            ),
             "station_id": r[0],
             "event_date": r[1],
             "stage": r[2],
@@ -321,6 +353,54 @@ def build_payload(db: Path) -> dict[str, Any]:
                       else "no_seat_taken")
             )
         roster.append(entry)
+    # Aggregates over credible fills only; a sub-one-cent basket has an EV
+    # per USDC in the hundreds and would set every average by itself.
+    credible_rows = [r for r in rows if not r["dust_offer"]]
+
+    def _mean(values: list[float]) -> float | None:
+        clean = [v for v in values if v is not None]
+        return sum(clean) / len(clean) if clean else None
+
+    settled_credible = [r for r in credible_rows if r["settled"]]
+    expected_usdc = sum(
+        float(r["ev_usdc"] or 0.0) for r in settled_credible
+    )
+    realized_usdc = sum(
+        float(r["pnl_usdc"] or 0.0) for r in settled_credible
+    )
+    coverage_stats = {
+        "position_count": len(credible_rows),
+        "model_coverage_mean": _mean(
+            [r["win_probability"] for r in credible_rows]
+        ),
+        "market_coverage_mean": _mean(
+            [r["market_coverage"] for r in credible_rows]
+        ),
+        "coverage_gap_mean": _mean(
+            [r["coverage_gap"] for r in credible_rows]
+        ),
+        "window_size_mean": _mean(
+            [float(r["window_size"]) for r in credible_rows]
+        ),
+        "all_in_cost_mean": _mean(
+            [r["all_in_cost"] for r in credible_rows]
+        ),
+        "book_ask_total_mean": _mean(
+            [r["book_ask_total"] for r in credible_rows]
+        ),
+        "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in credible_rows]),
+        "staked_usdc": sum(r["stake_usdc"] for r in settled_credible),
+        "expected_usdc": expected_usdc,
+        "realized_usdc": realized_usdc,
+        # The gap between what the model said the book was worth and what it
+        # returned.  A persistent shortfall is the calibration ratio showing
+        # up in money rather than in hit rate.
+        "realization_ratio": (
+            realized_usdc / expected_usdc
+            if abs(expected_usdc) > 1e-9 else None
+        ),
+        "settled_count": len(settled_credible),
+    }
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",
@@ -334,6 +414,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "stages": stages,
         "anomalies": anomalies[:40],
         "stage_evolution": evolution[:120],
+        "coverage_stats": coverage_stats,
         "station_roster": roster,
         "roster_event_date": latest_day,
         "stats_start_event_date": STATS_START_EVENT_DATE,

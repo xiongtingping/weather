@@ -869,6 +869,48 @@ function selection(){
   </div>`;
 }
 
+function coverage(){
+  const S=D.selection||{};const c=S.coverage_stats||{};
+  if(!c.position_count) return "";
+  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const n=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
+  const vig=c.book_ask_total_mean==null?null:(c.book_ask_total_mean-1);
+  const rr=c.realization_ratio;
+  return `<h2>八、覆盖 · 价格 · EV</h2>
+  <p class="sub">只算可信成交（整篮 ≥1 分）。三组数回答同一个问题的三面：
+  座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
+  <div class="grid g4">
+    <div class="card"><div class="muted">概率覆盖（模型）</div>
+      <div class="big">${p(c.model_coverage_mean)}</div>
+      <div class="muted">平均每个座位罩住的模型质量 · 平均 ${n(c.window_size_mean,1)} 桶</div></div>
+    <div class="card"><div class="muted">概率覆盖（市场）</div>
+      <div class="big">${p(c.market_coverage_mean)}</div>
+      <div class="muted">同样这些桶，按市场卖价归一后的隐含质量</div></div>
+    <div class="card"><div class="muted">覆盖差</div>
+      <div class="big ${(c.coverage_gap_mean||0)>0?"up":"down"}">${(c.coverage_gap_mean||0)>0?"+":""}${p(c.coverage_gap_mean)}</div>
+      <div class="muted">模型减市场——正数即我们认为这段被低估</div></div>
+    <div class="card"><div class="muted">整本盘口卖价合计</div>
+      <div class="big">${n(c.book_ask_total_mean,3)}</div>
+      <div class="muted">超过 1 的部分是庄家抽水 ${vig==null?"—":(vig*100).toFixed(1)+" 个点"}</div></div>
+    <div class="card"><div class="muted">平均整篮成本</div>
+      <div class="big">${n(c.all_in_cost_mean,3)}</div>
+      <div class="muted">全含费，${c.position_count} 个座位的均值</div></div>
+    <div class="card"><div class="muted">每 1U 的期望回报</div>
+      <div class="big ${(c.ev_per_usdc_mean||0)>0?"up":"down"}">${(c.ev_per_usdc_mean||0)>0?"+":""}${n(c.ev_per_usdc_mean,2)}U</div>
+      <div class="muted">p/成本 − 1，把不同价位的座位放到同一把尺子上</div></div>
+    <div class="card"><div class="muted">已结算：期望 vs 实得</div>
+      <div class="big">${n(c.expected_usdc,2)} → <span class="${(c.realized_usdc||0)>=0?"up":"down"}">${n(c.realized_usdc,2)}</span></div>
+      <div class="muted">${c.settled_count} 笔 · 投入 ${n(c.staked_usdc,2)}U</div></div>
+    <div class="card"><div class="muted">兑现比</div>
+      <div class="big ${rr==null?"":(rr>=0.9?"up":"down")}">${rr==null?"—":n(rr,2)+"×"}</div>
+      <div class="muted">实得÷期望。长期低于 1 就是校准高估在钱上的显形</div></div>
+  </div>
+  <div class="why"><b>为什么要看覆盖差而不只看成本：</b>
+  一个座位便宜可能是因为它罩住的概率本来就少。覆盖差把两件事拆开——
+  「我们认为这段值 39%，市场只标价 6%」才是分歧，光看 0.07 的成本看不出来。
+  期望回报统一到每 1U，是为了让 0.07 的座位和 0.7 的座位能直接比较。</div>`;
+}
+
 function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
@@ -897,7 +939,7 @@ function roster(){
   }).join("");
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  return `<h2>八、逐站明细（${h(S.roster_event_date)}）</h2>
+  return `<h2>九、逐站明细（${h(S.roster_event_date)}）</h2>
   <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
   每格上行是桶，下行是胜率 @ 成本 · 赔率。</p>
   <div class="why">${legend}</div>
@@ -930,7 +972,7 @@ function evolution(){
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
     </tr>`;
   }).join("");
-  return `<h2>九、三阶段选桶演变</h2>
+  return `<h2>十、三阶段选桶演变</h2>
   <p class="sub">同一个站日在 P0（建仓）→ P0-M（TAF 确认）→ P1（实测盯盘）三个时刻各坐了哪个窗口。
   每格上行是桶，下行是胜率 @ 成本与结果。</p>
   <div class="why"><b>怎么看：</b>证据变多，梯子应当变窄或平移到更有把握的位置。
@@ -943,7 +985,7 @@ function evolution(){
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十、异常盘口</h2>
+  if(!an.length) return `<h2>十一、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -953,7 +995,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十、异常盘口</h2>
+  return `<h2>十一、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -981,7 +1023,7 @@ function detail(){
       (r.hit?'<span class="up">命中</span>':'<span class="down">未中</span>')}</td>
     <td class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${r.pnl_usdc==null?"—":((r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2))}</td>
   </tr>`).join("");
-  return `<h2>十一、逐笔明细</h2>
+  return `<h2>十二、逐笔明细</h2>
   <p class="sub">「位置」的数字是模型中心减市场中心，单位是桶：正数=我们更热，负数=更冷。</p>
   <div class="card scroll"><table><thead><tr>
     <th>事件日</th><th>站点</th><th>阶段</th><th>窗口</th><th>横梁</th><th>位置</th>
@@ -991,7 +1033,7 @@ function detail(){
 
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() + selection() +
-  roster() + evolution() + anomalies() + detail() +
+  coverage() + roster() + evolution() + anomalies() + detail() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 
