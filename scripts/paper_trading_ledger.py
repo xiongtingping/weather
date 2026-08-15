@@ -268,13 +268,35 @@ def _build_snapshot(
         # change on either side is visible rather than silently unpriceable.
         ask = quote.get("best_ask", quote.get("ask_price"))
         bid = quote.get("bid_price", quote.get("best_bid"))
-        if ask is None or not quote.get("ask_available", True):
-            return None
-        ask = float(ask)
+        # A bucket with no offer is unpriceable, not a reason to drop the
+        # station: the enumeration already refuses to rank a window that
+        # contains one, so the remaining windows stay available.  Refusing
+        # the whole scope here is what kept 2026-08-16 off the page after
+        # production had opened it -- eleven buckets quoted, one of them
+        # empty, and the ledger discarded all eleven.
+        priceable = (
+            ask is not None and bool(quote.get("ask_available", True))
+        )
+        # An unpriceable bucket still needs a representable book: the kernel
+        # rejects an empty level list outright, so it carries a zero-size
+        # level at the far end of the range, sized below any clip the sizer
+        # can take -- nothing fills against it, and ask_available says so.
+        tick_size = float(quote.get("price_tick_size") or 0.001)
+        # Highest price still on this bucket's tick grid: unfillable in
+        # practice, and the kernel requires both a positive depth and a
+        # grid-aligned price, so it cannot simply be left empty.
+        unfillable_ask = max(tick_size, 1.0 - tick_size)
+        ask = float(ask) if priceable else unfillable_ask
+        # No offer means nothing to buy, so the bid side is dropped with it:
+        # the ledger only ever buys, and a standing bid beside a synthetic
+        # ceiling ask would violate the kernel's bid<ask invariant.
+        if not priceable:
+            bid = 0.0
 
         bid = float(bid or 0.0)
-        tick = float(quote.get("price_tick_size") or 0.001)
         probabilities[str(bucket)] = float(probability)
+        # Recorded for every bucket so downstream lookups are total; an
+        # unpriceable one carries the ceiling, which no window can afford.
         prices[str(bucket)] = ask
         # Real depth, not an assumed slab.  A penny bucket whose whole book
         # is twelve shares must not be fillable for hundreds: that fiction
@@ -284,12 +306,12 @@ def _build_snapshot(
             {"price": float(l["price"]), "shares": float(l["shares"])}
             for l in (quote.get("ask_levels") or [])
             if l.get("price") is not None and l.get("shares") is not None
-        ] or [{"price": ask, "shares": 0.0}]
+        ] or [{"price": unfillable_ask, "shares": tick_size}]
         bid_levels = [
             {"price": float(l["price"]), "shares": float(l["shares"])}
             for l in (quote.get("bid_levels") or [])
             if l.get("price") is not None and l.get("shares") is not None
-        ]
+        ] if priceable else []
         depth[str(bucket)] = ask_levels
         rows.append({
             "bucket": str(bucket),
@@ -298,7 +320,7 @@ def _build_snapshot(
             "bid_price": bid,
             "bid_levels": bid_levels,
             "ask_levels": ask_levels,
-            "price_tick_size": tick,
+            "price_tick_size": tick_size,
             "maker_queue_ahead_shares": 2.0,
             "maker_queue_known": True,
         })
