@@ -899,43 +899,28 @@ function roster(){
     no_market_book:["无盘口","有概率但没抓到可定价的市场"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
+  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
   const cell=(s,extra)=>{
     if(!s) return `<td class="muted">—${extra||""}</td>`;
     const w=s.window.map(short).join("+");
     const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
     const dust=s.dust_offer?` <span class="pill red">灰尘</span>`:"";
-    // The rung this stage anchored on, beside the window it produced.
     const rung=s.centre_bucket?
       `<div class="muted">横梁 <span class="mono" style="color:#d2a8ff">${short(s.centre_bucket)}</span></div>`:"";
     return `<td><div class="mono">${w}</div>${rung}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
       @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>${extra||""}</td>`;
   };
-  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
-  const rows=rs.map(e=>{
+  const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
     const side=any?`<span class="pill ${any.side==="below"?"amber":any.side==="aligned"?"green":""}"
       ${any.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[any.side]}</span>`:"";
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
-    const MOVE={unchanged:['<span class="muted">未变</span>',""],
-      wider:['<span class="up">加宽</span>',""],narrower:['<span class="down">收窄</span>',""],
-      shifted:['<span style="color:#d2a8ff">平移</span>',""]};
-    const mv=e.movement?(MOVE[e.movement]||["—"])[0]+
-      (e.width_delta?` <span class="muted">${e.width_delta>0?"+":""}${e.width_delta}</span>`:""):
-      '<span class="muted">—</span>';
-    const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
-      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
-    const st=e.stats||{};
-    const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
-    const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-    const cal=st.calibration_ratio;
-    const taf=e.taf_tx_c==null?
-      `<div class="muted">TAF 无温度组</div>`:
+    const taf=e.taf_tx_c==null?`<div class="muted">TAF 无温度组</div>`:
       `<div class="muted">TAF 最高 <span class="mono" style="color:#7ee787">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
-    // P1 re-solves as observations arrive; show where its rung has travelled.
-    // Updates and moves are different counts, and conflating them reads as
-    // a rung that thrashed when in fact it never budged.
+    // Recomputations and rung moves are different counts; conflating them
+    // reads as a rung that thrashed when it never budged.
     const hist=e.p1_history||[];
     const rungs=hist.map(x=>x.centre_bucket).filter(Boolean);
     const path=rungs.filter((x,i)=>i===0||x!==rungs[i-1]);
@@ -944,39 +929,37 @@ function roster(){
        ${path.length<2
          ? `横梁未动 <span class="mono">${path.length?short(path[0]):"—"}</span>`
          : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
+    const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
+      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
     return `<tr>
       <td><div class="mono">${h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div></td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"],taf)}${cell(e.stages.P1,drift)}
-      <td>${mv}</td>
       <td>${side}${note}</td>
-      <td>${p2(st.model_coverage_mean)}</td>
-      <td class="mono">${n2(st.seat_ask_total_mean)}</td>
-      <td class="mono">${st.odds_mean==null?"—":n2(st.odds_mean,1)+"x"}</td>
-      <td class="${st.ev_per_usdc_mean==null?"":(st.ev_per_usdc_mean>0?"up":"down")}">${st.ev_per_usdc_mean==null?"—":((st.ev_per_usdc_mean>0?"+":"")+n2(st.ev_per_usdc_mean,2))}</td>
-      <td>${st.hit_rate==null?"—":p2(st.hit_rate)}</td>
-      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
       <td class="mono">${pnl}</td></tr>`;
-  }).join("");
+  };
+  const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
+    <th>位置</th><th>实测</th><th>实得</th></tr>`;
+  const dates=S.roster_event_dates||[];
+  const block=(day,open)=>{
+    const rows=rs.filter(e=>e.event_date===day);
+    const seated=rows.filter(e=>e.seated_stage_count>0).length;
+    return `<details class="card" ${open?"open":""}>
+      <summary><b class="mono">${h(day)}</b>
+        <span class="muted">${rows.length} 站 · ${seated} 有座位</span></summary>
+      <div class="scroll" style="margin-top:10px"><table>
+        <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
+    </details>`;
+  };
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  return `<h2>八、逐站明细与统计（${h(S.roster_event_date)}）</h2>
-  <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
-  每格上行是桶，下行是胜率 @ 成本 · 赔率。「梯子」列是三阶段之间的变化：
-  证据变多，梯子应当收窄或平移到更有把握的位置，这三种都是概率自己走出来的，
-  没有任何方向规则参与。</p>
-  <div class="why">${legend}
-    <div class="muted" style="margin-top:6px">·「横梁」是概率中心所在桶——
-    模型点估计落在哪一桶，席位窗口就必须含住它（宪章 49 条）；箭头表示它在三阶段之间移动过。
-    <br>·「概率和」是选桶校准后概率之和；
-    「卖价和」是这几个桶的全含费卖价之和（即整篮成本）；
-    「EV/U」= 概率和÷卖价和 − 1。三者都只关于这个篮子，不涉及整本盘口。</div></div>
-  <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>梯子</th><th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th>
-    <th>EV/U</th><th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
+  // Newest day open, everything older folded away beneath it.
+  return `<h2>八、逐站明细与统计</h2>
+  <p class="sub">每个事件日一组，全部 45 个站都在，包括没有座位的——没坐比坐了更值得看清原因。
+  每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率。最新一天默认展开，更早的日期折叠在下方。</p>
+  <div class="why">${legend}</div>
+  ${dates.map((day,index)=>block(day,index===0)).join("")}`;
 }
 
 

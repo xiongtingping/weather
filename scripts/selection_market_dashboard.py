@@ -247,12 +247,10 @@ def build_payload(db: Path) -> dict[str, Any]:
         if r["dust_offer"]
         or (r["all_in_cost"] > 0 and r["win_probability"] / r["all_in_cost"] > 10.0)
     ]
-    # Every registered station, not only the ones that got a seat.  A station
-    # missing from the ledger is the more interesting row: it means the
-    # objective looked and did not sit, or never got a priced book to look
-    # at, and that has to be visible rather than absent.
-    latest_day = max((r["event_date"] for r in rows), default=None)
-    roster = []
+    # Every registered station on every event day it has evidence for, not
+    # just the latest.  A station missing from the ledger on a day is the
+    # more interesting row -- the objective looked and did not sit, or never
+    # got a priced book -- so absence is rendered, not skipped.
     registered = [
         str(row[0])
         for row in conn.execute(
@@ -260,52 +258,57 @@ def build_payload(db: Path) -> dict[str, Any]:
             " ORDER BY station_id"
         )
     ]
-    seated = {
-        (r["station_id"], r["stage"]): r
-        for r in rows
-        if latest_day and r["event_date"] == latest_day
+    # Which station-days exist at all: any seat, or any probability.
+    scope_days: set[tuple[str, str]] = {
+        (r["station_id"], r["event_date"]) for r in rows
     }
-    # The forecaster's own TX for the day, which is what P0-M confirms
-    # against.  Only 17 of 45 stations issue a temperature group at all, so
-    # an absent value is a property of the report, not a gap.
-    taf_tx: dict[str, float] = {}
-    if latest_day:
-        for station, value in conn.execute(
-            "SELECT station_id, tx_c FROM calibration_forward_taf_capture"
-            " WHERE event_date=? AND tx_available=1 AND tx_c IS NOT NULL"
-            " GROUP BY station_id HAVING MAX(issued_at_utc)",
-            (latest_day,),
-        ):
-            taf_tx[str(station)] = float(value)
-    # P1 is re-solved as observations arrive, so its rung moves during the
-    # day.  The ledger keeps one row per stage; the whole sequence lives in
-    # the probability history, and the movement is the point.
-    p1_history: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    if latest_day:
-        for station, decided, envelope_json in conn.execute(
-            "SELECT station_id, decision_at_utc, envelope_json"
-            " FROM basket_probability_bridge_history"
-            " WHERE event_date=? AND stage='P1'"
-            " ORDER BY station_id, decision_at_utc",
-            (latest_day,),
-        ):
-            lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
-            p1_history[str(station)].append({
-                "decision_at_utc": str(decided),
-                "centre_bucket": lineage.get("model_center_bucket"),
-                "centre_c": lineage.get("model_center_c"),
-                "running_high_c": lineage.get("running_high_c"),
-            })
-    for station in registered:
+    for station, day in conn.execute(
+        "SELECT DISTINCT station_id, event_date"
+        " FROM basket_probability_bridge_history WHERE event_date >= ?",
+        (STATS_START_EVENT_DATE,),
+    ):
+        scope_days.add((str(station), str(day)))
+    seated = {
+        (r["station_id"], r["event_date"], r["stage"]): r for r in rows
+    }
+    taf_tx: dict[tuple[str, str], float] = {}
+    for station, day, value in conn.execute(
+        "SELECT station_id, event_date, tx_c"
+        " FROM calibration_forward_taf_capture"
+        " WHERE event_date >= ? AND tx_available=1 AND tx_c IS NOT NULL"
+        " GROUP BY station_id, event_date HAVING MAX(issued_at_utc)",
+        (STATS_START_EVENT_DATE,),
+    ):
+        taf_tx[(str(station), str(day))] = float(value)
+    # P1 re-solves as observations arrive, so its rung moves during the day.
+    p1_history: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for station, day, decided, envelope_json in conn.execute(
+        "SELECT station_id, event_date, decision_at_utc, envelope_json"
+        " FROM basket_probability_bridge_history"
+        " WHERE stage='P1' AND event_date >= ?"
+        " ORDER BY station_id, event_date, decision_at_utc",
+        (STATS_START_EVENT_DATE,),
+    ):
+        lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+        p1_history[(str(station), str(day))].append({
+            "decision_at_utc": str(decided),
+            "centre_bucket": lineage.get("model_center_bucket"),
+            "centre_c": lineage.get("model_center_c"),
+        })
+    roster = []
+    for station, day in sorted(
+        scope_days, key=lambda kv: (kv[1], kv[0]), reverse=True
+    ):
         entry: dict[str, Any] = {
             "station_id": station,
             "station_label": STATION_LABELS.get(station, ""),
+            "event_date": day,
+            "taf_tx_c": taf_tx.get((station, day)),
+            "p1_history": p1_history.get((station, day), [])[-12:],
             "stages": {},
         }
-        entry["taf_tx_c"] = taf_tx.get(station)
-        entry["p1_history"] = p1_history.get(station, [])[-8:]
         for stage in ("P0", "P0-M", "P1"):
-            row = seated.get((station, stage))
+            row = seated.get((station, day, stage))
             entry["stages"][stage] = (
                 None
                 if row is None
@@ -322,73 +325,33 @@ def build_payload(db: Path) -> dict[str, Any]:
                     "hit": row["hit"],
                     "pnl_usdc": row["pnl_usdc"],
                     "dust_offer": row["dust_offer"],
+                    "settled_tmax_c": row["settled_tmax_c"],
                 }
             )
         entry["seated_stage_count"] = sum(
             1 for v in entry["stages"].values() if v is not None
         )
-        # The movement between stages belongs on the same row as the stages
-        # themselves: kept separate it was a second table saying the same
-        # thing with the columns rearranged.
-        seen_windows = [
-            v["window"] for v in (
-                entry["stages"][s] for s in ("P0", "P0-M", "P1")
-            ) if v is not None
-        ]
-        if len(seen_windows) >= 2:
-            first, last = seen_windows[0], seen_windows[-1]
-            delta = len(last) - len(first)
-            entry["movement"] = (
-                "unchanged" if first == last
-                else ("wider" if delta > 0
-                      else ("narrower" if delta < 0 else "shifted"))
-            )
-            entry["width_delta"] = delta
-        else:
-            entry["movement"] = None
-            entry["width_delta"] = 0
-        # The rung the ladder hangs from, stage by stage.  It can move --
-        # the centre is the model's own point estimate, and P1 re-reads it
-        # against the day's observations -- so a single value would hide
-        # exactly the case worth seeing.
-        centres = [
-            entry["stages"][s]["centre_bucket"]
-            for s in ("P0", "P0-M", "P1")
-            if entry["stages"][s] is not None
-        ]
-        entry["centre_buckets"] = centres
-        entry["centre_moved"] = len(set(centres)) > 1
         settled = [
             v for v in entry["stages"].values()
             if v is not None and v.get("hit") is not None
         ]
         entry["settled_tmax_c"] = next(
-            (
-                r["settled_tmax_c"] for r in rows
-                if r["station_id"] == station
-                and r["event_date"] == latest_day
-                and r["settled_tmax_c"] is not None
-            ),
-            None,
+            (v["settled_tmax_c"] for v in settled), None
         )
         entry["realized_usdc"] = (
             sum(float(v["pnl_usdc"] or 0.0) for v in settled)
             if settled else None
         )
-        # Why a station has nothing: the ledger records a probability
-        # snapshot for it or it does not, and a priced book at that moment
-        # or not.  Naming which is missing is the difference between "the
-        # objective declined" and "the objective never got to look".
-        if entry["seated_stage_count"] == 0 and latest_day:
+        if entry["seated_stage_count"] == 0:
             has_probability = conn.execute(
                 "SELECT 1 FROM basket_probability_bridge_history"
                 " WHERE station_id=? AND event_date=? LIMIT 1",
-                (station, latest_day),
+                (station, day),
             ).fetchone() is not None
             has_book = conn.execute(
                 "SELECT 1 FROM basket_official_ws_snapshot"
                 " WHERE station_id=? AND event_date=? LIMIT 1",
-                (station, latest_day),
+                (station, day),
             ).fetchone() is not None
             entry["absent_reason"] = (
                 "no_probability" if not has_probability
@@ -396,6 +359,7 @@ def build_payload(db: Path) -> dict[str, Any]:
                       else "no_seat_taken")
             )
         roster.append(entry)
+
     # Aggregates over credible fills only; a sub-one-cent basket has an EV
     # per USDC in the hundreds and would set every average by itself.
     credible_rows = [r for r in rows if not r["dust_offer"]]
@@ -437,6 +401,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         ),
         "settled_count": len(settled_credible),
     }
+
     # The same three statistics per station.  A fleet average hides the
     # thing worth acting on: stations do not share a book, a climate or a
     # bucket width, so a coverage gap that is real at one and an artifact at
@@ -506,7 +471,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "coverage_stats": coverage_stats,
         "station_stats": station_stats,
         "station_roster": roster,
-        "roster_event_date": latest_day,
+        "roster_event_dates": sorted({e["event_date"] for e in roster}, reverse=True),
         "stats_start_event_date": STATS_START_EVENT_DATE,
         "rows": rows[:400],
     }
