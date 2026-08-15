@@ -1399,6 +1399,19 @@ CREATE TABLE IF NOT EXISTS basket_confirmed_inventory_snapshot (
 CREATE INDEX IF NOT EXISTS basket_inventory_snapshot_asof_idx
 ON basket_confirmed_inventory_snapshot(station_id,event_date,state,observed_at);
 
+-- The reader resolves an inventory by (station, day, version) and treats two
+-- matches as unresolvable -- delta_v2_inventory_snapshot_ambiguous, which
+-- blocked eleven of thirteen forward scopes on 2026-08-16.  Nothing declared
+-- that tuple unique, so the ambiguity was a state the writer was free to
+-- create and the reader could only refuse after the fact.  Declaring it here
+-- moves the failure to the write that would cause it, where it can be seen
+-- and attributed.  Existing rows already satisfy it.
+CREATE UNIQUE INDEX IF NOT EXISTS
+  basket_confirmed_inventory_snapshot_scope_version_uidx
+ON basket_confirmed_inventory_snapshot(
+  station_id,event_date,inventory_version,state
+);
+
 CREATE TABLE IF NOT EXISTS basket_order_state_snapshot (
   order_state_snapshot_id TEXT PRIMARY KEY,
   station_id TEXT NOT NULL,
