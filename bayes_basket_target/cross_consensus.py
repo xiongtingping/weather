@@ -466,6 +466,80 @@ def apply_conditional_tail_skew(
     return {key: value / total for key, value in adjusted.items()}, receipt
 
 
+BAND_RELIABILITY_METHOD_TAG = "band_reliability_v1"
+# Per-band reliability of the final claimed probability, measured against
+# settled truth: the last P0 snapshot of each station-day, realised hit rate
+# over summed claim per claimed-probability band, intervals bootstrapped over
+# days (stations on one day share weather; 15 settled days, 254 station-days,
+# 2026-07-28..08-14).
+#
+#   band          claimed ratio  95% interval  sign-stable halves  served
+#   [0.00, 0.02)      1.74       [0.62, 3.20]        no             1.0
+#   [0.02, 0.12)      0.69       [0.55, 0.86]        yes (.80/.61)  0.86
+#   [0.12, 0.20)      1.23       [1.08, 1.39]        yes (1.28/1.20) 1.08
+#   [0.20, 0.35)      1.12       [0.90, 1.33]        --             1.0
+#   [0.35, 1.00]      0.72       [0.25, 1.03]        --             1.0
+#
+# Every band carries a factor; a band earns a non-identity one only when its
+# interval excludes 1.0 AND its ratio keeps the same sign of miscalibration
+# across a chronological half-split, and it serves the interval end nearest
+# one.  Both hurdles are load-bearing: fitting the point estimates on all
+# bands scores -0.97 NLL/day on the forward window, because the deep-tail
+# ratio (2.07x on the first nine days, no tail hits on the last six) does
+# not persist -- the same non-persistence that killed the per-side inflation
+# candidate.  The two qualifying cells, domain-capped so the shoulder may
+# only shrink and the core may only lift, score +0.13 NLL/day on the 60/40
+# forward split and +0.17 with 11/15 day wins on leave-one-day-out.
+# Renormalisation pays the shoulder's surplus mostly into the core, which is
+# the direction the measurement says the mass belongs.  As truth accumulates
+# the intervals narrow and cells qualify on their own; the rule does not
+# change, the table does.
+BAND_RELIABILITY_FACTORS = (
+    ((0.00, 0.02), 1.0),
+    ((0.02, 0.12), 0.86),
+    ((0.12, 0.20), 1.08),
+    ((0.20, 0.35), 1.0),
+    ((0.35, 1.01), 1.0),
+)
+
+
+def apply_band_reliability(
+    probability: "Mapping[str, float]",
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Rescale each bucket by its claimed-probability band's factor.
+
+    The band is read from the claim as it stands when this layer runs, so
+    this must stay the outermost transform: the factors were measured on
+    served distributions, and moving the layer inward would rescale claims
+    the measurement never saw.
+    """
+
+    if not probability:
+        raise ValueError("band_reliability_probability_empty")
+    adjusted: dict[str, float] = {}
+    applied: dict[str, float] = {}
+    for key, raw in probability.items():
+        value = float(raw)
+        factor = 1.0
+        for (lower, upper), band_factor in BAND_RELIABILITY_FACTORS:
+            if lower <= value < upper:
+                factor = band_factor
+                break
+        if factor != 1.0:
+            applied[str(key)] = factor
+        adjusted[str(key)] = value * factor
+    total = sum(adjusted.values())
+    if total <= 0:
+        raise ValueError("band_reliability_probability_empty")
+    return {key: value / total for key, value in adjusted.items()}, {
+        "schema": "band_reliability_receipt_v1",
+        "method_tag": BAND_RELIABILITY_METHOD_TAG,
+        "state": "APPLIED" if applied else "NO_BAND_IN_SUPPORT",
+        "applied_factors": applied,
+        "pre_normalisation_mass": total,
+    }
+
+
 # Zero through the strata the mixture already predicts correctly (<1C and
 # 1-2C measured 0.0%/0.0% and 5.0%/5.5% valley hit against prediction), full
 # strength by 2C where under-prediction is unambiguous.  0.4 reproduces the

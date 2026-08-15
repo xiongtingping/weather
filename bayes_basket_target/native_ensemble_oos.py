@@ -21,11 +21,13 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError, content_sha256
 from .station_registry import station_coordinates
 from .cross_consensus import (
+    BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
     NEIGHBOUR_DIRECTION_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
+    apply_band_reliability,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     forecast_radiation_shift_sigma,
@@ -1199,6 +1201,9 @@ def _select_minimum_crps_subset(
                 probability,
                 ordinals=ordinal_map,
                 **day_signals,
+            )
+            probability, _band_receipt = apply_band_reliability(
+                probability
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -3054,6 +3059,12 @@ def build_native_ensemble_oos(
                 ordinals=ordinal_map,
                 **day_signals,
             )
+            # Outermost, after every shape layer: the band factors were
+            # measured on final served claims, so they must see the claim
+            # every inner layer has already finished with.
+            probability, _band_receipt = apply_band_reliability(
+                probability
+            )
             actual = float(
                 predictions_by_system[
                     next(iter(weights))
@@ -4307,6 +4318,7 @@ def persist_native_ensemble_oos(
                     + "::" + NEIGHBOUR_DIRECTION_METHOD_TAG
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
+                    + "::" + BAND_RELIABILITY_METHOD_TAG
                 ),
                 "family_weight_caps_json": _json(
                     candidate["family_weight_caps"]

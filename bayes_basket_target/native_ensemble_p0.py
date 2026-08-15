@@ -16,12 +16,14 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 EPS = 1e-9
 from .station_registry import station_coordinates
 from .cross_consensus import (
+    BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     CONDITIONAL_SKEW_METHOD_TAG,
     NEIGHBOUR_DIRECTION_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
+    apply_band_reliability,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
     forecast_radiation_shift_sigma,
@@ -2396,6 +2398,14 @@ def compile_native_ensemble_p0(
                 else None
             ),
         )
+    # Outermost, after every shape layer: the band factors were measured on
+    # final served claims, so the layer must see the claim every inner layer
+    # has already finished with -- same reason it runs last in the gate.
+    band_reliability_receipt = None
+    if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
+        probability, band_reliability_receipt = apply_band_reliability(
+            probability
+        )
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,
@@ -2855,6 +2865,9 @@ def compile_native_ensemble_p0(
         **({"tail_reliability_json": json.dumps(
             tail_reliability_receipt, sort_keys=True
         )} if tail_reliability_receipt is not None else {}),
+        **({"band_reliability_json": json.dumps(
+            band_reliability_receipt, sort_keys=True
+        )} if band_reliability_receipt is not None else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
