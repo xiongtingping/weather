@@ -289,6 +289,17 @@ def build_payload(db: Path) -> dict[str, Any]:
         else:
             entry["movement"] = None
             entry["width_delta"] = 0
+        # The rung the ladder hangs from, stage by stage.  It can move --
+        # the centre is the model's own point estimate, and P1 re-reads it
+        # against the day's observations -- so a single value would hide
+        # exactly the case worth seeing.
+        centres = [
+            entry["stages"][s]["centre_bucket"]
+            for s in ("P0", "P0-M", "P1")
+            if entry["stages"][s] is not None
+        ]
+        entry["centre_buckets"] = centres
+        entry["centre_moved"] = len(set(centres)) > 1
         settled = [
             v for v in entry["stages"].values()
             if v is not None and v.get("hit") is not None

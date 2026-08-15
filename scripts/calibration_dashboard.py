@@ -921,8 +921,18 @@ function roster(){
     const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
     const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
     const cal=st.calibration_ratio;
+    // The rung, and whether it moved between stages.
+    const cs=e.centre_buckets||[];
+    const short=x=>String(x).replace("°C","").replace("°F","");
+    const rung=!cs.length?'<span class="muted">—</span>':
+      (e.centre_moved
+        ? `<span class="mono">${short(cs[0])}</span>
+           <span class="muted">→</span>
+           <span class="mono" style="color:#d2a8ff">${short(cs[cs.length-1])}</span>`
+        : `<span class="mono">${short(cs[0])}</span>`);
     return `<tr>
       <td class="mono">${h(e.station_id)}</td>
+      <td>${rung}</td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"])}${cell(e.stages.P1)}
       <td>${mv}</td>
       <td>${side}${note}</td>
@@ -943,11 +953,14 @@ function roster(){
   证据变多，梯子应当收窄或平移到更有把握的位置，这三种都是概率自己走出来的，
   没有任何方向规则参与。</p>
   <div class="why">${legend}
-    <div class="muted" style="margin-top:6px">·「概率和」是选桶校准后概率之和；
+    <div class="muted" style="margin-top:6px">·「横梁」是概率中心所在桶——
+    模型点估计落在哪一桶，席位窗口就必须含住它（宪章 49 条）；箭头表示它在三阶段之间移动过。
+    <br>·「概率和」是选桶校准后概率之和；
     「卖价和」是这几个桶的全含费卖价之和（即整篮成本）；
     「EV/U」= 概率和÷卖价和 − 1。三者都只关于这个篮子，不涉及整本盘口。</div></div>
   <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
+    <th>站点</th><th>横梁<br><span class="muted">概率中心</span></th>
+    <th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
     <th>梯子</th><th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th>
     <th>EV/U</th><th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
