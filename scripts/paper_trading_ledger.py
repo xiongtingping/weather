@@ -170,17 +170,32 @@ def _stage_distributions(
     station_id: str,
     event_date: str,
 ) -> dict[str, dict[str, Any]]:
-    """Last snapshot per stage, with its buckets and decision time."""
+    """Opening snapshot per stage, with its buckets and decision time.
+
+    A stage is entered the first moment it can be: the earliest decision
+    that has a book to trade against.  Taking the *last* decision instead
+    dated every P0 entry to the close of its own event day -- WMKK's P0
+    ran 205 times on 2026-08-15 and the last landed 23:36 local, against a
+    book that had already resolved to 34C with every other bucket dumped
+    at one tick.  Buying those is not an edge, it is reading the answer
+    off the market and then claiming to have forecast it.
+    """
 
     stages: dict[str, dict[str, Any]] = {}
     for stage in STAGES:
-        row = conn.execute(
+        row = None
+        for candidate in conn.execute(
             "SELECT history_id, decision_at_utc, envelope_json"
             " FROM basket_probability_bridge_history"
             " WHERE station_id=? AND event_date=? AND stage=?"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
+            " ORDER BY decision_at_utc ASC",
             (station_id, event_date, stage),
-        ).fetchone()
+        ):
+            if _quotes_at(
+                conn, station_id, event_date, str(candidate[1])
+            ) is not None:
+                row = candidate
+                break
         if row is None:
             continue
         buckets = conn.execute(
@@ -263,10 +278,23 @@ def _build_snapshot(
         quote = quotes.get(str(bucket))
         if quote is None:
             return None
-        # The stored snapshot names the best offer ``best_ask``; the kernel's
-        # bucket contract calls it ``ask_price``.  Read both so a schema
-        # change on either side is visible rather than silently unpriceable.
-        ask = quote.get("best_ask", quote.get("ask_price"))
+        # The book itself is the only source for the offer.  Reading a
+        # scalar ``best_ask`` beside it split the price in two: eight
+        # stations never write that key, so every bucket of theirs was
+        # scored unpriceable here while the kernel priced them from the
+        # levels -- and the capacity guard below, which compares levels
+        # against this map, then admitted the entire book at a price only
+        # the top level had.  One source, and the guard binds again.
+        levels = sorted(
+            (
+                {"price": float(l["price"]), "shares": float(l["shares"])}
+                for l in (quote.get("ask_levels") or [])
+                if l.get("price") is not None and l.get("shares") is not None
+                and float(l["shares"]) > 0.0
+            ),
+            key=lambda l: l["price"],
+        )
+        ask = levels[0]["price"] if levels else None
         bid = quote.get("bid_price", quote.get("best_bid"))
         # A bucket with no offer is unpriceable, not a reason to drop the
         # station: the enumeration already refuses to rank a window that
@@ -302,11 +330,9 @@ def _build_snapshot(
         # is twelve shares must not be fillable for hundreds: that fiction
         # is precisely what turns a thin tail into an infinite-return
         # lottery on paper.
-        ask_levels = [
-            {"price": float(l["price"]), "shares": float(l["shares"])}
-            for l in (quote.get("ask_levels") or [])
-            if l.get("price") is not None and l.get("shares") is not None
-        ] or [{"price": unfillable_ask, "shares": tick_size}]
+        ask_levels = levels or [
+            {"price": unfillable_ask, "shares": tick_size}
+        ]
         bid_levels = [
             {"price": float(l["price"]), "shares": float(l["shares"])}
             for l in (quote.get("bid_levels") or [])
@@ -372,6 +398,80 @@ def _kelly_stake(
         KELLY_FRACTION * full, MAX_STAKE_FRACTION_PER_SCOPE
     )
     return fraction, max(0.0, fraction * equity)
+
+
+def _walk_ask(
+    levels: list[dict[str, float]], shares: float
+) -> float | None:
+    """Cost of lifting ``shares`` off one bucket's offer ladder.
+
+    ``None`` when the ladder does not hold that many.  The top level is a
+    price for its own size and nothing more, so anything past it pays the
+    next level up -- which is the whole difference between a book and a
+    quote.
+    """
+
+    remaining = shares
+    spent = 0.0
+    for level in levels:
+        take = min(remaining, level["shares"])
+        spent += take * level["price"]
+        remaining -= take
+        if remaining <= 1e-9:
+            return spent
+    return None
+
+
+def _fillable_size(
+    *,
+    legs: list[list[dict[str, float]]],
+    win_probability: float,
+    budget: float,
+    fee_rate: float,
+    capacity: float,
+) -> tuple[float, float] | None:
+    """Largest clip whose walked cost stays inside budget and edge.
+
+    Both constraints are monotone in size -- spend rises with it, and so
+    does the average price -- so the feasible sizes are an interval from
+    zero and a bisection finds its end.
+    """
+
+    def spend(size: float) -> float | None:
+        total = 0.0
+        for leg in legs:
+            leg_cost = _walk_ask(leg, size)
+            if leg_cost is None:
+                return None
+            total += leg_cost
+        return total * (1.0 + fee_rate)
+
+    def feasible(size: float) -> float | None:
+        cost = spend(size)
+        if cost is None or cost > budget:
+            return None
+        # An all-in average at or above the payout is a guaranteed loss no
+        # matter how the day settles, which is exactly what the top-of-book
+        # price hid when the clip outran the level that quoted it.
+        if cost / size >= win_probability:
+            return None
+        return cost
+
+    if capacity <= 0.0 or feasible(min(capacity, 1e-6)) is None:
+        return None
+    low, high = 0.0, capacity
+    for _ in range(60):
+        mid = 0.5 * (low + high)
+        if mid <= 0.0:
+            break
+        if feasible(mid) is None:
+            high = mid
+        else:
+            low = mid
+    cost = spend(low)
+    if low <= 0.0 or cost is None:
+        return None
+    return low, cost
 
 
 def _settled_bucket(
@@ -516,25 +616,35 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                     counts["no_positive_kelly"] += 1
                     continue
                 # A complete basket buys the same share count on every leg
-                # (atomicity), so the fillable size is set by the thinnest
-                # leg at or below its best offer.  Beyond that the basket
-                # would be walking the book into worse prices, which this
-                # ledger does not model and must not silently assume away.
-                leg_capacity = min(
-                    sum(
-                        level["shares"] for level in depth.get(bucket, [])
-                        if level["price"] <= prices[bucket] + 1e-9
-                    )
-                    for bucket in seat["buckets"]
+                # (atomicity), so the size is set by the thinnest ladder --
+                # and the price by how deep into each the clip has to reach.
+                # Charging the whole clip the top-of-book price is what let a
+                # 30-share offer at one tick "fill" 24,213 shares at 0.004
+                # when walking the ladders for that size costs 3.06 a set,
+                # three times anything the basket can pay out.
+                legs = [
+                    depth.get(bucket) or [] for bucket in seat["buckets"]
+                ]
+                capacity = min(
+                    (sum(level["shares"] for level in leg) for leg in legs),
+                    default=0.0,
                 )
-                shares = stake / float(seat["all_in_price"])
-                if leg_capacity <= 0.0:
+                filled = _fillable_size(
+                    legs=legs,
+                    win_probability=float(seat["win_probability"]),
+                    budget=stake,
+                    fee_rate=FEE_RATE,
+                    capacity=capacity,
+                )
+                if filled is None:
                     counts["no_depth"] += 1
                     continue
-                if shares > leg_capacity:
-                    shares = leg_capacity
-                    stake = shares * float(seat["all_in_price"])
-                    counts["depth_capped"] += 1
+                shares, stake = filled
+                # What the basket actually cost per set, which is the number
+                # every downstream P&L and edge reading has to be built on.
+                all_in_cost = stake / shares
+                if all_in_cost > float(seat["all_in_price"]) + 1e-9:
+                    counts["walked_book"] += 1
                 day_staked[stage] += stake
                 identity = {
                     "station_id": station_id,
@@ -562,8 +672,8 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                         json.dumps(list(seat["buckets"]), ensure_ascii=False),
                         len(seat["buckets"]),
                         float(seat["win_probability"]),
-                        float(seat["all_in_price"]),
-                        float(seat["edge"]),
+                        all_in_cost,
+                        float(seat["win_probability"]) - all_in_cost,
                         seat.get("log_growth_rank"),
                         fraction, stake, shares,
                         json.dumps(probabilities, ensure_ascii=False),
