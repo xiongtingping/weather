@@ -47,6 +47,7 @@ from bayes_basket_target.eccc_geps_archive import (  # noqa: E402
 from bayes_basket_target.dwd_icon_eps_archive import (  # noqa: E402
     RUN_CYCLE_HOUR_BY_LEAD as ICON_RUN_CYCLE_HOUR_BY_LEAD,
     capture_icon_eps_station_days,
+    ingest_icon_eps_station_days,
 )
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
     MIN_CURVE_POINTS,
@@ -891,10 +892,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         # instead of waiting for someone to run a backfill.  Ingest is a
         # frozen-fact replay: rows already present are verified, not repeated,
         # and a conflicting re-read fails closed.
+        # ICON must be in this list: DWD keeps no archive, so capture time is
+        # the only moment its training history can be written at all.
         ingest_by_path = [
             (args.gefs_output, ingest_gefs_station_days),
             (args.ecmwf_output, ingest_ecmwf_station_days),
             (args.eccc_output, ingest_geps_station_days),
+            (args.icon_output, ingest_icon_eps_station_days),
         ]
         database = args.db.expanduser().resolve(strict=True)
         ingress: dict[str, Any] = {}

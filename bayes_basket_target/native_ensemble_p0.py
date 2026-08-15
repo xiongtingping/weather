@@ -372,7 +372,10 @@ def _calibrated_system_probability(
     )
     if (
         not -20.0 <= bias <= 20.0
-        or not 0.25 <= spread <= 4.0
+        # The upper bound is the trainer's spread-factor cap in
+        # native_ensemble_oos.py, not an independent judgement; the two must
+        # move together or every artifact fitted at the cap is rejected here.
+        or not 0.25 <= spread <= 5.0
         or not 0.0 < reliability <= 1.0
     ):
         raise ContractError(
