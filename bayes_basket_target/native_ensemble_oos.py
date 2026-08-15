@@ -2654,6 +2654,7 @@ def build_native_ensemble_oos(
         }
     evaluations: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     readiness = []
+    ready_system_evaluations: list[dict[str, Any]] = []
     # A no-live bootstrap report may intentionally scope itself to retained
     # Open-Meteo republisher systems.  Do not evaluate unrelated official
     # scopes with the 2-train/1-holdout bootstrap window: official archives
@@ -2697,6 +2698,28 @@ def build_native_ensemble_oos(
             min_holdout_days=scope_min_holdout,
         )
         evaluations[scope] = result
+        if result["state"] == "OOS_READY":
+            # A system's calibration is a property of the system, not of
+            # whether it currently holds a seat.  Persisting only the
+            # systems inside a winning candidate froze every loser's
+            # artifact at the vintage of its last win: ZUUU's GEFS stopped
+            # being selected and kept serving a spread factor truncated by
+            # the 3.0 bound that aaecfc76 raised to 5.0.  Measured
+            # 2026-08-15, 46 live-vocabulary scopes across 21 stations were
+            # serving a distribution a median 1.67x too narrow, and no
+            # refit could reach them, because refitting only reached
+            # winners.  A loser is not out of service: any bound selection
+            # row that names it still puts it into P0 -- ZUUU's did, at
+            # 24% -- and it rejoins the contest later carrying whatever it
+            # last stored.  Its parameters have to stay current either way.
+            ready_system_evaluations.append({
+                "ensemble_system_id": scope[0],
+                "season_bin": scope[1],
+                "lead_bucket": scope[2],
+                "run_cycle": scope[3],
+                "settlement_definition": cases[0]["settlement_definition"],
+                "evaluation": result,
+            })
         readiness.append({
             "ensemble_system_id": scope[0],
             "season_bin": scope[1],
@@ -3264,6 +3287,15 @@ def build_native_ensemble_oos(
                 row["run_cycle"],
             ),
         ),
+        "ready_system_evaluations": sorted(
+            ready_system_evaluations,
+            key=lambda row: (
+                row["ensemble_system_id"],
+                row["season_bin"],
+                row["lead_bucket"],
+                row["run_cycle"],
+            ),
+        ),
         "cross_candidates": cross_candidates,
         "probability_pathway": P0_PROBABILITY_PATHWAY,
         "formal_p0_eligible": False,
@@ -3591,6 +3623,272 @@ def persist_native_ensemble_oos_evaluations(
     }
 
 
+def _system_artifact_identity(
+    *,
+    system_id: str,
+    system_run_cycle: str,
+    scope: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+    activated_at_utc: str,
+    valid_until: str,
+) -> dict[str, Any]:
+    """The append-only calibration row for one system in one scope.
+
+    Shared by the two callers that write it: the winners inside a cross
+    candidate, and every other system whose evaluation reached OOS_READY.
+    Both must produce byte-identical rows for the same inputs -- a second
+    copy of this construction is how a bound that has already been
+    corrected once comes back (see the ICON spread bound, 7ec2e22f).
+
+    ``scope`` supplies station/season/lead/settlement and the threshold
+    profile; a cross candidate and the report itself both satisfy it.
+    """
+
+    if not system_run_cycle:
+        raise ContractError(
+            "native_ensemble_oos_run_cycle_mapping_missing"
+        )
+    parameters = evaluation["parameters"]
+    transport_provider_id = str(
+        evaluation["transport_provider_id"]
+    )
+    official_native_archive = (
+        transport_provider_id != "OPEN_METEO"
+    )
+    train_source_counts = evaluation[
+        "train_source_counts"
+    ]
+    source_authority_scopes = (
+        ["CALIBRATION_TRAIN_ONLY"]
+        if official_native_archive
+        else sorted({
+            *(
+                ["CALIBRATION_TRAIN_ONLY"]
+                if int(train_source_counts[
+                    "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY"
+                ]) > 0
+                else []
+            ),
+            *(
+                ["CALIBRATION_TRAIN_ONLY"]
+                if int(train_source_counts.get(
+                    HISTORICAL_REPUBLISHER_RECEIPT,
+                    0,
+                )) > 0
+                else []
+            ),
+            *(
+                ["PRODUCTION_NO_LIVE_CANDIDATE"]
+                if int(train_source_counts[
+                    "FORWARD_LOCAL_RECEIPT"
+                ]) > 0
+                else []
+            ),
+        })
+    )
+    system_identity = {
+        "ensemble_system_id": system_id,
+        "station_id": scope["station_id"],
+        "season_bin": scope["season_bin"],
+        "lead_bucket": scope["lead_bucket"],
+        "run_cycle": system_run_cycle,
+        "settlement_definition": scope["settlement_definition"],
+        "calibration_method": (
+            "member_bias_spread_reliability_v1"
+        ),
+        "bias_parameters_json": _json({
+            "bias_c": parameters["bias_c"],
+        }),
+        "spread_parameters_json": _json({
+            "spread_factor": parameters["spread_factor"],
+            "train_rmse_c": parameters["train_rmse_c"],
+            "train_mean_spread_c": parameters[
+                "train_mean_spread_c"
+            ],
+        }),
+        "reliability_parameters_json": _json({
+            "reliability_weight": parameters[
+                "reliability_weight"
+            ],
+            "climate_samples_c": parameters[
+                "climate_samples_c"
+            ],
+            "train_source_counts": evaluation[
+                "train_source_counts"
+            ],
+            "holdout_source_class": evaluation[
+                "holdout_source_class"
+            ],
+            "oos_event_temporal_scope": evaluation.get(
+                "oos_event_temporal_scope"
+            ),
+            "future_event_count": int(
+                evaluation.get("future_event_count", 0)
+            ),
+            "transport_provider_id":
+                transport_provider_id,
+            "source_authority_scopes":
+                source_authority_scopes,
+            "official_native_archive":
+                official_native_archive,
+            "oos_threshold_profile": scope["threshold_profile"],
+            "oos_min_train_days": scope["min_train_days"],
+            "oos_min_holdout_days": scope["min_holdout_days"],
+            "formal_promotion_min_train_days": scope["formal_promotion_min_train_days"],
+            "formal_promotion_min_holdout_days": scope["formal_promotion_min_holdout_days"],
+            "formal_p0_eligible": False,
+        }),
+        "member_qc_contract_sha256": content_sha256({
+            "expected_complete_member_set": True,
+            "transport_provider_id":
+                transport_provider_id,
+            "source_authority_scopes":
+                source_authority_scopes,
+            "aggregator_or_republisher": (
+                transport_provider_id == "OPEN_METEO"
+            ),
+            "official_native_archive":
+                official_native_archive,
+            "native_run_init_required":
+                official_native_archive,
+            "retrospective_archive_training_only": (
+                not official_native_archive
+            ),
+            "retrospective_archive_holdout_eligible": (
+                evaluation.get("holdout_source_class")
+                == HISTORICAL_REPUBLISHER_RECEIPT
+            ),
+            "offline_chronological_oos_eligible":
+                official_native_archive,
+            # These two facts are native-archive timing facts;
+            # do not assert them for a retrospective Open-Meteo
+            # packet.  The republisher path is instead bound by
+            # its explicit CLOSED_HISTORICAL_AWC_TRUTH contract.
+            "holdout_snapshot_before_day_end": (
+                official_native_archive
+            ),
+            "holdout_snapshot_before_truth_commit": (
+                official_native_archive
+            ),
+            "historical_republisher_contract_bound": (
+                evaluation.get("holdout_source_class")
+                == HISTORICAL_REPUBLISHER_RECEIPT
+            ),
+        }),
+        "train_start_date": evaluation["train_start_date"],
+        "train_end_date": evaluation["train_end_date"],
+        "holdout_start_date": evaluation[
+            "holdout_start_date"
+        ],
+        "holdout_end_date": evaluation["holdout_end_date"],
+        "rolling_origin_fold_count": int(
+            evaluation["holdout_n"]
+        ),
+        "effective_sample_n": float(evaluation["train_n"]),
+        "oos_metrics_json": _json(
+            evaluation["oos_metrics"]
+        ),
+        "valid_from_utc": activated_at_utc,
+        "valid_until_utc": valid_until,
+    }
+    return system_identity
+
+
+def _activate_system_artifact(
+    conn: sqlite3.Connection,
+    *,
+    artifact_id: str,
+    station_id: str,
+    system_id: str,
+    season_bin: str,
+    lead_bucket: str,
+    system_run_cycle: str,
+    settlement_definition: str,
+    activated_at_utc: str,
+    valid_until: str,
+) -> tuple[str, int]:
+    """Point the scope's activation at ``artifact_id``, or reuse it.
+
+    Returns the activation id and how many rows this wrote, so a caller can
+    keep its own counts.  Generation only advances when the artifact
+    actually changed, which keeps a re-persist of identical evidence from
+    inflating the chain the P0 compile reads newest-first.
+    """
+
+    existing = conn.execute(
+        "SELECT activation_id,artifact_id "
+        "FROM calibration_native_ensemble_activation "
+        "WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+        "AND station_id=? AND ensemble_system_id_or_star=? "
+        "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
+        "AND available_system_set_hash_or_star='*' "
+        "AND run_cycle_by_system_json=? "
+        "AND run_cycle_by_system_sha256=? "
+        "ORDER BY generation DESC LIMIT 1",
+        (
+            station_id,
+            system_id,
+            season_bin,
+            lead_bucket,
+            system_run_cycle,
+            _json({system_id: system_run_cycle}),
+            content_sha256({system_id: system_run_cycle}),
+        ),
+    ).fetchone()
+    if existing is not None and str(existing[1]) == artifact_id:
+        return str(existing[0]), 0
+    generation = 1 + int(conn.execute(
+        "SELECT COALESCE(MAX(generation),0) "
+        "FROM calibration_native_ensemble_activation "
+        "WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+        "AND station_id=? AND ensemble_system_id_or_star=? "
+        "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
+        "AND available_system_set_hash_or_star='*'",
+        (
+            station_id,
+            system_id,
+            season_bin,
+            lead_bucket,
+            system_run_cycle,
+        ),
+    ).fetchone()[0])
+    identity = {
+        "artifact_kind": "NATIVE_ENSEMBLE_SYSTEM_CALIBRATION",
+        "artifact_id": artifact_id,
+        "station_id": station_id,
+        "ensemble_system_id_or_star": system_id,
+        "season_bin": season_bin,
+        "lead_bucket": lead_bucket,
+        "run_cycle": system_run_cycle,
+        "run_cycle_by_system_json": _json({
+            system_id: system_run_cycle,
+        }),
+        "run_cycle_by_system_sha256": content_sha256({
+            system_id: system_run_cycle,
+        }),
+        "settlement_definition": settlement_definition,
+        "available_system_set_hash_or_star": "*",
+        "generation": generation,
+        "valid_from_utc": activated_at_utc,
+        "valid_until_utc": valid_until,
+        "activated_at_utc": activated_at_utc,
+        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+    }
+    sha = content_sha256(identity)
+    activation_id = "native-activation-" + sha[:24]
+    written = _insert_content_row(
+        conn,
+        table="calibration_native_ensemble_activation",
+        primary_key="activation_id",
+        row={
+            "activation_id": activation_id,
+            **identity,
+            "content_sha256": sha,
+        },
+    )
+    return activation_id, written
+
+
 def persist_native_ensemble_oos(
     conn: sqlite3.Connection,
     report: Mapping[str, Any],
@@ -3628,6 +3926,62 @@ def persist_native_ensemble_oos(
                 _manage_savepoint=False,
             )["oos_evaluations"]
         )
+        # Every system that reached OOS_READY gets its calibration stored,
+        # not only the ones a candidate seated.  Written before the
+        # candidates so a system that is both ready and seated ends up with
+        # the candidate's row: identical inputs give an identical sha, so
+        # the second write is a no-op rather than a duplicate.
+        for ready in report.get("ready_system_evaluations") or []:
+            ready_identity = _system_artifact_identity(
+                system_id=str(ready["ensemble_system_id"]),
+                system_run_cycle=str(ready["run_cycle"]),
+                scope={
+                    "station_id": report["station_id"],
+                    "season_bin": ready["season_bin"],
+                    "lead_bucket": ready["lead_bucket"],
+                    "settlement_definition": ready[
+                        "settlement_definition"
+                    ],
+                    "threshold_profile": report["threshold_profile"],
+                    "min_train_days": report["min_train_days"],
+                    "min_holdout_days": report["min_holdout_days"],
+                    "formal_promotion_min_train_days": report[
+                        "formal_promotion_min_train_days"
+                    ],
+                    "formal_promotion_min_holdout_days": report[
+                        "formal_promotion_min_holdout_days"
+                    ],
+                },
+                evaluation=ready["evaluation"],
+                activated_at_utc=activated_at_utc,
+                valid_until=valid_until,
+            )
+            ready_sha = content_sha256(ready_identity)
+            ready_artifact_id = "native-system-artifact-" + ready_sha[:24]
+            counts["system_artifacts"] += _insert_content_row(
+                conn,
+                table="calibration_native_ensemble_system_artifact",
+                primary_key="system_artifact_id",
+                row={
+                    "system_artifact_id": ready_artifact_id,
+                    **ready_identity,
+                    "content_sha256": ready_sha,
+                },
+            )
+            counts["activations"] += _activate_system_artifact(
+                conn,
+                artifact_id=ready_artifact_id,
+                station_id=str(report["station_id"]),
+                system_id=str(ready["ensemble_system_id"]),
+                season_bin=str(ready["season_bin"]),
+                lead_bucket=str(ready["lead_bucket"]),
+                system_run_cycle=str(ready["run_cycle"]),
+                settlement_definition=str(
+                    ready["settlement_definition"]
+                ),
+                activated_at_utc=activated_at_utc,
+                valid_until=valid_until,
+            )[1]
         for candidate in report.get("cross_candidates") or []:
             cycle_by_system, cycle_mapping_sha, candidate_run_cycle, (
                 _candidate_run_cycle_scope
@@ -3706,165 +4060,14 @@ def persist_native_ensemble_oos(
                 candidate["system_evaluations"].items()
             ):
                 system_run_cycle = cycle_by_system.get(system_id)
-                if not system_run_cycle:
-                    raise ContractError(
-                        "native_ensemble_oos_run_cycle_mapping_missing"
-                    )
-                parameters = evaluation["parameters"]
-                transport_provider_id = str(
-                    evaluation["transport_provider_id"]
+                system_identity = _system_artifact_identity(
+                    system_id=system_id,
+                    system_run_cycle=system_run_cycle,
+                    scope=candidate,
+                    evaluation=evaluation,
+                    activated_at_utc=activated_at_utc,
+                    valid_until=valid_until,
                 )
-                official_native_archive = (
-                    transport_provider_id != "OPEN_METEO"
-                )
-                train_source_counts = evaluation[
-                    "train_source_counts"
-                ]
-                source_authority_scopes = (
-                    ["CALIBRATION_TRAIN_ONLY"]
-                    if official_native_archive
-                    else sorted({
-                        *(
-                            ["CALIBRATION_TRAIN_ONLY"]
-                            if int(train_source_counts[
-                                "RETROSPECTIVE_ARCHIVE_TRAIN_ONLY"
-                            ]) > 0
-                            else []
-                        ),
-                        *(
-                            ["CALIBRATION_TRAIN_ONLY"]
-                            if int(train_source_counts.get(
-                                HISTORICAL_REPUBLISHER_RECEIPT,
-                                0,
-                            )) > 0
-                            else []
-                        ),
-                        *(
-                            ["PRODUCTION_NO_LIVE_CANDIDATE"]
-                            if int(train_source_counts[
-                                "FORWARD_LOCAL_RECEIPT"
-                            ]) > 0
-                            else []
-                        ),
-                    })
-                )
-                system_identity = {
-                    "ensemble_system_id": system_id,
-                    "station_id": candidate["station_id"],
-                    "season_bin": candidate["season_bin"],
-                    "lead_bucket": candidate["lead_bucket"],
-                    "run_cycle": system_run_cycle,
-                    "settlement_definition": candidate[
-                        "settlement_definition"
-                    ],
-                    "calibration_method": (
-                        "member_bias_spread_reliability_v1"
-                    ),
-                    "bias_parameters_json": _json({
-                        "bias_c": parameters["bias_c"],
-                    }),
-                    "spread_parameters_json": _json({
-                        "spread_factor": parameters["spread_factor"],
-                        "train_rmse_c": parameters["train_rmse_c"],
-                        "train_mean_spread_c": parameters[
-                            "train_mean_spread_c"
-                        ],
-                    }),
-                    "reliability_parameters_json": _json({
-                        "reliability_weight": parameters[
-                            "reliability_weight"
-                        ],
-                        "climate_samples_c": parameters[
-                            "climate_samples_c"
-                        ],
-                        "train_source_counts": evaluation[
-                            "train_source_counts"
-                        ],
-                        "holdout_source_class": evaluation[
-                            "holdout_source_class"
-                        ],
-                        "oos_event_temporal_scope": evaluation.get(
-                            "oos_event_temporal_scope"
-                        ),
-                        "future_event_count": int(
-                            evaluation.get("future_event_count", 0)
-                        ),
-                        "transport_provider_id":
-                            transport_provider_id,
-                        "source_authority_scopes":
-                            source_authority_scopes,
-                        "official_native_archive":
-                            official_native_archive,
-                        "oos_threshold_profile": candidate[
-                            "threshold_profile"
-                        ],
-                        "oos_min_train_days": candidate[
-                            "min_train_days"
-                        ],
-                        "oos_min_holdout_days": candidate[
-                            "min_holdout_days"
-                        ],
-                        "formal_promotion_min_train_days": candidate[
-                            "formal_promotion_min_train_days"
-                        ],
-                        "formal_promotion_min_holdout_days": candidate[
-                            "formal_promotion_min_holdout_days"
-                        ],
-                        "formal_p0_eligible": False,
-                    }),
-                    "member_qc_contract_sha256": content_sha256({
-                        "expected_complete_member_set": True,
-                        "transport_provider_id":
-                            transport_provider_id,
-                        "source_authority_scopes":
-                            source_authority_scopes,
-                        "aggregator_or_republisher": (
-                            transport_provider_id == "OPEN_METEO"
-                        ),
-                        "official_native_archive":
-                            official_native_archive,
-                        "native_run_init_required":
-                            official_native_archive,
-                        "retrospective_archive_training_only": (
-                            not official_native_archive
-                        ),
-                        "retrospective_archive_holdout_eligible": (
-                            evaluation.get("holdout_source_class")
-                            == HISTORICAL_REPUBLISHER_RECEIPT
-                        ),
-                        "offline_chronological_oos_eligible":
-                            official_native_archive,
-                        # These two facts are native-archive timing facts;
-                        # do not assert them for a retrospective Open-Meteo
-                        # packet.  The republisher path is instead bound by
-                        # its explicit CLOSED_HISTORICAL_AWC_TRUTH contract.
-                        "holdout_snapshot_before_day_end": (
-                            official_native_archive
-                        ),
-                        "holdout_snapshot_before_truth_commit": (
-                            official_native_archive
-                        ),
-                        "historical_republisher_contract_bound": (
-                            evaluation.get("holdout_source_class")
-                            == HISTORICAL_REPUBLISHER_RECEIPT
-                        ),
-                    }),
-                    "train_start_date": evaluation["train_start_date"],
-                    "train_end_date": evaluation["train_end_date"],
-                    "holdout_start_date": evaluation[
-                        "holdout_start_date"
-                    ],
-                    "holdout_end_date": evaluation["holdout_end_date"],
-                    "rolling_origin_fold_count": int(
-                        evaluation["holdout_n"]
-                    ),
-                    "effective_sample_n": float(evaluation["train_n"]),
-                    "oos_metrics_json": _json(
-                        evaluation["oos_metrics"]
-                    ),
-                    "valid_from_utc": activated_at_utc,
-                    "valid_until_utc": valid_until,
-                }
                 system_sha = content_sha256(system_identity)
                 system_row = {
                     "system_artifact_id": (
