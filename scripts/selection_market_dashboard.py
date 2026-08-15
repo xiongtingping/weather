@@ -19,9 +19,10 @@ the market speaks in prices.
 Read-only, and it reads the paper ledger rather than recomputing anything,
 so what it shows is exactly what was scored.
 
-    python3 scripts/selection_market_dashboard.py            # serve :8788
-    python3 scripts/selection_market_dashboard.py --json
-    python3 scripts/selection_market_dashboard.py --html-out page.html
+Data source only -- the single frontend is scripts/calibration_dashboard.py,
+which imports ``build_payload`` from here and renders every section.
+
+    python3 scripts/selection_market_dashboard.py --json   # inspect payload
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ import sqlite3
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -478,209 +478,25 @@ def build_payload(db: Path) -> dict[str, Any]:
     }
 
 
-HTML = """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>选桶 vs 市场</title><style>
-:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--text:#e6e9ef;--muted:#9aa4b8;
---green:#3fb950;--amber:#d29922;--red:#f85149;--blue:#58a6ff;--purple:#bc8cff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
-font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
-.wrap{max-width:1280px;margin:0 auto;padding:26px 18px 70px}
-h1{font-size:23px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 6px}
-.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:11px;
-padding:15px 17px;margin-bottom:12px}
-.grid{display:grid;gap:12px}
-.g3{grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
-.g4{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
-.big{font-size:27px;font-weight:650;letter-spacing:-.5px}
-.muted{color:var(--muted);font-size:13px}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px}
-.above{background:rgba(188,140,255,.16);color:#d2a8ff}
-.below{background:rgba(210,153,34,.16);color:#e3b341}
-.aligned{background:rgba(63,185,80,.14);color:#7ee787}
-.dust{background:rgba(248,81,73,.15);color:#ff7b72}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th{text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;
-padding:7px 9px;border-bottom:1px solid var(--line);position:sticky;top:0;
-background:var(--card)}
-td{padding:7px 9px;border-bottom:1px solid rgba(38,43,54,.55)}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-.pos{color:#7ee787}.neg{color:#ff7b72}
-.why{background:rgba(88,166,255,.07);border-left:2px solid var(--blue);
-padding:9px 13px;border-radius:0 7px 7px 0;color:#c9d4e5;font-size:13.4px;margin:9px 0}
-.scroll{max-height:560px;overflow:auto}
-.bar{display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:9px}
-.bar>i{display:block}
-footer{margin-top:32px;color:var(--muted);font-size:12.5px;text-align:center}
-</style></head><body><div class="wrap" id="app"></div><script>
-const D=__PAYLOAD__;
-const h=s=>String(s==null?"":s);
-const f=(v,d=2)=>v==null?"—":Number(v).toFixed(d);
-const pct=v=>v==null?"—":(v*100).toFixed(1)+"%";
-const SIDE={above:["偏上","我们比市场看得更热"],below:["偏下","我们比市场看得更冷"],
- aligned:["一致","与市场盘口基本同view"],unknown:["未知","缺定价"]};
-
-function head(){
-  const s=D.sides||{};const tot=D.position_count||1;
-  const seg=(k,c)=>`<i style="width:${100*(s[k]||0)/tot}%;background:${c}"></i>`;
-  return `<h1>选桶 vs 市场盘口</h1>
-  <p class="sub">每一手座位相对市场的位置，以及结算之后它挣到了什么。
-  “偏上/偏下”比的是模型的质量中心与市场（按全含费卖价归一）的质量中心，单位是桶。</p>
-  <div class="card"><div style="display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
-    <div><div class="muted">记录仓位</div><div class="big">${D.position_count}</div></div>
-    <div><div class="muted">覆盖日数</div><div class="big">${D.day_count}</div></div>
-    <div><div class="muted">最新事件日</div><div class="big">${h(D.latest_day)}</div></div>
-    <div style="flex:1;min-width:260px">
-      <div class="muted">相对市场的位置</div>
-      <div class="bar">${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}${seg("unknown","#39414f")}</div>
-      <div class="muted" style="margin-top:6px">
-        <span class="pill above">偏上 ${s.above||0}</span>
-        <span class="pill aligned">一致 ${s.aligned||0}</span>
-        <span class="pill below">偏下 ${s.below||0}</span></div>
-    </div></div></div>`;
-}
-
-function stages(){
-  const cards=Object.entries(D.stages).map(([st,v])=>{
-    const c=v.credible||{},d=v.dust_offer||{},sd=v.sides||{};
-    if(!c.settled_count&&!d.settled_count&&!(v.all||{}).position_count)
-      return `<div class="card"><b>${st}</b><div class="muted">无记录</div></div>`;
-    const row=(label,x,cls)=>x.settled_count?
-      `<tr><td>${label}</td><td>${x.settled_count}</td>
-       <td>${pct(x.hit_rate)}</td><td>${pct(x.claimed_win_probability_mean)}</td>
-       <td>${f(x.calibration_ratio)}×</td><td>${f(x.odds_mean)}x</td>
-       <td class="${x.pnl_usdc>=0?'pos':'neg'}">${x.pnl_usdc>=0?"+":""}${f(x.pnl_usdc)}U</td></tr>`
-      :`<tr><td>${label}</td><td colspan="6" class="muted">无已结算</td></tr>`;
-    return `<div class="card">
-      <div style="display:flex;align-items:baseline;gap:10px">
-        <b style="font-size:16px">${st}</b>
-        <span class="muted">${(v.all||{}).position_count||0} 仓位 ·
-          ${(v.all||{}).settled_count||0} 已结算</span>
-        <span style="flex:1"></span>
-        <span class="pill above">偏上 ${sd.above||0}</span>
-        <span class="pill aligned">一致 ${sd.aligned||0}</span>
-        <span class="pill below">偏下 ${sd.below||0}</span>
-      </div>
-      <table style="margin-top:10px"><thead><tr>
-        <th>成交类别</th><th>已结算</th><th>命中率</th><th>声称胜率</th>
-        <th>实现/声称</th><th>平均赔率</th><th>纸面盈亏</th>
-      </tr></thead><tbody>
-        ${row("可信成交",c)}${row("灰尘报价",d)}
-      </tbody></table></div>`;
-  }).join("");
-  return `<h2>各阶段战绩</h2>
-  <p class="sub">“灰尘报价”指整篮成本不足 1 分——多半是最小报价单位上的单边挂单，
-  不是真能成交的价格，所以与可信成交分开统计，不让它决定表头数字。</p>
-  <div class="why"><b>怎么读：</b>「实现/声称」是命中率除以声称胜率——
-  1.00× 表示概率说得准，低于 1 表示系统性高估。「平均赔率」是 (1−成本)/成本，
-  4.0x 意味着押 1 块赢 4 块。两者要一起看：高赔率低命中是彩票，
-  高命中低赔率是收割，都合法，但校准比必须接近 1。</div>
-  <div class="grid g3">${cards}</div>`;
-}
-
-function anomalies(){
-  if(!D.anomalies.length) return `<h2>异常盘口</h2>
-    <div class="card muted">未发现异常。</div>`;
-  const rows=D.anomalies.map(a=>`<tr>
-    <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
-    <td>${h(a.stage)}</td><td class="mono">${a.window.join(" + ")}</td>
-    <td class="mono">${f(a.all_in_cost,3)}</td><td>${pct(a.win_probability)}</td>
-    <td><span class="pill dust">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
-  </tr>`).join("");
-  return `<h2>异常盘口</h2>
-  <p class="sub">这些不是机会，是信号：整篮报价不足一分、或我们的声称概率超过市场定价十倍，
-  几乎总是无人出价那一侧的挂单，真下单填不满。</p>
-  <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>事件日</th><th>阶段</th><th>窗口</th><th>成本</th><th>声称</th><th>类型</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
-}
-
-function detail(){
-  const rows=D.rows.map(r=>{
-    const [lab]=SIDE[r.side]||SIDE.unknown;
-    return `<tr>
-      <td class="mono">${h(r.event_date)}</td><td class="mono">${h(r.station_id)}</td>
-      <td>${h(r.stage)}</td>
-      <td class="mono">${r.window.join("+")}</td>
-      <td class="mono">${h(r.centre_bucket)}</td>
-      <td><span class="pill ${r.side}">${lab}</span>
-        <span class="muted mono">${r.lean_buckets==null?"":(r.lean_buckets>0?"+":"")+f(r.lean_buckets)}</span></td>
-      <td>${pct(r.win_probability)}</td>
-      <td class="mono">${f(r.all_in_cost,3)}</td>
-      <td class="mono">${f(r.odds)}x</td>
-      <td class="mono">${f(r.stake_usdc)}</td>
-      <td>${!r.settled?'<span class="muted">未结算</span>':
-        (r.hit?'<span class="pos">命中</span>':'<span class="neg">未中</span>')}</td>
-      <td class="mono">${r.settled_tmax_c==null?"—":f(r.settled_tmax_c,1)+"°C"}</td>
-      <td class="mono ${(r.pnl_usdc||0)>=0?'pos':'neg'}">${r.pnl_usdc==null?"—":((r.pnl_usdc>=0?"+":"")+f(r.pnl_usdc))}</td>
-    </tr>`;
-  }).join("");
-  return `<h2>逐笔明细</h2>
-  <p class="sub">“位置”列的数字是模型中心减市场中心，单位是桶：正数=我们更热，负数=更冷。</p>
-  <div class="card scroll"><table><thead><tr>
-    <th>事件日</th><th>站点</th><th>阶段</th><th>窗口</th><th>横梁</th><th>位置</th>
-    <th>胜率</th><th>成本</th><th>赔率</th><th>投入</th><th>结果</th><th>实测</th><th>盈亏</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
-}
-
-document.getElementById("app").innerHTML =
-  head()+stages()+anomalies()+detail()+
-  `<footer>生成于 ${h(D.generated_at_utc)} · 只读页面 · 数据来自纸面账本</footer>`;
-</script></body></html>"""
-
-
-def render_html(payload: dict[str, Any]) -> str:
-    return HTML.replace(
-        "__PAYLOAD__", json.dumps(payload, ensure_ascii=False)
-    )
-
-
-def serve(db: Path, port: int) -> None:
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
-            if self.path.startswith("/api"):
-                body = json.dumps(
-                    build_payload(db), ensure_ascii=False
-                ).encode()
-                kind = "application/json; charset=utf-8"
-            else:
-                body = render_html(build_payload(db)).encode()
-                kind = "text/html; charset=utf-8"
-            self.send_response(200)
-            self.send_header("Content-Type", kind)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *_a: Any) -> None:
-            return
-
-    print(f"选桶看板: http://127.0.0.1:{port}/  (Ctrl-C 停止)")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+# This module renders nothing.  There is exactly one frontend (user ruling,
+# 2026-08-15): every section lives in scripts/calibration_dashboard.py, which
+# imports build_payload from here.  A second page meant reading one thing in
+# two places, so the serving and templating that used to live here are gone
+# rather than merely unused.
 
 
 def main() -> int:
+    """Print the payload.  Rendering belongs to the one dashboard."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--port", type=int, default=8788)
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--html-out", type=Path)
+    parser.add_argument("--json", action="store_true", default=True)
     args = parser.parse_args()
-    database = args.db.expanduser().resolve(strict=True)
-    if args.json:
-        print(json.dumps(
-            build_payload(database), ensure_ascii=False, sort_keys=True
-        ))
-        return 0
-    if args.html_out:
-        args.html_out.write_text(
-            render_html(build_payload(database)), encoding="utf-8"
-        )
-        print(str(args.html_out))
-        return 0
-    serve(database, args.port)
+    print(json.dumps(
+        build_payload(args.db.expanduser().resolve(strict=True)),
+        ensure_ascii=False,
+        sort_keys=True,
+    ))
     return 0
 
 
