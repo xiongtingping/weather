@@ -48,6 +48,12 @@ INITIAL_CAPITAL_USDC = 1000.0
 DUST_COST_FLOOR = 0.01
 # A lean smaller than this is the same view, not a disagreement.
 LEAN_TOLERANCE_BUCKETS = 0.35
+# Everything before this event date belongs to a different strategy: the
+# ladder floor, the dispersion cap and the probability-following rebalance
+# all landed on 2026-08-15, so earlier seats were chosen by rules that no
+# longer run and averaging them in would describe a system that no longer
+# exists.
+STATS_START_EVENT_DATE = "2026-08-15"
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -84,6 +90,8 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " ORDER BY p.event_date DESC, p.station_id, p.stage"
     )
     for r in query:
+        if str(r[1]) < STATS_START_EVENT_DATE:
+            continue
         probabilities = json.loads(r[10])
         prices = json.loads(r[11])
         ordinals = {
@@ -198,6 +206,121 @@ def build_payload(db: Path) -> dict[str, Any]:
         if r["dust_offer"]
         or (r["all_in_cost"] > 0 and r["win_probability"] / r["all_in_cost"] > 10.0)
     ]
+    # How the seat moved as evidence arrived: the same station-day read at
+    # each stage it reached, so a widening, a shift or a hold is visible as
+    # one line rather than three rows to cross-reference.
+    scopes: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (row["station_id"], row["event_date"])
+        scopes.setdefault(key, {})[row["stage"]] = row
+    evolution = []
+    for (station, day), by_stage in sorted(
+        scopes.items(), key=lambda kv: (kv[0][1], kv[0][0]), reverse=True
+    ):
+        steps = []
+        for stage in ("P0", "P0-M", "P1"):
+            row = by_stage.get(stage)
+            if row is None:
+                steps.append({"stage": stage, "present": False})
+                continue
+            steps.append({
+                "stage": stage,
+                "present": True,
+                "window": row["window"],
+                "window_size": row["window_size"],
+                "centre_bucket": row["centre_bucket"],
+                "win_probability": row["win_probability"],
+                "all_in_cost": row["all_in_cost"],
+                "side": row["side"],
+                "lean_buckets": row["lean_buckets"],
+                "hit": row["hit"],
+                "pnl_usdc": row["pnl_usdc"],
+                "dust_offer": row["dust_offer"],
+            })
+        seen = [s for s in steps if s.get("present")]
+        first = seen[0]["window"] if seen else []
+        last = seen[-1]["window"] if seen else []
+        evolution.append({
+            "station_id": station,
+            "event_date": day,
+            "steps": steps,
+            "stage_count": len(seen),
+            # Did the ladder move at all, and which way?
+            "window_changed": first != last,
+            "width_delta": (
+                (len(last) - len(first)) if seen else 0
+            ),
+            "settled_tmax_c": next(
+                (s.get("settled_tmax_c") for s in [
+                    by_stage.get(x) or {} for x in ("P1", "P0-M", "P0")
+                ] if s.get("settled_tmax_c") is not None),
+                None,
+            ),
+        })
+    # Every registered station, not only the ones that got a seat.  A station
+    # missing from the ledger is the more interesting row: it means the
+    # objective looked and did not sit, or never got a priced book to look
+    # at, and that has to be visible rather than absent.
+    latest_day = max((r["event_date"] for r in rows), default=None)
+    roster = []
+    registered = [
+        str(row[0])
+        for row in conn.execute(
+            "SELECT station_id FROM calibration_station_registry"
+            " ORDER BY station_id"
+        )
+    ]
+    seated = {
+        (r["station_id"], r["stage"]): r
+        for r in rows
+        if latest_day and r["event_date"] == latest_day
+    }
+    for station in registered:
+        entry: dict[str, Any] = {"station_id": station, "stages": {}}
+        for stage in ("P0", "P0-M", "P1"):
+            row = seated.get((station, stage))
+            entry["stages"][stage] = (
+                None
+                if row is None
+                else {
+                    "window": row["window"],
+                    "window_size": row["window_size"],
+                    "centre_bucket": row["centre_bucket"],
+                    "win_probability": row["win_probability"],
+                    "all_in_cost": row["all_in_cost"],
+                    "odds": row["odds"],
+                    "side": row["side"],
+                    "lean_buckets": row["lean_buckets"],
+                    "stake_usdc": row["stake_usdc"],
+                    "hit": row["hit"],
+                    "pnl_usdc": row["pnl_usdc"],
+                    "dust_offer": row["dust_offer"],
+                }
+            )
+        entry["seated_stage_count"] = sum(
+            1 for v in entry["stages"].values() if v is not None
+        )
+        # Why a station has nothing: the ledger records a probability
+        # snapshot for it or it does not, and a priced book at that moment
+        # or not.  Naming which is missing is the difference between "the
+        # objective declined" and "the objective never got to look".
+        if entry["seated_stage_count"] == 0 and latest_day:
+            has_probability = conn.execute(
+                "SELECT 1 FROM basket_probability_bridge_history"
+                " WHERE station_id=? AND event_date=? LIMIT 1",
+                (station, latest_day),
+            ).fetchone() is not None
+            has_book = conn.execute(
+                "SELECT 1 FROM basket_official_ws_snapshot"
+                " WHERE station_id=? AND event_date=? LIMIT 1",
+                (station, latest_day),
+            ).fetchone() is not None
+            entry["absent_reason"] = (
+                "no_probability" if not has_probability
+                else ("no_market_book" if not has_book
+                      else "no_seat_taken")
+            )
+        roster.append(entry)
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",
@@ -210,6 +333,10 @@ def build_payload(db: Path) -> dict[str, Any]:
         "sides": dict(by_side),
         "stages": stages,
         "anomalies": anomalies[:40],
+        "stage_evolution": evolution[:120],
+        "station_roster": roster,
+        "roster_event_date": latest_day,
+        "stats_start_event_date": STATS_START_EVENT_DATE,
         "rows": rows[:400],
     }
 

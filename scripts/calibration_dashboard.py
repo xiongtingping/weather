@@ -611,6 +611,7 @@ padding:7px 10px;border-bottom:1px solid var(--line)}
 td{padding:9px 10px;border-bottom:1px solid rgba(38,43,54,.6);
 vertical-align:top}
 tr:last-child td{border-bottom:none}
+.scroll{max-height:520px;overflow:auto}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 .bar{height:6px;border-radius:99px;background:#232833;overflow:hidden;
 margin-top:6px}
@@ -868,8 +869,129 @@ function selection(){
   </div>`;
 }
 
+function roster(){
+  const S=D.selection||{};const rs=S.station_roster||[];
+  if(!rs.length) return "";
+  const REASON={no_probability:["无概率","这一天没有为该站算出概率"],
+    no_market_book:["无盘口","有概率但没抓到可定价的市场"],
+    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
+  const cell=(s)=>{
+    if(!s) return `<td class="muted">—</td>`;
+    const w=s.window.map(x=>x.replace("°C","").replace("°F","")).join("+");
+    const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
+    const dust=s.dust_offer?` <span class="pill red">灰尘</span>`:"";
+    return `<td><div class="mono">${w}</div><div class="muted">${(s.win_probability*100).toFixed(0)}%
+      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div></td>`;
+  };
+  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
+  const rows=rs.map(e=>{
+    const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
+    const side=any?`<span class="pill ${any.side==="below"?"amber":any.side==="aligned"?"green":""}"
+      ${any.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[any.side]}</span>`:"";
+    const note=e.seated_stage_count?"":
+      `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
+    return `<tr>
+      <td class="mono">${h(e.station_id)}</td>
+      ${cell(e.stages.P0)}${cell(e.stages["P0-M"])}${cell(e.stages.P1)}
+      <td>${side}${note}</td></tr>`;
+  }).join("");
+  const legend=Object.entries(REASON).map(([k,v])=>
+    `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
+  return `<h2>八、逐站明细（${h(S.roster_event_date)}）</h2>
+  <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
+  每格上行是桶，下行是胜率 @ 成本 · 赔率。</p>
+  <div class="why">${legend}</div>
+  <div class="card scroll"><table><thead><tr>
+    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th><th>位置</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function evolution(){
+  const S=D.selection||{};const ev=S.stage_evolution||[];
+  if(!ev.length) return "";
+  const cell=(s)=>{
+    if(!s.present) return `<td class="muted">—</td>`;
+    const w=s.window.map(x=>x.replace("°C","").replace("°F","")).join("+");
+    const badge=s.dust_offer?`<span class="pill red">灰尘</span>`:"";
+    const res=s.hit==null?"":(s.hit?`<span class="up">中</span>`:`<span class="down">未中</span>`);
+    return `<td><div class="mono">${w}</div>
+      <div class="muted">${(s.win_probability*100).toFixed(0)}% @ ${s.all_in_cost.toFixed(3)}
+      ${res} ${badge}</div></td>`;
+  };
+  const rows=ev.map(e=>{
+    const d=e.width_delta;
+    const move=!e.window_changed?`<span class="muted">未变</span>`
+      :(d>0?`<span class="up">加宽 +${d}</span>`:(d<0?`<span class="down">收窄 ${d}</span>`
+      :`<span style="color:#d2a8ff">平移</span>`));
+    return `<tr>
+      <td class="mono">${h(e.station_id)}</td>
+      ${cell(e.steps[0])}${cell(e.steps[1])}${cell(e.steps[2])}
+      <td>${move}</td>
+      <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
+    </tr>`;
+  }).join("");
+  return `<h2>九、三阶段选桶演变</h2>
+  <p class="sub">同一个站日在 P0（建仓）→ P0-M（TAF 确认）→ P1（实测盯盘）三个时刻各坐了哪个窗口。
+  每格上行是桶，下行是胜率 @ 成本与结果。</p>
+  <div class="why"><b>怎么看：</b>证据变多，梯子应当变窄或平移到更有把握的位置。
+  「加宽」多半是分歧扩大，「收窄」是概率收敛，「平移」是方向被后来的证据改写——
+  这三种都是概率自己走出来的，没有任何方向规则参与。</div>
+  <div class="card scroll"><table><thead><tr>
+    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th><th>梯子变化</th><th>实测</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function anomalies(){
+  const S=D.selection||{};const an=S.anomalies||[];
+  if(!an.length) return `<h2>十、异常盘口</h2>
+    <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
+  const rows=an.map(a=>`<tr>
+    <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
+    <td>${h(a.stage)}</td>
+    <td class="mono">${a.window.join(" + ")}</td>
+    <td class="mono">${a.all_in_cost.toFixed(3)}</td>
+    <td>${(a.win_probability*100).toFixed(1)}%</td>
+    <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
+  </tr>`).join("");
+  return `<h2>十、异常盘口</h2>
+  <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
+  几乎总是无人出价那侧的挂单，真下单填不满。</p>
+  <div class="card scroll"><table><thead><tr>
+    <th>站点</th><th>事件日</th><th>阶段</th><th>窗口</th><th>成本</th><th>声称</th><th>类型</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function detail(){
+  const S=D.selection||{};const rows0=S.rows||[];
+  if(!rows0.length) return "";
+  const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"未知"};
+  const rows=rows0.map(r=>`<tr>
+    <td class="mono">${h(r.event_date)}</td><td class="mono">${h(r.station_id)}</td>
+    <td>${h(r.stage)}</td>
+    <td class="mono">${r.window.map(x=>x.replace("°C","").replace("°F","")).join("+")}</td>
+    <td class="mono">${h(r.centre_bucket)}</td>
+    <td><span class="pill ${r.side==="above"?"":r.side==="below"?"amber":"green"}"
+      ${r.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[r.side]}</span>
+      <span class="muted mono">${r.lean_buckets==null?"":(r.lean_buckets>0?"+":"")+r.lean_buckets.toFixed(2)}</span></td>
+    <td>${(r.win_probability*100).toFixed(1)}%</td>
+    <td class="mono">${r.all_in_cost.toFixed(3)}</td>
+    <td class="mono">${r.odds==null?"—":r.odds.toFixed(1)+"x"}</td>
+    <td class="mono">${r.stake_usdc.toFixed(2)}</td>
+    <td>${!r.settled?'<span class="muted">未结算</span>':
+      (r.hit?'<span class="up">命中</span>':'<span class="down">未中</span>')}</td>
+    <td class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${r.pnl_usdc==null?"—":((r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2))}</td>
+  </tr>`).join("");
+  return `<h2>十一、逐笔明细</h2>
+  <p class="sub">「位置」的数字是模型中心减市场中心，单位是桶：正数=我们更热，负数=更冷。</p>
+  <div class="card scroll"><table><thead><tr>
+    <th>事件日</th><th>站点</th><th>阶段</th><th>窗口</th><th>横梁</th><th>位置</th>
+    <th>胜率</th><th>成本</th><th>赔率</th><th>投入</th><th>结果</th><th>盈亏</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() + selection() +
+  roster() + evolution() + anomalies() + detail() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 
