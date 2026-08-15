@@ -83,7 +83,16 @@ def _station_timezone(station_id: str, timezone_name: str | None) -> str:
     return str(timezone_name or STATION_TIMEZONES.get(str(station_id or "").upper()) or "UTC")
 
 
-def _unavailable(source_id: str, reason: str, *, request_url: str = "", issue_time_utc: str = "") -> dict[str, Any]:
+def _unavailable(
+    source_id: str,
+    reason: str,
+    *,
+    request_url: str = "",
+    issue_time_utc: str = "",
+    raw_taf: str = "",
+    parsed_peaks: Any = None,
+    requested_event_date: str = "",
+) -> dict[str, Any]:
     result = {
         "source_id": source_id,
         "state": "unavailable",
@@ -95,6 +104,19 @@ def _unavailable(source_id: str, reason: str, *, request_url: str = "", issue_ti
         result["request_url"] = request_url
     if issue_time_utc:
         result["issue_time_utc"] = issue_time_utc
+    # A TX that is present in the report but attributed to another local day
+    # is indistinguishable, after the fact, from a report that carried no TX
+    # at all -- both land as tx_available=0 with nothing kept.  Measured
+    # 2026-08-15: ZUUU had TAFs for 2026-08-16 with an empty tx_c and no way
+    # to tell which of the two had happened, because the raw report is
+    # hashed but never stored.  When the peak filter is what refused, keep
+    # the report and what the parser made of it.
+    if raw_taf:
+        result["raw_taf"] = raw_taf
+    if parsed_peaks is not None:
+        result["parsed_forecast_peaks"] = parsed_peaks
+    if requested_event_date:
+        result["requested_event_date"] = requested_event_date
     return result
 
 
@@ -148,7 +170,15 @@ def fetch_awc_taf_peak(
         return _unavailable(AWC_TAF_SOURCE_ID, f"taf_parse_failed:{type(exc).__name__}", request_url=request_url)
     peaks = [item for item in parsed.get("forecast_peaks") or [] if isinstance(item, Mapping) and str(item.get("event_date_local") or "") == day and _finite(item.get("temperature_c")) is not None]
     if not peaks:
-        return _unavailable(AWC_TAF_SOURCE_ID, "tx_peak_missing", request_url=request_url, issue_time_utc=issue_time)
+        return _unavailable(
+            AWC_TAF_SOURCE_ID,
+            "tx_peak_missing",
+            request_url=request_url,
+            issue_time_utc=issue_time,
+            raw_taf=raw_taf,
+            parsed_peaks=list(parsed.get("forecast_peaks") or []),
+            requested_event_date=day,
+        )
     peak = max(peaks, key=lambda item: float(item["temperature_c"]))
     row = {
         "station_id": station,
