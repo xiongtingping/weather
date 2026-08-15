@@ -1317,6 +1317,19 @@ CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_asof_idx
 ON basket_official_ws_snapshot(station_id,event_date,state,observed_at,sequence);
 
+-- The decision and cycle ledgers are read per station-day on every
+-- production cycle, and both were scanned end to end: 37k rows each, forty
+-- five stations a pass, and the pass stopped returning at all.  Measured
+-- 2026-08-15 the two scans cost 399ms and 119ms per scope against 1.6ms for
+-- the indexed snapshot read beside them, and the cycle sat in sqlite3_step
+-- for minutes writing nothing.  Both are append-only and grow every cycle,
+-- so the scan gets worse on its own.
+CREATE INDEX IF NOT EXISTS auto_trade_decisions_scope_idx
+ON auto_trade_decisions(station_id,event_date,created_at);
+
+CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_scope_idx
+ON basket_target_execution_cycles(station_id,event_date,created_at);
+
 -- Evidence-only WS cache.  This is deliberately not a production input
 -- table: it keeps only the newest complete quote evidence per target scope so
 -- a connected, non-authorizing WS cannot be mistaken for an executable
