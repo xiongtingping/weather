@@ -1280,6 +1280,15 @@ CREATE TABLE IF NOT EXISTS basket_probability_envelope (
 
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_asof_idx
 ON basket_probability_envelope(station_id,event_date,state,decision_at_utc,fresh_until_utc,stage);
+
+-- checkpoint_id is how the P0 drain re-reads a committed envelope, once per
+-- pending envelope per cycle.  It is unique-constrained above but only as
+-- part of a composite, which SQLite cannot use for a bare checkpoint_id
+-- probe, so every lookup was a full scan of a table whose rows carry
+-- megabyte lineage blobs -- 5.6 seconds per envelope at 38,830 rows on
+-- 2026-08-15, which turned a compile backlog into an unfinishable cycle.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_checkpoint_idx
+ON basket_probability_envelope(checkpoint_id);
 """ + PROBABILITY_BRIDGE_DDL + REGIME_ARTIFACT_DDL + """
 CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
   snapshot_id TEXT PRIMARY KEY,
