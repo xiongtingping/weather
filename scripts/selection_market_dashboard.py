@@ -116,18 +116,11 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         cost = float(r[7])
         win = float(r[6])
         # What the seat covers, what it costs, and what that pair is worth.
-        #
-        # Coverage is the model's mass inside the window against the market's
-        # own implied mass over the same buckets: the market quotes a book
-        # whose asks sum to more than one (the vig), so its implied coverage
-        # is normalised by that sum rather than taken raw -- otherwise every
-        # seat would look cheap by the width of the spread.
-        book_ask_total = sum(max(0.0, v) for v in prices.values())
+        # Coverage is the calibrated probability summed over the seated
+        # buckets, and the ask total is those same buckets' offers -- both
+        # about the basket, not about the whole book.
         seat_ask_total = sum(
             max(0.0, prices.get(b, 0.0)) for b in json.loads(r[4])
-        )
-        market_coverage = (
-            seat_ask_total / book_ask_total if book_ask_total > 0 else None
         )
         # EV per USDC staked.  A basket costing C pays 1 when the truth lands
         # inside it, so a unit of stake buys 1/C of payout and returns
@@ -137,12 +130,7 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         ev_per_usdc = (win / cost - 1.0) if cost > 0 else None
         stake = float(r[9])
         out.append({
-            "market_coverage": market_coverage,
-            "book_ask_total": book_ask_total,
             "seat_ask_total": seat_ask_total,
-            "coverage_gap": (
-                None if market_coverage is None else win - market_coverage
-            ),
             "ev_per_usdc": ev_per_usdc,
             "ev_usdc": (
                 None if ev_per_usdc is None else stake * ev_per_usdc
@@ -359,20 +347,13 @@ def build_payload(db: Path) -> dict[str, Any]:
         "model_coverage_mean": _mean(
             [r["win_probability"] for r in credible_rows]
         ),
-        "market_coverage_mean": _mean(
-            [r["market_coverage"] for r in credible_rows]
-        ),
-        "coverage_gap_mean": _mean(
-            [r["coverage_gap"] for r in credible_rows]
-        ),
         "window_size_mean": _mean(
             [float(r["window_size"]) for r in credible_rows]
         ),
-        "all_in_cost_mean": _mean(
-            [r["all_in_cost"] for r in credible_rows]
-        ),
-        "book_ask_total_mean": _mean(
-            [r["book_ask_total"] for r in credible_rows]
+        # The all-in ask already carries the fee, so the basket's ask total
+        # and its cost are the same number under two names.  Report it once.
+        "seat_ask_total_mean": _mean(
+            [r["seat_ask_total"] for r in credible_rows]
         ),
         "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in credible_rows]),
         "staked_usdc": sum(r["stake_usdc"] for r in settled_credible),
@@ -412,15 +393,8 @@ def build_payload(db: Path) -> dict[str, Any]:
             "model_coverage_mean": _mean(
                 [r["win_probability"] for r in subset]
             ),
-            "market_coverage_mean": _mean(
-                [r["market_coverage"] for r in subset]
-            ),
-            "coverage_gap_mean": _mean(
-                [r["coverage_gap"] for r in subset]
-            ),
-            "all_in_cost_mean": _mean([r["all_in_cost"] for r in subset]),
-            "book_ask_total_mean": _mean(
-                [r["book_ask_total"] for r in subset]
+            "seat_ask_total_mean": _mean(
+                [r["seat_ask_total"] for r in subset]
             ),
             "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in subset]),
             "odds_mean": _mean([r["odds"] for r in subset]),
@@ -442,6 +416,11 @@ def build_payload(db: Path) -> dict[str, Any]:
                 realized / expected if abs(expected) > 1e-9 else None
             ),
         })
+    # One row per station carries both its seats and its statistics: split
+    # across two tables they were the same key read twice.
+    stats_by_station = {s["station_id"]: s for s in station_stats}
+    for entry in roster:
+        entry["stats"] = stats_by_station.get(entry["station_id"])
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",

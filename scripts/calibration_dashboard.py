@@ -868,75 +868,25 @@ function coverage(){
       <span style="flex:1"></span>
       <span class="muted">${S.position_count} 仓位 · ${S.day_count} 天</span></div></div>
   <div class="grid g4">
-    <div class="card"><div class="muted">概率覆盖（模型）</div>
+    <div class="card"><div class="muted">选桶概率和</div>
       <div class="big">${p(c.model_coverage_mean)}</div>
-      <div class="muted">平均每个座位罩住的模型质量 · 平均 ${n(c.window_size_mean,1)} 桶</div></div>
-    <div class="card"><div class="muted">概率覆盖（市场）</div>
-      <div class="big">${p(c.market_coverage_mean)}</div>
-      <div class="muted">同样这些桶，按市场卖价归一后的隐含质量</div></div>
-    <div class="card"><div class="muted">覆盖差</div>
-      <div class="big ${(c.coverage_gap_mean||0)>0?"up":"down"}">${(c.coverage_gap_mean||0)>0?"+":""}${p(c.coverage_gap_mean)}</div>
-      <div class="muted">模型减市场——正数即我们认为这段被低估</div></div>
-    <div class="card"><div class="muted">整本盘口卖价合计</div>
-      <div class="big">${n(c.book_ask_total_mean,3)}</div>
-      <div class="muted">超过 1 的部分是庄家抽水 ${vig==null?"—":(vig*100).toFixed(1)+" 个点"}</div></div>
-    <div class="card"><div class="muted">平均整篮成本</div>
-      <div class="big">${n(c.all_in_cost_mean,3)}</div>
-      <div class="muted">全含费，${c.position_count} 个座位的均值</div></div>
+      <div class="muted">校准后概率在座位内的合计 · 平均 ${n(c.window_size_mean,1)} 桶</div></div>
+    <div class="card"><div class="muted">选桶卖价和</div>
+      <div class="big">${n(c.seat_ask_total_mean,3)}</div>
+      <div class="muted">同样这几个桶的全含费卖价合计，即整篮成本</div></div>
     <div class="card"><div class="muted">每 1U 的期望回报</div>
       <div class="big ${(c.ev_per_usdc_mean||0)>0?"up":"down"}">${(c.ev_per_usdc_mean||0)>0?"+":""}${n(c.ev_per_usdc_mean,2)}U</div>
-      <div class="muted">p/成本 − 1，把不同价位的座位放到同一把尺子上</div></div>
+      <div class="muted">概率和÷卖价和 − 1，把不同价位的座位放到同一把尺子上</div></div>
     <div class="card"><div class="muted">已结算：期望 vs 实得</div>
       <div class="big">${n(c.expected_usdc,2)} → <span class="${(c.realized_usdc||0)>=0?"up":"down"}">${n(c.realized_usdc,2)}</span></div>
-      <div class="muted">${c.settled_count} 笔 · 投入 ${n(c.staked_usdc,2)}U</div></div>
-    <div class="card"><div class="muted">兑现比</div>
-      <div class="big ${rr==null?"":(rr>=0.9?"up":"down")}">${rr==null?"—":n(rr,2)+"×"}</div>
-      <div class="muted">实得÷期望。长期低于 1 就是校准高估在钱上的显形</div></div>
+      <div class="muted">${c.settled_count} 笔 · 投入 ${n(c.staked_usdc,2)}U · 兑现比 ${c.realization_ratio==null?"—":n(c.realization_ratio,2)+"×"}</div></div>
   </div>
-  <div class="why"><b>为什么要看覆盖差而不只看成本：</b>
-  一个座位便宜可能是因为它罩住的概率本来就少。覆盖差把两件事拆开——
-  「我们认为这段值 39%，市场只标价 6%」才是分歧，光看 0.07 的成本看不出来。
-  期望回报统一到每 1U，是为了让 0.07 的座位和 0.7 的座位能直接比较。</div>`;
+  <div class="why"><b>三个数都只关于这个篮子：</b>概率和是我们认为它值多少，
+  卖价和是买下它要付多少，EV/U 是两者的比值减一——把 0.07 的座位和 0.7 的座位
+  放到同一把尺子上比较。兑现比（实得÷期望）是最终裁判：长期低于 1，
+  说明期望里有校准高估的水分。</div>`;
 }
 
-function stationStats(){
-  const S=D.selection||{};const st=S.station_stats||[];
-  if(!st.length) return "";
-  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const n=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-  const rows=st.map(s=>{
-    const g=s.coverage_gap_mean;
-    const cal=s.calibration_ratio;
-    return `<tr>
-      <td class="mono">${h(s.station_id)}</td>
-      <td>${s.position_count}</td>
-      <td>${n(s.window_size_mean,1)}</td>
-      <td>${p(s.model_coverage_mean)}</td>
-      <td>${p(s.market_coverage_mean)}</td>
-      <td class="${(g||0)>0?"up":"down"}">${(g||0)>0?"+":""}${p(g)}</td>
-      <td class="mono">${n(s.all_in_cost_mean)}</td>
-      <td class="mono">${n(s.book_ask_total_mean)}</td>
-      <td class="mono">${s.odds_mean==null?"—":n(s.odds_mean,1)+"x"}</td>
-      <td class="${(s.ev_per_usdc_mean||0)>0?"up":"down"}">${(s.ev_per_usdc_mean||0)>0?"+":""}${n(s.ev_per_usdc_mean,2)}</td>
-      <td class="muted">${s.sides.above}/${s.sides.aligned}/${s.sides.below}</td>
-      <td>${s.settled_count}</td>
-      <td>${s.hit_rate==null?"—":p(s.hit_rate)}</td>
-      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n(cal,2)+"×"}</td>
-      <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${s.settled_count?((s.realized_usdc>=0?"+":"")+n(s.realized_usdc,2)):"—"}</td>
-    </tr>`;
-  }).join("");
-  return `<h2>八、逐站统计</h2>
-  <p class="sub">同样三组数，按站拆开。全网平均会把不同气候、不同桶宽、不同深度的书混成
-  一个谁都不像的数字——一个站真实的覆盖差和另一个站的定价假象，平均完就都看不见了。</p>
-  <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>笔数</th><th>均桶</th>
-    <th>覆盖<br><span class="muted">模型</span></th>
-    <th>覆盖<br><span class="muted">市场</span></th><th>覆盖差</th>
-    <th>成本</th><th>整本<br><span class="muted">卖价和</span></th><th>赔率</th>
-    <th>EV/U</th><th>位置<br><span class="muted">上/平/下</span></th>
-    <th>已结算</th><th>命中率</th><th>实现/声称</th><th>实得</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
-}
 
 function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
@@ -967,32 +917,46 @@ function roster(){
       '<span class="muted">—</span>';
     const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
       `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
+    const st=e.stats||{};
+    const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
+    const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
+    const cal=st.calibration_ratio;
     return `<tr>
       <td class="mono">${h(e.station_id)}</td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"])}${cell(e.stages.P1)}
       <td>${mv}</td>
       <td>${side}${note}</td>
+      <td>${p2(st.model_coverage_mean)}</td>
+      <td class="mono">${n2(st.seat_ask_total_mean)}</td>
+      <td class="mono">${st.odds_mean==null?"—":n2(st.odds_mean,1)+"x"}</td>
+      <td class="${st.ev_per_usdc_mean==null?"":(st.ev_per_usdc_mean>0?"up":"down")}">${st.ev_per_usdc_mean==null?"—":((st.ev_per_usdc_mean>0?"+":"")+n2(st.ev_per_usdc_mean,2))}</td>
+      <td>${st.hit_rate==null?"—":p2(st.hit_rate)}</td>
+      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
       <td class="mono">${pnl}</td></tr>`;
   }).join("");
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  return `<h2>九、逐站明细（${h(S.roster_event_date)}）</h2>
+  return `<h2>八、逐站明细与统计（${h(S.roster_event_date)}）</h2>
   <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
   每格上行是桶，下行是胜率 @ 成本 · 赔率。「梯子」列是三阶段之间的变化：
   证据变多，梯子应当收窄或平移到更有把握的位置，这三种都是概率自己走出来的，
   没有任何方向规则参与。</p>
-  <div class="why">${legend}</div>
+  <div class="why">${legend}
+    <div class="muted" style="margin-top:6px">·「概率和」是选桶校准后概率之和；
+    「卖价和」是这几个桶的全含费卖价之和（即整篮成本）；
+    「EV/U」= 概率和÷卖价和 − 1。三者都只关于这个篮子，不涉及整本盘口。</div></div>
   <div class="card scroll"><table><thead><tr>
     <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>梯子</th><th>位置</th><th>实测</th><th>实得</th>
+    <th>梯子</th><th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th>
+    <th>EV/U</th><th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十、异常盘口</h2>
+  if(!an.length) return `<h2>九、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -1002,7 +966,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十、异常盘口</h2>
+  return `<h2>九、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -1013,7 +977,7 @@ function anomalies(){
 
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
-  coverage() + stationStats() + roster() + anomalies() +
+  coverage() + roster() + anomalies() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 
