@@ -20,6 +20,7 @@ from .contracts import (
     timestamp_lt,
     timestamp_lte,
 )
+from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
 from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
@@ -509,6 +510,9 @@ def _posterior(
     decision_at_utc: str,
     fresh_until_utc: str,
     bridge_sha256: str,
+    band_table: tuple[
+        Sequence[tuple[tuple[float, float], float]], str
+    ] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -536,6 +540,22 @@ def _posterior(
     if not math.isfinite(total) or total <= 0.0:
         raise ContractError("probability_posterior_empty_after_hard_bound")
     probabilities = {bucket: value / total for bucket, value in unnormalized.items()}
+    # Outermost, exactly as at P0: this stage's own band table corrects the
+    # claim the likelihood step actually produced.  P0's correction already
+    # rode in through the root, so what is measured -- and corrected -- here
+    # is only the residual this stage's own multiplication leaves.  Absent
+    # or all-identity table means the distribution and its content hash stay
+    # byte-identical to the pre-store behaviour.
+    lineage = dict(lineage)
+    if band_table is not None:
+        band_factors, band_sha = band_table
+        probabilities, band_receipt = apply_band_reliability(
+            probabilities, factors=band_factors
+        )
+        band_receipt["band_table_sha256"] = str(band_sha)
+        lineage["band_reliability_json"] = json.dumps(
+            band_receipt, sort_keys=True
+        )
     identity = {
         "schema": MATERIALIZATION_SCHEMA,
         "stage": stage,
@@ -579,6 +599,9 @@ def materialize_p0m(
     checkpoint_id: str | None = None,
     posterior_version: str = "p0m_taf_target_v1",
     revision: bool = False,
+    band_table: tuple[
+        Sequence[tuple[tuple[float, float], float]], str
+    ] | None = None,
 ) -> ProbabilityEnvelope:
     """Materialize TAF confirmation/correction as the P0-M checkpoint.
 
@@ -687,6 +710,7 @@ def materialize_p0m(
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
+        band_table=band_table,
     )
 
 
@@ -733,6 +757,9 @@ def materialize_p1(
     truth_observation_revision_content_sha256: str | None = None,
     checkpoint_id: str | None = None,
     posterior_version: str = "p1_metar_trajectory_target_v2",
+    band_table: tuple[
+        Sequence[tuple[tuple[float, float], float]], str
+    ] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -998,6 +1025,7 @@ def materialize_p1(
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
+        band_table=band_table,
     )
 
 

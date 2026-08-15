@@ -4,6 +4,7 @@ import pytest
 
 from bayes_basket_target.band_reliability_store import (
     band_table_sha256,
+    journal_band_fit,
     load_band_table,
     persist_and_activate_band_table,
     pinned_band_table_sha,
@@ -27,10 +28,10 @@ def test_persist_load_and_pin_roundtrip() -> None:
 
     conn = sqlite3.connect(":memory:")
     first = persist_and_activate_band_table(
-        conn, factors=_factors(), evidence={"n": 1}, serving_day_count=15
+        conn, stage="P0", factors=_factors(), evidence={"n": 1}, serving_day_count=15
     )
     assert first["state"] == "ACTIVATED"
-    factors, sha = load_band_table(conn)
+    factors, sha = load_band_table(conn, stage="P0")
     assert sha == first["band_table_sha256"]
     assert dict(factors)[(0.02, 0.12)] == 0.86
 
@@ -39,11 +40,11 @@ def test_persist_load_and_pin_roundtrip() -> None:
         for band, factor in _factors()
     )
     second = persist_and_activate_band_table(
-        conn, factors=stronger, evidence={"n": 2}, serving_day_count=30
+        conn, stage="P0", factors=stronger, evidence={"n": 2}, serving_day_count=30
     )
     assert second["state"] == "ACTIVATED"
     assert second["previous"] == sha
-    _active, active_sha = load_band_table(conn)
+    _active, active_sha = load_band_table(conn, stage="P0")
     assert active_sha == second["band_table_sha256"]
     # The old vintage stays loadable by pin: an artifact gated against it
     # must be served exactly it, refits notwithstanding.
@@ -55,10 +56,10 @@ def test_persist_load_and_pin_roundtrip() -> None:
 def test_identical_refit_is_idempotent() -> None:
     conn = sqlite3.connect(":memory:")
     persist_and_activate_band_table(
-        conn, factors=_factors(), evidence={}, serving_day_count=15
+        conn, stage="P0", factors=_factors(), evidence={}, serving_day_count=15
     )
     again = persist_and_activate_band_table(
-        conn, factors=_factors(), evidence={}, serving_day_count=15
+        conn, stage="P0", factors=_factors(), evidence={}, serving_day_count=15
     )
     assert again["state"] == "UNCHANGED"
     count = conn.execute(
@@ -103,3 +104,58 @@ def test_receipt_inversion_recovers_the_preband_claim() -> None:
     for (probability, key), (expected, expected_key) in zip(recovered, raw):
         assert key == expected_key
         assert abs(probability - expected) < 1e-12
+
+
+def test_stage_tables_are_independent_and_never_alias() -> None:
+    """Identical factors in two stages are two tables, not one.
+
+    Each stage's factors are fitted on that stage's own distribution, so an
+    identity table for P1 must never be loadable as if it were P0's -- the
+    stage is part of the content hash for exactly that reason.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    identity = tuple((band, 1.0) for band, _f in _factors())
+    p0 = persist_and_activate_band_table(
+        conn, stage="P0", factors=_factors(), evidence={},
+        serving_day_count=15,
+    )
+    p1 = persist_and_activate_band_table(
+        conn, stage="P1", factors=identity, evidence={},
+        serving_day_count=11,
+    )
+    assert p0["band_table_sha256"] != p1["band_table_sha256"]
+    assert band_table_sha256(identity, stage="P1") != band_table_sha256(
+        identity, stage="P0"
+    )
+    # Activating P1 must not have deactivated P0.
+    assert load_band_table(conn, stage="P0")[1] == p0["band_table_sha256"]
+    assert load_band_table(conn, stage="P1")[1] == p1["band_table_sha256"]
+    assert load_band_table(conn, stage="P0-M") is None
+
+
+def test_journal_records_every_fit_including_non_promoting_ones() -> None:
+    """The trail must show what was known, not only what was served."""
+
+    conn = sqlite3.connect(":memory:")
+    identity = tuple((band, 1.0) for band, _f in _factors())
+    fitted = {
+        "factors": identity,
+        "serving_day_count": 4,
+        "evidence": {
+            "accumulating": True,
+            "serving_station_day_count": 52,
+            "basis": {"[0.02, 0.12]": "accumulating_evidence"},
+        },
+    }
+    fit_id = journal_band_fit(
+        conn, stage="P1", fitted=fitted, outcome="ACCUMULATING",
+        fitted_at_utc="2026-08-15T02:00:00Z",
+    )
+    row = conn.execute(
+        "SELECT stage, outcome, serving_day_count,"
+        " serving_station_day_count, qualifying_cell_count"
+        " FROM calibration_band_reliability_fit_journal WHERE fit_id=?",
+        (fit_id,),
+    ).fetchone()
+    assert row == ("P1", "ACCUMULATING", 4, 52, 0)

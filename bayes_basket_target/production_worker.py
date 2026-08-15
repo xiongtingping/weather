@@ -37,6 +37,7 @@ from .atomic_ledger import (
     commit_blocked_scope_decision,
     commit_preliminary_scope_decision,
 )
+from .band_reliability_store import load_band_table
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -8824,6 +8825,10 @@ class TargetProductionWorker:
                         bridge_sha256=root.bridge_sha256,
                         revision=predecessor.stage == "P0-M",
                         posterior_version="p0m_taf_physical_confirmation_v3",
+                        # This stage's own residual table; identity until its
+                        # settled history clears the hurdles, and identity
+                        # leaves the posterior byte-identical.
+                        band_table=load_band_table(conn, stage="P0-M"),
                     )
                     pending_envelopes.append((envelope, decision_at))
                     predecessor = envelope

@@ -2640,7 +2640,7 @@ def build_native_ensemble_oos(
     # The active DB-resident band table, or the static bootstrap constants
     # when none is activated yet.  The sha rides into every candidate so
     # each artifact pins the exact table its holdout was scored against.
-    active_band_table = load_band_table(conn)
+    active_band_table = load_band_table(conn, stage="P0")
     band_factors, band_table_sha = (
         active_band_table
         if active_band_table is not None

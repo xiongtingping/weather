@@ -1,34 +1,59 @@
-"""DB-resident, content-addressed band reliability table.
+"""DB-resident, content-addressed band reliability tables, one per stage.
 
 The band factors used to be code constants gated by human review; the
 review step is gone (user ruling, 2026-08-15) and this module is what
-replaced it.  The daily calibration cron fits a fresh table from
-accumulated truth with the same admission rule the constants were chosen
+replaced it.  The daily calibration cron fits a fresh table per stage from
+accumulated truth under the same admission rule the constants were chosen
 by, persists it content-addressed, and activates it.  Nothing here loosens
 the rule -- automation replaced the reviewer, not the hurdles.
 
+Three stages, fitted independently, because they are three different
+distributions and their defects are measurably different:
+
+* ``P0``   the cross-ensemble blend at decision time.
+* ``P0-M`` the same root confirmed against the morning's TAF revision.
+* ``P1``   the root multiplied by the day's observation likelihood.
+
+P0-M and P1 are Bayesian posteriors *of the P0 root*, so P0's correction
+already propagates into them; a stage table therefore fits the residual
+its own likelihood step leaves behind, never the whole defect twice.  That
+is also why P1 measures better calibrated than P0 and mostly serves
+identity today -- which is the correct outcome, not a missing feature.
+
+Every stage is fitted every day from the day the stage has any settled
+history at all, long before it can qualify.  A stage that cannot clear the
+hurdles serves an identity table and records how far off it is, so the
+progress is visible and the promotion happens by itself the day the
+evidence arrives.  Nothing about a stage's arrival needs a code change.
+
 The invariant that shapes the design: an artifact must be served with the
-exact table its holdout was scored against.  Every OOS candidate scored
-against a DB table carries ``band_table_sha256=<sha>`` inside its
-combination method, and P0 loads that pinned version -- never "the latest".
-Artifacts whose method carries the bare tag predate the store and keep
-serving the static bootstrap constants in ``cross_consensus``.
+exact table its evidence was scored against.  Every candidate scored
+against a DB table carries ``band_table_sha256=<sha>``, and serving loads
+that pinned version -- never "the latest".  Artifacts carrying the bare
+tag predate the store and keep serving the static bootstrap constants in
+``cross_consensus``.
 
 Admission rule per cell (fixed; the table changes, the rule does not):
 
-* serving lane (market buckets, bridge history): by-day bootstrap interval
-  excludes 1.0 AND chronological half-split keeps the miscalibration sign
-  -> serve the interval end nearest one.
-* else transfer lane: the gate-geometry archive qualifies the cell, its
-  direction agrees with the serving lane's point estimate, and adding the
-  cell improves NLL on the serving lane's last-40% forward window.
+* serving lane (this stage's own settled snapshots): by-day bootstrap
+  interval excludes 1.0 AND the chronological half-split keeps the
+  miscalibration sign -> serve the interval end nearest one.
+* else transfer lane (P0 only, which has a gate geometry to transfer
+  from): the gate archive qualifies the cell, its direction agrees with
+  the serving lane's point estimate, and adding the cell improves NLL on
+  the serving lane's trailing forward window.
 * else identity.
 
+Stages without an OOS gate (P0-M, P1) carry an extra hurdle: every
+non-identity cell must also improve the trailing forward window.  For P0
+that check is what the OOS gate already does per scope; for a stage whose
+distribution nothing re-scores, it has to happen here.
+
 Sample growth: post-band serving rows are NOT excluded -- their receipts
-record the applied factors, so the pre-band claim is reconstructed exactly
-and the fitting sample keeps growing.  The gate lane cannot be inverted
-(its predictions carry no receipt), so banded gate rows are excluded;
-that lane only confirms transfer direction and its freeze is acceptable.
+record the applied factors and the pre-normalisation mass, so the pre-band
+claim is reconstructed exactly and the fitting sample keeps growing.  The
+gate lane cannot be inverted (its predictions carry no receipt), so banded
+gate rows are excluded; that lane only confirms transfer direction.
 """
 
 from __future__ import annotations
@@ -44,6 +69,7 @@ from typing import Any
 
 from .contracts import ContractError, content_sha256
 
+BAND_STAGES = ("P0", "P0-M", "P1")
 BAND_TABLE_CELLS = (
     (0.00, 0.02),
     (0.02, 0.12),
@@ -68,11 +94,16 @@ FINE_BANDS = (
 FACTOR_FLOOR = 0.5
 FACTOR_CEILING = 2.0
 FORWARD_WINDOW_FRACTION = 0.4
+# Below this a stage is fitted and journalled but serves identity: ten
+# days is where the by-day bootstrap stops being a re-description of two
+# or three weather regimes.  A stage under it is accumulating, not broken.
+MIN_QUALIFYING_DAYS = 10
 
 _TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_band_reliability_table ("
     " band_table_sha256 TEXT PRIMARY KEY"
     "  CHECK(length(band_table_sha256)=64),"
+    " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
     " factors_json TEXT NOT NULL,"
     " evidence_json TEXT NOT NULL,"
     " fitted_at_utc TEXT NOT NULL,"
@@ -81,10 +112,55 @@ _TABLE_DDL = (
     " activated_at_utc TEXT"
     ")"
 )
+# Every fit, activated or not.  The active table says what is served; this
+# says what was known on the day it was chosen -- which cells were close,
+# which hurdle each one failed, how much sample each had.  A replay of "why
+# did we serve that in mid-August" reads this, not a diff of constants.
+_JOURNAL_DDL = (
+    "CREATE TABLE IF NOT EXISTS calibration_band_reliability_fit_journal ("
+    " fit_id TEXT PRIMARY KEY,"
+    " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
+    " fitted_at_utc TEXT NOT NULL,"
+    " band_table_sha256 TEXT NOT NULL CHECK(length(band_table_sha256)=64),"
+    " serving_day_count INTEGER NOT NULL,"
+    " serving_station_day_count INTEGER NOT NULL,"
+    " qualifying_cell_count INTEGER NOT NULL,"
+    " outcome TEXT NOT NULL CHECK(outcome IN"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING')),"
+    " factors_json TEXT NOT NULL,"
+    " evidence_json TEXT NOT NULL"
+    ")"
+)
+_JOURNAL_STAGE_INDEX = (
+    "CREATE INDEX IF NOT EXISTS"
+    " idx_band_fit_journal_stage_time"
+    " ON calibration_band_reliability_fit_journal(stage, fitted_at_utc)"
+)
 
 
 def ensure_band_table_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_TABLE_DDL)
+    conn.execute(_JOURNAL_DDL)
+    conn.execute(_JOURNAL_STAGE_INDEX)
+    columns = {
+        str(row[1])
+        for row in conn.execute(
+            "PRAGMA table_info(calibration_band_reliability_table)"
+        )
+    }
+    if "stage" not in columns:
+        # Pre-stage bootstrap rows were all P0 by construction.
+        conn.execute(
+            "ALTER TABLE calibration_band_reliability_table"
+            " ADD COLUMN stage TEXT NOT NULL DEFAULT 'P0'"
+        )
+
+
+def _check_stage(stage: str) -> str:
+    value = str(stage)
+    if value not in BAND_STAGES:
+        raise ContractError("band_reliability_stage_invalid")
+    return value
 
 
 def _canonical_factors(
@@ -98,9 +174,19 @@ def _canonical_factors(
 
 def band_table_sha256(
     factors: Sequence[tuple[tuple[float, float], float]],
+    *,
+    stage: str = "P0",
 ) -> str:
+    """Identity of a table.
+
+    The stage is part of the content so an identity table for P1 can never
+    be mistaken for an identity table for P0: they are served on different
+    distributions and their evidence is not interchangeable.
+    """
+
     return content_sha256({
         "schema": "band_reliability_table_v1",
+        "stage": _check_stage(stage),
         "factors": _canonical_factors(factors),
     })
 
@@ -108,11 +194,12 @@ def band_table_sha256(
 def load_band_table(
     conn: sqlite3.Connection,
     *,
+    stage: str = "P0",
     table_sha256: str | None = None,
 ) -> tuple[tuple[tuple[tuple[float, float], float], ...], str] | None:
-    """The active table, or the pinned version an artifact names.
+    """The stage's active table, or the pinned version an artifact names.
 
-    A pinned sha that is missing fails closed: the artifact's gated math
+    A pinned sha that is missing fails closed: the artifact's scored math
     cannot be reproduced, so it must not be served an approximation.
     """
 
@@ -121,7 +208,8 @@ def load_band_table(
         row = conn.execute(
             "SELECT band_table_sha256, factors_json"
             " FROM calibration_band_reliability_table"
-            " WHERE activated=1"
+            " WHERE activated=1 AND stage=?",
+            (_check_stage(stage),),
         ).fetchone()
         if row is None:
             return None
@@ -133,9 +221,7 @@ def load_band_table(
             (str(table_sha256),),
         ).fetchone()
         if row is None:
-            raise ContractError(
-                "band_reliability_pinned_table_missing"
-            )
+            raise ContractError("band_reliability_pinned_table_missing")
     factors = tuple(
         ((float(cell[0][0]), float(cell[0][1])), float(cell[1]))
         for cell in json.loads(row[1])
@@ -146,44 +232,53 @@ def load_band_table(
 def persist_and_activate_band_table(
     conn: sqlite3.Connection,
     *,
+    stage: str = "P0",
     factors: Sequence[tuple[tuple[float, float], float]],
     evidence: Mapping[str, Any],
     fitted_at_utc: str | None = None,
     serving_day_count: int,
 ) -> dict[str, Any]:
-    """Insert the fitted table and make it the active one.
+    """Insert the fitted table and make it this stage's active one.
 
     Idempotent by content: refitting the same factors re-activates the
     existing row rather than growing the table.
     """
 
     ensure_band_table_schema(conn)
-    sha = band_table_sha256(factors)
+    stage_id = _check_stage(stage)
+    sha = band_table_sha256(factors, stage=stage_id)
     now = fitted_at_utc or (
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )
     active = conn.execute(
         "SELECT band_table_sha256 FROM calibration_band_reliability_table"
-        " WHERE activated=1"
+        " WHERE activated=1 AND stage=?",
+        (stage_id,),
     ).fetchone()
     if active is not None and str(active[0]) == sha:
-        return {"band_table_sha256": sha, "state": "UNCHANGED"}
+        return {
+            "stage": stage_id,
+            "band_table_sha256": sha,
+            "state": "UNCHANGED",
+        }
     conn.execute("BEGIN IMMEDIATE")
     try:
         conn.execute(
             "UPDATE calibration_band_reliability_table SET activated=0"
-            " WHERE activated=1"
+            " WHERE activated=1 AND stage=?",
+            (stage_id,),
         )
         conn.execute(
             "INSERT INTO calibration_band_reliability_table"
-            " (band_table_sha256, factors_json, evidence_json,"
+            " (band_table_sha256, stage, factors_json, evidence_json,"
             "  fitted_at_utc, serving_day_count, activated,"
             "  activated_at_utc)"
-            " VALUES (?,?,?,?,?,1,?)"
+            " VALUES (?,?,?,?,?,?,1,?)"
             " ON CONFLICT(band_table_sha256) DO UPDATE SET"
             "  activated=1, activated_at_utc=excluded.activated_at_utc",
             (
                 sha,
+                stage_id,
                 json.dumps(
                     _canonical_factors(factors), sort_keys=True
                 ),
@@ -198,10 +293,59 @@ def persist_and_activate_band_table(
         conn.rollback()
         raise
     return {
+        "stage": stage_id,
         "band_table_sha256": sha,
         "state": "ACTIVATED",
         "previous": None if active is None else str(active[0]),
     }
+
+
+def journal_band_fit(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    fitted: Mapping[str, Any],
+    outcome: str,
+    fitted_at_utc: str | None = None,
+) -> str:
+    """Record one fit -- what was measured, what it produced, what happened."""
+
+    ensure_band_table_schema(conn)
+    stage_id = _check_stage(stage)
+    now = fitted_at_utc or (
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
+    factors = tuple(fitted["factors"])
+    sha = band_table_sha256(factors, stage=stage_id)
+    evidence = dict(fitted["evidence"])
+    fit_id = "band-fit-" + content_sha256({
+        "stage": stage_id,
+        "fitted_at_utc": now,
+        "band_table_sha256": sha,
+    })[:24]
+    conn.execute(
+        "INSERT OR REPLACE INTO calibration_band_reliability_fit_journal"
+        " (fit_id, stage, fitted_at_utc, band_table_sha256,"
+        "  serving_day_count, serving_station_day_count,"
+        "  qualifying_cell_count, outcome, factors_json, evidence_json)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            fit_id,
+            stage_id,
+            now,
+            sha,
+            int(fitted["serving_day_count"]),
+            int(evidence.get("serving_station_day_count") or 0),
+            sum(
+                1 for _band, factor in factors if float(factor) != 1.0
+            ),
+            str(outcome),
+            json.dumps(_canonical_factors(factors), sort_keys=True),
+            json.dumps(evidence, sort_keys=True),
+        ),
+    )
+    conn.commit()
+    return fit_id
 
 
 def pinned_band_table_sha(combination_method: str) -> str | None:
@@ -248,15 +392,18 @@ def _invert_band_receipt(
 def serving_lane_by_day(
     conn: sqlite3.Connection,
     truth: Mapping[tuple[str, str], float],
+    *,
+    stage: str = "P0",
 ) -> dict[str, list[list[tuple[float, int]]]]:
-    """Last P0 snapshot per station-day, pre-band claims, market buckets."""
+    """Last snapshot per station-day for one stage, as pre-band claims."""
 
     by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
     rows = conn.execute(
         "SELECT h.station_id, h.event_date, h.history_id,"
         " h.envelope_json, MAX(h.decision_at_utc)"
-        " FROM basket_probability_bridge_history h WHERE h.stage='P0'"
-        " GROUP BY h.station_id, h.event_date"
+        " FROM basket_probability_bridge_history h WHERE h.stage=?"
+        " GROUP BY h.station_id, h.event_date",
+        (_check_stage(stage),),
     ).fetchall()
     for station, event, history_id, envelope_json, _latest in rows:
         actual = truth.get((str(station), str(event)))
@@ -264,9 +411,7 @@ def serving_lane_by_day(
             continue
         receipt = None
         if "band_reliability_json" in str(envelope_json):
-            lineage = (
-                json.loads(envelope_json).get("lineage") or {}
-            )
+            lineage = json.loads(envelope_json).get("lineage") or {}
             raw = lineage.get("band_reliability_json")
             parsed = json.loads(raw) if raw else None
             if parsed and parsed.get("state") == "APPLIED":
@@ -358,9 +503,13 @@ def band_lane_report(
     seed: int = 17,
 ) -> dict[tuple[float, float], dict[str, Any]]:
     days = sorted(by_day)
+    if not days:
+        return {}
     aggregates = _day_aggregates(by_day, bands)
 
-    def ratios(sample: Sequence[str]) -> dict[tuple[float, float], float | None]:
+    def ratios(
+        sample: Sequence[str],
+    ) -> dict[tuple[float, float], float | None]:
         out = {}
         for band in bands:
             claimed = sum(aggregates[d][band][0] for d in sample)
@@ -388,19 +537,30 @@ def band_lane_report(
             continue
         low = ordered[int(0.025 * len(ordered))]
         high = ordered[int(0.975 * len(ordered))]
+        interval_excludes_one = not (low <= 1.0 <= high)
         sign_stable = (
             first[band] is not None
             and second[band] is not None
             and (first[band] - 1.0) * (second[band] - 1.0) > 0
         )
-        qualified = not (low <= 1.0 <= high) and sign_stable
+        qualified = interval_excludes_one and sign_stable
         conservative = (high if high < 1.0 else low) if qualified else 1.0
         report[band] = {
             "ratio": point[band],
             "interval": [low, high],
             "halves": [first[band], second[band]],
+            "interval_excludes_one": interval_excludes_one,
             "sign_stable": sign_stable,
             "qualified": qualified,
+            "blocked_by": (
+                None
+                if qualified
+                else (
+                    "interval_spans_one"
+                    if not interval_excludes_one
+                    else "sign_flips_between_halves"
+                )
+            ),
             "conservative_factor": min(
                 FACTOR_CEILING, max(FACTOR_FLOOR, conservative)
             ),
@@ -417,6 +577,8 @@ def _forward_nll_delta(
     """NLL improvement of candidate over base on the trailing window."""
 
     days = sorted(by_day)
+    if not days:
+        return 0.0
     cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
     window = days[cut:] or days[-1:]
 
@@ -434,6 +596,8 @@ def _forward_nll_delta(
                             break
                     corrected.append((probability * factor, hit))
                     mass += probability * factor
+                if mass <= 0:
+                    continue
                 for probability, hit in corrected:
                     if hit:
                         total += -log(max(probability / mass, 1e-9))
@@ -445,41 +609,78 @@ def _forward_nll_delta(
 def fit_band_reliability_table(
     conn: sqlite3.Connection,
     *,
+    stage: str = "P0",
     bootstrap_samples: int = 1000,
 ) -> dict[str, Any]:
-    """Fit today's table from both lanes under the fixed admission rule."""
+    """Fit one stage's table under the fixed admission rule.
 
+    A stage with too little settled history is not an error: it fits to
+    identity, records why, and promotes itself the day the evidence
+    clears the hurdles.
+    """
+
+    stage_id = _check_stage(stage)
     truth = _truth(conn)
-    serving = serving_lane_by_day(conn, truth)
-    gate = gate_lane_by_day(conn, truth)
-    if len(serving) < 10:
-        raise ContractError("band_reliability_serving_sample_too_thin")
-    serving_report = band_lane_report(
-        serving,
-        bands=BAND_TABLE_CELLS,
-        bootstrap_samples=bootstrap_samples,
+    serving = serving_lane_by_day(conn, truth, stage=stage_id)
+    station_days = sum(len(rows) for rows in serving.values())
+    # Only P0 has a second geometry to transfer from: the OOS prediction
+    # archive is the cross-ensemble blend, which is exactly P0's root and
+    # nothing else's.
+    gate = (
+        gate_lane_by_day(conn, truth) if stage_id == "P0" else {}
     )
-    gate_report = band_lane_report(
-        gate,
-        bands=BAND_TABLE_CELLS,
-        bootstrap_samples=bootstrap_samples,
+    # A stage whose distribution no gate re-scores has to earn every cell
+    # on the forward window here instead.
+    requires_forward_check = stage_id != "P0"
+    accumulating = len(serving) < MIN_QUALIFYING_DAYS
+    serving_report = (
+        {}
+        if accumulating
+        else band_lane_report(
+            serving,
+            bands=BAND_TABLE_CELLS,
+            bootstrap_samples=bootstrap_samples,
+        )
     )
-    factors: dict[tuple[float, float], float] = {}
+    gate_report = (
+        band_lane_report(
+            gate,
+            bands=BAND_TABLE_CELLS,
+            bootstrap_samples=bootstrap_samples,
+        )
+        if gate
+        else {}
+    )
+    factors: dict[tuple[float, float], float] = {
+        band: 1.0 for band in BAND_TABLE_CELLS
+    }
     basis: dict[str, str] = {}
     for band in BAND_TABLE_CELLS:
-        serving_cell = serving_report.get(band)
-        if serving_cell is None:
-            factors[band] = 1.0
-            basis[str(list(band))] = "no_sample"
+        key = str(list(band))
+        if accumulating:
+            basis[key] = "accumulating_evidence"
             continue
-        if serving_cell["qualified"]:
-            factors[band] = serving_cell["conservative_factor"]
-            basis[str(list(band))] = "serving_lane"
+        cell = serving_report.get(band)
+        if cell is None:
+            basis[key] = "no_sample"
             continue
-        factors[band] = 1.0
-        basis[str(list(band))] = "identity"
+        if not cell["qualified"]:
+            basis[key] = "identity:" + str(cell["blocked_by"])
+            continue
+        if requires_forward_check:
+            candidate = dict(factors)
+            candidate[band] = cell["conservative_factor"]
+            if _forward_nll_delta(
+                serving,
+                base_factors=factors,
+                candidate_factors=candidate,
+            ) <= 0:
+                basis[key] = "identity:forward_window_not_improved"
+                continue
+        factors[band] = cell["conservative_factor"]
+        basis[key] = "serving_lane"
     for band in BAND_TABLE_CELLS:
-        if factors[band] != 1.0:
+        if factors[band] != 1.0 or accumulating:
             continue
         serving_cell = serving_report.get(band)
         gate_cell = gate_report.get(band)
@@ -505,25 +706,86 @@ def fit_band_reliability_table(
         ) > 0:
             factors[band] = gate_cell["conservative_factor"]
             basis[str(list(band))] = "gate_transfer"
-    def _cell_json(report: Mapping[tuple[float, float], dict[str, Any]]):
+
+    def _cell_json(
+        report: Mapping[tuple[float, float], dict[str, Any]],
+    ) -> dict[str, Any]:
         return {
-            str(list(band)): {
-                key: value
-                for key, value in cell.items()
-            }
-            for band, cell in report.items()
+            str(list(band)): dict(cell) for band, cell in report.items()
         }
+
     return {
+        "stage": stage_id,
         "factors": tuple(
             (band, factors[band]) for band in BAND_TABLE_CELLS
         ),
         "evidence": {
-            "schema": "band_reliability_fit_evidence_v1",
+            "schema": "band_reliability_fit_evidence_v2",
+            "stage": stage_id,
             "serving_day_count": len(serving),
+            "serving_station_day_count": station_days,
             "gate_day_count": len(gate),
+            "min_qualifying_days": MIN_QUALIFYING_DAYS,
+            "accumulating": accumulating,
+            "requires_forward_check": requires_forward_check,
             "basis": basis,
             "serving_report": _cell_json(serving_report),
             "gate_report": _cell_json(gate_report),
         },
         "serving_day_count": len(serving),
+        "serving_station_day_count": station_days,
+        "accumulating": accumulating,
     }
+
+
+def refit_all_stages(
+    conn: sqlite3.Connection,
+    *,
+    bootstrap_samples: int = 1000,
+    commit: bool = False,
+) -> dict[str, Any]:
+    """Fit every stage, journal every fit, activate when committing."""
+
+    results: dict[str, Any] = {}
+    for stage in BAND_STAGES:
+        fitted = fit_band_reliability_table(
+            conn, stage=stage, bootstrap_samples=bootstrap_samples
+        )
+        active = load_band_table(conn, stage=stage)
+        entry: dict[str, Any] = {
+            "stage": stage,
+            "fitted_factors": [
+                [list(band), factor] for band, factor in fitted["factors"]
+            ],
+            "fitted_table_sha256": band_table_sha256(
+                fitted["factors"], stage=stage
+            ),
+            "active_table_sha256": None if active is None else active[1],
+            "serving_day_count": fitted["serving_day_count"],
+            "serving_station_day_count": fitted[
+                "serving_station_day_count"
+            ],
+            "accumulating": fitted["accumulating"],
+            "basis": fitted["evidence"]["basis"],
+        }
+        if commit:
+            outcome = persist_and_activate_band_table(
+                conn,
+                stage=stage,
+                factors=fitted["factors"],
+                evidence=fitted["evidence"],
+                serving_day_count=fitted["serving_day_count"],
+            )
+            entry["commit"] = outcome
+            entry["fit_id"] = journal_band_fit(
+                conn,
+                stage=stage,
+                fitted=fitted,
+                outcome=(
+                    "ACCUMULATING"
+                    if fitted["accumulating"]
+                    else str(outcome["state"])
+                ),
+            )
+        results[stage] = entry
+    return results
