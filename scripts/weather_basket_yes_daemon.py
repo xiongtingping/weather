@@ -509,6 +509,90 @@ def _atomic_json(path: Path, value: Any) -> None:
 
 
 FORECAST_PHYSICS_REFRESH_SECONDS = 6 * 60 * 60
+CALIBRATION_HEALTH_INTERVAL_SECONDS = 6 * 60 * 60
+
+
+def _audit_calibration_health(
+    worker: TargetProductionWorker,
+) -> dict[str, Any]:
+    """Re-read what the two served tables claim, at most once per interval.
+
+    Serving is a lookup and a lookup cannot notice that its own row went
+    stale.  Every calibration defect found on 2026-08-15 -- a spread pinned
+    at a bound already raised, a weight row six days behind the correction
+    rows beside it -- was invisible until somebody asked by hand.  This is
+    that question, asked on a timer.
+
+    Pure diagnosis: read-only handle, findings recorded on the status file,
+    nothing blocked and nothing written.  A failure here is reported, never
+    raised, because an audit must not be able to stop the thing it audits.
+    """
+
+    now_mono = time.monotonic()
+    due = float(getattr(worker, "_next_calibration_health_mono", 0.0) or 0.0)
+    if now_mono < due:
+        previous = getattr(worker, "_last_calibration_health_state", None)
+        return dict(previous) if isinstance(previous, Mapping) else {
+            "state": "not_due",
+            "next_in_seconds": round(due - now_mono, 1),
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    setattr(
+        worker,
+        "_next_calibration_health_mono",
+        now_mono + CALIBRATION_HEALTH_INTERVAL_SECONDS,
+    )
+    started = utc_now()
+    try:
+        from scripts.audit_native_calibration_health import (
+            check_bias_stability,
+            check_spread_bound,
+            check_table_freshness,
+            _live_activations,
+        )
+
+        conn = sqlite3.connect(f"file:{DEFAULT_TARGET_DB}?mode=ro", uri=True)
+        try:
+            live = _live_activations(conn, started)
+            findings = (
+                check_spread_bound(live)
+                + check_table_freshness(conn, live)
+                + check_bias_stability(conn, live)
+            )
+        finally:
+            conn.close()
+        by_check: dict[str, int] = {}
+        for row in findings:
+            key = str(row.get("check") or "unknown")
+            by_check[key] = by_check.get(key, 0) + 1
+        state = {
+            "schema": "native_calibration_health_v1",
+            "state": "audited",
+            "checked_at_utc": started,
+            "live_scope_count": sum(
+                1 for key in live if key[3] in ("h00_12", "h12_24", "h24_48")
+            ),
+            "finding_count": len(findings),
+            "by_check": by_check,
+            # Bounded on the status file; the full list is one CLI run away.
+            "findings": findings[:40],
+            "writes_target_database": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    except Exception as exc:  # noqa: BLE001 -- an audit never blocks
+        state = {
+            "schema": "native_calibration_health_v1",
+            "state": "audit_failed",
+            "checked_at_utc": started,
+            "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+            "writes_target_database": False,
+            "calls_order_gateway": False,
+            "places_orders": False,
+        }
+    setattr(worker, "_last_calibration_health_state", state)
+    return state
 
 
 def _refresh_forecast_physics(
@@ -923,10 +1007,14 @@ def run_target_forecast_refresh_cycle(
     # day is enough; the forecast for a day two days out does not move
     # faster than the capture window.
     forecast_physics_state = _refresh_forecast_physics(worker)
+    # Same isolated off-path lane, same contract: read-only, bounded, and
+    # unable to block anything it looks at.
+    calibration_health_state = _audit_calibration_health(worker)
     return {
         "schema": "reported_trajectory_forecast_prefetch_v1",
         "resident_nwp_capture": nwp_state,
         "forecast_physics_capture": forecast_physics_state,
+        "calibration_health": calibration_health_state,
         # ICON had its own receipt here while it had its own capture pass.  It
         # is now one of the four families the native capture reads in a single
         # run, so ``resident_nwp_capture`` below is its instrument; a separate
