@@ -931,16 +931,29 @@ function roster(){
          : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
     const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
       `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
+    // The per-station statistics belong on the station's own row; a rewrite
+    // dropped them from the header and they stopped rendering.
+    const st=e.stats||{};
+    const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
+    const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
+    const cal=st.calibration_ratio;
     return `<tr>
       <td><div class="mono">${h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div></td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"],taf)}${cell(e.stages.P1,drift)}
       <td>${side}${note}</td>
+      <td>${p2(st.model_coverage_mean)}</td>
+      <td class="mono">${n2(st.seat_ask_total_mean)}</td>
+      <td class="mono">${st.odds_mean==null?"—":n2(st.odds_mean,1)+"x"}</td>
+      <td class="${st.ev_per_usdc_mean==null?"":(st.ev_per_usdc_mean>0?"up":"down")}">${st.ev_per_usdc_mean==null?"—":((st.ev_per_usdc_mean>0?"+":"")+n2(st.ev_per_usdc_mean,2))}</td>
+      <td>${st.hit_rate==null?"—":p2(st.hit_rate)}</td>
+      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
       <td class="mono">${pnl}</td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>位置</th><th>实测</th><th>实得</th></tr>`;
+    <th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
+    <th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th></tr>`;
   const dates=S.roster_event_dates||[];
   const block=(day,open)=>{
     const rows=rs.filter(e=>e.event_date===day);

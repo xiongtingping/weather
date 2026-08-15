@@ -4,7 +4,7 @@
   "execution_mode": "production_no_live",
   "target_only": true,
   "capital_scope": "target_owned_only",
-  "target_remaining_budget_usdc": 20.0,
+  "target_remaining_budget_usdc": 514.29,
   "live_submit_authorized": false,
   "places_orders": false,
   "writes_production_db": false,
