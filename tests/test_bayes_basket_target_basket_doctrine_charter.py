@@ -1570,6 +1570,102 @@ def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
     assert all("34" in seat for seat in seats)
 
 
+def test_clause_49_negative_ev_centre_is_still_the_anchor() -> None:
+    """A centre bucket priced above its own probability still anchors the ladder.
+
+    Ruling (2026-08-15): the centre is the anchor and one leg of a complete
+    basket -- it is never refused for being individually negative EV.  The
+    charter has said since 2026-08-13 that the positive-EV test lives at the
+    whole-basket level only and that atomicity means negative legs get bought
+    (clause 35); this pins the interaction with the ladder rung, where the
+    temptation to drop an expensive centre is strongest.
+
+    The mass is where it is; price decides how far the ladder extends from
+    the rung, never whether the rung itself is bought.
+    """
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    labels = ("30", "31", "32", "33", "34")
+    probabilities = (0.05, 0.10, 0.40, 0.30, 0.15)
+    # 32 is the centre and holds the most mass, and the book charges 0.55 for
+    # it: -0.15 of edge on its own.  Its neighbours are cheap.
+    asks = (0.02, 0.03, 0.55, 0.10, 0.04)
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6",
+        "snapshot_id": "negative-ev-centre",
+        "sequence": 1,
+        "observed_at": "2026-08-15T12:00:00Z",
+        "market_id": "m",
+        "station_id": "ZUUU",
+        "event_date": "2026-08-16",
+        "quote_version": "v",
+        "quote_observed_at": "2026-08-15T12:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i",
+        "order_state_version": "o",
+        "evidence": {
+            "probability_stage": "P0",
+            "posterior_version": "p",
+            "posterior_sha256": "a" * 64,
+        },
+        "buckets": [
+            {
+                "bucket": bucket,
+                "ordinal": 30 + index,
+                "probability": probability,
+                "bid_price": max(0.0, ask - 0.01),
+                "bid_levels": [
+                    {"price": max(0.001, ask - 0.01), "shares": 50.0}
+                ],
+                "ask_levels": [{"price": ask, "shares": 200.0}],
+                "price_tick_size": 0.001,
+                "maker_queue_ahead_shares": 2.0,
+                "maker_queue_known": True,
+            }
+            for index, (bucket, probability, ask) in enumerate(
+                zip(labels, probabilities, asks)
+            )
+        ],
+        "checkpoint_changed": True,
+        "quote_changed": True,
+        "fill_changed": True,
+        "time_gate_changed": True,
+        "evidence_fresh": True,
+        "contract_matches": True,
+        "order_state_known": True,
+        "risk_inputs_complete": True,
+        "time_left_minutes": 1440.0,
+    })
+    by_bucket = {
+        row.bucket: float(row.probability) for row in snapshot.buckets
+    }
+    windows, audit = _support_windows(
+        snapshot=snapshot,
+        desired={"32"},
+        probabilities=by_bucket,
+        fee_rate=0.0,
+        maximum_support_buckets=4,
+        center_bucket="32",
+    )
+
+    assert audit["ladder_center_bucket"] == "32"
+    # The expensive centre anchors every seat on the menu ...
+    assert windows, "a negative-EV centre must not empty the menu"
+    assert all("32" in row["buckets"] for row in windows)
+    # ... including baskets whose whole-window edge is positive precisely
+    # because the cheap neighbours carry the leg the centre cannot.
+    best = windows[0]
+    assert best["edge"] > 0
+    assert set(best["buckets"]) > {"32"}, "the ladder extends off the rung"
+    # And the lone-centre window stays enumerated at its honest negative
+    # edge: it is ranked out by the curve score, never filtered out by a
+    # per-bucket EV rule.
+    solo = next(row for row in windows if row["buckets"] == ("32",))
+    assert solo["edge"] < 0
+
+
 def test_clause_49_ladder_rule_never_evicts_the_incumbent() -> None:
     """The continuous core's own support stays on the menu, core-touching or not.
 
