@@ -50,6 +50,9 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketSnapshot,
 )
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    probability_core,
+)
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     _support_windows,
@@ -67,6 +70,11 @@ KELLY_FRACTION = 0.25
 # outlier would otherwise dominate the curve.
 MAX_STAKE_FRACTION_PER_SCOPE = 0.02
 MAXIMUM_SUPPORT_BUCKETS = 4
+# The ladder floor (charter 50).  The ledger exists to reproduce what
+# production seats, so it must carry production's structural rules; left at
+# the function default of 1 it recorded single-bucket seats the live rule
+# forbids.
+MINIMUM_SUPPORT_BUCKETS = 3
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # A fill must be priced against a book that existed around the decision.
 # Without this the ledger reaches back to the hours just after listing, when
@@ -411,13 +419,52 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                 )
                 if center not in probabilities:
                     center = max(probabilities, key=lambda b: probabilities[b])
+                ordinals = {
+                    row.bucket: int(row.ordinal)
+                    for row in snapshot.buckets
+                }
+                core = probability_core(
+                    probabilities,
+                    ordinals=ordinals,
+                    center_bucket=center,
+                )
+                # The production resolver converges its support to the cap
+                # before anything downstream sees it; the raw core has no
+                # such trim, and an over-wide one entered here as an
+                # incumbent -- which is exempt from the cap -- and seated a
+                # five-bucket basket the live rule forbids.  Trim from the
+                # far end of the centre, which is the order the resolver
+                # drops buckets in.
+                if len(core) > MAXIMUM_SUPPORT_BUCKETS:
+                    centre_ordinal = ordinals.get(center)
+                    if centre_ordinal is None:
+                        centre_ordinal = ordinals[
+                            max(probabilities, key=lambda b: probabilities[b])
+                        ]
+                    core = frozenset(
+                        sorted(
+                            core,
+                            key=lambda b: (
+                                abs(ordinals[b] - centre_ordinal),
+                                -probabilities.get(b, 0.0),
+                            ),
+                        )[:MAXIMUM_SUPPORT_BUCKETS]
+                    )
                 try:
                     windows, audit = _support_windows(
                         snapshot=snapshot,
-                        desired={center},
+                        # There is no incumbent here -- the ledger opens each
+                        # station-day fresh -- so the evidence support is the
+                        # mass-selected run the continuous-core resolver would
+                        # produce, which is what probability_core computes.
+                        # A bare centre made a one-bucket incumbent, and the
+                        # incumbent is exempt from every floor, so the ledger
+                        # seated windows the live rule refuses.
+                        desired=set(core) or {center},
                         probabilities=probabilities,
                         fee_rate=FEE_RATE,
                         maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
+                        minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS,
                         center_bucket=center,
                     )
                 except Exception:  # noqa: BLE001 -- a scope that cannot price is skipped
@@ -663,11 +710,26 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--backfill", action="store_true")
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help=(
+            "discard recorded positions and settlements before backfilling."
+            "  These rows are derived, so a structural rule change (the"
+            " ladder floor, the dispersion cap) makes the old ones describe"
+            " a strategy that no longer runs."
+        ),
+    )
     parser.add_argument("--report", action="store_true")
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
-    if args.backfill:
+    if args.backfill or args.rebuild:
         conn = _connect(database, writable=True)
+        if args.rebuild:
+            ensure_schema(conn)
+            conn.execute("DELETE FROM paper_trade_settlement")
+            conn.execute("DELETE FROM paper_trade_position")
+            conn.commit()
         counts = backfill(conn)
         print(json.dumps(
             {"schema": "paper_trading_backfill_v1", "counts": counts},
