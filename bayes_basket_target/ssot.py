@@ -1368,6 +1368,50 @@ ON calibration_republisher_ensemble_member_run(
   station_id,target_local_date,ensemble_system_id
 );
 
+-- Every remaining append-only table read by (station, day).  None of these
+-- was wrong when written; they become wrong as rows accumulate, so they are
+-- indexed on arrival rather than after the next stall.  The rule that found
+-- all of them: list tables over a thousand rows carrying station_id and a
+-- date, and index any whose leading index is not that pair.
+CREATE INDEX IF NOT EXISTS calibration_native_ensemble_member_run_scope_idx
+ON calibration_native_ensemble_member_run(station_id,target_local_date);
+
+CREATE INDEX IF NOT EXISTS basket_target_observation_facts_scope_idx
+ON basket_target_observation_facts(station_id,event_date);
+
+CREATE INDEX IF NOT EXISTS basket_probability_update_proof_scope_idx
+ON basket_probability_update_proof(station_id,event_date);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_native_ensemble_historical_member_bucket_scope_idx
+ON calibration_native_ensemble_historical_member_bucket(
+  station_id,target_local_date
+);
+
+CREATE INDEX IF NOT EXISTS calibration_historical_asof_model_run_scope_idx
+ON calibration_historical_asof_model_run(station_id,target_local_date);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_bucket_scope_idx
+ON calibration_republisher_ensemble_member_bucket(
+  station_id,target_local_date
+);
+
+CREATE INDEX IF NOT EXISTS calibration_native_ensemble_member_bucket_scope_idx
+ON calibration_native_ensemble_member_bucket(station_id,target_local_date);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_historical_oos_contract_scope_idx
+ON calibration_republisher_historical_oos_contract(
+  station_id,target_local_date
+);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_historical_member_bucket_scope_idx
+ON calibration_republisher_ensemble_historical_member_bucket(
+  station_id,target_local_date
+);
+
 CREATE INDEX IF NOT EXISTS
   calibration_native_ensemble_system_artifact_scope_idx
 ON calibration_native_ensemble_system_artifact(
