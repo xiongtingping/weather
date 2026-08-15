@@ -741,3 +741,37 @@ def test_only_target_worker_owns_p0_append_entrypoint() -> None:
     assert "commit_p0_preselection" not in validator
     assert "materialize_forward_p0_preselections" in dispatcher
     assert "commit_p0_preselection(" in worker
+
+
+def test_an_unfunded_station_still_records_its_market_evidence() -> None:
+    """No money is a reason to buy nothing, not a reason to see nothing.
+
+    The forward lane commits two different kinds of thing: a trading plan,
+    and the market snapshot the plan was priced against.  The snapshot is
+    evidence -- quotes are ephemeral and a forward day dropped here cannot
+    be recovered -- so an unfunded station is compiled at zero budget rather
+    than skipped.
+
+    Measured 2026-08-15: the pool held 20 USDC, the allocator's risk
+    fraction left 7 to deploy against a 11.43 minimum for the smallest whole
+    basket, so every station returned a zero quota, every station hit the
+    skip, and not one 2026-08-16 quote reached basket_official_ws_snapshot
+    while the publisher had all 319 tokens live.
+
+    Trading stays fail-closed by arithmetic: a zero budget affords nothing,
+    so no intent can be written.
+    """
+
+    from pathlib import Path
+
+    worker = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    body = worker[worker.index("def materialize_forward_p0_preselections"):]
+    body = body[: body.index("\n    def ", 10)]
+    assert "planning_budget_usdc=max(0.0, station_budget)" in body
+    # The skip this replaced must not come back.
+    assert "if station_budget <= 0.0:" not in body
+    assert "evidence" in body, "the reason must stay next to the code"

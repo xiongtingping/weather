@@ -9645,8 +9645,25 @@ class TargetProductionWorker:
             station_budget = float(
                 quota_by_station.get(station_id, planning_budget_usdc)
             )
-            if station_budget <= 0.0:
-                continue
+            # An unfunded station is compiled at zero budget rather than
+            # skipped.  The two things this call produces are not the same
+            # kind of thing: the plan is a trading decision, but the market
+            # snapshot it commits is *evidence*, and evidence must be
+            # recorded whether or not the book can afford to act on it.
+            #
+            # Skipping cost us the whole forward-day book.  Measured
+            # 2026-08-15: the pool holds 20 USDC, the allocator's risk
+            # fraction leaves 7 to deploy, and the smallest whole atomic
+            # basket needs 11.43 -- so every station returned zero, every
+            # station was skipped, and not one 2026-08-16 quote reached
+            # basket_official_ws_snapshot even though the publisher had all
+            # 319 tokens live.  Quotes are ephemeral; a forward day dropped
+            # here is gone for good, and with it the ability to audit or
+            # replay what the listing window actually offered.
+            #
+            # Zero budget is a legal planning budget (only negative or
+            # non-finite is rejected), so the trading side stays fail-closed
+            # by arithmetic: nothing is affordable, no intent is written.
             compiled.append(compile_p0_preselection(
                 self.conn,
                 station_id=station_id,
@@ -9659,7 +9676,7 @@ class TargetProductionWorker:
                 maturity_bin=str(scope["maturity_bin"]),
                 liquidity_bin=str(scope["liquidity_bin"]),
                 strategy_version=str(scope["strategy_version"]),
-                planning_budget_usdc=station_budget,
+                planning_budget_usdc=max(0.0, station_budget),
             ))
             assert_process_memory_budget()
         assert_connection_target_capacity(
