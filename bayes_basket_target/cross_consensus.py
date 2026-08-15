@@ -477,7 +477,7 @@ BAND_RELIABILITY_METHOD_TAG = "band_reliability_v1"
 #   [0.00, 0.02)      1.74       [0.62, 3.20]        no             1.0
 #   [0.02, 0.12)      0.69       [0.55, 0.86]        yes (.80/.61)  0.86
 #   [0.12, 0.20)      1.23       [1.08, 1.39]        yes (1.28/1.20) 1.08
-#   [0.20, 0.35)      1.12       [0.90, 1.33]        --             1.0
+#   [0.20, 0.35)      1.12       [0.90, 1.33]        --             1.10*
 #   [0.35, 1.00]      0.72       [0.25, 1.03]        --             1.0
 #
 # Every band carries a factor; a band earns a non-identity one only when its
@@ -487,18 +487,32 @@ BAND_RELIABILITY_METHOD_TAG = "band_reliability_v1"
 # bands scores -0.97 NLL/day on the forward window, because the deep-tail
 # ratio (2.07x on the first nine days, no tail hits on the last six) does
 # not persist -- the same non-persistence that killed the per-side inflation
-# candidate.  The two qualifying cells, domain-capped so the shoulder may
+# candidate.  The shoulder and core cells, domain-capped so the shoulder may
 # only shrink and the core may only lift, score +0.13 NLL/day on the 60/40
 # forward split and +0.17 with 11/15 day wins on leave-one-day-out.
 # Renormalisation pays the shoulder's surplus mostly into the core, which is
-# the direction the measurement says the mass belongs.  As truth accumulates
+# the direction the measurement says the mass belongs.
+#
+# *The [0.20, 0.35) cell qualified through the second evidence lane: the OOS
+# prediction archive (24 event days, 2,408 predictions, model-bucket
+# geometry) measures it 1.18 [1.10, 1.27] with stable halves (1.11/1.26),
+# and transferring its conservative end onto the serving geometry improves
+# the forward test window from +0.34 to +0.46 NLL/day.  The two lanes agree
+# on the shoulder (0.69/0.69) and the core (1.23/1.30), which is what makes
+# the transfer admissible.  Two cells measured there do NOT transfer and
+# stay identity: [0.35, 1.00] (0.75, significant there, but applying its
+# shrink to serving scores worse than leaving it alone) and the deep tail,
+# which REVERSES sign between geometries -- narrow model buckets far from
+# centre over-claim (0.30) while open-ended market tail buckets aggregate
+# the whole tail and under-claim (1.74) -- so no shared factor can serve
+# both and the archive's extra sample cannot help.  As truth accumulates
 # the intervals narrow and cells qualify on their own; the rule does not
 # change, the table does.
 BAND_RELIABILITY_FACTORS = (
     ((0.00, 0.02), 1.0),
     ((0.02, 0.12), 0.86),
     ((0.12, 0.20), 1.08),
-    ((0.20, 0.35), 1.0),
+    ((0.20, 0.35), 1.10),
     ((0.35, 1.01), 1.0),
 )
 

@@ -106,15 +106,16 @@ def test_conditional_skew_never_reranks_across_the_threshold() -> None:
 
 
 def test_band_reliability_shrinks_the_shoulder_and_lifts_the_core() -> None:
-    """Only the two cells with sign-stable evidence act; the rest serve 1.0.
+    """Only the cells with sign-stable evidence act; the rest serve 1.0.
 
     Measured on 254 settled station-days: claims in [0.02, 0.12) realise
     0.69x of what they say (interval [0.55, 0.86]) and claims in
     [0.12, 0.20) realise 1.23x ([1.08, 1.39]); both keep their sign across a
-    chronological half-split.  The deep tail's 1.74x does not ([0.62, 3.20],
-    no hits at all on the last six days), and fitting it anyway scored
-    -0.97 NLL/day forward -- so it serves identity until its interval
-    excludes one.
+    chronological half-split.  [0.20, 0.35) qualified through the OOS
+    prediction archive and transfer validation.  The deep tail's 1.74x
+    reverses sign between the serving and gate geometries, and fitting it
+    anyway scored -0.97 NLL/day forward -- so it serves identity until its
+    interval excludes one on the geometry it would be served on.
     """
 
     from bayes_basket_target.cross_consensus import apply_band_reliability
@@ -124,19 +125,20 @@ def test_band_reliability_shrinks_the_shoulder_and_lifts_the_core() -> None:
         "34": 0.060,   # shoulder: shrinks
         "35": 0.150,   # core: lifts
         "36": 0.500,   # high core: identity
-        "37": 0.280,   # 0.20-0.35: identity
+        "37": 0.280,   # 0.20-0.35: lifts
     }
     out, receipt = apply_band_reliability(raw)
 
     assert receipt["state"] == "APPLIED"
-    assert receipt["applied_factors"] == {"34": 0.86, "35": 1.08}
+    assert receipt["applied_factors"] == {"34": 0.86, "35": 1.08, "37": 1.10}
     assert abs(sum(out.values()) - 1.0) < 1e-12
-    # The shoulder bucket loses share and the core bucket gains share,
+    # The shoulder bucket loses share and the lifted buckets gain share,
     # relative to the untouched buckets.
     assert out["34"] / raw["34"] < out["33"] / raw["33"]
     assert out["35"] / raw["35"] > out["33"] / raw["33"]
+    assert out["37"] / raw["37"] > out["33"] / raw["33"]
     # Identity buckets all move by the same renormalisation alone.
-    ratios = {key: out[key] / raw[key] for key in ("33", "36", "37")}
+    ratios = {key: out[key] / raw[key] for key in ("33", "36")}
     assert max(ratios.values()) - min(ratios.values()) < 1e-12
 
 
