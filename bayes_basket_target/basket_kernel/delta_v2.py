@@ -542,6 +542,63 @@ def off_center_claim_factor(claimed_mass: float) -> float:
     return OFF_CENTER_CLAIM_BANDS[-1][1]
 
 
+# The ladder's length is a property of the day, not a constant.  A model
+# that has made up its mind puts its mass on two or three buckets and a
+# wider basket only buys tails it does not believe in; a model that has not
+# needs the width or the truth lands outside the seat.  So the seat spans
+# the distribution's own one-sigma width, measured in buckets, and the
+# policy floor and cap bound it rather than setting it.
+#
+# Sigma is computed on bucket ordinals rather than degrees on purpose: the
+# Fahrenheit books quote 2F buckets and the Celsius books 1C, so a width in
+# degrees means a different number of rungs in each, while "one sigma wide"
+# means the same thing in both.
+def dispersion_support_size(
+    probabilities: "Mapping[str, float]",
+    *,
+    ordinals: "Mapping[str, int]",
+    minimum: int,
+    maximum: int,
+) -> tuple[int, dict[str, Any]]:
+    """How many rungs this day's dispersion asks for, within policy bounds."""
+
+    live = {
+        bucket: max(0.0, float(value))
+        for bucket, value in probabilities.items()
+        if bucket in ordinals
+    }
+    total = sum(live.values())
+    floor_size = max(1, int(minimum))
+    cap_size = max(floor_size, int(maximum))
+    if total <= 0.0:
+        return floor_size, {
+            "schema": "dispersion_support_size_v1",
+            "state": "NO_MASS",
+            "served_size": floor_size,
+        }
+    mean = sum(
+        float(ordinals[bucket]) * value for bucket, value in live.items()
+    ) / total
+    variance = sum(
+        value * (float(ordinals[bucket]) - mean) ** 2
+        for bucket, value in live.items()
+    ) / total
+    sigma = math.sqrt(max(0.0, variance))
+    # Centre rung plus one sigma of rungs either side, rounded up so a
+    # half-bucket of spread still earns its rung.
+    wanted = 1 + 2 * math.ceil(sigma - 1e-9)
+    served = min(cap_size, max(floor_size, int(wanted)))
+    return served, {
+        "schema": "dispersion_support_size_v1",
+        "state": "MEASURED",
+        "sigma_buckets": sigma,
+        "requested_size": int(wanted),
+        "policy_minimum": floor_size,
+        "policy_maximum": cap_size,
+        "served_size": served,
+    }
+
+
 PROBABILITY_CORE_MASS = 0.50
 
 

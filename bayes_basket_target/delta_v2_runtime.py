@@ -22,6 +22,7 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel.delta_v2 import (
+    dispersion_support_size,
     off_center_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
@@ -242,7 +243,26 @@ def _support_windows(
     # windows at or above it can hold the seat.  Basket completeness, the
     # envelopes and the TAF direction correction are hard requirements that
     # a one- or two-rung ladder cannot carry (user ruling, 2026-08-15).
-    min_size = max(1, min(int(minimum_support_buckets), max_size))
+    # The floor is the policy's; the size the day actually asks for comes
+    # from its own dispersion (user ruling, 2026-08-15) and is bounded by
+    # that floor and the cap.  A sharp distribution seats fewer rungs, a
+    # diffuse one more, and neither is a rule about direction.
+    policy_min = max(1, min(int(minimum_support_buckets), max_size))
+    wanted_size, dispersion_receipt = dispersion_support_size(
+        probabilities,
+        ordinals={
+            bucket: int(row.ordinal) for bucket, row in by_bucket.items()
+        },
+        minimum=policy_min,
+        maximum=max_size,
+    )
+    # Dispersion tightens the cap, never the floor.  Raising the floor on a
+    # diffuse day would forbid the narrow seats the objective is entitled to
+    # prefer; lowering the cap on a sharp day stops it buying rungs the
+    # model does not believe in.  The floor stays the policy's, which is
+    # what clause 50 made a hard requirement.
+    min_size = policy_min
+    max_size = max(policy_min, min(max_size, wanted_size))
     for size in range(1, min(max_size, len(admitted)) + 1):
         for start in range(0, len(admitted) - size + 1):
             window = tuple(admitted[start:start + size])
@@ -380,6 +400,8 @@ def _support_windows(
         "ladder_center_bucket": ladder_center,
         "center_refused_window_count": center_refused,
         "minimum_support_buckets": min_size,
+        "policy_minimum_support_buckets": policy_min,
+        "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
