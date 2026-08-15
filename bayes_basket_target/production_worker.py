@@ -488,6 +488,10 @@ OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 2400.0
 # here can promote: the OOS gate inside the fit decides, and a rejected
 # candidate is persisted as evidence without ever becoming resolvable
 # authority.
+# Floor between two OOS station scans.  Deliberately far below the cycle it
+# rides inside: the cycle is the real pacing, and this only stops a very fast
+# cycle from re-scanning the same station back to back.
+NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC = 60.0
 METAR_TRAJECTORY_TRAINING_RETRY_SEC = 6 * 3600.0
 METAR_TRAJECTORY_TRAINING_DEADLINE_SEC = 600.0
 # NIGHT is deliberately absent: a fold anchored at the bucket start would
@@ -10915,10 +10919,20 @@ class TargetProductionWorker:
                 new_oos_stations = sorted(set(
                     new_oos_stations + changed_truth_stations
                 ))
+                # One station per production cycle, throttled only enough to
+                # keep a fast cycle from spinning the sweep.  At 600s the
+                # sweep took 45 x 10min = 7.5 hours to carry a calibration
+                # change fleet-wide, while the work itself is 13-19s per
+                # station -- a 4% duty cycle, and the reason 41 weight rows
+                # sat 3 to 13 days stale with nothing wrong except the
+                # clock.  The real floor is the production cycle it rides
+                # inside (~175s), so this bound stops being the binding
+                # constraint and the sweep lands near 2 hours.
                 oos_due = (
                     bool(new_oos_stations)
                     or last_oos_scan is None
-                    or now_mono - float(last_oos_scan) >= 600.0
+                    or now_mono - float(last_oos_scan)
+                    >= NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC
                 )
                 if oos_due and all_oos_stations:
                     if new_oos_stations:
