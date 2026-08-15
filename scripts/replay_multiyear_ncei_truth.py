@@ -36,7 +36,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -134,7 +134,37 @@ def _client() -> httpx.Client:
         headers={"User-Agent": USER_AGENT},
         timeout=120.0,
         follow_redirects=False,
+        transport=httpx.HTTPTransport(retries=3),
     )
+
+
+def _get_with_retries(
+    client: httpx.Client,
+    url: str,
+    *,
+    headers: Mapping[str, str] | None = None,
+    attempts: int = 4,
+) -> httpx.Response:
+    """NCEI drops connections mid-body on long pulls; retry those too."""
+
+    import time as time_module
+
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            response = client.get(url, headers=dict(headers or {}))
+            if response.status_code in (429, 500, 502, 503, 504):
+                raise RuntimeError(
+                    f"replay_truth_http_{response.status_code}"
+                )
+            return response
+        except (httpx.TransportError, RuntimeError) as exc:
+            last_error = exc
+            if attempt < attempts - 1:
+                time_module.sleep(min(5.0 * (2 ** attempt), 40.0))
+    raise RuntimeError(
+        f"replay_truth_download_failed:{url}"
+    ) from last_error
 
 
 def _round_half_up(value: float) -> int:
@@ -149,7 +179,7 @@ def resolve(args: argparse.Namespace) -> dict[str, Any]:
     timezones = load_station_timezones(production)
     stations = sorted(coordinate_registry_manifest()["station_ids"])
     with _client() as client:
-        response = client.get(STATION_LIST_URL)
+        response = _get_with_retries(client, STATION_LIST_URL)
         response.raise_for_status()
         text = response.text
     by_icao: dict[str, list[list[str]]] = defaultdict(list)
@@ -284,7 +314,9 @@ def _fetch_year_text(
 
     current_year = datetime.now(timezone.utc).year
     if year < current_year:
-        response = client.get(YEAR_URL.format(year=year, station=ghcnh_id))
+        response = _get_with_retries(
+            client, YEAR_URL.format(year=year, station=ghcnh_id)
+        )
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -294,15 +326,17 @@ def _fetch_year_text(
             )
         return response.content.decode("utf-8", "replace")
     url = POR_URL.format(station=ghcnh_id)
-    head = client.get(
-        url, headers={"Range": f"bytes=0-{POR_HEADER_BYTES - 1}"}
+    head = _get_with_retries(
+        client, url, headers={"Range": f"bytes=0-{POR_HEADER_BYTES - 1}"}
     )
     if head.status_code == 404:
         return None
     if head.status_code not in (200, 206):
         head.raise_for_status()
     header_line = head.content.decode("utf-8", "replace").splitlines()[0]
-    tail = client.get(url, headers={"Range": f"bytes=-{POR_TAIL_BYTES}"})
+    tail = _get_with_retries(
+        client, url, headers={"Range": f"bytes=-{POR_TAIL_BYTES}"}
+    )
     if tail.status_code not in (200, 206):
         tail.raise_for_status()
     tail_text = tail.content.decode("utf-8", "replace")
@@ -337,25 +371,52 @@ def fetch(args: argparse.Namespace) -> dict[str, Any]:
     years = _parse_years(args.years)
     raw_dir = Path(args.replay_db).parent / "ghcnh_raw"
     report: list[dict[str, Any]] = []
+    current_year = datetime.now(timezone.utc).year
     with _client() as client:
         for station, ghcnh_id, timezone_name in sources:
             for year in years:
-                raw_path = raw_dir / f"GHCNh_{ghcnh_id}_{year}.psv"
-                if raw_path.exists() and not args.refresh:
-                    text = raw_path.read_text(encoding="utf-8")
-                else:
-                    text = _fetch_year_text(
-                        client, ghcnh_id=ghcnh_id, year=year
-                    )
-                    if text is None:
+                # Closed years reduce all-or-nothing, so any stored row
+                # means the year is complete; the current year moves and
+                # is always re-pulled.
+                if year < current_year and not args.refresh:
+                    existing = replay.execute(
+                        "SELECT COUNT(*) FROM replay_daily_truth"
+                        " WHERE station_id=? AND ghcnh_station_id=?"
+                        " AND local_date LIKE ?",
+                        (station, ghcnh_id, f"{year}-%"),
+                    ).fetchone()[0]
+                    if existing:
                         report.append({
                             "station_id": station, "year": year,
-                            "state": "MISSING_YEAR_FILE",
+                            "state": "ALREADY_REDUCED", "days": existing,
                         })
                         continue
-                    if args.keep_raw:
-                        raw_path.parent.mkdir(parents=True, exist_ok=True)
-                        raw_path.write_text(text, encoding="utf-8")
+                raw_path = raw_dir / f"GHCNh_{ghcnh_id}_{year}.psv"
+                try:
+                    if raw_path.exists() and not args.refresh:
+                        text = raw_path.read_text(encoding="utf-8")
+                    else:
+                        text = _fetch_year_text(
+                            client, ghcnh_id=ghcnh_id, year=year
+                        )
+                        if text is None:
+                            report.append({
+                                "station_id": station, "year": year,
+                                "state": "MISSING_YEAR_FILE",
+                            })
+                            continue
+                        if args.keep_raw:
+                            raw_path.parent.mkdir(
+                                parents=True, exist_ok=True
+                            )
+                            raw_path.write_text(text, encoding="utf-8")
+                except Exception as exc:  # noqa: BLE001 -- keep walking
+                    report.append({
+                        "station_id": station, "year": year,
+                        "state": "FETCH_FAILED",
+                        "error": f"{type(exc).__name__}:{exc}"[:200],
+                    })
+                    continue
                 sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
                 summaries = _reduce_year(
                     text, ghcnh_id=ghcnh_id, timezone_name=timezone_name
