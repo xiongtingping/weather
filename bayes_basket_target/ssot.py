@@ -1351,6 +1351,23 @@ ON calibration_cross_native_ensemble_selection_evidence(
   station_id,lead_bucket,run_cycle,train_end_date
 );
 
+-- The republisher archive is read on the same path and is the largest table
+-- in the database: 1.08M rows, scanned per station-day at 2,899ms a scope --
+-- more than twice the native archive it sits beside, and the reason the
+-- cycle still would not return after the native indexes landed.  Measured
+-- 2026-08-15: 2899ms -> 8.1ms and 636ms -> 0.1ms.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_historical_member_run_scope_idx
+ON calibration_republisher_ensemble_historical_member_run(
+  station_id,target_local_date,ensemble_system_id
+);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_run_scope_idx
+ON calibration_republisher_ensemble_member_run(
+  station_id,target_local_date,ensemble_system_id
+);
+
 CREATE INDEX IF NOT EXISTS
   calibration_native_ensemble_system_artifact_scope_idx
 ON calibration_native_ensemble_system_artifact(
