@@ -62,10 +62,15 @@ def _manifest(
         "created_at": "2026-07-23T05:00:00Z",
     }
     if not complete:
+        # Never observed: no book came back for this token at all.  An
+        # observed-but-empty book is a different thing and is admitted --
+        # see the two tests below.
         quote["best_bid"] = None
         quote["best_ask"] = None
         quote["bids"] = []
         quote["asks"] = []
+        quote["book_observed_at"] = ""
+        quote["created_at"] = ""
     shard_dir = tmp_path / "shards"
     shard_dir.mkdir()
     core = {
@@ -498,6 +503,33 @@ def test_market_ingress_requires_selected_quotes_and_is_atomic(tmp_path: Path) -
             **_freshness_args(), commit=True,
         )
         assert replay["receipts"][0]["wrote_quote"] is False
+
+
+def test_an_observed_but_empty_book_is_evidence_not_a_gap() -> None:
+    """Nobody bidding at any price is a market state, not a capture failure.
+
+    Refusing it cost whole stations: on 2026-08-16 NZWN, RKPK, ZSPD and ZSQD
+    each had four to eight priced buckets and the rest empty, and a scope is
+    admitted only when every bucket is complete -- so the good books were
+    discarded along with the empty ones and those stations carried no market
+    evidence at all.  What separates the two cases is whether a book was
+    ever observed.
+    """
+
+    from bayes_basket_target.market_ingress import _quote_is_complete
+
+    observed_empty = {
+        "bids": [], "asks": [],
+        "book_observed_at": "2026-07-23T05:00:00Z",
+    }
+    never_observed = {"bids": [], "asks": [], "book_observed_at": ""}
+    one_sided = {
+        "bids": [], "asks": [{"price": 0.42, "size": 10.0}],
+        "book_observed_at": "2026-07-23T05:00:00Z",
+    }
+    assert _quote_is_complete(observed_empty) is True
+    assert _quote_is_complete(one_sided) is True
+    assert _quote_is_complete(never_observed) is False
 
 
 def test_market_ingress_rejects_unmaterialized_selected_bucket(tmp_path: Path) -> None:

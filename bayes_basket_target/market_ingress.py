@@ -99,8 +99,20 @@ def _quote_is_complete(quote: Any) -> bool:
         return False
     # A one-sided official book is a materialized liquidity state.  Preserve
     # it and carry the unavailable side explicitly downstream.
-    if not asks and not bids:
-        return False
+    #
+    # An empty book on both sides is that same kind of state, not a capture
+    # gap: the market listed the bucket and nobody has posted an order at any
+    # price.  What distinguishes the two is whether a book was ever observed,
+    # which the timestamp below already answers -- a token that never
+    # returned one has no timestamp and stays incomplete.
+    #
+    # Refusing both-sides-empty cost whole stations.  Measured 2026-08-16:
+    # NZWN, RKPK, ZSPD and ZSQD each had a live scope with 4 to 8 priced
+    # buckets and the rest empty, and the ingress admits a scope only when
+    # every one of its buckets is complete -- so seven good books were
+    # discarded to avoid recording four empty ones, and those stations had no
+    # market evidence at all.  The kernel already carries an unpriceable
+    # bucket (ask_available false), so downstream needs nothing new.
     return bool(str(quote.get("book_observed_at") or quote.get("created_at") or "").strip())
 
 
