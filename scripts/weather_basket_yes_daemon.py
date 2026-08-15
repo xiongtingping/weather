@@ -1150,6 +1150,12 @@ def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
         ]
 
 
+# A production cycle is submitted every 15 seconds; anything still running
+# after this has missed several turns and is worth seeing as a number rather
+# than as an absence.
+PRODUCTION_CYCLE_OVERDUE_SEC = 120.0
+
+
 def run_target_production_cycle(
     worker: TargetProductionWorker,
 ) -> dict[str, Any]:
@@ -2335,6 +2341,10 @@ def main() -> int:
         lane_futures: dict[str, Any] = {}
         lane_recovery_attempts = {lane: 0 for lane in lane_workers}
         production_future: Any = None
+        # Initialised beside the future so the in-flight publisher below can
+        # read them on the very first pass.
+        production_submitted_mono: float = time.monotonic()
+        production_submitted_at: str = ""
         forecast_future: Any = None
         registry_future: Any = None
         argmax_future: Any = None
@@ -2568,6 +2578,25 @@ def main() -> int:
                     except Exception:
                         pass
                 argmax_entry_future = None
+            # A cycle that raises lands in state["production"] below.  One
+            # that simply does not return lands nowhere: the key stays absent
+            # and the daemon looks idle while a worker thread is wedged.
+            # Measured 2026-08-15: eighteen minutes with a fresh heartbeat, no
+            # "production" key at all, and no way to tell a slow cycle from a
+            # stuck one.  Publish the wait itself.
+            if production_future is not None and not production_future.done():
+                state["production_inflight"] = {
+                    "submitted_at_utc": production_submitted_at,
+                    "elapsed_sec": round(
+                        time.monotonic() - production_submitted_mono, 1
+                    ),
+                    "overdue": (
+                        time.monotonic() - production_submitted_mono
+                    ) > PRODUCTION_CYCLE_OVERDUE_SEC,
+                    "overdue_after_sec": PRODUCTION_CYCLE_OVERDUE_SEC,
+                }
+            elif production_future is None:
+                state.pop("production_inflight", None)
             if production_future is not None and production_future.done():
                 try:
                     production_result = production_future.result()
@@ -2629,6 +2658,8 @@ def main() -> int:
                 except Exception as exc:
                     state["production"] = {"ok": False, "state": "blocked_fail_closed", "reason": f"{type(exc).__name__}:{exc}", "places_orders": False, "calls_order_gateway": False, "checked_at": utc_now()}
                 production_future = None
+                production_submitted_mono = time.monotonic()
+                production_submitted_at = ""
             if forecast_future is not None and forecast_future.done():
                 try:
                     forecast_result = forecast_future.result()
@@ -2707,6 +2738,8 @@ def main() -> int:
                     run_target_production_cycle,
                     production_worker,
                 )
+                production_submitted_mono = time.monotonic()
+                production_submitted_at = utc_now()
                 next_production = time.monotonic() + 15.0
             if storage_ok and now_mono >= next_forecast and forecast_future is None:
                 # Keep the last completed bounded TAF receipt visible while a
