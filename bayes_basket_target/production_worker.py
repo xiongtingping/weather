@@ -9775,6 +9775,20 @@ class TargetProductionWorker:
                 )
                 compiled_plan = item.get("compiled_plan")
                 opened = None
+                # Charter 46: the preliminary record is only ever allowed
+                # *after* a named stage-open failure, never as a gate that
+                # runs instead of one.  When the inputs stage-open needs are
+                # absent it cannot be attempted, and that absence is itself
+                # the blocker -- naming it here is what keeps the record
+                # below a receipt rather than a prior refusal.
+                if not isinstance(market_snapshot, Mapping):
+                    preselection_receipt["stage_open_blocker"] = (
+                        "stage_open_not_attempted:market_snapshot_missing"
+                    )
+                elif not isinstance(compiled_plan, Mapping):
+                    preselection_receipt["stage_open_blocker"] = (
+                        "stage_open_not_attempted:compiled_plan_missing"
+                    )
                 if isinstance(market_snapshot, Mapping) and isinstance(
                     compiled_plan, Mapping
                 ):
@@ -9949,6 +9963,10 @@ class TargetProductionWorker:
                 decision_receipts.append(
                     commit_preliminary_scope_decision(
                         self.commit_conn,
+                        stage_open_blocker=str(
+                            preselection_receipt.get("stage_open_blocker")
+                            or ""
+                        ),
                         preselection_id=str(item["preselection_id"]),
                         station_id=str(item["station_id"]),
                         event_date=str(item["event_date"]),

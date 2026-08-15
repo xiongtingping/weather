@@ -2339,3 +2339,56 @@ def test_order_event_identity_and_hold_semantics_fail_closed() -> None:
         assert_basket_hold_only([{"side": "YES", "order_action": "BUY"}])
         with pytest.raises(ReconciliationError, match="hold_semantics_invalid"):
             assert_basket_hold_only([{"side": "YES", "order_action": "SELL"}])
+
+
+def test_a_preliminary_record_needs_a_named_stage_open_failure() -> None:
+    """Charter 46: this is a receipt after a failure, never a gate before one.
+
+    Written without a blocker beside it, the preliminary record becomes the
+    reason a forward day did not open rather than the record of why it could
+    not -- which is what it had drifted into: 22 of 50 blocked decisions on
+    2026-08-16 carried ``preliminary_no_live_p1_pending`` and no blocker at
+    all, because the caller skipped the stage-open attempt entirely whenever
+    its inputs were absent.
+    """
+
+    import sqlite3
+
+    from bayes_basket_target.atomic_ledger import (
+        AtomicLedgerError,
+        commit_preliminary_scope_decision,
+    )
+
+    with sqlite3.connect(":memory:") as conn:
+        with pytest.raises(
+            AtomicLedgerError,
+            match="preliminary_decision_stage_open_blocker_missing",
+        ):
+            commit_preliminary_scope_decision(
+                conn,
+                preselection_id="p",
+                station_id="ZUUU",
+                event_date="2026-08-16",
+                settlement_timezone="Asia/Shanghai",
+                checkpoint_id="c",
+                probability_stage="P0",
+                quote_manifest_sha256="a" * 64,
+                preselection_plan_sha256="b" * 64,
+                created_at_utc="2026-08-15T00:00:00Z",
+            )
+
+
+def test_the_worker_names_a_blocker_when_stage_open_cannot_be_attempted() -> None:
+    """An absent input is itself the blocker, and must be recorded as one."""
+
+    from pathlib import Path
+
+    worker = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert "stage_open_not_attempted:market_snapshot_missing" in worker
+    assert "stage_open_not_attempted:compiled_plan_missing" in worker
+    # And the blocker travels into the record rather than being dropped.
+    assert "stage_open_blocker=str(" in worker

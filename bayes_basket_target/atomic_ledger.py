@@ -3125,6 +3125,7 @@ def commit_preliminary_scope_decision(
     quote_manifest_sha256: str,
     preselection_plan_sha256: str,
     created_at_utc: str,
+    stage_open_blocker: str = "",
 ) -> dict[str, Any]:
     """Materialize a P0/P0-M decision with no execution authority.
 
@@ -3138,6 +3139,17 @@ def commit_preliminary_scope_decision(
     if stage not in {"P0", "P0-M"}:
         raise AtomicLedgerError(
             "preliminary_decision_probability_stage_invalid"
+        )
+    # Charter 46 makes this a receipt, never a gate: it is only legitimate
+    # once stage-open has been attempted and named its failure.  Refusing to
+    # write it without that name is what stops it drifting back into being
+    # the reason a forward day did not open -- which is exactly what it had
+    # become (22 of 50 blocked decisions on 2026-08-16 carried this code and
+    # no blocker beside it).
+    blocker = str(stage_open_blocker or "").strip()
+    if not blocker:
+        raise AtomicLedgerError(
+            "preliminary_decision_stage_open_blocker_missing"
         )
     details = {
         "preliminary_decision_version": 1,
@@ -3157,6 +3169,7 @@ def commit_preliminary_scope_decision(
             preselection_plan_sha256,
         ),
         "final_authority": "P1",
+        "stage_open_blocker": blocker,
         "capital_authorized": False,
         "intents_written": 0,
         "reservations_written": 0,
