@@ -401,6 +401,61 @@ def build_payload(db: Path) -> dict[str, Any]:
         ),
         "settled_count": len(settled_credible),
     }
+    # The same three statistics per station.  A fleet average hides the
+    # thing worth acting on: stations do not share a book, a climate or a
+    # bucket width, so a coverage gap that is real at one and an artifact at
+    # another average into a number that describes neither.
+    per_station: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in credible_rows:
+        per_station[row["station_id"]].append(row)
+    station_stats = []
+    for station in sorted(per_station):
+        subset = per_station[station]
+        settled = [r for r in subset if r["settled"]]
+        hits = sum(int(r["hit"]) for r in settled)
+        claimed = _mean([r["win_probability"] for r in settled])
+        expected = sum(float(r["ev_usdc"] or 0.0) for r in settled)
+        realized = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
+        station_stats.append({
+            "station_id": station,
+            "position_count": len(subset),
+            "settled_count": len(settled),
+            "window_size_mean": _mean(
+                [float(r["window_size"]) for r in subset]
+            ),
+            "model_coverage_mean": _mean(
+                [r["win_probability"] for r in subset]
+            ),
+            "market_coverage_mean": _mean(
+                [r["market_coverage"] for r in subset]
+            ),
+            "coverage_gap_mean": _mean(
+                [r["coverage_gap"] for r in subset]
+            ),
+            "all_in_cost_mean": _mean([r["all_in_cost"] for r in subset]),
+            "book_ask_total_mean": _mean(
+                [r["book_ask_total"] for r in subset]
+            ),
+            "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in subset]),
+            "odds_mean": _mean([r["odds"] for r in subset]),
+            "sides": {
+                side: sum(1 for r in subset if r["side"] == side)
+                for side in ("above", "aligned", "below")
+            },
+            "hit_count": hits,
+            "hit_rate": hits / len(settled) if settled else None,
+            "claimed_win_probability_mean": claimed,
+            "calibration_ratio": (
+                (hits / len(settled)) / claimed
+                if settled and claimed else None
+            ),
+            "staked_usdc": sum(r["stake_usdc"] for r in settled),
+            "expected_usdc": expected,
+            "realized_usdc": realized,
+            "realization_ratio": (
+                realized / expected if abs(expected) > 1e-9 else None
+            ),
+        })
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",
@@ -415,6 +470,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "anomalies": anomalies[:40],
         "stage_evolution": evolution[:120],
         "coverage_stats": coverage_stats,
+        "station_stats": station_stats,
         "station_roster": roster,
         "roster_event_date": latest_day,
         "stats_start_event_date": STATS_START_EVENT_DATE,

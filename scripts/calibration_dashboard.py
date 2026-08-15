@@ -911,6 +911,45 @@ function coverage(){
   期望回报统一到每 1U，是为了让 0.07 的座位和 0.7 的座位能直接比较。</div>`;
 }
 
+function stationStats(){
+  const S=D.selection||{};const st=S.station_stats||[];
+  if(!st.length) return "";
+  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const n=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
+  const rows=st.map(s=>{
+    const g=s.coverage_gap_mean;
+    const cal=s.calibration_ratio;
+    return `<tr>
+      <td class="mono">${h(s.station_id)}</td>
+      <td>${s.position_count}</td>
+      <td>${n(s.window_size_mean,1)}</td>
+      <td>${p(s.model_coverage_mean)}</td>
+      <td>${p(s.market_coverage_mean)}</td>
+      <td class="${(g||0)>0?"up":"down"}">${(g||0)>0?"+":""}${p(g)}</td>
+      <td class="mono">${n(s.all_in_cost_mean)}</td>
+      <td class="mono">${n(s.book_ask_total_mean)}</td>
+      <td class="mono">${s.odds_mean==null?"—":n(s.odds_mean,1)+"x"}</td>
+      <td class="${(s.ev_per_usdc_mean||0)>0?"up":"down"}">${(s.ev_per_usdc_mean||0)>0?"+":""}${n(s.ev_per_usdc_mean,2)}</td>
+      <td class="muted">${s.sides.above}/${s.sides.aligned}/${s.sides.below}</td>
+      <td>${s.settled_count}</td>
+      <td>${s.hit_rate==null?"—":p(s.hit_rate)}</td>
+      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n(cal,2)+"×"}</td>
+      <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${s.settled_count?((s.realized_usdc>=0?"+":"")+n(s.realized_usdc,2)):"—"}</td>
+    </tr>`;
+  }).join("");
+  return `<h2>九、逐站统计</h2>
+  <p class="sub">同样三组数，按站拆开。全网平均会把不同气候、不同桶宽、不同深度的书混成
+  一个谁都不像的数字——一个站真实的覆盖差和另一个站的定价假象，平均完就都看不见了。</p>
+  <div class="card scroll"><table><thead><tr>
+    <th>站点</th><th>笔数</th><th>均桶</th>
+    <th>覆盖<br><span class="muted">模型</span></th>
+    <th>覆盖<br><span class="muted">市场</span></th><th>覆盖差</th>
+    <th>成本</th><th>整本<br><span class="muted">卖价和</span></th><th>赔率</th>
+    <th>EV/U</th><th>位置<br><span class="muted">上/平/下</span></th>
+    <th>已结算</th><th>命中率</th><th>实现/声称</th><th>实得</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
@@ -939,7 +978,7 @@ function roster(){
   }).join("");
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
-  return `<h2>九、逐站明细（${h(S.roster_event_date)}）</h2>
+  return `<h2>十、逐站明细（${h(S.roster_event_date)}）</h2>
   <p class="sub">全部 ${rs.length} 个站，包括没有座位的——没坐比坐了更值得看清原因。
   每格上行是桶，下行是胜率 @ 成本 · 赔率。</p>
   <div class="why">${legend}</div>
@@ -972,7 +1011,7 @@ function evolution(){
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
     </tr>`;
   }).join("");
-  return `<h2>十、三阶段选桶演变</h2>
+  return `<h2>十一、三阶段选桶演变</h2>
   <p class="sub">同一个站日在 P0（建仓）→ P0-M（TAF 确认）→ P1（实测盯盘）三个时刻各坐了哪个窗口。
   每格上行是桶，下行是胜率 @ 成本与结果。</p>
   <div class="why"><b>怎么看：</b>证据变多，梯子应当变窄或平移到更有把握的位置。
@@ -985,7 +1024,7 @@ function evolution(){
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十一、异常盘口</h2>
+  if(!an.length) return `<h2>十二、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -995,7 +1034,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"整篮不足1分":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十一、异常盘口</h2>
+  return `<h2>十二、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -1023,7 +1062,7 @@ function detail(){
       (r.hit?'<span class="up">命中</span>':'<span class="down">未中</span>')}</td>
     <td class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${r.pnl_usdc==null?"—":((r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2))}</td>
   </tr>`).join("");
-  return `<h2>十二、逐笔明细</h2>
+  return `<h2>十三、逐笔明细</h2>
   <p class="sub">「位置」的数字是模型中心减市场中心，单位是桶：正数=我们更热，负数=更冷。</p>
   <div class="card scroll"><table><thead><tr>
     <th>事件日</th><th>站点</th><th>阶段</th><th>窗口</th><th>横梁</th><th>位置</th>
@@ -1033,7 +1072,7 @@ function detail(){
 
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() + selection() +
-  coverage() + roster() + evolution() + anomalies() + detail() +
+  coverage() + stationStats() + roster() + evolution() + anomalies() + detail() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 
