@@ -1564,21 +1564,31 @@ def compile_metar_trajectory_update_proof(
     # wrong anchor for the basket -- an open-ended edge bucket spans an
     # unbounded interval and absorbs the whole upper tail, so it can win the
     # argmax over 1°C buckets without the path pointing anywhere near it.
-    # P1's own point estimate is the running high plus the expected remaining
-    # warming, which is exactly "the reported path plus what is still to come".
-    remaining_mass = sum(
-        float(value) for value in governed_remaining_distribution.values()
-    )
-    expected_remaining_c = (
-        sum(
-            float(increment) * float(value)
-            for increment, value in governed_remaining_distribution.items()
-        )
-        / remaining_mass
-        if remaining_mass > 0.0
-        else 0.0
-    )
-    model_center_c = running_high + max(0.0, expected_remaining_c)
+    # P1's own point estimate is the posterior's probability-weighted centre
+    # (user ruling, 2026-08-15).  It used to be the running high plus the
+    # trajectory layer's expected remaining warming, and that reads correctly
+    # only once the trajectory layer is strong: early in the local day it
+    # contributes almost nothing, so the anchor collapsed onto the observed
+    # high and said, in effect, that the day would not warm further.
+    # Measured 2026-08-15: KHOU at 08:55 local anchored at 29C against a P0
+    # forecast of 35.6C, KLAX at 07:37 anchored at 21C against 24.2C, and
+    # seven of nine P1 seats sat three or more buckets away from their own
+    # heaviest bucket -- dragged, by charter 49's containment rule, into cold
+    # buckets the market prices at a tenth of a cent.
+    #
+    # The mean is taken over the posterior that is actually being served, so
+    # the observed path is already in it: hard-excluded buckets carry zero
+    # mass and cannot pull the anchor down, and the likelihood ratios have
+    # already moved the rest.  An open-ended edge bucket contributes its
+    # declared centre rather than an unbounded one, which is the same
+    # convention every other consumer of this geometry uses.
+    posterior_mass = sum(float(value) for value in posterior.values())
+    if posterior_mass <= 0.0:
+        raise ContractError("metar_trajectory_posterior_zero_mass")
+    model_center_c = sum(
+        float(posterior[bucket]) * float(centers[bucket])
+        for bucket in ordered_buckets
+    ) / posterior_mass
     model_center_bucket = next(
         (
             bucket

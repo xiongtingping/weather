@@ -244,8 +244,41 @@ def build_payload(db: Path) -> dict[str, Any]:
         for r in rows
         if latest_day and r["event_date"] == latest_day
     }
+    # The forecaster's own TX for the day, which is what P0-M confirms
+    # against.  Only 17 of 45 stations issue a temperature group at all, so
+    # an absent value is a property of the report, not a gap.
+    taf_tx: dict[str, float] = {}
+    if latest_day:
+        for station, value in conn.execute(
+            "SELECT station_id, tx_c FROM calibration_forward_taf_capture"
+            " WHERE event_date=? AND tx_available=1 AND tx_c IS NOT NULL"
+            " GROUP BY station_id HAVING MAX(issued_at_utc)",
+            (latest_day,),
+        ):
+            taf_tx[str(station)] = float(value)
+    # P1 is re-solved as observations arrive, so its rung moves during the
+    # day.  The ledger keeps one row per stage; the whole sequence lives in
+    # the probability history, and the movement is the point.
+    p1_history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    if latest_day:
+        for station, decided, envelope_json in conn.execute(
+            "SELECT station_id, decision_at_utc, envelope_json"
+            " FROM basket_probability_bridge_history"
+            " WHERE event_date=? AND stage='P1'"
+            " ORDER BY station_id, decision_at_utc",
+            (latest_day,),
+        ):
+            lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+            p1_history[str(station)].append({
+                "decision_at_utc": str(decided),
+                "centre_bucket": lineage.get("model_center_bucket"),
+                "centre_c": lineage.get("model_center_c"),
+                "running_high_c": lineage.get("running_high_c"),
+            })
     for station in registered:
         entry: dict[str, Any] = {"station_id": station, "stages": {}}
+        entry["taf_tx_c"] = taf_tx.get(station)
+        entry["p1_history"] = p1_history.get(station, [])[-8:]
         for stage in ("P0", "P0-M", "P1"):
             row = seated.get((station, stage))
             entry["stages"][stage] = (

@@ -576,7 +576,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     }
 
 
-HTML_TEMPLATE = """<!doctype html>
+HTML_TEMPLATE = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>校准与链路看板</title>
@@ -607,7 +607,11 @@ border:1px solid var(--line);color:var(--muted)}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;
-padding:7px 10px;border-bottom:1px solid var(--line)}
+padding:7px 10px;border-bottom:1px solid var(--line);user-select:none}
+th:hover{color:var(--text)}
+th[data-sorted="1"]{color:var(--accent)}
+th[data-sort-dir="asc"]::after{content:" ↑"}
+th[data-sort-dir="desc"]::after{content:" ↓"}
 td{padding:9px 10px;border-bottom:1px solid rgba(38,43,54,.6);
 vertical-align:top}
 tr:last-child td{border-bottom:none}
@@ -894,13 +898,18 @@ function roster(){
   const REASON={no_probability:["无概率","这一天没有为该站算出概率"],
     no_market_book:["无盘口","有概率但没抓到可定价的市场"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
-  const cell=(s)=>{
-    if(!s) return `<td class="muted">—</td>`;
-    const w=s.window.map(x=>x.replace("°C","").replace("°F","")).join("+");
+  const short=x=>String(x).replace("°C","").replace("°F","");
+  const cell=(s,extra)=>{
+    if(!s) return `<td class="muted">—${extra||""}</td>`;
+    const w=s.window.map(short).join("+");
     const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
     const dust=s.dust_offer?` <span class="pill red">灰尘</span>`:"";
-    return `<td><div class="mono">${w}</div><div class="muted">${(s.win_probability*100).toFixed(0)}%
-      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div></td>`;
+    // The rung this stage anchored on, beside the window it produced.
+    const rung=s.centre_bucket?
+      `<div class="muted">横梁 <span class="mono" style="color:#d2a8ff">${short(s.centre_bucket)}</span></div>`:"";
+    return `<td><div class="mono">${w}</div>${rung}
+      <div class="muted">${(s.win_probability*100).toFixed(0)}%
+      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>${extra||""}</td>`;
   };
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
   const rows=rs.map(e=>{
@@ -921,19 +930,18 @@ function roster(){
     const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
     const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
     const cal=st.calibration_ratio;
-    // The rung, and whether it moved between stages.
-    const cs=e.centre_buckets||[];
-    const short=x=>String(x).replace("°C","").replace("°F","");
-    const rung=!cs.length?'<span class="muted">—</span>':
-      (e.centre_moved
-        ? `<span class="mono">${short(cs[0])}</span>
-           <span class="muted">→</span>
-           <span class="mono" style="color:#d2a8ff">${short(cs[cs.length-1])}</span>`
-        : `<span class="mono">${short(cs[0])}</span>`);
+    const taf=e.taf_tx_c==null?
+      `<div class="muted">TAF 无温度组</div>`:
+      `<div class="muted">TAF 最高 <span class="mono" style="color:#7ee787">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
+    // P1 re-solves as observations arrive; show where its rung has travelled.
+    const hist=e.p1_history||[];
+    const rungs=[...new Set(hist.map(x=>x.centre_bucket).filter(Boolean))];
+    const drift=hist.length<2?"":
+      `<div class="muted">横梁轨迹 <span class="mono">${rungs.map(short).join(" → ")}</span>
+       <span class="muted">(${hist.length} 次更新)</span></div>`;
     return `<tr>
       <td class="mono">${h(e.station_id)}</td>
-      <td>${rung}</td>
-      ${cell(e.stages.P0)}${cell(e.stages["P0-M"])}${cell(e.stages.P1)}
+      ${cell(e.stages.P0)}${cell(e.stages["P0-M"],taf)}${cell(e.stages.P1,drift)}
       <td>${mv}</td>
       <td>${side}${note}</td>
       <td>${p2(st.model_coverage_mean)}</td>
@@ -959,8 +967,7 @@ function roster(){
     「卖价和」是这几个桶的全含费卖价之和（即整篮成本）；
     「EV/U」= 概率和÷卖价和 − 1。三者都只关于这个篮子，不涉及整本盘口。</div></div>
   <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>横梁<br><span class="muted">概率中心</span></th>
-    <th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
+    <th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
     <th>梯子</th><th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th>
     <th>EV/U</th><th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -988,10 +995,47 @@ function anomalies(){
 }
 
 
+// Click a header to sort by that column.  Numbers, percentages, prices and
+// odds all read as numbers; anything else falls back to text, and an em dash
+// always sinks so empty cells never crowd the top of either direction.
+function makeSortable(table){
+  const heads=[...table.querySelectorAll("thead th")];
+  heads.forEach((th,index)=>{
+    th.style.cursor="pointer";
+    th.title="点击排序";
+    th.addEventListener("click",()=>{
+      const body=table.querySelector("tbody");
+      const rows=[...body.querySelectorAll("tr")];
+      const asc=th.dataset.sortDir!=="asc";
+      heads.forEach(o=>{o.dataset.sortDir="";o.dataset.sorted="";});
+      th.dataset.sortDir=asc?"asc":"desc";
+      th.dataset.sorted="1";
+      const value=(row)=>{
+        const cell=row.cells[index];
+        if(!cell) return {n:null,s:""};
+        const text=cell.textContent.trim();
+        if(!text||text==="—") return {n:null,s:""};
+        const m=text.replace(/[,\s]/g,"").match(/-?\d+(\.\d+)?/);
+        return {n:m?parseFloat(m[0]):null,s:text};
+      };
+      rows.sort((a,b)=>{
+        const x=value(a),y=value(b);
+        if(x.n===null&&y.n===null) return x.s.localeCompare(y.s)*(asc?1:-1);
+        if(x.n===null) return 1;   // blanks sink either way
+        if(y.n===null) return -1;
+        return (x.n-y.n)*(asc?1:-1);
+      });
+      rows.forEach(r=>body.appendChild(r));
+    });
+  });
+}
+
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
   coverage() + roster() + anomalies() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
+
+document.querySelectorAll("table").forEach(makeSortable);
 </script></body></html>"""
 
 
