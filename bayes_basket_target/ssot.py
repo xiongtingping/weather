@@ -1330,6 +1330,36 @@ ON auto_trade_decisions(station_id,event_date,created_at);
 CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_scope_idx
 ON basket_target_execution_cycles(station_id,event_date,created_at);
 
+-- The calibration and weight tables are read the same way on the same path,
+-- and were scanned the same way.  The member archive is the expensive one:
+-- 818k rows, read per station-day, 1,170ms a scope -- one station cost more
+-- than the whole cycle's budget.  Measured 2026-08-15 before and after:
+-- member archive 1170ms -> 2.6ms, selection evidence 176ms -> 0.6ms, market
+-- registry 237ms -> 1.9ms, system artifact 37ms -> 0.9ms.
+--
+-- These grow with every capture and every refit, so an unindexed read here
+-- degrades on its own rather than staying merely slow.
+CREATE INDEX IF NOT EXISTS
+  calibration_native_ensemble_historical_member_run_scope_idx
+ON calibration_native_ensemble_historical_member_run(
+  station_id,target_local_date,ensemble_system_id,archive_lead_bucket
+);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_cross_native_ensemble_selection_evidence_scope_idx
+ON calibration_cross_native_ensemble_selection_evidence(
+  station_id,lead_bucket,run_cycle,train_end_date
+);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_native_ensemble_system_artifact_scope_idx
+ON calibration_native_ensemble_system_artifact(
+  station_id,lead_bucket,run_cycle,ensemble_system_id,train_end_date
+);
+
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
+ON basket_target_market_registry(station_id,event_date);
+
 -- Evidence-only WS cache.  This is deliberately not a production input
 -- table: it keeps only the newest complete quote evidence per target scope so
 -- a connected, non-authorizing WS cannot be mistaken for an executable
