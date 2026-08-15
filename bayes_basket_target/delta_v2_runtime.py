@@ -121,6 +121,7 @@ def _support_windows(
     fee_rate: float,
     maximum_support_buckets: int,
     center_bucket: str,
+    minimum_support_buckets: int = 1,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -227,6 +228,7 @@ def _support_windows(
         )
     )
     center_refused = 0
+    short_refused = 0
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -235,6 +237,12 @@ def _support_windows(
     # the basket: a five-bucket support would break the atomicity contract
     # downstream and the clip lattice it feeds.
     max_size = max(1, int(maximum_support_buckets))
+    # The floor is a seating rule, not a search rule: narrower windows are
+    # still enumerated so the audit can see what was refused, but only
+    # windows at or above it can hold the seat.  Basket completeness, the
+    # envelopes and the TAF direction correction are hard requirements that
+    # a one- or two-rung ladder cannot carry (user ruling, 2026-08-15).
+    min_size = max(1, min(int(minimum_support_buckets), max_size))
     for size in range(1, min(max_size, len(admitted)) + 1):
         for start in range(0, len(admitted) - size + 1):
             window = tuple(admitted[start:start + size])
@@ -277,6 +285,9 @@ def _support_windows(
             holds_core = bool(core) and bool(set(window) & core)
             if not is_incumbent and ladder_center not in window:
                 center_refused += 1
+                continue
+            if not is_incumbent and len(window) < min_size:
+                short_refused += 1
                 continue
             # Second, friction: the all-in price already carries the fee, so an
             # edge smaller than tick-rounding across the legs is quantisation
@@ -368,6 +379,8 @@ def _support_windows(
         "probability_core_mass": PROBABILITY_CORE_MASS,
         "ladder_center_bucket": ladder_center,
         "center_refused_window_count": center_refused,
+        "minimum_support_buckets": min_size,
+        "short_refused_window_count": short_refused,
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,
@@ -1066,6 +1079,7 @@ def compile_delta_v2_runtime_plan(
         probabilities=probabilities,
         fee_rate=basket_policy.fee_rate,
         maximum_support_buckets=basket_policy.maximum_support_buckets,
+        minimum_support_buckets=basket_policy.minimum_support_buckets,
         center_bucket=center.bucket,
     )
     # The floor's live set is the evidence's, not the candidate support's.

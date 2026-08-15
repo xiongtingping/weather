@@ -531,6 +531,15 @@ class TargetBasketPolicy:
     # implied.  Support convergence trims to this cap from the
     # lower-probability end, so the basket narrows on its own as P1 sharpens.
     maximum_support_buckets: int = 4
+    # Floor on the same count (user ruling, 2026-08-15).  A one- or
+    # two-bucket seat is not the strategy: basket completeness, the model
+    # envelope, the centre-bucket envelope and the TAF direction correction
+    # are all hard requirements that only mean something across a spread of
+    # rungs, and a single bucket bought at the curve-score argmax quietly
+    # discards every one of them.  A window that cannot reach this floor is
+    # not narrowed into legality -- it is simply not seated, and the scope
+    # holds.
+    minimum_support_buckets: int = 3
     dispersion_c_per_expansion_layer: float = 1.0
     clip_min_notional_usdc: float = 1.0
     # There is deliberately no legacy source-wallet clip fallback.  The
@@ -638,6 +647,12 @@ class TargetBasketPolicy:
                 raw.get(
                     "maximum_support_buckets",
                     cls.maximum_support_buckets,
+                )
+            ),
+            minimum_support_buckets=int(
+                raw.get(
+                    "minimum_support_buckets",
+                    cls.minimum_support_buckets,
                 )
             ),
             dispersion_c_per_expansion_layer=_positive(
@@ -777,6 +792,10 @@ class TargetBasketPolicy:
         # a temperature view; both are policy errors rather than clamp cases.
         if not 2 <= self.maximum_support_buckets <= 5:
             raise ContractError("maximum_support_buckets_out_of_range")
+        if not 1 <= self.minimum_support_buckets <= 5:
+            raise ContractError("minimum_support_buckets_out_of_range")
+        if self.minimum_support_buckets > self.maximum_support_buckets:
+            raise ContractError("support_bucket_bounds_inverted")
         if not 0 <= self.max_disagreement_expansion_layers <= 2:
             raise ContractError("disagreement_expansion_cap_out_of_range")
         if self.clip_max_notional_usdc + EPS < self.clip_min_notional_usdc:

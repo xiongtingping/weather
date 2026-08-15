@@ -1548,10 +1548,30 @@ def compile_native_ensemble_p0(
             or str(row[12] or "") != fitted_cycle_mapping_sha
         ):
             continue
+        # A selected system may legitimately be absent from the packet's
+        # cycle mapping, and indexing it raised a bare KeyError instead of
+        # deciding anything (measured 2026-08-15: ZUUU died on
+        # KeyError:'OFFICIAL_AIRPORT_TAF_TX' every drain).  Two ways it
+        # happens, and neither is an error:
+        #
+        # * a forecast bystander -- TAF and the METAR physical path carry an
+        #   issue time rather than a run init, so clause 47 keeps them out of
+        #   cycle voting by construction; a legacy selection row that still
+        #   names one is demoted under clause 42, not matched against a cycle
+        #   it structurally cannot have;
+        # * a system the packet does not carry this round, which the rider
+        #   mechanism exists to name.
+        #
+        # Comparing only what both sides actually hold keeps the rider list
+        # meaning "fitted and packet disagree", which is what downstream
+        # activation reads it as.
         activation_cycle_riders = sorted(
             system_id
             for system_id in selected_ids
-            if packet_cycle_mapping[system_id]
+            if system_id not in NON_RUN_LEAD_BYSTANDER_SYSTEMS
+            and system_id in packet_cycle_mapping
+            and system_id in fitted_cycle_mapping
+            and packet_cycle_mapping[system_id]
             != fitted_cycle_mapping[system_id]
         )
         evaluation_rows = conn.execute(

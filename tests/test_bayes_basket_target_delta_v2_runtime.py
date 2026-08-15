@@ -81,6 +81,11 @@ def _snapshot(*, pending_shares: float = 0.0) -> TargetBasketSnapshot:
 
 def _basket_policy() -> TargetBasketPolicy:
     return TargetBasketPolicy.from_mapping({
+        # These fixtures exercise maker limits, FOK sequencing and clip
+        # floors on deliberately tiny books.  The three-rung seating floor
+        # is a separate rule with its own tests; pinning it to one here
+        # keeps each test about the thing it is named for.
+        "minimum_support_buckets": 1,
         "total_budget_usdc": 5.0,
         "base_coverage": 0.6,
         "maximum_coverage": 0.8,

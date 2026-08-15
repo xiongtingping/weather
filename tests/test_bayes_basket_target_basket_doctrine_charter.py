@@ -1796,3 +1796,64 @@ def test_clause_42_core_is_seeded_on_the_point_estimate_not_the_argmax() -> None
     assert probability_core(
         probabilities, ordinals=ordinals, center_bucket="not-a-bucket"
     ) == {"36", "37+"}
+
+
+def test_clause_50_a_seat_needs_at_least_three_rungs() -> None:
+    """A one- or two-bucket window is enumerated, audited, and not seated.
+
+    Clause 49 put the ladder on the rung; clause 50 says how long it has to
+    be.  ZUUU 2026-08-16 is the case: the curve score preferred the single
+    bucket {35C or higher} at 0.1985 over {34, 35+} at 0.1922, which is
+    arithmetically right and strategically wrong -- basket completeness, the
+    envelopes and the TAF direction correction only mean something across a
+    spread of rungs.
+
+    The floor refuses seating, never search: narrow windows stay in the
+    enumeration so the audit can see what was refused.
+    """
+
+    clause = _clause(50)
+    assert "至少 3 桶" in clause
+    assert "枚举不收窄" in clause
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "base_coverage": 0.6,
+        "maximum_coverage": 0.8,
+        "entropy_coverage_gain": 0.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+    assert policy.minimum_support_buckets == 3
+
+    probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
+    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    by_bucket = {
+        row.bucket: float(row.probability) for row in snapshot.buckets
+    }
+    windows, audit = _support_windows(
+        snapshot=snapshot,
+        desired={"34", "35"},
+        probabilities=by_bucket,
+        fee_rate=0.0,
+        maximum_support_buckets=policy.maximum_support_buckets,
+        minimum_support_buckets=policy.minimum_support_buckets,
+        center_bucket="34",
+    )
+    seats = [
+        tuple(row["buckets"]) for row in windows if not row["is_incumbent"]
+    ]
+    assert seats, "the floor must not empty the menu"
+    assert all(len(seat) >= 3 for seat in seats)
+    assert all(len(seat) <= 4 for seat in seats)
+    assert ("34",) not in seats
+    assert ("34", "35") not in seats
+    assert audit["minimum_support_buckets"] == 3
+    assert audit["short_refused_window_count"] > 0, "the rule must bite"
+    # The rung rule from clause 49 still holds on top of the length rule.
+    assert all(audit["ladder_center_bucket"] in seat for seat in seats)
