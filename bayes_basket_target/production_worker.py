@@ -10524,6 +10524,17 @@ class TargetProductionWorker:
             return _blocked(f"target_ssot_read_only_open_failed:{self.open_error or 'unknown'}")
         if self.commit_error is not None:
             return _blocked(self.commit_error)
+        if self.commit_conn is None:
+            # A writer that was never enabled is not an error, so it leaves
+            # ``commit_error`` unset and slips past the guard above with a
+            # None connection -- which then reaches the first of a dozen
+            # bare ``self.commit_conn.execute`` calls a hundred lines later
+            # and surfaces as ``AttributeError: 'NoneType' object has no
+            # attribute 'execute'``, naming neither the connection nor the
+            # switch.  It cost a wrong lead during the 2026-08-15 stall
+            # diagnosis.  Same reason string the forward preselection path
+            # already uses for the same condition.
+            return _blocked("target_atomic_writer_not_injected")
         try:
             activation = load_target_activation(self.activation_path)
             self._assert_db_activation(activation)
