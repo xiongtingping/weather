@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import defaultdict
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from selection_market_dashboard import (  # noqa: E402
+    build_payload as build_selection_payload,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
@@ -463,6 +470,64 @@ def collect_gaps(
     return gaps
 
 
+def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
+    """One row per event day: what was seated, and how it settled.
+
+    Credible fills only.  A sub-one-cent basket is a minimum-tick offer with
+    nothing bid against it, and letting those into a daily P&L makes every
+    day they appear on unreadable.
+    """
+
+    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in selection.get("rows") or []:
+        if row.get("dust_offer"):
+            continue
+        by_day[str(row["event_date"])].append(row)
+    table = []
+    for day in sorted(by_day, reverse=True):
+        rows = by_day[day]
+        settled = [r for r in rows if r.get("settled")]
+        hits = sum(int(r["hit"]) for r in settled)
+        staked = sum(float(r["stake_usdc"]) for r in settled)
+        pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
+        odds = [r["odds"] for r in settled if r.get("odds") is not None]
+        claimed = (
+            sum(float(r["win_probability"]) for r in settled) / len(settled)
+            if settled else None
+        )
+        errors = [
+            float(r["center_error_c"]) for r in settled
+            if r.get("center_error_c") is not None
+        ]
+        table.append({
+            "event_date": day,
+            "station_count": len({r["station_id"] for r in rows}),
+            "position_count": len(rows),
+            "settled_count": len(settled),
+            "sides": {
+                side: sum(1 for r in rows if r["side"] == side)
+                for side in ("above", "aligned", "below")
+            },
+            "mean_window_size": (
+                sum(int(r["window_size"]) for r in rows) / len(rows)
+                if rows else None
+            ),
+            "hit_rate": hits / len(settled) if settled else None,
+            "claimed_win_probability_mean": claimed,
+            "calibration_ratio": (
+                (hits / len(settled)) / claimed
+                if settled and claimed else None
+            ),
+            "odds_mean": sum(odds) / len(odds) if odds else None,
+            "staked_usdc": staked,
+            "pnl_usdc": pnl,
+            "center_bias_c": (
+                sum(errors) / len(errors) if errors else None
+            ),
+        })
+    return table
+
+
 def build_payload(db: Path) -> dict[str, Any]:
     conn = _connect(db)
     members = collect_members(conn)
@@ -495,10 +560,13 @@ def build_payload(db: Path) -> dict[str, Any]:
         "red" if "red" in healths
         else ("amber" if "amber" in healths else "green")
     )
+    selection = build_selection_payload(db)
     return {
-        "schema": "calibration_dashboard_v1",
+        "schema": "calibration_dashboard_v2",
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "overall_health": overall,
+        "selection": selection,
+        "daily": _daily_table(selection),
         "members": members,
         "tables": tables,
         "stages": stages,
@@ -740,8 +808,68 @@ function gaps(){
   <div class="card">${rows}</div>`;
 }
 
+function daily(){
+  if(!D.daily || !D.daily.length) return "";
+  const SIDE={above:"偏上",aligned:"一致",below:"偏下"};
+  const rows=D.daily.map(r=>{
+    const s=r.sides||{};
+    const cal=r.calibration_ratio;
+    const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
+    return `<tr>
+      <td class="mono">${h(r.event_date)}</td>
+      <td>${r.station_count}</td>
+      <td>${r.position_count}</td>
+      <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
+      <td>${r.mean_window_size==null?"—":r.mean_window_size.toFixed(1)}</td>
+      <td>${r.settled_count}</td>
+      <td>${r.hit_rate==null?"—":(r.hit_rate*100).toFixed(0)+"%"}</td>
+      <td>${r.claimed_win_probability_mean==null?"—":(r.claimed_win_probability_mean*100).toFixed(0)+"%"}</td>
+      <td class="factor ${calCls}">${cal==null?"—":cal.toFixed(2)+"×"}</td>
+      <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(1)+"x"}</td>
+      <td class="mono">${r.staked_usdc.toFixed(2)}</td>
+      <td class="mono ${r.pnl_usdc>=0?"up":"down"}">${(r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2)}</td>
+      <td>${r.center_bias_c==null?"—":(r.center_bias_c>=0?"+":"")+r.center_bias_c.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+  return `<h2>六、每日统计</h2>
+  <p class="sub">按事件日汇总，只算可信成交（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
+  挂单，混进来会让当天的盈亏读不出意思。</p>
+  <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
+  「均桶数」是当天座位平均几桶；「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
+  「赔率」是 (1−成本)/成本；「中心偏差」是模型中心减实测，正数表示我们偏热。</p>
+  <div class="card"><table><thead><tr>
+    <th>事件日</th><th>站数</th><th>仓位</th><th>位置<br><span class="muted">上/平/下</span></th>
+    <th>均桶数</th><th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
+    <th>赔率</th><th>投入</th><th>盈亏</th><th>中心偏差</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function selection(){
+  const s=D.selection||{};const sd=s.sides||{};
+  if(!s.position_count) return "";
+  const tot=s.position_count||1;
+  const seg=(k,c)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${c}"></i>`;
+  const an=(s.anomalies||[]).length;
+  return `<h2>七、选桶相对市场的位置</h2>
+  <p class="sub">比的是模型的质量中心与市场（按全含费卖价归一）的质量中心，单位是桶。
+  逐笔明细与异常盘口清单在 <span class="mono">:8788</span> 那一页。</p>
+  <div class="card">
+    <div style="display:flex;height:9px;border-radius:99px;overflow:hidden">
+      ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}
+    </div>
+    <div style="margin-top:9px;display:flex;gap:9px;flex-wrap:wrap">
+      <span class="pill" style="background:rgba(188,140,255,.16);color:#d2a8ff">偏上 ${sd.above||0}</span>
+      <span class="pill green">一致 ${sd.aligned||0}</span>
+      <span class="pill amber">偏下 ${sd.below||0}</span>
+      <span style="flex:1"></span>
+      <span class="muted">${s.position_count} 仓位 · ${s.day_count} 天 ·
+        异常盘口 ${an} 条</span>
+    </div>
+  </div>`;
+}
+
 document.getElementById("app").innerHTML =
-  head() + members() + chain() + tables() + stages() + gaps() +
+  head() + members() + chain() + tables() + stages() + gaps() + daily() + selection() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 </script></body></html>"""
 
