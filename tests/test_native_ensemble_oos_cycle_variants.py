@@ -95,12 +95,13 @@ def test_assignments_are_emitted_in_a_fixed_order() -> None:
     ]
 
 
-def test_an_oversized_product_falls_back_to_one_cycle_per_system() -> None:
-    """Four systems at two cycles is sixteen artifacts for one scope.
+def test_the_live_maximum_of_four_systems_two_cycles_enumerates_fully() -> None:
+    """Four ready systems at two cycles each must not trigger the collapse.
 
-    That is more calibration than the evidence behind it justifies, so the
-    group narrows to each system's best-evidenced cycle rather than being
-    dropped -- losing the group would take the station out of training.
+    The collapse keeps one best-evidenced cycle per system, which is exactly
+    the freeze the cohort grouper exists to prevent: the cycle the serving
+    packet carries gets deduped away and its weight row ages while the
+    correction rows advance (38 scopes measured on 2026-08-15).
     """
 
     scope_groups = {
@@ -113,8 +114,29 @@ def test_an_oversized_product_falls_back_to_one_cycle_per_system() -> None:
         },
     }
     groups = _cycle_variant_groups(scope_groups)
+    assert 2 ** 4 == MAX_CYCLE_ASSIGNMENTS_PER_GROUP
+    assert len(groups) == 16
+
+
+def test_an_oversized_product_falls_back_to_one_cycle_per_system() -> None:
+    """Past the enumeration bound the group narrows, it is not dropped.
+
+    Losing the group would take the station out of training; the bound only
+    exists so a runaway registry cannot explode the enumeration.
+    """
+
+    scope_groups = {
+        ("JJA", "h24_48"): {
+            f"SYS{index}": [
+                ("00Z", _evaluation(holdout_n=8, train_n=20)),
+                ("18Z", _evaluation(holdout_n=8, train_n=25)),
+            ]
+            for index in range(5)
+        },
+    }
+    groups = _cycle_variant_groups(scope_groups)
     assert len(groups) == 1
-    assert 2 ** 4 > MAX_CYCLE_ASSIGNMENTS_PER_GROUP
+    assert 2 ** 5 > MAX_CYCLE_ASSIGNMENTS_PER_GROUP
     # 18Z carries more training cases, so it is the retained variant.
     assert all(
         scopes[0][0] == "18Z" for scopes in groups[0][1].values()

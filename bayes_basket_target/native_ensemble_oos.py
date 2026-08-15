@@ -1423,12 +1423,14 @@ def _scope_contract_variants(
     return tuple(variants)
 
 
-# One group yields at most this many cycle assignments.  Four systems each
-# offering two cycles would be sixteen artifacts for one station-day scope,
-# which is more calibration than the evidence behind it justifies and more
-# rows than the activation lookup should have to rank.  In practice the live
-# configuration produces two.
-MAX_CYCLE_ASSIGNMENTS_PER_GROUP = 8
+# One group yields at most this many cycle assignments.  The bound exists so
+# a runaway registry cannot explode the enumeration; it must not bind for the
+# live configuration, because the collapse fallback below keeps one
+# best-evidenced cycle per system and that is exactly the freeze the cohort
+# grouper was built to prevent (a serving key's cycle deduped away, its
+# weight row aging while corrections advance).  Four ready native families at
+# two admitted cycles each is sixteen; anything past that is a registry bug.
+MAX_CYCLE_ASSIGNMENTS_PER_GROUP = 16
 
 
 def _cycle_variant_groups(
@@ -2813,6 +2815,21 @@ def build_native_ensemble_oos(
         lead_bucket,
         run_cycle,
     ), evaluation in evaluations.items():
+        # Only rows that can hold a seat belong in the assignment product.
+        # An accumulating system's rows cannot join any cohort -- the ready
+        # filter below discards them -- but counting them still multiplied
+        # the assignment total past the enumeration bound, and the collapse
+        # fallback then kept one best-evidenced cycle per system.  That is
+        # how KSFO h24_48 lost its 18Z variants: ICON's two accumulating
+        # cycles pushed 8 realizable assignments to a nominal 16, and the
+        # collapse pinned every system to 00Z while the packet P0 actually
+        # serves carries 18Z -- the weight row froze at train_end 07-28
+        # while its correction rows advanced to 08-10 (38 scopes measured
+        # on 2026-08-15).
+        if evaluation["state"] != "OOS_READY":
+            continue
+        if system_id in POINT_FORECAST_SYSTEMS:
+            continue
         scope_groups[(season_bin, lead_bucket)][system_id].append((
             run_cycle,
             evaluation,
