@@ -189,21 +189,17 @@ def _support_windows(
             return None
         return float(row.ask_price) * (1.0 + float(fee_rate))
 
-    # The domain stays the whole day (above); what the seat must do is stand
-    # on p(t)'s own selection rather than on a detached corner of it.  A
-    # window that shares no bucket with the run p(t) stands behind is built
-    # out of the measured over-claiming shoulder, and its edge is that
-    # over-claim rather than a disagreement with the market.
-    #
-    # This constrains the seat, not the search.  A window may still lean off
-    # centre -- which is the whole point of the neighbour tilt -- so long as
-    # it touches the core: on 2026-08-15's 40 live seats it keeps LTAC's
-    # {23,24,25} against a {23,24,25} core and OPKC's {28,29,30} against a
-    # {30,31} core, and refuses VILK's {28,29,30,31} against a {34,35,36}
-    # core.  Across those 40 the split is 9 kept at a median 0.387 win and a
-    # median 0.205 largest bucket, against 31 refused at a median 0.152 win
-    # and a median 0.067 largest bucket -- the refused side sits almost
-    # entirely inside the band that realizes 0.77-0.83 of what it claims.
+    # The domain stays the whole day (above); what the seat must do is hold
+    # the rung the whole ladder hangs from.  Ladder ruling (2026-08-15,
+    # charter 49): the seat window must CONTAIN the core's centre bucket,
+    # and which side the remaining buckets extend toward is not ruled at
+    # all -- the curve score prices both sides from calibrated mass against
+    # the ask, so whichever flank holds more under-priced probability wins
+    # the extension by argmax, never by a direction rule.  This supersedes
+    # the weaker touch-the-core gate (containing the centre implies
+    # touching the run grown from it); the measured shoulder evidence that
+    # motivated that gate -- off-centre windows realize 0.77-0.83 of what
+    # they claim -- now backs the stronger rung.
     core = probability_core(
         probabilities,
         ordinals={
@@ -214,7 +210,23 @@ def _support_windows(
         # never disagree about where the middle is.
         center_bucket=center_bucket,
     )
-    core_refused = 0
+    # The rung is the model centre while it is still alive.  When the hard
+    # bound has killed that bucket (P1 after the reported high passes it),
+    # the distribution has renormalised and its heaviest admitted bucket is
+    # the centre of what remains -- the same fallback ``probability_core``
+    # uses when its anchor is gone.
+    ladder_center = (
+        center_bucket
+        if center_bucket in admitted
+        else max(
+            admitted,
+            key=lambda bucket: (
+                float(probabilities.get(bucket, 0.0)),
+                -int(by_bucket[bucket].ordinal),
+            ),
+        )
+    )
+    center_refused = 0
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -258,11 +270,13 @@ def _support_windows(
             #
             # There are exactly two hard admission floors, and everything else
             # is ranking -- the seat belongs to the curve score alone.  First,
-            # the window must touch the core: mass p(t) does not have cannot
-            # be sold to the objective as edge.
+            # the ladder rung: the window must contain the centre bucket.
+            # Direction is deliberately not checked anywhere -- among the
+            # windows holding the rung, the flanks compete on curve score
+            # and the better-priced side wins its rungs automatically.
             holds_core = bool(core) and bool(set(window) & core)
-            if not is_incumbent and not holds_core:
-                core_refused += 1
+            if not is_incumbent and ladder_center not in window:
+                center_refused += 1
                 continue
             # Second, friction: the all-in price already carries the fee, so an
             # edge smaller than tick-rounding across the legs is quantisation
@@ -352,7 +366,11 @@ def _support_windows(
             core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
         ),
         "probability_core_mass": PROBABILITY_CORE_MASS,
-        "core_refused_window_count": core_refused,
+        "ladder_center_bucket": ladder_center,
+        "center_refused_window_count": center_refused,
+        # Retained name from the touch-the-core era so existing readers keep
+        # working; it now counts refusals under the stronger rung.
+        "core_refused_window_count": center_refused,
     }
 
 

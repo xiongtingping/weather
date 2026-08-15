@@ -1491,23 +1491,24 @@ def test_clause_43_neighbour_direction_leans_p_of_t_not_the_objective() -> None:
     assert "reference_only" in capture
 
 
-def test_clause_42_seat_must_touch_the_probability_core() -> None:
-    """A seat built entirely out of the over-claiming shoulder is refused.
+def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
+    """The seat hangs from the rung: every window must hold the centre bucket.
 
-    Clause 42 keeps the *domain* at the whole day -- narrowing enumeration back
-    to the probability core is still unconstitutional, and its EV -0.195 stays
-    on the record.  What the 2026-08-15 amendment binds is the seat: p(t) is
-    calibrated on the buckets it puts real mass on (claims >=0.12 realize
-    1.02-1.09) and over-claims on the shoulder (0.08-0.12 realizes 0.77), so a
-    window sharing no bucket with the core is bidding its own over-claim.
+    The Ladder ruling (clause 49) supersedes clause 42's touch-the-core gate
+    with a strictly stronger one -- containing the centre implies touching
+    the run grown from it.  The domain stays the whole day (clause 35's
+    EV -0.195 measurement stands); direction is checked nowhere, because
+    which flank the ladder extends toward is the automatic outcome of the
+    curve-score argmax over calibrated mass versus price, never a rule.
 
     The incumbent -- the continuous core's own support, not held inventory --
     is exempt, because it was admitted on evidence and this filter is about
     price.
     """
 
-    assert "席位触核门" in _clause(42)
-    assert "定义域仍是全域" in _clause(42)
+    assert "包含核心中心桶" in _clause(49)
+    assert "定义域仍是全域" in _clause(49)
+    assert "自动" in _clause(49)
 
     from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
     from bayes_basket_target.basket_kernel.delta_v2 import probability_core
@@ -1546,19 +1547,30 @@ def test_clause_42_seat_must_touch_the_probability_core() -> None:
     )
     seats = [tuple(row["buckets"]) for row in windows]
     assert audit["probability_core"] == ["34", "35"]
-    assert audit["core_refused_window_count"] > 0, "the rule must have bitten"
+    assert audit["ladder_center_bucket"] == "34"
+    assert audit["center_refused_window_count"] > 0, "the rule must have bitten"
+    assert (
+        audit["core_refused_window_count"]
+        == audit["center_refused_window_count"]
+    ), "the retained key mirrors the rung count"
 
     # The detached penny tail is gone even though it is cheap ...
     assert ("37",) not in seats
     assert ("36", "37") not in seats
     assert ("32",) not in seats
-    # ... while leaning off centre onto a neighbour is still legal, which is
-    # the whole point of the tilt layer.
-    assert ("35", "36", "37") in seats, "an off-centre lean that touches holds"
-    assert all(set(seat) & core for seat in seats)
+    # ... and so is a lean that touches the core but lets go of the rung:
+    # under clause 42 {35,36,37} held, under the ladder it does not.
+    assert ("35", "36", "37") not in seats
+    # Every surviving window holds the rung; both flanks and the straddle
+    # are all on the menu, and the curve score alone picks among them.
+    assert ("34",) in seats
+    assert ("33", "34") in seats, "the lower flank is enumerated"
+    assert ("34", "35", "36") in seats, "the upper flank is enumerated"
+    assert ("33", "34", "35") in seats, "the straddle is enumerated"
+    assert all("34" in seat for seat in seats)
 
 
-def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
+def test_clause_49_ladder_rule_never_evicts_the_incumbent() -> None:
     """The continuous core's own support stays on the menu, core-touching or not.
 
     ``desired`` is what ``_choose_support`` admitted on evidence, not filled
@@ -1600,7 +1612,7 @@ def test_clause_42_seat_touch_rule_never_evicts_the_incumbent() -> None:
     assert held["is_incumbent"] is True
     assert held["holds_probability_core"] is False
     assert all(
-        set(seat) & set(audit["probability_core"])
+        audit["ladder_center_bucket"] in seat
         for seat, row in zip(seats, windows)
         if not row["is_incumbent"]
     )

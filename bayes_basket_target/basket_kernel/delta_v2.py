@@ -512,13 +512,13 @@ SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
 # faster than the truth does.
 #
 # The correction is applied to the probabilities the objective sees, not as a
-# gate.  Forbidding off-centre windows would be a rail, and rails were
-# retired for the reason that they price nothing -- a cheap far window can be
-# genuinely worth buying, and after this correction it still wins when it
-# deserves to (the ZUUU/VILK case: claimed 0.256 becomes 0.218 against a
-# 0.038 cost, so the seat stands).  What the correction kills is the window
-# claiming a majority of the mass from off centre, which is where the
-# over-claim reaches 0.48 and the objective was buying arithmetic.
+# gate.  When it was written, forbidding off-centre windows was judged a
+# rail; the Ladder ruling (2026-08-15, charter 49) has since made centre
+# containment a structural admission floor for every non-incumbent window,
+# so the only off-centre window left on the menu is the evidence-exempt
+# incumbent -- and this deflation is what keeps its ranking honest rather
+# than letting an inherited seat score on mass the measurement says it does
+# not have.
 #
 # Factors are shrunk 30% toward one rather than served at the point estimate.
 OFF_CENTER_CLAIM_BANDS = (
