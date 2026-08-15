@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
 
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
   ON {TABLE}(snapshot_sha256,station_id,event_date,source_eligible,market_active,market_accepting_orders);
+
+-- The existing index leads with the snapshot hash, so a read that knows only
+-- the scope cannot use it and scanned all 210k rows -- 237ms a station on a
+-- path that runs per station every cycle.  Scope-first is the shape the
+-- production reads actually have.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
+  ON {TABLE}(station_id,event_date);
 """
 
 

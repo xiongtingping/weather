@@ -2342,6 +2342,15 @@ def commit_blocked_scope_decision(
             "quote_manifest_sha256": str(preselection[4]),
             "preselection_plan_sha256": str(preselection[5]),
             "final_authority": "P1",
+            # Rebuilt from the payload rather than from the preselection:
+            # the blocker names why *this* stage-open did not open, which is
+            # a property of the attempt and not of the row it references.
+            # It is still checked -- the writer refuses an empty one -- and
+            # omitting it here is what made every preliminary record fail
+            # its own details comparison the moment the field was added.
+            "stage_open_blocker": str(
+                payload_details.get("stage_open_blocker") or ""
+            ),
             "capital_authorized": False,
             "intents_written": 0,
             "reservations_written": 0,
@@ -2349,6 +2358,10 @@ def commit_blocked_scope_decision(
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
+        if not str(expected_details["stage_open_blocker"]).strip():
+            raise AtomicLedgerError(
+                "preliminary_decision_stage_open_blocker_missing"
+            )
         if payload_details != expected_details:
             raise AtomicLedgerError(
                 "preliminary_decision_details_invalid"

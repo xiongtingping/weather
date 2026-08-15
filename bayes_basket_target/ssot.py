@@ -1357,8 +1357,6 @@ ON calibration_native_ensemble_system_artifact(
   station_id,lead_bucket,run_cycle,ensemble_system_id,train_end_date
 );
 
-CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
-ON basket_target_market_registry(station_id,event_date);
 
 -- Evidence-only WS cache.  This is deliberately not a production input
 -- table: it keeps only the newest complete quote evidence per target scope so
