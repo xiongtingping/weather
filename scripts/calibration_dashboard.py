@@ -934,13 +934,19 @@ function roster(){
       `<div class="muted">TAF 无温度组</div>`:
       `<div class="muted">TAF 最高 <span class="mono" style="color:#7ee787">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
     // P1 re-solves as observations arrive; show where its rung has travelled.
+    // Updates and moves are different counts, and conflating them reads as
+    // a rung that thrashed when in fact it never budged.
     const hist=e.p1_history||[];
-    const rungs=[...new Set(hist.map(x=>x.centre_bucket).filter(Boolean))];
-    const drift=hist.length<2?"":
-      `<div class="muted">横梁轨迹 <span class="mono">${rungs.map(short).join(" → ")}</span>
-       <span class="muted">(${hist.length} 次更新)</span></div>`;
+    const rungs=hist.map(x=>x.centre_bucket).filter(Boolean);
+    const path=rungs.filter((x,i)=>i===0||x!==rungs[i-1]);
+    const drift=!hist.length?"":
+      `<div class="muted">${hist.length} 次重算 ·
+       ${path.length<2
+         ? `横梁未动 <span class="mono">${path.length?short(path[0]):"—"}</span>`
+         : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
     return `<tr>
-      <td class="mono">${h(e.station_id)}</td>
+      <td><div class="mono">${h(e.station_id)}</div>
+        <div class="muted">${h(e.station_label)}</div></td>
       ${cell(e.stages.P0)}${cell(e.stages["P0-M"],taf)}${cell(e.stages.P1,drift)}
       <td>${mv}</td>
       <td>${side}${note}</td>

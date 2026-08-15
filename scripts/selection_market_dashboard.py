@@ -54,6 +54,26 @@ LEAN_TOLERANCE_BUCKETS = 0.35
 # longer run and averaging them in would describe a system that no longer
 # exists.
 STATS_START_EVENT_DATE = "2026-08-15"
+# The registry's city_label is empty for every station, so the readable name
+# lives here.  The ICAO code stays the key everywhere -- it is the stable
+# identifier -- and the label is only ever for the page.
+STATION_LABELS = {
+    "CYYZ": "多伦多", "EDDM": "慕尼黑", "EFHK": "赫尔辛基",
+    "EGLC": "伦敦", "EHAM": "阿姆斯特丹", "EPWA": "华沙",
+    "FACT": "开普敦", "KATL": "亚特兰大", "KAUS": "奥斯汀",
+    "KBKF": "丹佛", "KDAL": "达拉斯", "KHOU": "休斯敦",
+    "KLAX": "洛杉矶", "KLGA": "纽约", "KMIA": "迈阿密",
+    "KORD": "芝加哥", "KSEA": "西雅图", "KSFO": "旧金山",
+    "LEMD": "马德里", "LFPB": "巴黎", "LIMC": "米兰",
+    "LTAC": "安卡拉", "MMMX": "墨西哥城", "MPMG": "巴拿马城",
+    "NZWN": "惠灵顿", "OEJN": "吉达", "OPKC": "卡拉奇",
+    "RCSS": "台北", "RJTT": "东京", "RKPK": "釜山",
+    "RKSI": "首尔", "RPLL": "马尼拉", "SAEZ": "布宜诺斯艾利斯",
+    "SBGR": "圣保罗", "VILK": "勒克瑙", "WMKK": "吉隆坡",
+    "WSSS": "新加坡", "ZBAA": "北京", "ZGGG": "广州",
+    "ZGSZ": "深圳", "ZHHH": "武汉", "ZSPD": "上海",
+    "ZSQD": "青岛", "ZUCK": "重庆", "ZUUU": "成都",
+}
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -136,6 +156,7 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 None if ev_per_usdc is None else stake * ev_per_usdc
             ),
             "station_id": r[0],
+            "station_label": STATION_LABELS.get(str(r[0]), ""),
             "event_date": r[1],
             "stage": r[2],
             "decision_at_utc": r[3],
@@ -276,7 +297,11 @@ def build_payload(db: Path) -> dict[str, Any]:
                 "running_high_c": lineage.get("running_high_c"),
             })
     for station in registered:
-        entry: dict[str, Any] = {"station_id": station, "stages": {}}
+        entry: dict[str, Any] = {
+            "station_id": station,
+            "station_label": STATION_LABELS.get(station, ""),
+            "stages": {},
+        }
         entry["taf_tx_c"] = taf_tx.get(station)
         entry["p1_history"] = p1_history.get(station, [])[-8:]
         for stage in ("P0", "P0-M", "P1"):
@@ -429,6 +454,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         realized = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
         station_stats.append({
             "station_id": station,
+            "station_label": STATION_LABELS.get(station, ""),
             "position_count": len(subset),
             "settled_count": len(settled),
             "window_size_mean": _mean(
