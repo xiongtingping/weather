@@ -984,8 +984,16 @@ def compile_delta_v2_runtime_plan(
     resource_probe_ok: bool,
     regime_direction_allowed: bool = True,
     confirmed_cancel_for_fok: bool = False,
+    previous_probabilities: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Compile the single-event q* and best no-live action under v2."""
+    """Compile the single-event q* and best no-live action under v2.
+
+    ``previous_probabilities`` is the same station-day's probability at the
+    previous checkpoint.  Rebalancing follows the probability, not the
+    calendar: a bucket p(t) has moved toward may be added to, a bucket it
+    has moved away from is held but never added to, and nothing is ever
+    sold (user ruling, 2026-08-15).
+    """
 
     basket_policy.validate()
     if not resource_probe_ok:
@@ -1158,6 +1166,22 @@ def compile_delta_v2_runtime_plan(
         )
         for bucket in final_support
     }
+    # Adding to a bucket the evidence has just moved away from is buying
+    # into a fading claim: the objective re-solves from scratch each cycle
+    # and would happily top up a leg whose probability fell, because the
+    # solve only sees today's number, not its direction.  Selling is a
+    # separate matter and stays forbidden -- the clamp below is one-sided,
+    # so a faded leg is simply held at the size it already has.
+    declining_buckets: list[str] = []
+    if previous_probabilities:
+        for bucket in final_support:
+            before = previous_probabilities.get(bucket)
+            if before is None:
+                continue
+            now = float(probabilities.get(bucket, 0.0))
+            if now + EPS < float(before):
+                declining_buckets.append(bucket)
+                gap_by_bucket[bucket] = min(0.0, gap_by_bucket[bucket])
     execution_gap_support = tuple(
         bucket for bucket in final_support if gap_by_bucket[bucket] > EPS
     )
@@ -1740,6 +1764,12 @@ def compile_delta_v2_runtime_plan(
         ),
         "basket_optimizer_id": "DeltaBasketScoreV2",
         "basket_optimizer_converged": True,
+        # Held at their existing size because p(t) moved away from them this
+        # cycle: no top-up, and never a sale.
+        "probability_declined_buckets": tuple(declining_buckets),
+        "probability_direction_source": (
+            "previous_checkpoint" if previous_probabilities else "absent"
+        ),
         "fok_cancel_acknowledged": bool(confirmed_cancel_for_fok),
         "target_only": True,
         "places_orders": False,

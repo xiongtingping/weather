@@ -578,6 +578,33 @@ def _compile_target_plan(
         }
 
     envelope = select_current_stage(probability_envelopes, at_utc=evaluation_at_utc)
+    # The checkpoint immediately before the one being served, on the same
+    # station-day: rebalancing follows where p(t) has moved, so it needs the
+    # previous reading to compare against.  Absent (a first checkpoint, or a
+    # caller that supplied only one envelope) means no direction is known
+    # and every bucket stays eligible, which is the pre-rule behaviour.
+    previous_probabilities: dict[str, float] | None = None
+    _prior_chain = sorted(
+        (
+            item
+            if isinstance(item, ProbabilityEnvelope)
+            else ProbabilityEnvelope.from_mapping(item)
+            for item in probability_envelopes
+        ),
+        key=lambda item: str(item.decision_at_utc),
+    )
+    _earlier = [
+        item
+        for item in _prior_chain
+        if str(item.station_id) == str(envelope.station_id)
+        and str(item.event_date) == str(envelope.event_date)
+        and str(item.decision_at_utc) < str(envelope.decision_at_utc)
+    ]
+    if _earlier:
+        previous_probabilities = {
+            str(bucket): float(value)
+            for bucket, value in _earlier[-1].probabilities.items()
+        }
     _assert_current_p1_source_lane(
         envelope,
         expected_source_lane=expected_source_lane,
@@ -722,6 +749,7 @@ def _compile_target_plan(
         capital_available_usdc=remaining_budget,
         minimum_profit_floor=float(policy.minimum_expected_pnl_after_usdc),
         resource_probe_ok=resource_probe_ok,
+        previous_probabilities=previous_probabilities,
     )
 
     selected_actions_by_bucket: dict[str, dict[str, Any]] = {}
@@ -770,6 +798,7 @@ def _compile_target_plan(
                 ),
                 resource_probe_ok=True,
                 regime_direction_allowed=False,
+                previous_probabilities=previous_probabilities,
             )
             selected_authorized = False
             blockers.append("regime_direction_not_allowed")

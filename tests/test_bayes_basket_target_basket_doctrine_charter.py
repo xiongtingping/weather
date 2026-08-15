@@ -1857,3 +1857,37 @@ def test_clause_50_a_seat_needs_at_least_three_rungs() -> None:
     assert audit["short_refused_window_count"] > 0, "the rule must bite"
     # The rung rule from clause 49 still holds on top of the length rule.
     assert all(audit["ladder_center_bucket"] in seat for seat in seats)
+
+
+def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:
+    """Rebalancing follows p(t)'s direction, and only in one direction.
+
+    The objective re-solves from scratch every cycle, so it sees today's
+    probability without its history and would top up a leg the evidence has
+    just moved away from.  Clause 51 clamps that add to zero while leaving
+    the existing size alone -- the clamp is one-sided, so a faded leg is
+    held, not sold.
+    """
+
+    clause = _clause(51)
+    assert "不加仓" in clause
+    assert "永不卖出" in clause
+
+    from bayes_basket_target.delta_v2_runtime import (
+        compile_delta_v2_runtime_plan,
+    )
+    import inspect
+
+    source = inspect.getsource(compile_delta_v2_runtime_plan)
+    # The clamp exists, and it is a floor at the current size rather than a
+    # rewrite of the target: min() with zero can only remove a purchase.
+    assert "declining_buckets" in source
+    assert "gap_by_bucket[bucket] = min(0.0, gap_by_bucket[bucket])" in source
+    # Selling stays impossible: the execution set is positive gaps only.
+    assert "gap_by_bucket[bucket] > EPS" in source
+    # No previous reading means no direction, and every bucket stays eligible.
+    assert "if previous_probabilities:" in source
+
+    signature = inspect.signature(compile_delta_v2_runtime_plan)
+    assert "previous_probabilities" in signature.parameters
+    assert signature.parameters["previous_probabilities"].default is None
