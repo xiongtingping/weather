@@ -1342,6 +1342,22 @@ def _load_native_forward_inbox(
     ]
 
 
+def _p0_preselection_scope_version(market_snapshot: Mapping[str, Any]) -> str:
+    """The inventory/order-state version for one preselection quote.
+
+    Keyed to the quote, because the evidence it describes is keyed to the
+    quote: a later quote observes a later instant and is a different row.
+    A version shared across quotes made the reader's lookup ambiguous by
+    construction.
+    """
+
+    base = str(market_snapshot.get("inventory_version") or "").strip()
+    quote_version = str(market_snapshot.get("quote_version") or "").strip()
+    if not quote_version:
+        return base
+    return f"{base}:{quote_version}" if base else quote_version
+
+
 def _resolve_target_remaining_budget() -> float:
     """Resolve only the target-owned no-live budget.
 
@@ -9852,11 +9868,17 @@ class TargetProductionWorker:
                                         or ""
                                     )
                                 ),
-                                "inventory_version": str(
-                                    market_snapshot.get(
-                                        "inventory_version"
-                                    )
-                                    or ""
+                                # The snapshot id already varies per quote --
+                                # a new quote is a new observation, with its
+                                # own observed_at -- but the version did not,
+                                # so every quote added a row that the reader,
+                                # which resolves by (station, day, version),
+                                # then found two of.  That is the ambiguity
+                                # that blocked eleven of thirteen forward
+                                # scopes; the version has to move with the
+                                # observation it names.
+                                "inventory_version": _p0_preselection_scope_version(
+                                    market_snapshot
                                 ),
                                 "complete": 1,
                                 "inventory_json": {
@@ -9874,11 +9896,12 @@ class TargetProductionWorker:
                                         or ""
                                     )
                                 ),
-                                "order_state_version": str(
-                                    market_snapshot.get(
-                                        "order_state_version"
+                                # Same reasoning as the inventory version
+                                # above: keyed to the quote it observes.
+                                "order_state_version": (
+                                    _p0_preselection_scope_version(
+                                        market_snapshot
                                     )
-                                    or ""
                                 ),
                                 "known": 1,
                                 "order_state_json": {
@@ -9894,6 +9917,16 @@ class TargetProductionWorker:
                             # The forward binding names the persisted rows by
                             # content hash; recompute them through the same
                             # builders the insert used.
+                            # The quote row names the version the reader will
+                            # look the inventory up by, so it has to carry the
+                            # same quote-keyed value the rows were written
+                            # under, not the shared one it was copied with.
+                            quote_raw["inventory_version"] = (
+                                _p0_preselection_scope_version(market_snapshot)
+                            )
+                            quote_raw["order_state_version"] = (
+                                _p0_preselection_scope_version(market_snapshot)
+                            )
                             quote_raw["inventory_sha256"] = (
                                 build_confirmed_inventory_snapshot(
                                     inventory_raw
