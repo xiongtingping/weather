@@ -366,13 +366,19 @@ def _metric_rows(rows: Sequence[Mapping[str, Any]], key: str, buckets: tuple[str
     for row in rows:
         probs = row[f"{key}_probabilities"]
         truth_bucket = row["truth_bucket"]
+        # A row may carry its own ordered ladder.  Every metric here is a
+        # per-row quantity averaged over rows -- CRPS included, which walks
+        # one row's own cumulative -- so rows scored on different ladders
+        # average correctly.  Callers whose rows all share one ladder pass it
+        # and carry no per-row list, which is the original behaviour.
+        row_buckets = tuple(row.get("buckets") or buckets)
         cumulative = truth_cdf = 0.0
-        for bucket in buckets:
+        for bucket in row_buckets:
             probability = float(probs[bucket])
             brier += (probability - (1.0 if bucket == truth_bucket else 0.0)) ** 2
             cumulative += probability
             truth_cdf += 1.0 if bucket == truth_bucket else 0.0
-            if bucket != buckets[-1]:
+            if bucket != row_buckets[-1]:
                 crps += (cumulative - min(1.0, truth_cdf)) ** 2
         nll += -math.log(max(MIN_PROBABILITY, float(probs[truth_bucket])))
         error = float(row[f"{key}_mean_c"]) - float(row["truth_tmax_c"])

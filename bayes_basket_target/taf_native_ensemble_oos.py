@@ -438,21 +438,47 @@ def evaluate_taf_native_ensemble_oos(
             raise ContractError("taf_native_forward_taf_not_oos")
         probabilities_raw = native.get("probabilities")
         centers_raw = native.get("bucket_centers_c")
+        # Score the day on the ladder the day was listed under, not on
+        # today's.  The market re-centres as the forecast moves -- across the
+        # 45-station roster not one ladder held still over eight event days,
+        # and only 18% of historical station-days share the newest day's
+        # bucket names -- so demanding label equality with the live root
+        # discarded four fifths of otherwise valid evidence and left this
+        # gate unsatisfiable no matter how long the series accumulated.
+        # Nothing about live compatibility rode on those labels: the claim
+        # that this artifact transports to the serving root is carried by the
+        # ensemble system set, the independence families and the weight caps,
+        # all checked above.  What has to hold here is that the sample is
+        # internally coherent.
         if (
             not isinstance(probabilities_raw, Mapping)
             or not isinstance(centers_raw, Mapping)
-            or set(map(str, probabilities_raw)) != set(buckets)
-            or set(map(str, centers_raw)) != set(buckets)
+            or not probabilities_raw
+            or set(map(str, probabilities_raw)) != set(map(str, centers_raw))
         ):
             raise ContractError(
                 "taf_native_historical_probability_support_mismatch"
+            )
+        centers = {
+            str(bucket): _finite(
+                "taf_native_historical_bucket_center_c",
+                value,
+            )
+            for bucket, value in centers_raw.items()
+        }
+        row_buckets = tuple(
+            sorted(centers, key=lambda bucket: centers[bucket])
+        )
+        if len(set(centers.values())) != len(row_buckets):
+            raise ContractError(
+                "taf_native_historical_bucket_center_not_unique"
             )
         probabilities = {
             bucket: _finite(
                 "taf_native_historical_probability",
                 probabilities_raw[bucket],
             )
-            for bucket in buckets
+            for bucket in row_buckets
         }
         if (
             any(value < 0.0 for value in probabilities.values())
@@ -461,16 +487,26 @@ def evaluate_taf_native_ensemble_oos(
             raise ContractError(
                 "taf_native_historical_probability_invalid"
             )
-        centers = {
-            bucket: _finite(
-                "taf_native_historical_bucket_center_c",
-                centers_raw[bucket],
+        # The sample publishes centres, not edges.  Cut between neighbouring
+        # centres and leave the ends open, which is the same geometry every
+        # one of these ladders is built on: uniform interior steps with an
+        # "or below"/"or higher" tail at each end.
+        row_intervals: dict[str, tuple[float | None, float | None]] = {}
+        for index, bucket in enumerate(row_buckets):
+            lower = (
+                None
+                if index == 0
+                else (centers[row_buckets[index - 1]] + centers[bucket]) / 2.0
             )
-            for bucket in buckets
-        }
+            upper = (
+                None
+                if index == len(row_buckets) - 1
+                else (centers[bucket] + centers[row_buckets[index + 1]]) / 2.0
+            )
+            row_intervals[bucket] = (lower, upper)
         base_mean = sum(
             probabilities[bucket] * centers[bucket]
-            for bucket in buckets
+            for bucket in row_buckets
         )
         taf_values = {
             "tx_c": _finite("taf_native_taf_tx_c", taf.get("tx_c")),
@@ -506,7 +542,7 @@ def evaluate_taf_native_ensemble_oos(
         taf_probabilities = _probabilities(
             taf_mean,
             artifact.tx_residual_scale_c,
-            intervals,
+            row_intervals,
         )
         truth_c = _finite(
             "taf_native_truth_tmax_c",
@@ -516,7 +552,8 @@ def evaluate_taf_native_ensemble_oos(
             "station_id": station_id.upper(),
             "event_date": event_date,
             "truth_tmax_c": truth_c,
-            "truth_bucket": _truth_bucket(truth_c, intervals),
+            "truth_bucket": _truth_bucket(truth_c, row_intervals),
+            "buckets": row_buckets,
             "base_mean_c": base_mean,
             "taf_mean_c": taf_mean,
             "base_probabilities": probabilities,

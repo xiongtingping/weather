@@ -3427,29 +3427,110 @@ class TargetProductionWorker:
             (station_id,),
         ).fetchone()
         scope["latest_truth_day"] = str((truth or [""])[0] or "")
+        # Every scope this station is serving right now, not just the newest
+        # one.  The DB's latest root and the live inbox are two views of a
+        # scope that moves: a station runs today's day and tomorrow's at
+        # different lead buckets, and the ladder rotates the cycle under both,
+        # so a station takes three or four distinct scopes in a day.  Chasing
+        # only the instantaneous newest meant the lane fitted for whichever
+        # scope happened to be live when it woke, and the transport gate --
+        # which reads the inbox, not the table -- then asked for a live root
+        # at that scope and found none.  ZGSZ fitted twice on 2026-08-16 and
+        # both were rejected with ``taf_native_live_exact_scope_not_unique``
+        # while a perfectly good root for its ready scope sat in the inbox.
+        # Offer the gate's own view, so a ready series is pursued at a scope
+        # the gate can still see.
+        candidates: list[tuple[str, str, str]] = []
+        for candidate in self._taf_live_inbox_scopes(station_id):
+            if candidate not in candidates:
+                candidates.append(candidate)
+        live = (
+            scope["season_bin"],
+            scope["lead_bucket"],
+            scope["run_cycle"],
+        )
+        if live not in candidates:
+            candidates.append(live)
+        covered: set[tuple[str, str, str]] = set()
+        known: set[tuple[str, str, str]] = set()
         for artifact in self._taf_registry_artifacts():
-            if (
-                artifact.station_id,
-                artifact.settlement_timezone,
+            if (artifact.station_id, artifact.settlement_timezone) != (
+                station_id,
+                scope["settlement_timezone"],
+            ):
+                continue
+            key = (
                 artifact.season_bin,
                 artifact.lead_bucket,
                 artifact.run_cycle,
-            ) != (
-                station_id,
-                scope["settlement_timezone"],
-                scope["season_bin"],
-                scope["lead_bucket"],
-                scope["run_cycle"],
-            ):
+            )
+            known.add(key)
+            if artifact.valid_from_utc <= as_of_utc < artifact.valid_until_utc:
+                covered.add(key)
+        uncovered = [item for item in candidates if item not in covered]
+        scope["candidate_scopes"] = [list(item) for item in candidates]
+        scope["uncovered_scopes"] = [list(item) for item in uncovered]
+        if not uncovered:
+            return False, scope, "active_artifact_covers_live_scope"
+        # Present the first uncovered scope as the headline so a receipt read
+        # at a glance still names one thing; ``_train`` picks from the whole
+        # uncovered set by which of them has evidence.
+        head = uncovered[0]
+        scope["season_bin"], scope["lead_bucket"], scope["run_cycle"] = head
+        # A scope that once had an artifact and outlived it is a refit; one
+        # that never had one is a first fit.  Both are due, and the wait they
+        # describe is different enough to keep saying which.
+        return (
+            True,
+            scope,
+            "artifact_validity_window_lapsed"
+            if head in known
+            else "no_artifact_for_live_p0_scope",
+        )
+
+    def _taf_live_inbox_scopes(
+        self, station_id: str
+    ) -> list[tuple[str, str, str]]:
+        """(season, lead, cycle) for every P0 root the live inbox serves.
+
+        This is the same file the transport gate resolves against, so a scope
+        named here is one the gate can bind a fingerprint to.  Unreadable or
+        absent yields nothing rather than raising: the caller falls back to
+        the table's newest root, which is the pre-existing behaviour.
+        """
+
+        try:
+            inbox = load_bounded_json(self.p0_inbox_path)
+            rows = inbox.get("packets") if isinstance(inbox, Mapping) else None
+        except Exception:
+            return []
+        if not isinstance(rows, list):
+            return []
+        scopes: list[tuple[str, str, str]] = []
+        for raw in rows:
+            packet = raw.get("packet") if isinstance(raw, Mapping) else None
+            if not isinstance(packet, Mapping):
                 continue
-            if (
-                artifact.valid_from_utc
-                <= as_of_utc
-                < artifact.valid_until_utc
-            ):
-                return False, scope, "active_artifact_covers_live_scope"
-            return True, scope, "artifact_validity_window_lapsed"
-        return True, scope, "no_artifact_for_live_p0_scope"
+            if str(packet.get("station_id") or "") != station_id:
+                continue
+            if str(packet.get("stage") or "") != "P0":
+                continue
+            envelope = packet.get("native_probability_envelope")
+            lineage = (
+                envelope.get("lineage")
+                if isinstance(envelope, Mapping)
+                else None
+            )
+            if not isinstance(lineage, Mapping):
+                continue
+            item = (
+                str(lineage.get("season_bin") or ""),
+                taf_scope_lead_bucket(lineage),
+                str(lineage.get("run_cycle") or ""),
+            )
+            if all(item) and item not in scopes:
+                scopes.append(item)
+        return scopes
 
     @staticmethod
     def _taf_rolling_accumulation(
@@ -3692,6 +3773,20 @@ class TargetProductionWorker:
                 for item in (report.get("strict_splits") or [])
                 if isinstance(item, Mapping)
             ]
+            # Any scope this station is serving and has no artifact for, in
+            # the order the due check offered them.  Restricting this to the
+            # single newest scope threw away ready evidence: a series reaches
+            # READY at the scope it accumulated under, and by the time the
+            # lane wakes the ladder has usually moved the newest root
+            # somewhere else.
+            wanted = [
+                tuple(str(part) for part in item)
+                for item in (scope.get("uncovered_scopes") or [])
+            ] or [(
+                scope["season_bin"],
+                scope["lead_bucket"],
+                scope["run_cycle"],
+            )]
             exact = [
                 item
                 for item in splits
@@ -3699,13 +3794,17 @@ class TargetProductionWorker:
                     str(item.get("season_bin") or ""),
                     str(item.get("lead_bucket") or ""),
                     str(item.get("run_cycle") or ""),
-                ) == (
-                    scope["season_bin"],
-                    scope["lead_bucket"],
-                    scope["run_cycle"],
-                )
+                ) in wanted
             ]
             ready = [item for item in exact if item.get("state") == "READY"]
+            if ready:
+                # The rest of the pipeline -- fit arguments, gate arguments,
+                # bound filename -- is scoped to one artifact, so commit to
+                # the ready one before any of it runs.
+                selected_scope = ready[0]
+                scope["season_bin"] = str(selected_scope.get("season_bin") or "")
+                scope["lead_bucket"] = str(selected_scope.get("lead_bucket") or "")
+                scope["run_cycle"] = str(selected_scope.get("run_cycle") or "")
             steps[-1]["state"] = "READY" if ready else "ACCUMULATING"
             steps[-1]["series_scopes"] = [
                 {
@@ -3745,11 +3844,33 @@ class TargetProductionWorker:
                         ),
                     )
                 return _finish("BLOCKED_EVIDENCE")
-            if len(ready) != 1:
+            # Two ready series at *different* scopes is now the ordinary case
+            # and simply means the next run has something to do.  Two at the
+            # same scope is still a duplicate the builder should never emit.
+            at_selected = [
+                item
+                for item in ready
+                if (
+                    str(item.get("season_bin") or ""),
+                    str(item.get("lead_bucket") or ""),
+                    str(item.get("run_cycle") or ""),
+                ) == (
+                    scope["season_bin"],
+                    scope["lead_bucket"],
+                    scope["run_cycle"],
+                )
+            ]
+            if len(at_selected) != 1:
                 steps[-1]["state"] = "AMBIGUOUS"
                 steps[-1]["reason"] = "rolling_series_exact_scope_ambiguous"
                 return _finish("BLOCKED_EVIDENCE")
-            selected = ready[0]
+            steps[-1]["selected_scope"] = {
+                "season_bin": scope["season_bin"],
+                "lead_bucket": scope["lead_bucket"],
+                "run_cycle": scope["run_cycle"],
+            }
+            steps[-1]["ready_scope_count"] = len(ready)
+            selected = at_selected[0]
             fit_path = Path(str(selected["fit_output"]))
             transport_path = Path(str(selected["transport_output"]))
             try:
