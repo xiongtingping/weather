@@ -707,21 +707,31 @@ def _target_candidates(
         if sum(clips) > capital_available_usdc + EPS:
             continue
         is_baseline = all(clip <= EPS for clip in clips)
-        if not is_baseline and any(
-            (
-                current_shares[bucket]
-                + pending_shares[bucket]
-                <= EPS
-                and clip <= EPS
-            )
-            for bucket, clip in zip(ordered, clips)
-        ):
+        if not is_baseline and any(clip <= EPS for clip in clips):
             # A basket activation is atomic at the target level: either every
             # selected support bucket receives a positive target, or the
             # optimizer compares against the no-new-action baseline and
             # HOLDS.  Every positive gap is emitted in one complete Maker
             # intent bundle; exchange fills may arrive independently, but no
             # proper subset is an authorized initial action.
+            #
+            # This used to exempt a leg the station already held, on the
+            # reading that inventory already satisfies it.  The contract the
+            # candidates are then held to measures increments against the
+            # baseline -- every candidate carries the same inventory and none
+            # of them chose it -- so an exempted combination arrived at
+            # ``_assert_candidate_support_contract`` as a complete basket with
+            # a zero increment and was rejected as incomplete, taking the
+            # whole window's solve down with it.  Every window failing that
+            # way is ``delta_v2_no_solvable_support_window``, which is a
+            # compile refusal for the entire station.
+            #
+            # It never fired in production because production has held
+            # nothing since 2026-07-29: measured on manufactured positions,
+            # a station with inventory in a seated bucket refused to compile
+            # at every positive capital while the same station flat compiled
+            # at all of them.  That is the whole three-stage flow -- P0 opens,
+            # P0-M confirms, P1 adjusts -- unable to reach its second stage.
             continue
         shares = {
             bucket: current_shares[bucket] + pending_shares[bucket]

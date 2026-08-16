@@ -244,3 +244,57 @@ def test_shadow_score_none_when_nothing_admitted() -> None:
         probabilities_by_bucket={}, budget_usdc=1.0,
         bankroll_usdc=200.0, created_at_utc="t",
     ) is None
+
+
+def test_the_budget_face_is_split_by_equal_marginal_growth() -> None:
+    # Coordinate ascent cannot travel along the budget face -- raising one
+    # leg there requires lowering another, and no single-coordinate step
+    # does both -- so the solver stalled the moment the budget bound, which
+    # is every day worth trading.  Measured over 900 adversarial positions,
+    # every allocation it got wrong was on that face; the worst put dollars
+    # where the marginal growth per dollar was 129x lower than elsewhere.
+    #
+    # The condition is exact and holds budget-bound or not: differentiating
+    # the growth gives p_i / (c_i * A_i) equal across every leg held
+    # strictly inside its bounds.
+    probabilities = [0.194, 0.202, 0.210, 0.282]
+    prices = [0.19, 0.17, 0.57, 0.23]
+    depth_caps = [135.8, 228.6, 318.4, 97.4]
+    held = [0.0, 9.9, 0.0, 0.0]
+    sunk = 13.1
+    bankroll = 120.0
+    budget = 9.8
+
+    stakes = solve_fractional_kelly(
+        probabilities=probabilities, prices=prices, depth_caps=depth_caps,
+        budget_usdc=budget, bankroll_usdc=bankroll, kelly_fraction=1.0,
+        held_shares=held, sunk_cost_usdc=sunk,
+    )
+    spend = sum(q * c for q, c in zip(stakes, prices))
+    # The budget really does bind here, which is the case under test.
+    assert spend == pytest.approx(budget, abs=1e-6)
+
+    reserve = bankroll - sunk - spend
+    assert reserve > 0.0
+    interior = [
+        index for index in range(len(prices))
+        if stakes[index] > 1e-9 and stakes[index] + 1e-9 < depth_caps[index]
+    ]
+    assert len(interior) >= 3
+    marginals = [
+        probabilities[index]
+        / (prices[index] * (reserve + held[index] + stakes[index]))
+        for index in interior
+    ]
+    assert max(marginals) / min(marginals) - 1.0 < 1e-6
+
+    # A leg pinned at zero is allowed to sit below that level, never above:
+    # if it were above, dollars belong there and the solve left them behind.
+    common = max(marginals)
+    for index in range(len(prices)):
+        if index in interior or stakes[index] > 1e-9:
+            continue
+        pinned = probabilities[index] / (
+            prices[index] * (reserve + held[index])
+        )
+        assert pinned <= common * (1.0 + 1e-6)

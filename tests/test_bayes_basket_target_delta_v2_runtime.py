@@ -1355,3 +1355,64 @@ def test_a_cut_bundle_is_re_authorized_before_it_is_sent() -> None:
     refused = _call(cut, permitted, policy=strict)
     assert refused["authorized"] is False
     assert "profit_floor_ok" in refused["blockers"]
+
+
+def test_a_station_that_holds_something_can_still_compile() -> None:
+    # The candidate generator used to exempt a leg the station already held
+    # from the atomicity filter, while the contract those candidates are
+    # held to measures increments against the baseline and demands every
+    # seated leg positive.  The two disagreed exactly when inventory existed
+    # in a seated bucket: the exempted combination arrived as a complete
+    # basket with a zero increment, was rejected as incomplete, and took the
+    # window's whole solve with it -- every window, so
+    # delta_v2_no_solvable_support_window, so no plan for the station at all.
+    #
+    # It never fired in production because production has held nothing since
+    # 2026-07-29, which is also why it has to be pinned here: the second and
+    # third stages of the three-stage flow only ever run on a held book.
+    raw = _snapshot().to_dict()
+    raw["buckets"][0]["filled_shares"] = 14.0
+    raw["buckets"][0]["filled_cost_usdc"] = 2.8
+    held = TargetBasketSnapshot.from_mapping(raw)
+
+    candidates = _target_candidates(
+        snapshot=held,
+        desired=("35", "36"),
+        artifact=_delta_policy(),
+        capital_available_usdc=5.0,
+        minimum_clip_notional_usdc=0.01,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in held.buckets
+        },
+    )
+    baseline = next(
+        row for row in candidates
+        if row["candidate_kind"] == "NO_NEW_ACTION_BASELINE"
+    )
+    complete = [
+        row for row in candidates
+        if row["candidate_kind"] == "COMPLETE_BASKET_TARGET"
+    ]
+    assert complete
+    for row in complete:
+        for bucket in ("35", "36"):
+            assert (
+                row["shares_by_bucket"][bucket]
+                > baseline["shares_by_bucket"][bucket] + 1e-9
+            )
+
+    # And the whole compile survives it, which is the property that was
+    # actually broken.
+    plan = compile_delta_v2_runtime_plan(
+        snapshot=held,
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+    assert plan["state"] in {"TRADE", "HOLD"}
+    for target in plan["targets"]:
+        assert target["delta_shares"] >= 0.0

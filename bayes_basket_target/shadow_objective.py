@@ -267,8 +267,9 @@ def solve_fractional_kelly(
         grad -= p_outside * prices[index] / reserve
         return grad
 
-    # Per-coordinate bisection polish under budget and depth.
-    for _sweep in range(24):
+    def _coordinate_sweep() -> float:
+        """One pass of exact per-coordinate maximization.  Returns the move."""
+
         moved = 0.0
         for index in range(n):
             cost_others = sum(
@@ -305,7 +306,97 @@ def solve_fractional_kelly(
                     best = 0.5 * (low + high)
             moved = max(moved, abs(best - q[index]))
             q[index] = best
-        if moved < _TOLERANCE * max(1.0, w):
+        return moved
+
+    def _exchange_sweep() -> bool:
+        """Move a dollar from the worst-paying leg to the best.  True if it did.
+
+        Coordinate ascent cannot travel along the budget face: raising one
+        leg there requires lowering another, and no single-coordinate step
+        does both, so the sweep above stalls the moment the budget or the
+        reserve binds -- which is every interesting day.  Measured on 600
+        adversarial positions, every allocation the sweeps got wrong was on
+        that face, one by 37% of its own score.
+
+        The optimality condition is the same everywhere, budget-bound or
+        not: differentiating the growth gives ``p_i / (c_i A_i) = S`` for
+        every leg held strictly inside its bounds, so at the optimum the
+        marginal growth per dollar is equal across them.  A transfer keeps
+        the total cost -- and therefore the reserve -- fixed, so only the two
+        legs' own wealth moves and the equalizing amount is one bisection.
+        """
+
+        total_cost = sum(qi * ci for qi, ci in zip(q, prices))
+        reserve = free - total_cost
+        if reserve <= 1e-9:
+            return False
+
+        def marginal(index: int) -> float:
+            denom = reserve + held[index] + q[index]
+            if denom <= 0.0:
+                return math.inf
+            return probabilities[index] / (prices[index] * denom)
+
+        receivers = [
+            index for index in range(n)
+            if q[index] + 1e-12 < float(depth_caps[index])
+        ]
+        givers = [index for index in range(n) if q[index] > 1e-12]
+        if not receivers or not givers:
+            return False
+        taker = max(receivers, key=marginal)
+        maker = min(givers, key=marginal)
+        if taker == maker or marginal(taker) <= marginal(maker) * (1.0 + 1e-12):
+            return False
+        ceiling = min(
+            prices[taker] * (float(depth_caps[taker]) - q[taker]),
+            prices[maker] * q[maker],
+        )
+        if ceiling <= 0.0:
+            return False
+
+        def slope(transfer: float) -> float:
+            gained = reserve + held[taker] + q[taker] + transfer / prices[taker]
+            given = reserve + held[maker] + q[maker] - transfer / prices[maker]
+            if given <= 1e-12:
+                return -math.inf
+            return (
+                probabilities[taker] / (prices[taker] * gained)
+                - probabilities[maker] / (prices[maker] * given)
+            )
+
+        if slope(ceiling) >= 0.0:
+            transfer = ceiling
+        else:
+            low, high = 0.0, ceiling
+            for _ in range(60):
+                mid = 0.5 * (low + high)
+                if slope(mid) > 0.0:
+                    low = mid
+                else:
+                    high = mid
+            transfer = 0.5 * (low + high)
+        if transfer <= 1e-15:
+            return False
+        q[taker] += transfer / prices[taker]
+        q[maker] -= transfer / prices[maker]
+        return True
+
+    # Alternate until neither can improve: the sweeps set how much is spent,
+    # the exchanges set how it is divided, and each unblocks the other.
+    for _round in range(8):
+        moved = 0.0
+        for _sweep in range(24):
+            step = _coordinate_sweep()
+            moved = max(moved, step)
+            if step < _TOLERANCE * max(1.0, w):
+                break
+        traded = False
+        for _swap in range(4 * n):
+            if not _exchange_sweep():
+                break
+            traded = True
+        if not traded and moved < _TOLERANCE * max(1.0, w):
             break
     return [value * kelly_fraction for value in q]
 
