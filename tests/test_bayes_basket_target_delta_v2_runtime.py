@@ -554,6 +554,7 @@ def test_target_grid_uses_each_bucket_official_ask_depth_not_static_price_grid()
         artifact=_delta_policy(),
         capital_available_usdc=5.0,
         minimum_clip_notional_usdc=0.01,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
     )
     both = next(
         row
@@ -1103,6 +1104,7 @@ def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
         snapshot=_snapshot(), desired=support, artifact=_delta_policy(),
         capital_available_usdc=5.0,
         minimum_clip_notional_usdc=_basket_policy().clip_min_notional_usdc,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
     )
     origins = {row["candidate_origin"] for row in produced}
     assert origins == {"CLIP_GRID_PRODUCT", "CONTINUOUS_LOG_OPTIMUM"}

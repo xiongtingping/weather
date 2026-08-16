@@ -538,6 +538,7 @@ def _solve_over_support_windows(
                     minimum_clip_notional_usdc=(
                         basket_policy.clip_min_notional_usdc
                     ),
+                    bankroll_usdc=bankroll_usdc,
                 ),
                 # The floor guards the whole live set exactly when full
                 # coverage is structurally possible (charter 38, amended
@@ -645,6 +646,7 @@ def _target_candidates(
     artifact: DeltaV2PolicyArtifact,
     capital_available_usdc: float,
     minimum_clip_notional_usdc: float,
+    bankroll_usdc: float,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth."""
 
@@ -747,6 +749,7 @@ def _target_candidates(
         pending_cost=pending_cost,
         capital_available_usdc=capital_available_usdc,
         minimum_clip_notional_usdc=minimum_clip_notional_usdc,
+        bankroll_usdc=bankroll_usdc,
     ))
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
@@ -765,6 +768,7 @@ def _continuous_optimum_candidates(
     pending_cost: Mapping[str, float],
     capital_available_usdc: float,
     minimum_clip_notional_usdc: float,
+    bankroll_usdc: float,
 ) -> list[dict[str, Any]]:
     """Offer the split the clip grid cannot express.
 
@@ -783,12 +787,21 @@ def _continuous_optimum_candidates(
     Sizes span rather than pre-judge.  Using the serving fraction here would
     count the same risk aversion twice, since the curve score already
     expresses it, and the smallest candidate would always win.
+
+    What the solve maximizes is the curve of the *whole* post-trade position,
+    from the position already held as its initial condition -- the same
+    object ``curve_score`` ranks candidates by, and against the same bankroll
+    it reads.  Solving from flat and adding the answer to inventory optimizes
+    a curve nobody scores: on a rebalance it re-buys coverage the station
+    already owns and under-buys the outcomes still bare, because the marginal
+    log value of a share depends on what that outcome already pays.
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     prices: list[float] = []
     caps: list[float] = []
     probabilities: list[float] = []
+    held: list[float] = []
     for bucket in ordered:
         row = by_bucket[bucket]
         levels = list(row.ask_levels)
@@ -797,11 +810,31 @@ def _continuous_optimum_candidates(
         prices.append(float(levels[0].price))
         caps.append(sum(float(level.shares) for level in levels))
         probabilities.append(float(row.probability))
+        held.append(
+            float(current_shares.get(bucket, 0.0))
+            + float(pending_shares.get(bucket, 0.0))
+        )
     if any(price <= EPS or price >= 1.0 for price in prices):
         return []
     floor = max(float(minimum_clip_notional_usdc), 0.0)
     if floor * len(ordered) > capital_available_usdc + EPS:
         return []
+    # Selling is forbidden and the seat window moves, so a station routinely
+    # holds buckets this window cannot add to.  They still settle, so they
+    # still shape the curve; dropping them would price their probability mass
+    # as paying nothing and buy their coverage a second time.
+    seated = set(ordered)
+    outside_position: list[tuple[float, float]] = []
+    for row in snapshot.buckets:
+        if row.bucket in seated:
+            continue
+        inventory = (
+            float(current_shares.get(row.bucket, 0.0))
+            + float(pending_shares.get(row.bucket, 0.0))
+        )
+        if inventory > EPS:
+            outside_position.append((float(row.probability), inventory))
+    sunk_cost_usdc = sum(current_cost.values()) + sum(pending_cost.values())
 
     results: list[dict[str, Any]] = []
     seen: set[tuple[float, ...]] = set()
@@ -812,8 +845,15 @@ def _continuous_optimum_candidates(
                 prices=prices,
                 depth_caps=caps,
                 budget_usdc=float(capital_available_usdc),
-                bankroll_usdc=float(capital_available_usdc),
+                # The bankroll is the station's allotted risk capital, the
+                # same number the ranking reads.  Serving the unspent
+                # remainder here made the generator's risk preference drift
+                # within a day while the score it is judged by did not.
+                bankroll_usdc=float(bankroll_usdc),
                 kelly_fraction=fraction,
+                held_shares=held,
+                sunk_cost_usdc=sunk_cost_usdc,
+                held_outside=outside_position,
             )
         except ContractError:
             continue

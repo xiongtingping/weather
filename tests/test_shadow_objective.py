@@ -62,6 +62,63 @@ def test_solver_matches_kelly_theory() -> None:
         )
 
 
+def test_inventory_is_the_initial_condition_not_an_afterthought() -> None:
+    # Two symmetric outcomes, same price, same probability.  From flat the
+    # log-optimal answer is symmetric; holding one of them already, it is not
+    # -- the covered outcome's marginal share is worth less, so the solve
+    # buys the bare one.  Solving from flat and adding to inventory would
+    # keep the symmetric answer and re-buy coverage the station owns.
+    flat = solve_fractional_kelly(
+        probabilities=[0.4, 0.4], prices=[0.25, 0.25],
+        depth_caps=[1e5, 1e5], budget_usdc=100.0, bankroll_usdc=200.0,
+        kelly_fraction=1.0,
+    )
+    assert flat[0] == pytest.approx(flat[1], rel=1e-6)
+
+    positioned = solve_fractional_kelly(
+        probabilities=[0.4, 0.4], prices=[0.25, 0.25],
+        depth_caps=[1e5, 1e5], budget_usdc=100.0, bankroll_usdc=200.0,
+        kelly_fraction=1.0,
+        held_shares=[80.0, 0.0], sunk_cost_usdc=20.0,
+    )
+    assert positioned[1] > positioned[0] + 1e-6
+
+    # An outcome held outside the buyable set is scored, not written off as
+    # paying nothing.  Half the mass settling on shares the station already
+    # owns is half the downside, so the seated leg can carry more -- treating
+    # that mass as "pays minus the cost" is what shrinks a rebalance for a
+    # loss it is not exposed to.  A zero-share row is exactly the residual.
+    ignored = solve_fractional_kelly(
+        probabilities=[0.3], prices=[0.2], depth_caps=[1e5],
+        budget_usdc=100.0, bankroll_usdc=200.0, kelly_fraction=1.0,
+    )
+    scored = solve_fractional_kelly(
+        probabilities=[0.3], prices=[0.2], depth_caps=[1e5],
+        budget_usdc=100.0, bankroll_usdc=200.0, kelly_fraction=1.0,
+        held_outside=[(0.5, 400.0)],
+    )
+    assert scored[0] > ignored[0] + 1e-6
+    assert solve_fractional_kelly(
+        probabilities=[0.3], prices=[0.2], depth_caps=[1e5],
+        budget_usdc=100.0, bankroll_usdc=200.0, kelly_fraction=1.0,
+        held_outside=[(0.5, 0.0)],
+    )[0] == pytest.approx(ignored[0], rel=1e-6)
+
+    # Defaults are the from-flat problem exactly.
+    assert solve_fractional_kelly(
+        probabilities=[0.5], prices=[0.2], depth_caps=[1e6],
+        budget_usdc=1e6, bankroll_usdc=200.0,
+        held_shares=[0.0], sunk_cost_usdc=0.0, held_outside=[],
+    )[0] == pytest.approx(93.75, rel=1e-3)
+
+    with pytest.raises(ContractError):
+        solve_fractional_kelly(
+            probabilities=[0.5, 0.2], prices=[0.2, 0.3],
+            depth_caps=[10.0, 10.0], budget_usdc=10.0, bankroll_usdc=200.0,
+            held_shares=[1.0],
+        )
+
+
 def test_shadow_score_receipt_and_idempotent_persist() -> None:
     rows = [
         {"bucket": "34", "eligible": True, "r_limit": 0.011,

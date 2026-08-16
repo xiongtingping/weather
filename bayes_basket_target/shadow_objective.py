@@ -131,8 +131,11 @@ def solve_fractional_kelly(
     budget_usdc: float,
     bankroll_usdc: float,
     kelly_fraction: float = KELLY_FRACTION,
+    held_shares: Sequence[float] | None = None,
+    sunk_cost_usdc: float = 0.0,
+    held_outside: Sequence[Sequence[float]] = (),
 ) -> list[float]:
-    """Log-optimal stakes: closed-form active set, then constrained polish.
+    """Log-optimal *increments* from the position already held.
 
     Unconstrained log-optimal betting on mutually exclusive outcomes has the
     classical solution: admit buckets in decreasing edge ``p/c`` while
@@ -142,6 +145,20 @@ def solve_fractional_kelly(
     bisection on the (strictly concave) growth -- deterministic, no step
     sizes, and exact at the scale of eleven buckets.  Stakes scale by the
     Kelly fraction at the end.
+
+    The position the station already carries is the *initial condition*, not
+    an afterthought.  Solving from zero and adding the answer to inventory
+    maximizes the curve of the increment, which is a different problem and a
+    different answer: an outcome already covered by held shares has a higher
+    settled wealth, so the marginal log value of buying more of it is lower,
+    while an uncovered outcome is worth more than its price alone says.
+    ``held_shares`` is the inventory on each buyable coordinate,
+    ``sunk_cost_usdc`` what the whole position has already paid (a uniform
+    shift of every outcome, and log wealth is not translation-invariant, so
+    it belongs inside), and ``held_outside`` the ``(probability, shares)``
+    of outcomes carrying inventory this solve cannot add to -- a bucket the
+    seat has moved off, which still pays and still must be scored.  All
+    three default to empty, which is exactly the from-flat problem.
     """
 
     n = len(prices)
@@ -154,14 +171,37 @@ def solve_fractional_kelly(
         and 0.0 < kelly_fraction <= 1.0
     ):
         raise ContractError("shadow_objective_inputs_invalid")
-    for value in (*probabilities, *prices, *depth_caps):
+    held = (
+        [0.0] * n if held_shares is None
+        else [float(value) for value in held_shares]
+    )
+    if len(held) != n:
+        raise ContractError("shadow_objective_inputs_invalid")
+    standing: list[tuple[float, float]] = []
+    for row in held_outside:
+        pair = tuple(float(value) for value in row)
+        if len(pair) != 2:
+            raise ContractError("shadow_objective_inputs_invalid")
+        standing.append((pair[0], pair[1]))
+    sunk = float(sunk_cost_usdc)
+    for value in (
+        *probabilities, *prices, *depth_caps, *held, sunk,
+        *(item for pair in standing for item in pair),
+    ):
         if not math.isfinite(float(value)) or float(value) < 0.0:
             raise ContractError("shadow_objective_inputs_invalid")
     if any(c <= 0.0 or c >= 1.0 for c in prices):
         raise ContractError("shadow_objective_price_invalid")
 
     w = float(bankroll_usdc)
-    p_outside = max(0.0, 1.0 - sum(probabilities))
+    # What the bankroll still has at risk once the position is paid for.
+    # Every outcome carries this shift alike, so it is the wealth the curve
+    # is actually shaped against.
+    free = w - sunk
+    p_outside = max(
+        0.0,
+        1.0 - sum(probabilities) - sum(mass for mass, _ in standing),
+    )
 
     # Closed-form warm start (unconstrained full Kelly).
     order = sorted(
@@ -185,15 +225,19 @@ def solve_fractional_kelly(
             active.append(index)
             p_s, c_s = trial_p, trial_c
     q = [0.0] * n
-    if active:
-        reserve = w * (1.0 - p_s) / (1.0 - c_s)
+    if active and free > 0.0:
+        reserve = free * (1.0 - p_s) / (1.0 - c_s)
         for index in active:
             stake = reserve * (
                 probabilities[index] * (1.0 - c_s)
                 / (prices[index] * (1.0 - p_s))
                 - 1.0
             )
-            q[index] = max(0.0, stake)
+            # The closed form names the *total* exposure the outcome should
+            # carry; inventory already delivers part of it and only the
+            # remainder is for sale.  The polish below works from the exact
+            # gradient, so this only has to start it in the right basin.
+            q[index] = max(0.0, stake - held[index])
 
     # Onto the feasible set: depth box, then the budget face.
     q = [min(value, float(cap)) for value, cap in zip(q, depth_caps)]
@@ -206,18 +250,20 @@ def solve_fractional_kelly(
 
     def _growth_gradient(index: int, stakes: Sequence[float]) -> float:
         total_cost = sum(qi * ci for qi, ci in zip(stakes, prices))
-        reserve = w - total_cost
+        reserve = free - total_cost
         if reserve <= 1e-9:
             return -1.0
         grad = probabilities[index] * (1.0 - prices[index]) / (
-            reserve + stakes[index]
+            reserve + held[index] + stakes[index]
         )
         for other in range(n):
             if other != index:
                 grad -= (
                     probabilities[other] * prices[index]
-                    / (reserve + stakes[other])
+                    / (reserve + held[other] + stakes[other])
                 )
+        for mass, shares in standing:
+            grad -= mass * prices[index] / (reserve + shares)
         grad -= p_outside * prices[index] / reserve
         return grad
 
@@ -233,7 +279,7 @@ def solve_fractional_kelly(
             upper = min(
                 float(depth_caps[index]),
                 max(0.0, (budget_usdc - cost_others) / prices[index]),
-                (w - cost_others) / prices[index] - 1e-6,
+                (free - cost_others) / prices[index] - 1e-6,
             )
             if upper <= 0.0:
                 moved = max(moved, q[index])
