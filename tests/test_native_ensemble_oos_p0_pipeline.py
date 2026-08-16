@@ -33,7 +33,7 @@ from bayes_basket_target.native_ensemble_oos import (
     _scope_contract_variants,
     _historical_transport_scope_allowed,
     _load_cases,
-    _select_exact_shared_holdout_cohort,
+    _eligible_exact_shared_holdout_cohorts,
     build_native_ensemble_oos,
     persist_native_ensemble_oos,
 )
@@ -253,7 +253,7 @@ def test_cross_oos_uses_largest_exact_shared_holdout_cohort() -> None:
         "NOAA": {"independence_family_id": "NOAA_GEFS"},
         "ECCC": {"independence_family_id": "ECCC_GEM"},
     }
-    selected = _select_exact_shared_holdout_cohort(
+    selected = _eligible_exact_shared_holdout_cohorts(
         ready_rows=[
             ("ECMWF", "18Z", {"predictions": first_window}),
             ("NOAA", "18Z", {"predictions": first_window}),
@@ -285,7 +285,7 @@ def test_cross_oos_includes_available_official_third_family() -> None:
             "independence_family_id": "ECCC_GEM",
         },
     }
-    selected = _select_exact_shared_holdout_cohort(
+    selected = _eligible_exact_shared_holdout_cohorts(
         ready_rows=[
             (system_id, "18Z", {"predictions": holdout})
             for system_id in sorted(systems)

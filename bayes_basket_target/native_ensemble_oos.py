@@ -3005,6 +3005,22 @@ def build_native_ensemble_oos(
             float(value) for value in climate_train
         ])
         baseline_metrics = []
+        # Marginal worth of each shape layer, scored on the same holdout the
+        # gate uses.  The gate itself asks only whether the assembled
+        # distribution beats climatology, which a harmful layer passes as
+        # easily as a helpful one so long as the rest of the stack carries it;
+        # no layer in this stack had ever been scored against its own absence.
+        # Recorded, not enforced -- a layer's fate belongs to whoever reads
+        # enough of these, not to one artifact's holdout.
+        ablation_metrics: dict[str, list[dict[str, float]]] = {
+            layer: []
+            for layer in (
+                "synoptic_cooling",
+                "neighbour_direction",
+                "conditional_tail_skew",
+                "band_reliability",
+            )
+        }
         for day in common_holdout:
             keys = set().union(*(
                 set(predictions_by_system[system][day]["probability"])
@@ -3042,46 +3058,70 @@ def build_native_ensemble_oos(
             cooling_shift = day_signals.pop(
                 "synoptic_cooling_shift_c", None
             )
-            if cooling_shift:
-                probability = _shift_bucketed_probability(
-                    probability,
-                    ordered_keys=ordered_keys,
-                    shift_c=float(cooling_shift),
-                )
             ordinal_map = {
                 str(key): index
                 for index, key in enumerate(ordered_keys)
             }
-            probability, _direction_receipt = (
-                apply_neighbour_direction_tilt(
-                    probability,
-                    ordinals=ordinal_map,
-                    center_bucket=_nearest_key(
-                        ordered_keys,
-                        sum(
-                            probability[str(key)] * float(int(key))
-                            for key in ordered_keys
-                        ),
-                    ),
-                    latitude=station_latitude,
-                )
-            )
-            probability, _skew_receipt = apply_conditional_tail_skew(
-                probability,
-                ordinals=ordinal_map,
-                **day_signals,
-            )
-            # Outermost, after every shape layer: the band factors were
-            # measured on final served claims, so they must see the claim
-            # every inner layer has already finished with.
-            probability, _band_receipt = apply_band_reliability(
-                probability, factors=band_factors
-            )
+
+            def _shaped(
+                base: Mapping[str, float],
+                *,
+                skip: str | None = None,
+            ) -> dict[str, float]:
+                """The shape stack, optionally with one layer left out.
+
+                Written as one function so the ablation below scores the same
+                arithmetic serving runs rather than a re-derivation of it: a
+                copy would drift from the served order the first time a layer
+                moved, and the ablation would then be measuring the copy.
+                """
+
+                shaped = {str(k): float(v) for k, v in base.items()}
+                if cooling_shift and skip != "synoptic_cooling":
+                    shaped = _shift_bucketed_probability(
+                        shaped,
+                        ordered_keys=ordered_keys,
+                        shift_c=float(cooling_shift),
+                    )
+                if skip != "neighbour_direction":
+                    shaped, _direction_receipt = (
+                        apply_neighbour_direction_tilt(
+                            shaped,
+                            ordinals=ordinal_map,
+                            center_bucket=_nearest_key(
+                                ordered_keys,
+                                sum(
+                                    shaped[str(key)] * float(int(key))
+                                    for key in ordered_keys
+                                ),
+                            ),
+                            latitude=station_latitude,
+                        )
+                    )
+                if skip != "conditional_tail_skew":
+                    shaped, _skew_receipt = apply_conditional_tail_skew(
+                        shaped,
+                        ordinals=ordinal_map,
+                        **day_signals,
+                    )
+                # Outermost, after every shape layer: the band factors were
+                # measured on final served claims, so they must see the claim
+                # every inner layer has already finished with.
+                if skip != "band_reliability":
+                    shaped, _band_receipt = apply_band_reliability(
+                        shaped, factors=band_factors
+                    )
+                return shaped
+
+            unshaped = probability
+            probability = _shaped(unshaped)
             actual = float(
                 predictions_by_system[
                     next(iter(weights))
                 ][day]["actual_tmax_c"]
             )
+            for layer, samples in ablation_metrics.items():
+                samples.append(_metrics(_shaped(unshaped, skip=layer), actual))
             decision_at_utc = max(
                 str(predictions_by_system[system][day][
                     "decision_at_utc"
@@ -3121,6 +3161,25 @@ def build_native_ensemble_oos(
             row["metrics"] for row in cross_predictions
         ])
         climate_metrics = _mean_metrics(baseline_metrics)
+        # Positive percentages mean the layer earned its place: the stack
+        # without it scores worse.  Sign is what a reader wants first, so it
+        # is stated in the units the gate argues in rather than as two sets of
+        # raw means to difference by hand.
+        shape_layer_ablation = {}
+        for layer, samples in ablation_metrics.items():
+            if not samples:
+                continue
+            without = _mean_metrics(samples)
+            shape_layer_ablation[layer] = {
+                metric: (
+                    100.0
+                    * (without[metric] - cross_metrics[metric])
+                    / cross_metrics[metric]
+                    if cross_metrics[metric]
+                    else 0.0
+                )
+                for metric in ("crps", "nll", "brier")
+            }
         # No provisional admission: every served weight is a certified
         # weight, awarded by the subset contest on the exact shared holdout
         # (the 2026-08-15 ruling -- eligibility, never a mandate).  The two
@@ -3335,6 +3394,7 @@ def build_native_ensemble_oos(
             "rolling_origin_fold_count": len(common_holdout),
             "effective_sample_n": float(len(common_holdout)),
             "oos_metrics": cross_metrics,
+            "shape_layer_ablation": shape_layer_ablation,
             "climatology_baseline_metrics": climate_metrics,
             "cross_system_residual_correlation": correlations,
             "predictions": cross_predictions,
@@ -3542,15 +3602,28 @@ def _evaluation_identity(
         "train_end_date": candidate["train_end_date"],
         "holdout_start_date": candidate["holdout_start_date"],
         "holdout_end_date": candidate["holdout_end_date"],
-        # The gate record rides only here: the evaluation row is a new
-        # append-only fact each scan, so embedding it is free, while the
-        # selection identity must keep the gate-free bytes its activation
-        # pointers were bound under.
-        "oos_metrics_json": _json(
-            {**candidate["oos_metrics"], "gate": candidate["oos_gate"]}
-            if isinstance(candidate.get("oos_gate"), Mapping)
-            else candidate["oos_metrics"]
-        ),
+        # The gate record and the per-layer ablation ride only here: the
+        # evaluation row is a new append-only fact each scan, so embedding
+        # them is free, while the selection identity must keep the gate-free
+        # bytes its activation pointers were bound under.  Anything added to
+        # this dict must stay out of ``_selection_identity`` for that reason,
+        # and out of the table's own columns, which no reader migrates for a
+        # diagnostic.
+        "oos_metrics_json": _json({
+            **candidate["oos_metrics"],
+            **(
+                {"gate": candidate["oos_gate"]}
+                if isinstance(candidate.get("oos_gate"), Mapping)
+                else {}
+            ),
+            **(
+                {"shape_layer_ablation": candidate["shape_layer_ablation"]}
+                if isinstance(
+                    candidate.get("shape_layer_ablation"), Mapping
+                )
+                else {}
+            ),
+        }),
         "climatology_baseline_metrics_json": _json(
             candidate["climatology_baseline_metrics"]
         ),
