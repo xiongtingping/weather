@@ -1658,10 +1658,28 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:"
             "native_cross_ensemble_activation_not_exact"
         )
+    # Ambiguous means the sort above could not separate them -- not merely
+    # that they seat the same systems at the same generation.  The guard
+    # exists so a tie never falls through to ``activation_id``, which is
+    # arbitrary; testing fewer keys than the sort uses turns a decided
+    # ranking back into a refusal.
+    #
+    # MPMG 2026-08-17 is the specimen: two generation-3 activations, both
+    # seating ECMWF and GEFS, one fitted at 00Z and one at mixed cycles.
+    # The packet is 00Z, so the sort ranked the exactly-fitted row first on
+    # zero riders and the mixed one second on one -- exactly the preference
+    # the rider ordering was added for -- and then this guard declared them
+    # indistinguishable on membership and generation alone.  The station had
+    # no forward P0 at all for as long as both rows stayed in window, which
+    # is permanent: activations are append-only and the pair was minted in
+    # the same generation.
     if (
         len(activations) > 1
         and len(activations[0][1]) == len(activations[1][1])
         and set(activations[0][1]) == set(activations[1][1])
+        and len(activations[0][2]) == len(activations[1][2])
+        and str(activations[0][0][4] or "")
+        == str(activations[1][0][4] or "")
         and int(activations[0][0][3])
         == int(activations[1][0][3])
     ):
