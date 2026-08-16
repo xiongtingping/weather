@@ -491,11 +491,11 @@ def build_payload(db: Path) -> dict[str, Any]:
                 realized / expected if abs(expected) > 1e-9 else None
             ),
         })
-    # One row per station carries both its seats and its statistics: split
-    # across two tables they were the same key read twice.
-    stats_by_station = {s["station_id"]: s for s in station_stats}
-    for entry in roster:
-        entry["stats"] = stats_by_station.get(entry["station_id"])
+    # ``station_stats`` is deliberately not attached to the roster rows.  A
+    # roster row is a station-day and these averages span the whole window,
+    # so carrying them there put a number on every date that belonged to
+    # none of them -- ZUUU's 08-16 fill was reported as its 08-17 ask total
+    # on a day with no book.  The page reads the two collections apart.
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",
