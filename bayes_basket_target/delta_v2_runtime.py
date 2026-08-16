@@ -31,6 +31,7 @@ from .basket_kernel.delta_v2 import (
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
     CURVE_OBJECTIVE_FORM,
+    DEFAULT_KELLY_FRACTION,
     VALUE_OBJECTIVE_FORM,
     evaluate_action_v2,
     evaluate_basket_value_v2,
@@ -784,17 +785,23 @@ def _continuous_optimum_candidates(
     field: a generator must be able to say where a candidate came from
     without changing what the state machine reads.
 
-    Sizes span rather than pre-judge.  Using the serving fraction here would
-    count the same risk aversion twice, since the curve score already
-    expresses it, and the smallest candidate would always win.
-
     What the solve maximizes is the curve of the *whole* post-trade position,
     from the position already held as its initial condition -- the same
-    object ``curve_score`` ranks candidates by, and against the same bankroll
-    it reads.  Solving from flat and adding the answer to inventory optimizes
-    a curve nobody scores: on a rebalance it re-buys coverage the station
-    already owns and under-buys the outcomes still bare, because the marginal
-    log value of a share depends on what that outcome already pays.
+    object ``curve_score`` ranks candidates by.  Solving from flat and adding
+    the answer to inventory optimizes a curve nobody scores: on a rebalance
+    it re-buys coverage the station already owns and under-buys the outcomes
+    still bare, because the marginal log value of a share depends on what
+    that outcome already pays.
+
+    ``curve_score`` expresses its risk aversion as an effective bankroll
+    ``W/f``, so that is the bankroll the solve is handed and the fraction it
+    is asked for is one.  The first candidate is then exactly the ranking's
+    own continuous optimum rather than an approximation of it, and the second
+    spans a smaller size beneath it.  Serving the serving fraction *here*
+    instead would count the same aversion twice and the smallest candidate
+    would always win; serving the unspent remainder as ``W`` -- what this did
+    before -- made the generator's risk preference drift within the day while
+    the score judging it did not.
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
@@ -836,6 +843,8 @@ def _continuous_optimum_candidates(
             outside_position.append((float(row.probability), inventory))
     sunk_cost_usdc = sum(current_cost.values()) + sum(pending_cost.values())
 
+    effective_bankroll_usdc = float(bankroll_usdc) / DEFAULT_KELLY_FRACTION
+
     results: list[dict[str, Any]] = []
     seen: set[tuple[float, ...]] = set()
     for fraction in (1.0, 0.5):
@@ -845,11 +854,7 @@ def _continuous_optimum_candidates(
                 prices=prices,
                 depth_caps=caps,
                 budget_usdc=float(capital_available_usdc),
-                # The bankroll is the station's allotted risk capital, the
-                # same number the ranking reads.  Serving the unspent
-                # remainder here made the generator's risk preference drift
-                # within a day while the score it is judged by did not.
-                bankroll_usdc=float(bankroll_usdc),
+                bankroll_usdc=effective_bankroll_usdc,
                 kelly_fraction=fraction,
                 held_shares=held,
                 sunk_cost_usdc=sunk_cost_usdc,

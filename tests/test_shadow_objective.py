@@ -119,6 +119,77 @@ def test_inventory_is_the_initial_condition_not_an_afterthought() -> None:
         )
 
 
+def test_solver_at_effective_bankroll_is_the_curve_score_optimum() -> None:
+    # The generator hands the solver the ranking's effective bankroll W/f and
+    # asks for fraction one, so its first candidate is not an approximation
+    # of what curve_score wants -- it is that argmax.  Pin the equivalence on
+    # a position with inventory, where the two formulations would otherwise
+    # be free to disagree.
+    import random
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        DEFAULT_KELLY_FRACTION,
+        ValueWeightsV2,
+        curve_score,
+        evaluate_basket_value_v2,
+    )
+
+    seat = ("a", "b", "c", "d")
+    probabilities = [0.10, 0.28, 0.34, 0.16]
+    prices = [0.06, 0.22, 0.37, 0.13]
+    held = [0.0, 40.0, 25.0, 0.0]
+    sunk = 40 * 0.20 + 25 * 0.34
+    cap = 1e7
+    bankroll = 200.0
+    full = {**dict(zip(seat, probabilities)), "rest": 0.12}
+    weights = ValueWeightsV2.from_mapping({
+        "lambda_profit_floor": 0.0, "lambda_cvar": 0.0,
+        "lambda_shortfall": 0.0, "lambda_breakthrough": 0.0,
+        "lambda_overfill": 0.0, "lambda_excess_hhi": 0.0,
+        "cvar_alpha": 0.25, "hhi_max": 0.75,
+        "expected_pnl_scale": 1.0, "profit_floor_scale": 1.0,
+        "cvar_scale": 1.0, "coverage_scale": 1.0,
+        "overfill_scale": 1.0, "excess_hhi_scale": 1.0,
+    })
+
+    def score(bought: list[float]) -> float:
+        shares = {
+            bucket: held[index] + bought[index]
+            for index, bucket in enumerate(seat)
+        }
+        cost = {
+            bucket: (sunk if index == 0 else 0.0)
+            + bought[index] * prices[index]
+            for index, bucket in enumerate(seat)
+        }
+        return curve_score(
+            evaluate_basket_value_v2(
+                probabilities=full,
+                shares_by_bucket={**shares, "rest": 0.0},
+                cost_by_bucket={**cost, "rest": 0.0},
+                protected_buckets=seat, shortfall_buckets=(),
+                breakthrough_buckets=(), weights=weights,
+            ),
+            bankroll_usdc=bankroll,
+            kelly_fraction=DEFAULT_KELLY_FRACTION,
+        )
+
+    optimum = solve_fractional_kelly(
+        probabilities=probabilities, prices=prices, depth_caps=[cap] * 4,
+        budget_usdc=1e7, bankroll_usdc=bankroll / DEFAULT_KELLY_FRACTION,
+        kelly_fraction=1.0, held_shares=held, sunk_cost_usdc=sunk,
+    )
+    best = score(optimum)
+    random.seed(0)
+    for _ in range(2000):
+        spread = random.choice([0.02, 0.2, 2.0])
+        nearby = [
+            max(0.0, min(cap, value + random.gauss(0.0, spread)))
+            for value in optimum
+        ]
+        assert score(nearby) <= best + 1e-12
+
+
 def test_shadow_score_receipt_and_idempotent_persist() -> None:
     rows = [
         {"bucket": "34", "eligible": True, "r_limit": 0.011,
