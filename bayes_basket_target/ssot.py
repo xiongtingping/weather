@@ -1289,6 +1289,17 @@ ON basket_probability_envelope(station_id,event_date,state,decision_at_utc,fresh
 -- 2026-08-15, which turned a compile backlog into an unfinishable cycle.
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_checkpoint_idx
 ON basket_probability_envelope(checkpoint_id);
+
+-- The decision sweep lists every committed scope once per cycle and needs
+-- settlement_timezone to decide whether the day is still open.  That one
+-- column is the only thing the as-of index above does not carry, so the plan
+-- stayed an index scan but paid a table lookup per entry -- and the rows it
+-- lands on carry probabilities/lineage JSON in overflow pages.  Measured
+-- 2026-08-16 at 59,120 rows: 13.0-15.6s per cycle, against 0.48s for the
+-- identical query with settlement_timezone dropped.  Leading with state and
+-- then the sweep's own ORDER BY also retires the temp b-tree.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_committed_scope_idx
+ON basket_probability_envelope(state,event_date,station_id,settlement_timezone);
 """ + PROBABILITY_BRIDGE_DDL + REGIME_ARTIFACT_DDL + """
 CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
   snapshot_id TEXT PRIMARY KEY,
@@ -1366,6 +1377,24 @@ CREATE INDEX IF NOT EXISTS
   calibration_republisher_ensemble_member_run_scope_idx
 ON calibration_republisher_ensemble_member_run(
   station_id,target_local_date,ensemble_system_id
+);
+
+-- The OOS sweep asks both member-run lanes the same two questions every
+-- cycle -- which stations are candidates, and what truth each one has -- and
+-- both start from a UNION filtered on authority_scope, which no index led
+-- with.  That is a scan of 467k rows twice per cycle (measured 2026-08-16:
+-- 2.07s and 1.60s).  Leading with authority_scope and carrying the scope
+-- pair makes both queries covering.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_run_authority_idx
+ON calibration_republisher_ensemble_member_run(
+  authority_scope,station_id,target_local_date
+);
+
+CREATE INDEX IF NOT EXISTS
+  calibration_native_ensemble_member_run_authority_idx
+ON calibration_native_ensemble_member_run(
+  authority_scope,station_id,target_local_date
 );
 
 -- Every remaining append-only table read by (station, day).  None of these

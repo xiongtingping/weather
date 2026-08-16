@@ -36,6 +36,8 @@ from .atomic_ledger import (
     AtomicLedgerError,
     commit_blocked_scope_decision,
     commit_preliminary_scope_decision,
+    reset_writer_lock_profile,
+    writer_lock_profile,
 )
 from .band_reliability_store import load_band_table
 from .contracts import (
@@ -10985,7 +10987,50 @@ class TargetProductionWorker:
                 },
             )
 
+    def _mark(self, stage: str) -> None:
+        """Close the current stage of ``run`` and open the next one.
+
+        A mark records the span since the previous mark, so the timings read
+        as a timeline in the order the stages ran.  This is deliberately a
+        single call per stage rather than a wrapper per stage: ``run`` is one
+        long body with many early returns, and re-indenting it to profile it
+        is how a profiling change becomes a behaviour change.
+        """
+
+        now = time.perf_counter()
+        previous = getattr(self, "_stage_mark_at", now)
+        self._stage_mark_at = now
+        timings = getattr(self, "_stage_timings_ms", None)
+        if timings is None:
+            timings = {}
+            self._stage_timings_ms = timings
+        timings[stage] = round((now - previous) * 1000.0, 1)
+
     def run(self) -> dict[str, Any]:
+        """Run one production cycle and report where its time went.
+
+        The cycle is submitted every 15s but has been taking 6-16 minutes,
+        and until now a slow cycle and a wedged one were indistinguishable
+        from outside: the result said what the cycle concluded, never what it
+        spent.  Publish the stage timeline and the write-lock profile beside
+        the result so the next stall is read from the status file.
+        """
+
+        self._stage_timings_ms = {}
+        self._stage_mark_at = time.perf_counter()
+        started = time.perf_counter()
+        reset_writer_lock_profile()
+        try:
+            result = self._run_stages()
+        finally:
+            total_ms = round((time.perf_counter() - started) * 1000.0, 1)
+            self._stage_timings_ms["cycle_total"] = total_ms
+        if isinstance(result, dict):
+            result.setdefault("stage_timings_ms", dict(self._stage_timings_ms))
+            result.setdefault("writer_lock_profile", writer_lock_profile())
+        return result
+
+    def _run_stages(self) -> dict[str, Any]:
         if self.conn is None:
             return _blocked(f"target_ssot_read_only_open_failed:{self.open_error or 'unknown'}")
         if self.commit_error is not None:
@@ -11006,6 +11051,7 @@ class TargetProductionWorker:
             self._assert_db_activation(activation)
         except Exception as exc:
             return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
+        self._mark("activation")
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
             return _blocked("target_scope_config_missing")
@@ -11026,6 +11072,7 @@ class TargetProductionWorker:
                 "calls_order_gateway": False,
                 "live_submit_authorized": False,
             }
+        self._mark("cash_phase_flush")
         now = utc_now()
         market_ingress: dict[str, Any] | None = None
         resident_p0_ingress: dict[str, Any] | None = None
@@ -11060,6 +11107,7 @@ class TargetProductionWorker:
                     "calls_order_gateway": False,
                     "places_orders": False,
                 }
+            self._mark("registry_ingress")
             native_inbox_path = (
                 self.nwp_runtime_root
                 / "native_ensemble_forward_inbox.json"
@@ -11216,6 +11264,7 @@ class TargetProductionWorker:
                         (now, now, MAX_FORWARD_P0_STATIONS),
                     )
                 }
+                self._mark("native_inbox_ingest")
                 # Official native remains first choice for each station-day.
                 # If it is absent at this evidence instant, retain the
                 # explicitly labelled Open-Meteo packet for the compiler's
@@ -11346,6 +11395,7 @@ class TargetProductionWorker:
                 native_ensemble_ingress[
                     "active_activation_p0_replay"
                 ] = active_activation_p0_replay
+                self._mark("native_p0_replay_compile")
                 now_mono = time.monotonic()
                 last_oos_scan = getattr(
                     self,
@@ -11381,6 +11431,7 @@ class TargetProductionWorker:
                 new_oos_stations = sorted(set(
                     new_oos_stations + changed_truth_stations
                 ))
+                self._mark("oos_candidate_scan")
                 # One station per production cycle, throttled only enough to
                 # keep a fast cycle from spinning the sweep.  At 600s the
                 # sweep took 45 x 10min = 7.5 hours to carry a calibration
@@ -11614,12 +11665,14 @@ class TargetProductionWorker:
                     "orders_submitted": 0,
                     "live_submit_authorized": False,
                 }
+            self._mark("native_ensemble_oos")
             resident_probability_chain = self._materialize_resident_probability_chain(
                 as_of_utc=now,
             )
             resident_p0_ingress = resident_probability_chain["p0"]
             resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
+            self._mark("probability_chain")
             # A correction/revision halt belongs to one station-day.  It must
             # remain fail-closed for that scope, but must not suppress healthy
             # stations from reaching their own WS/decision path.  Only a
@@ -11639,11 +11692,13 @@ class TargetProductionWorker:
                         "resident_p1_blocked_before_current_scope_market"
                     )
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
+            self._mark("regime")
             ws_scope_catalog = (
                 self._resident_ws_scope_catalog()
                 if self.market_manifest_path.is_file()
                 else []
             )
+            self._mark("ws_scope_catalog")
             registry_snapshot_path = (
                 self.nwp_runtime_root / "market_registry_forward.json"
             )
@@ -11771,6 +11826,7 @@ class TargetProductionWorker:
                         "intents_written": 0,
                         "reservations_written": 0,
                     })
+            self._mark("forward_p0_loop")
             open_ws_scopes = [
                 item
                 for item in ws_scope_catalog
@@ -11895,6 +11951,7 @@ class TargetProductionWorker:
             # its inventory/order versions are already visible, producing a
             # false cross-generation drift.
             now = utc_now()
+            self._mark("market_ingress")
             post_fill_recompute = self._consume_post_fill_recompute_requests(
                 activation=activation,
                 scope_config=scope,
@@ -11902,6 +11959,7 @@ class TargetProductionWorker:
             )
             if post_fill_recompute.get("state") == "BLOCKED_FAIL_CLOSED":
                 raise ContractError("post_fill_recompute_blocked")
+            self._mark("post_fill_recompute")
             recomputed_scopes = {
                 (
                     str(item.get("station_id") or ""),
@@ -11910,9 +11968,17 @@ class TargetProductionWorker:
                 for item in post_fill_recompute.get("results", [])
                 if isinstance(item, Mapping)
             }
+            # Every committed scope ever written was listed here and then
+            # thrown away by the event-date test below -- 478 scopes read to
+            # keep the handful belonging to this cycle's day.  The day is
+            # already known and non-empty (guarded above), so ask for it:
+            # the sweep drops from 59,120 index entries to one day's worth,
+            # and with the committed-scope index it stops touching the table
+            # at all.  The Python filters are unchanged and still authoritative.
             all_rows = self.conn.execute(
                 "SELECT DISTINCT station_id,event_date,settlement_timezone FROM basket_probability_envelope "
-                "WHERE state='COMMITTED' ORDER BY station_id,event_date"
+                "WHERE state='COMMITTED' AND event_date=? ORDER BY station_id,event_date",
+                (manifest_event_date,),
             ).fetchall()
             rows = [
                 (station_id, event_date)
@@ -11925,6 +11991,7 @@ class TargetProductionWorker:
                     as_of_utc=now,
                 )
             ]
+            self._mark("committed_scope_sweep")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
                 # decision chain above.  A current-scope blocker must never

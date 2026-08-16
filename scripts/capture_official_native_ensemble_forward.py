@@ -17,7 +17,7 @@ import subprocess
 import sys
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -594,25 +594,85 @@ def capture_official_native_forward(
     reused_ecmwf = ecmwf is not None
     reused_eccc = eccc is not None
     reused_icon = icon is not None
+    # A rung is a question asked of four publishers who do not answer the same
+    # ones.  ECMWF open data serves 0p25 ENS at 00Z and 12Z only, so its 06Z
+    # and 18Z objects are 404 by construction -- and because one family's
+    # failure aborted the pass, the rungs where GEFS *does* publish were
+    # thrown away with it.  The whole ensemble therefore advanced only when
+    # ECMWF advanced: twice a day, which is what "the models are stuck twelve
+    # hours ago" was.  Let each family answer for itself.  One that cannot
+    # serve this rung keeps the run it already holds -- exactly what it would
+    # have been serving had the rung never been offered -- and the packet
+    # becomes per-system, which this lane already speaks.
+    family_capture_errors: dict[str, str] = {}
+
+    def _advance_or_hold(
+        family: str,
+        path: Path,
+        *,
+        expected_schema: str,
+        capture: Callable[[], dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        try:
+            assert_process_memory_budget()
+            return capture()
+        except Exception as exc:  # noqa: BLE001 - held, not lost
+            family_capture_errors[family] = f"{type(exc).__name__}:{exc}"[:200]
+            # Any run it holds, not the one this rung wanted: the point is to
+            # keep serving the freshest run this family actually has.
+            return _load_retained_archive(
+                path,
+                event_date=event_date,
+                station_ids=requested_station_ids,
+                expected_schema=expected_schema,
+            )
+
     if gefs is None:
-        assert_process_memory_budget()
-        gefs = capture_gefs_station_days(
-            event_date=event_date,
-            station_scopes=scopes,
-            archive_query_at_utc=capture_at,
-            timeout_seconds=float(timeout_seconds),
-            lead_days=int(lead_days),
-            run_cycle_hour=run_cycle_hour,
+        gefs = _advance_or_hold(
+            "NOAA_GEFS_PDS_S3",
+            gefs_path,
+            expected_schema=(
+                "noaa_gefs_official_historical_multistation_members_v2"
+            ),
+            capture=lambda: capture_gefs_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+                run_cycle_hour=run_cycle_hour,
+            ),
         )
     if ecmwf is None:
-        assert_process_memory_budget()
-        ecmwf = capture_ecmwf_station_days(
-            event_date=event_date,
-            station_scopes=scopes,
-            archive_query_at_utc=capture_at,
-            timeout_seconds=float(timeout_seconds),
-            lead_days=int(lead_days),
-            run_cycle_hour=run_cycle_hour,
+        ecmwf = _advance_or_hold(
+            "ECMWF_OPEN_DATA_S3",
+            ecmwf_path,
+            expected_schema=(
+                "ecmwf_ifs_open_pf50_historical_multistation_members_v1"
+            ),
+            capture=lambda: capture_ecmwf_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+                run_cycle_hour=run_cycle_hour,
+            ),
+        )
+    # Holding is only a fallback for a family that has something to hold.  With
+    # nothing on disk there is no ensemble to build, and failing here is what
+    # keeps that distinct from a rung this publisher simply does not serve.
+    if gefs is None or ecmwf is None:
+        raise ContractError(
+            "official_native_forward_required_family_unavailable:"
+            + ",".join(sorted(
+                name
+                for name, value in (
+                    ("NOAA_GEFS_PDS_S3", gefs),
+                    ("ECMWF_OPEN_DATA_S3", ecmwf),
+                )
+                if value is None
+            ))
         )
     if eccc_output is not None and eccc is None:
         assert_process_memory_budget()
@@ -754,6 +814,21 @@ def capture_official_native_forward(
         "archive_reused_retained": {
             "NOAA_GEFS_PDS_S3": reused_gefs,
             "ECMWF_OPEN_DATA_S3": reused_ecmwf,
+        },
+        # Which families could not serve this rung and are therefore still on
+        # an older run.  A pass that advanced two of four is the ordinary
+        # outcome now, and without this the receipt would look identical to
+        # one that advanced all four.
+        "family_held_on_earlier_run": dict(
+            sorted(family_capture_errors.items())
+        ),
+        "run_init_utc_by_family": {
+            "NOAA_GEFS_PDS_S3": str(gefs.get("run_init_utc") or ""),
+            "ECMWF_OPEN_DATA_S3": str(ecmwf.get("run_init_utc") or ""),
+            **({"ECCC_DD_WEATHER": str(eccc.get("run_init_utc") or "")}
+               if eccc is not None else {}),
+            **({"DWD_ICON_EPS": str(icon.get("run_init_utc") or "")}
+               if icon is not None else {}),
         },
         # ICON carried no instrumentation at all, which is the wrong way round:
         # it is the family whose misses are permanent, so it is the one whose

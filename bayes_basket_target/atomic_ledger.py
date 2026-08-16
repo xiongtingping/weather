@@ -18,6 +18,7 @@ import json
 import math
 import re
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -1134,6 +1135,85 @@ def record_writer_lock_wait(
     )
 
 
+# Every writer in this process serializes on ``BEGIN IMMEDIATE`` against one
+# SSOT file, so the question that matters during a stall is not how long a
+# lane waited but which lane was holding while it waited -- and the singleton
+# telemetry row answers neither: it keeps one global maximum and only the
+# *last* operation name, so an 86s transaction is visible as a number with
+# nothing attached to it.  Keep a per-operation aggregate in memory, split
+# into the wait to acquire and the time held, so the holder can be named from
+# the status file without attaching a debugger to a wedged resident.
+_WRITER_LOCK_PROFILE_LOCK = threading.Lock()
+_WRITER_LOCK_PROFILE: dict[str, dict[str, float]] = {}
+
+
+def _note_writer_lock_sample(
+    operation: str,
+    *,
+    wait_ms: float,
+    hold_ms: float,
+) -> None:
+    with _WRITER_LOCK_PROFILE_LOCK:
+        row = _WRITER_LOCK_PROFILE.setdefault(
+            operation,
+            {
+                "count": 0.0,
+                "wait_ms_total": 0.0,
+                "wait_ms_max": 0.0,
+                "hold_ms_total": 0.0,
+                "hold_ms_max": 0.0,
+            },
+        )
+        row["count"] += 1.0
+        row["wait_ms_total"] += wait_ms
+        row["hold_ms_total"] += hold_ms
+        if wait_ms > row["wait_ms_max"]:
+            row["wait_ms_max"] = wait_ms
+        if hold_ms > row["hold_ms_max"]:
+            row["hold_ms_max"] = hold_ms
+
+
+def writer_lock_profile(*, top: int = 8) -> dict[str, Any]:
+    """Report the busiest write-lock operations since the last reset."""
+
+    with _WRITER_LOCK_PROFILE_LOCK:
+        snapshot = {
+            operation: dict(row)
+            for operation, row in _WRITER_LOCK_PROFILE.items()
+        }
+    ranked = sorted(
+        snapshot.items(),
+        key=lambda item: item[1]["hold_ms_total"],
+        reverse=True,
+    )[: max(1, top)]
+    return {
+        "schema": "basket_target_writer_lock_profile_v1",
+        "operation_count": len(snapshot),
+        "hold_ms_total": round(
+            sum(row["hold_ms_total"] for row in snapshot.values()), 1
+        ),
+        "wait_ms_total": round(
+            sum(row["wait_ms_total"] for row in snapshot.values()), 1
+        ),
+        "operations": [
+            {
+                "operation": operation,
+                "count": int(row["count"]),
+                "hold_ms_total": round(row["hold_ms_total"], 1),
+                "hold_ms_max": round(row["hold_ms_max"], 1),
+                "wait_ms_total": round(row["wait_ms_total"], 1),
+                "wait_ms_max": round(row["wait_ms_max"], 1),
+            }
+            for operation, row in ranked
+        ],
+    }
+
+
+def reset_writer_lock_profile() -> None:
+    with _WRITER_LOCK_PROFILE_LOCK:
+        _WRITER_LOCK_PROFILE.clear()
+
+
 @contextmanager
 def _atomic_transaction(conn: sqlite3.Connection, *, operation: str = "target_atomic") -> Iterator[None]:
     own = not conn.in_transaction
@@ -1145,6 +1225,11 @@ def _atomic_transaction(conn: sqlite3.Connection, *, operation: str = "target_at
         acquired_at_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     else:
         conn.execute(f"SAVEPOINT {savepoint}")
+    # ``BEGIN IMMEDIATE`` has returned, so the lock is in hand: everything
+    # after this instant is hold, not wait.  Timing the whole body as "wait"
+    # is what let a 4.6s transaction report itself as a 4.6s lock wait and
+    # hid the fact that the resident is its own contention.
+    acquired_ns = time.perf_counter_ns()
     try:
         yield
     except Exception:
@@ -1156,10 +1241,16 @@ def _atomic_transaction(conn: sqlite3.Connection, *, operation: str = "target_at
         raise
     else:
         if own:
+            wait_ms = (acquired_ns - lock_started_ns) / 1_000_000.0
+            _note_writer_lock_sample(
+                operation,
+                wait_ms=wait_ms,
+                hold_ms=(time.perf_counter_ns() - acquired_ns) / 1_000_000.0,
+            )
             record_writer_lock_wait(
                 conn,
                 operation=operation,
-                wait_ms=(time.perf_counter_ns() - lock_started_ns) / 1_000_000.0,
+                wait_ms=wait_ms,
                 acquired_at_utc=acquired_at_utc,
             )
             conn.commit()
@@ -3654,6 +3745,8 @@ __all__ = [
     "commit_target_atomic_bundle",
     "initialize_capital_pool",
     "record_writer_lock_wait",
+    "reset_writer_lock_profile",
+    "writer_lock_profile",
     "target_ledger_schema_status",
     "transition_target_cycle_state",
 ]
