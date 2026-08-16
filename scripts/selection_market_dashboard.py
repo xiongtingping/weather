@@ -265,16 +265,6 @@ def build_payload(db: Path) -> dict[str, Any]:
             " ORDER BY station_id"
         )
     ]
-    # Which station-days exist at all: any seat, or any probability.
-    scope_days: set[tuple[str, str]] = {
-        (r["station_id"], r["event_date"]) for r in rows
-    }
-    for station, day in conn.execute(
-        "SELECT DISTINCT station_id, event_date"
-        " FROM basket_probability_bridge_history WHERE event_date >= ?",
-        (STATS_START_EVENT_DATE,),
-    ):
-        scope_days.add((str(station), str(day)))
     seated = {
         (r["station_id"], r["event_date"], r["stage"]): r for r in rows
     }
@@ -324,6 +314,30 @@ def build_payload(db: Path) -> dict[str, Any]:
             "centre_bucket": lineage.get("model_center_bucket"),
             "centre_c": lineage.get("model_center_c"),
         })
+    # An event day is any day the fleet has evidence for; on such a day every
+    # registered station gets a row, whether or not it has evidence of its
+    # own.  Keying the roster off the stations with evidence made the two
+    # emptiest cases -- no probability computed, no book ever captured --
+    # vanish from the page instead of reading as the gap they are: 2026-08-17
+    # rendered 43 stations under a heading that promised all 45.  Pairs with
+    # evidence are unioned in, so a station absent from the registry still
+    # shows up rather than being silently dropped.
+    evidence_days = (
+        {(r["station_id"], r["event_date"]) for r in rows}
+        | {(station, day) for station, day, _ in refusals}
+        | {
+            (str(station), str(day)) for station, day in conn.execute(
+                "SELECT DISTINCT station_id, event_date FROM"
+                " basket_probability_bridge_history WHERE event_date >= ?",
+                (STATS_START_EVENT_DATE,),
+            )
+        }
+    )
+    scope_days: set[tuple[str, str]] = evidence_days | {
+        (station, day)
+        for day in {d for _, d in evidence_days}
+        for station in registered
+    }
     roster = []
     for station, day in sorted(
         scope_days, key=lambda kv: (kv[1], kv[0]), reverse=True

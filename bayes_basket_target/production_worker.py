@@ -3550,11 +3550,16 @@ class TargetProductionWorker:
         """Where the station rotation left off, across restarts.
 
         The rotation used to live only on the instance, so every restart sent
-        it back to the first station.  This daemon restarts far more often
-        than one pass takes -- measured 2026-08-16: roughly one restart every
-        25 minutes against a pass of about 45 -- which made the tail of the
-        alphabet unreachable in principle, not merely slow.  The two stations
-        with evidence ready to fit both sit in that tail.
+        it back to the first station -- and a pass takes about 45 minutes,
+        longer than this service usually goes between deploys.  The resident
+        is restarted whenever its code changes, which on a working day is
+        often enough that the tail of the alphabet was never reached: on
+        2026-08-16 both stations with evidence ready to fit sat in that tail
+        and neither had been visited all day.
+
+        The restarts are not a fault to be fixed elsewhere -- there is no
+        timer and no crash, only SIGTERM from a deploy -- so the rotation has
+        to survive them rather than wait for them to stop.
         """
 
         cached = getattr(self, "_taf_revision_station_cursor", None)
