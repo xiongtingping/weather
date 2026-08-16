@@ -47,7 +47,8 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     try:
         rows = conn.execute(
             "SELECT stage, window_size, COUNT(*) FROM paper_trade_position"
-            " WHERE event_date >= '2026-08-16' GROUP BY stage, window_size"
+            " WHERE decision_at_utc >= '2026-08-16T04:45:00Z'"
+            " GROUP BY stage, window_size"
         ).fetchall()
     except sqlite3.DatabaseError:
         return
@@ -56,9 +57,11 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     # P1 converges: the ladder walks down to two rungs as the day resolves,
     # and further still once the hard bound leaves one live outcome (user
     # ruling, 2026-08-16).  The opening stages keep the three-rung floor.
-    # The window starts the day after the ruling, because seats booked under
-    # the previous rules are held to settlement by clause 51 and re-reading
-    # them against today's floor would fail on history nobody can change.
+    # The cut is on decision time, not event date: a seat is bound by the
+    # rules in force when it was taken, and 2026-08-17's book holds seats
+    # decided on 08-15 under the old floor.  Clause 51 holds those to
+    # settlement, so re-reading them against today's rule would fail on
+    # history nobody can change.  04:45Z is when clause 52a/52b went live.
     for stage, size, count in rows:
         low = 1 if str(stage) == "P1" else 3
         assert low <= int(size) <= 4, (

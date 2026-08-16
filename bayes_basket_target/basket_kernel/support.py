@@ -778,12 +778,18 @@ def _choose_support(
             < policy.peripheral_model_reliability_min
         ):
             return False
-        first_share_all_in = (
-            item.ask_price * (1.0 + policy.fee_rate)
-            + policy.taker_slippage_buffer_per_share
-        )
-        coverage_value = max(0.0, item.probability - first_share_all_in)
-        return coverage_value + EPS >= policy.peripheral_min_coverage_value
+        # No per-bucket EV gate (charter 52d, 2026-08-16).  Requiring each
+        # peripheral bucket to clear a cent of its own coverage value asks
+        # the wrong question of a tail rung: its job is the odds and the
+        # shape of the wealth curve, not standing alone on expectation, and
+        # a rung whose own EV is slightly negative can still be right for the
+        # basket.  Whole-basket EV is what the objective solves for, and the
+        # curve score already prices every leg against its ask -- so this
+        # gate was a second, cruder opinion applied before the objective
+        # could form one.  The evidence, ask-ceiling, reliability and Maker
+        # gates above stay: they answer "is this bucket real and buyable",
+        # which is not an EV question.
+        return True
 
     bias_scores: dict[str, float] = {}
     if direction is not Direction.NEUTRAL:

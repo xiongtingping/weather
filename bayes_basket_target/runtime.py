@@ -807,23 +807,19 @@ def _compile_target_plan(
             probability_direction=str(delta_plan.get("direction") or ""),
             center_bucket=str(delta_plan.get("center_bucket") or ""),
         )
+        # The gate is recorded, never enforced (charter 52c, 2026-08-16).
+        # Direction has exactly one source: which side of the centre carries
+        # the probability mass and the EV.  Weather state is already inside
+        # p(t) -- the radiation shift, the synoptic cooling fallback and the
+        # calibrated spread all consumed it -- so a regime layer voting on
+        # direction a second time is the double counting clause 43 forbids,
+        # applied in the strategy layer where clause 43 forbids it most.
+        # It also read the direction it was judging out of the plan it then
+        # overruled, which makes it a veto on the objective rather than an
+        # independent piece of evidence.  The receipt stays because the
+        # regime read is still worth seeing beside a decision.
         if not regime_gate.direction_allowed:
-            delta_plan = compile_delta_v2_runtime_plan(
-                snapshot=snapshot,
-                basket_policy=policy,
-                delta_policy=resolved_delta_policy,
-                fill_resolver=delta_v2_fill_resolver,
-                capital_available_usdc=remaining_budget,
-                minimum_profit_floor=float(
-                    policy.minimum_expected_pnl_after_usdc
-                ),
-                resource_probe_ok=True,
-                regime_direction_allowed=False,
-                previous_probabilities=previous_probabilities,
-            )
-            selected_authorized = False
-            blockers.append("regime_direction_not_allowed")
-            selected_actions_by_bucket = {}
+            blockers.append("regime_direction_recorded_not_enforced")
     else:
         regime_gate = None
 

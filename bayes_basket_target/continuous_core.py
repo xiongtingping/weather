@@ -569,11 +569,12 @@ def resolve_continuous_core(
             < policy.min_peripheral_model_reliability
         ):
             reject_reason = "model_reliability_gate_failed"
-        elif (
-            candidate.price_coverage_value + EPS
-            < policy.min_peripheral_price_coverage_value
-        ):
-            reject_reason = "price_coverage_gate_failed"
+        # The per-bucket coverage-value gate is gone (charter 52d,
+        # 2026-08-16): a tail rung earns its place through the odds it adds
+        # to the whole basket's curve, not by clearing expectation on its
+        # own.  ``price_coverage_value`` is still carried on the candidate
+        # so a reader can see what each rung was worth at its ask; it just
+        # no longer refuses one.
         elif candidate.target_inventory <= EPS:
             reject_reason = "positive_target_inventory_required"
         if reject_reason is None:
