@@ -2539,6 +2539,16 @@ class TargetProductionWorker:
                 "retry_after_sec": round(
                     OFFICIAL_NATIVE_CAPTURE_RETRY_SEC - (now_mono - last_attempt), 1
                 ),
+                # Carry what the attempt this throttle is holding down
+                # actually returned.  Without it a scope sitting on a
+                # twelve-hour-old run reports only that it is waiting, and
+                # the reason it is waiting -- the run it did or did not come
+                # back with -- is exactly the question being asked.
+                "last_completed": dict(
+                    getattr(
+                        self, "_official_native_capture_last_result", {}
+                    ) or {}
+                ),
                 "calls_order_gateway": False,
                 "places_orders": False,
             }
