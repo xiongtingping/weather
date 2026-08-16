@@ -605,7 +605,19 @@ def evaluate_taf_native_ensemble_oos(
     # longer withholds the artifact.  P0 is untouched by this and keeps its
     # strict-OOS admission.
     metric_gate_passed = bool(nll_not_worse and crps_not_worse)
-    validated = bool(enough)
+    # Ruling 2026-08-16, extending the one above from the contest to the
+    # count: sample size shapes how much an OOS verdict is worth, it does not
+    # decide whether P0-M may serve.  A stage held silent until its evidence
+    # matures never gets to accumulate the evidence, because the days it
+    # would have run are the days it is waiting for.  The transport window
+    # still has to exist and every row in it still has to survive every
+    # structural check above -- strict as-of, no leakage, same ensemble
+    # combination, coherent distribution.  What is no longer a veto is the
+    # number of such rows.  It is recorded on the evidence and reported as an
+    # unenforced gap, and the metric comparison keeps running, so the day the
+    # count is there the verdict is already computed.
+    sample_gate_passed = bool(enough)
+    validated = bool(evaluated)
     evidence = None
     if evaluated:
         evidence_identity = {
@@ -641,7 +653,12 @@ def evaluate_taf_native_ensemble_oos(
             },
             "nll_not_worse": nll_not_worse,
             "crps_not_worse": crps_not_worse,
+            # Two different claims, kept apart on purpose: the transport
+            # evaluation ran and produced this evidence, and separately,
+            # whether it did so on enough rows for the verdict to bind.
             "oos_transport_validated": validated,
+            "sample_gate_passed": sample_gate_passed,
+            "minimum_sample_n": minimum_sample_n,
         }
         evidence = {
             **evidence_identity,
@@ -651,10 +668,11 @@ def evaluate_taf_native_ensemble_oos(
     if not enough:
         gaps.append({
             "code": "taf_native_oos_sample_n_insufficient",
+            "enforced": False,
             "required_sample_n": minimum_sample_n,
             "actual_sample_n": len(evaluated),
         })
-    elif not metric_gate_passed:
+    if enough and not metric_gate_passed:
         # Recorded, not enforced: the artifact publishes anyway under the
         # ruling above, and this is how a losing one stays visible.
         gaps.append({
@@ -665,8 +683,14 @@ def evaluate_taf_native_ensemble_oos(
         })
     identity = {
         "schema": TRANSPORT_REPORT_SCHEMA,
-        "state": "PASS" if validated else (
-            "NA" if not enough else "BLOCKED"
+        # PROVISIONAL is a pass that says how it passed: the evaluation ran
+        # clean but on fewer rows than the verdict wants, so a reader can tell
+        # a matured artifact from one still filling its window without
+        # digging into the gaps.
+        "state": (
+            ("PASS" if sample_gate_passed else "PROVISIONAL")
+            if validated
+            else "NA"
         ),
         "transport_pathway": (
             "STRICT_OOS_NATIVE_P0_TO_TAF_EXACT_LIVE_FINGERPRINT"

@@ -74,20 +74,20 @@ def main() -> int:
                 # A fitted artifact can never be qualified on its own rows, so
                 # emit the strictly-later transport window alongside the fit
                 # window rather than leaving the caller to cut the series.
-                # Cut for the gate that will actually judge this split.
-                # The default transport minimum is the generic TAF-NWP one
-                # (6), but the only consumer of these files is the native
-                # ensemble gate, which needs 8 -- and the cut hands the
-                # transport window exactly the minimum it can get away with
-                # while maximising the fit window.  So a series was declared
-                # READY at 6 transport rows, an artifact was fitted, and the
-                # gate refused it on arithmetic that growing the series could
-                # never fix: every new row went to the fit side and the
-                # transport block stayed pinned at 6.  ZGSZ did this twice on
-                # 2026-08-16.  Ask for the number that will be checked.
+                # Aim the transport window at the size the native ensemble
+                # gate scores on, as a preference rather than a floor.  The
+                # cut used to maximise the fit window against the generic
+                # floor of 6, so the OOS block stayed pinned at 6 however long
+                # the series ran and a gate wanting more could never be
+                # satisfied by waiting.  As a preference it grows the OOS
+                # block when the series can afford it and still emits a split
+                # when it cannot -- sample count shapes the evidence, it does
+                # not withhold the artifact.
                 split = split_rolling_taf_exact_join(
                     join,
-                    min_transport_sample_n=NATIVE_TRANSPORT_MIN_SAMPLE_N,
+                    preferred_transport_sample_n=(
+                        NATIVE_TRANSPORT_MIN_SAMPLE_N
+                    ),
                 )
                 entry = {
                     key: value

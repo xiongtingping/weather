@@ -1001,6 +1001,7 @@ def split_rolling_taf_exact_join(
     *,
     min_fit_sample_n: int | None = None,
     min_transport_sample_n: int | None = None,
+    preferred_transport_sample_n: int | None = None,
 ) -> dict[str, Any]:
     """Cut one rolling series into a fit window and a strictly later one.
 
@@ -1063,7 +1064,25 @@ def split_rolling_taf_exact_join(
         identity["samples"] = [dict(item) for item in selected]
         return {**identity, "content_sha256": content_sha256(identity)}
 
-    largest_fit = len(ordered) - transport_minimum
+    # The transport window is what a later OOS verdict will be computed on,
+    # so give it the size that verdict wants as soon as the series can afford
+    # it -- but never let that stop a split existing.  Maximising the fit
+    # window against the bare floor pinned transport at its minimum forever:
+    # every new day went to the fit side, so the OOS block never grew and a
+    # gate wanting more than the floor could never be satisfied by waiting.
+    # Try the preferred size first, fall back to the floor, and keep growing
+    # the fit window with whatever is left over after that.
+    preferred = max(
+        transport_minimum,
+        int(
+            transport_minimum
+            if preferred_transport_sample_n is None
+            else preferred_transport_sample_n
+        ),
+    )
+    largest_fit = len(ordered) - preferred
+    if largest_fit < fit_minimum:
+        largest_fit = len(ordered) - transport_minimum
     for fit_count in range(largest_fit, fit_minimum - 1, -1):
         fit_rows = ordered[:fit_count]
         boundary = max(

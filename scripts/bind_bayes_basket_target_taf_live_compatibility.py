@@ -41,9 +41,13 @@ def main() -> int:
     report = load_bounded_json(
         args.transport_oos_report.expanduser().resolve()
     )
+    # PROVISIONAL is a clean evaluation on a window still short of the size
+    # the verdict wants.  It binds like a PASS: under the 2026-08-16 ruling
+    # sample count no longer withholds P0-M, and the evidence carries
+    # ``sample_gate_passed`` so a reader can still tell the two apart.
     if (
         report.get("schema") != TRANSPORT_REPORT_SCHEMA
-        or report.get("state") != "PASS"
+        or report.get("state") not in {"PASS", "PROVISIONAL"}
         or report.get("validated") is not True
         or not isinstance(report.get("live_fingerprint"), dict)
         or not isinstance(report.get("evidence"), dict)

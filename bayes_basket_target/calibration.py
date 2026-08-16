@@ -336,9 +336,17 @@ def bind_taf_artifact_to_live_nwp_compatibility(
         "oos_transport_validated",
         "content_sha256",
     }
+    # Whether the window this ran on was as large as the verdict wants, and
+    # the size it wants.  Optional: the generic TAF-NWP transport gate builds
+    # its evidence without them, and evidence written before the native gate
+    # started reporting them is still readable.  Recorded rather than
+    # enforced, so a provisional artifact stays distinguishable from a
+    # matured one for anyone reading the binding later.
+    optional_evidence = {"sample_gate_passed", "minimum_sample_n"}
     if (
         not isinstance(transport_oos_evidence, Mapping)
-        or set(transport_oos_evidence) != allowed_evidence
+        or not allowed_evidence <= set(transport_oos_evidence)
+        or set(transport_oos_evidence) - allowed_evidence - optional_evidence
         or transport_oos_evidence.get("schema")
         != TAF_NWP_TRANSPORT_EVIDENCE_SCHEMA
     ):
@@ -426,13 +434,15 @@ def bind_taf_artifact_to_live_nwp_compatibility(
                 raise ValueError(metric)
     except (KeyError, TypeError, ValueError) as exc:
         raise ContractError("taf_nwp_transport_oos_metrics_invalid") from exc
-    if (
-        transport_oos_evidence.get("nll_not_worse") is not True
-        or transport_oos_evidence.get("crps_not_worse") is not True
-        or transport_oos_evidence.get("oos_transport_validated") is not True
-        or float(transported["nll"]) > float(baseline["nll"]) + 1e-12
-        or float(transported["crps"]) > float(baseline["crps"]) + 1e-12
-    ):
+    # The contest and the count are both recorded here, neither enforced.
+    # The 2026-08-15 ruling -- P0-M publishes on sample, not on winning a
+    # contest -- was applied at the gate that computes these numbers but not
+    # at this one, which consumes them, so a losing artifact still died on
+    # the way to being bound.  The 2026-08-16 ruling extends it to sample
+    # size: an artifact held back until its evidence matures never gets the
+    # days that would mature it.  What still binds is that the evaluation
+    # ran and produced coherent, finite metrics, checked above.
+    if transport_oos_evidence.get("oos_transport_validated") is not True:
         raise ContractError("taf_nwp_transport_oos_gate_failed")
 
     identity = artifact.to_dict(include_content_sha256=False)
