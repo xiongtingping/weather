@@ -594,16 +594,22 @@ def capture_official_native_forward(
     reused_ecmwf = ecmwf is not None
     reused_eccc = eccc is not None
     reused_icon = icon is not None
-    # A rung is a question asked of four publishers who do not answer the same
-    # ones.  ECMWF open data serves 0p25 ENS at 00Z and 12Z only, so its 06Z
-    # and 18Z objects are 404 by construction -- and because one family's
-    # failure aborted the pass, the rungs where GEFS *does* publish were
-    # thrown away with it.  The whole ensemble therefore advanced only when
-    # ECMWF advanced: twice a day, which is what "the models are stuck twelve
-    # hours ago" was.  Let each family answer for itself.  One that cannot
-    # serve this rung keeps the run it already holds -- exactly what it would
-    # have been serving had the rung never been offered -- and the packet
-    # becomes per-system, which this lane already speaks.
+    # A rung is a question asked of four publishers who neither serve the same
+    # cycles nor finish uploading at the same hour.  Measured against a
+    # completed day (2026-08-15): ECMWF 0p25 ENS and DWD ICON-EPS answer all
+    # four cycles, GEFS likewise, and ECCC GEPS answers 00Z and 12Z only.  On
+    # top of that sits publication delay -- ECMWF's 06Z index was still 404 at
+    # 13:05Z and served at 13:35Z, about seven and a half hours after init.
+    #
+    # So at any moment a rung has landed for some families and not others, and
+    # aborting the pass on the first refusal threw away every family that had
+    # landed.  The ensemble could then only advance when its slowest member
+    # did, which is what "the models are stuck twelve hours ago" was.  Let
+    # each family answer for itself: one that cannot serve this rung -- not
+    # published, or not yet uploaded -- keeps the run it already holds, which
+    # is what it would have been serving had the rung never been offered, and
+    # the packet becomes per-system, which this lane already speaks.  A family
+    # that is merely late is picked up by a later pass on the same rung.
     family_capture_errors: dict[str, str] = {}
 
     def _advance_or_hold(
