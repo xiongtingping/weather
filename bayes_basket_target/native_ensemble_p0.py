@@ -2303,8 +2303,39 @@ def compile_native_ensemble_p0(
         event_date=event_date,
         decision_at_utc=decision_at_utc,
     )
-    if taf_witness is not None:
-        taf_tx_c = float(taf_witness["tx_c"])
+    # The stage has to be known here, not at the end, because the ruling of
+    # 2026-08-16 (charter 52f) makes the forecaster P0-M's evidence alone:
+    # P0 does not read the TAF at all, for the envelope or for direction.
+    # The stage test itself only compares issuance times and run sets, so it
+    # can run before the witness is consumed without circularity.
+    predecessor_lineage = None
+    try:
+        predecessor_row = conn.execute(
+            "SELECT lineage_json FROM basket_probability_envelope "
+            "WHERE station_id=? AND event_date=? "
+            "AND stage IN ('P0','P0-M') AND decision_at_utc<? "
+            "ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id, event_date, decision_at_utc),
+        ).fetchone()
+        if predecessor_row is not None:
+            predecessor_lineage = json.loads(str(predecessor_row[0]))
+    except (sqlite3.Error, ValueError, TypeError):
+        predecessor_lineage = None
+    compiled_stage = _stage_for_native_compile(
+        predecessor_lineage=predecessor_lineage,
+        run_init_utc_by_system={
+            system_id: official_lineage["run_init_utc_by_system"][system_id]
+            for system_id in system_ids
+            if system_id in official_lineage["run_init_utc_by_system"]
+        },
+        taf_witness=taf_witness,
+    )
+    # The witness stays resolved and recorded on every stage -- the lineage
+    # is what a reader diagnoses a station-day with, and the stage test above
+    # needs it -- but only P0-M spends it.
+    taf_stage_witness = taf_witness if compiled_stage == "P0-M" else None
+    if taf_stage_witness is not None:
+        taf_tx_c = float(taf_stage_witness["tx_c"])
         envelope_lower_c = min(lower_center_c, taf_tx_c)
         envelope_upper_c = max(upper_center_c, taf_tx_c)
     else:
@@ -2416,9 +2447,9 @@ def compile_native_ensemble_p0(
                 sigma_c=distribution_sigma,
             ),
             taf_gap_sigma=(
-                (float(taf_witness["tx_c"]) - model_center_c)
+                (float(taf_stage_witness["tx_c"]) - model_center_c)
                 / distribution_sigma
-                if taf_witness is not None and distribution_sigma > EPS
+                if taf_stage_witness is not None and distribution_sigma > EPS
                 else None
             ),
         )
@@ -2638,26 +2669,11 @@ def compile_native_ensemble_p0(
         "decision_at_utc": decision_at_utc,
         "posterior_sha256": posterior_sha,
     }
-    predecessor_lineage = None
-    try:
-        predecessor_row = conn.execute(
-            "SELECT lineage_json FROM basket_probability_envelope "
-            "WHERE station_id=? AND event_date=? "
-            "AND stage IN ('P0','P0-M') AND decision_at_utc<? "
-            "ORDER BY decision_at_utc DESC LIMIT 1",
-            (station_id, event_date, decision_at_utc),
-        ).fetchone()
-        if predecessor_row is not None:
-            predecessor_lineage = json.loads(str(predecessor_row[0]))
-    except (sqlite3.Error, ValueError, TypeError):
-        predecessor_lineage = None
-    compiled_stage = _stage_for_native_compile(
-        predecessor_lineage=predecessor_lineage,
-        run_init_utc_by_system=native_forward_lineage[
-            "run_init_utc_by_system"
-        ],
-        taf_witness=taf_witness,
-    )
+    # ``compiled_stage`` was resolved before the envelope, because the TAF is
+    # spent only on P0-M and the envelope had to know that first.  The run
+    # set it compared is the same one ``native_forward_lineage`` carries --
+    # both filter ``official_lineage`` by ``system_ids`` -- so moving the test
+    # earlier did not move what it decides.
     checkpoint_id = (
         ("p0m-native-" if compiled_stage == "P0-M" else "p0-native-")
         + content_sha256(checkpoint_identity)[:32]
