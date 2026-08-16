@@ -256,6 +256,11 @@ def _warm_hour_share(hour: float) -> float:
 # left behind by an outage cannot accumulate unbounded priority and then
 # monopolise the rotation when service resumes.
 ROTATION_AGEING_CAP_HOURS = 12.0
+# No open event day may go longer than this without a capture.  The paper
+# ledger refuses a book more than thirty minutes older than the decision it
+# prices, so a day starved past that window produces decisions nothing can
+# be filled against; half of it leaves room for the cycle to land.
+EVENT_DAY_CAPTURE_BOUND_SEC = 900.0
 
 MAX_FORWARD_P0_STATIONS = 45
 # Packets kept in the republisher forward inbox.  This has to stay under what
@@ -7804,6 +7809,53 @@ class TargetProductionWorker:
         # without the alphabet deciding anything that matters.
         return (tier, -score, 0.0, str(scope.get("scope_key") or ""))
 
+    @staticmethod
+    def _starved_event_dates(
+        scopes: Sequence[Mapping[str, Any]],
+        *,
+        served: Mapping[str, Mapping[str, Any]],
+        as_of_utc: str,
+    ) -> set[str]:
+        """Open event days whose last capture is older than the bound.
+
+        A day never captured at all counts as starved from the moment it has
+        a scope, which is the case this exists for: a day opens, its P1 stage
+        starts speaking, and the ordering has no reason to prefer it because
+        every one of its stations is at local midnight.
+        """
+
+        try:
+            now = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        except ValueError:
+            return set()
+        latest: dict[str, str] = {}
+        present: set[str] = set()
+        for scope in scopes:
+            day = str(scope.get("event_date") or "")
+            if not day or str(scope.get("event_day_state") or "") != "open":
+                continue
+            present.add(day)
+            stamp = str(
+                (served.get(str(scope.get("scope_key") or "")) or {})
+                .get("served_at_utc") or ""
+            )
+            if stamp and stamp > latest.get(day, ""):
+                latest[day] = stamp
+        starved: set[str] = set()
+        for day in present:
+            stamp = latest.get(day)
+            if not stamp:
+                starved.add(day)
+                continue
+            try:
+                served_at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                starved.add(day)
+                continue
+            if (now - served_at).total_seconds() > EVENT_DAY_CAPTURE_BOUND_SEC:
+                starved.add(day)
+        return starved
+
     def _sweep_scope_manifests(
         self,
         open_scopes: Sequence[Mapping[str, Any]],
@@ -7900,8 +7952,32 @@ class TargetProductionWorker:
         quotas = (
             getattr(self, "_portfolio_allocation_last", None) or {}
         ).get("quota_usdc_by_station")
+        # One ingress serves one event day (the sweep filters to the selected
+        # day), so a day that never wins the ordering is not merely served
+        # late -- it is not captured at all.  That is what happened on
+        # 2026-08-15: through the 16:00Z hour every one of the 136 captures
+        # went to 08-15 and 08-16 got none, which is precisely the hour
+        # 08-16's local day opens across Asia and its P1 stage first speaks.
+        # The ordering was right to prefer 08-15 -- 08-16's stations were at
+        # their own local midnight, the coldest point of the warm-window
+        # curve -- but the P1 decisions landed in that hour regardless, and
+        # with no book within thirty minutes of them, twelve stations
+        # produced no basket for the whole day.
+        #
+        # So the guarantee is at the day level, where the starvation is, and
+        # it only fires once a day has actually been starved.  Scoring is
+        # untouched: on any cycle where no open day is overdue this picks
+        # exactly what it picked before.
+        candidates = [dict(item) for item in open_scopes]
+        overdue = self._starved_event_dates(
+            candidates, served=served, as_of_utc=as_of
+        )
+        eligible = [
+            item for item in candidates
+            if str(item.get("event_date") or "") in overdue
+        ] or candidates
         selected = min(
-            (dict(item) for item in open_scopes),
+            eligible,
             key=lambda item: self._scope_rotation_key(
                 item,
                 as_of_utc=as_of,
