@@ -32,6 +32,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from selection_market_dashboard import (  # noqa: E402
+    STATION_LABELS,
     build_payload as build_selection_payload,
 )
 
@@ -387,6 +388,111 @@ def collect_chain(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return links
 
 
+TAF_TRAINING_ROOT = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "taf_revision_training"
+)
+
+
+def collect_p0m_progress(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How far each station is from a P0-M artifact, and what is missing.
+
+    P0-M has published nothing since 2026-07-30, and the reason is neither
+    a broken stage nor a stale artifact: the training lane runs every cycle
+    for all forty-five stations and correctly refuses to fit on evidence it
+    does not have.  What it is short of lives in the receipts this reads.
+    """
+
+    rows: list[dict[str, Any]] = []
+    if not TAF_TRAINING_ROOT.is_dir():
+        return {"stations": [], "summary": {}}
+    truth_days = {
+        str(station): int(count)
+        for station, count in conn.execute(
+            "SELECT station_id, COUNT(DISTINCT local_date)"
+            " FROM calibration_station_daily_high_truth"
+            " WHERE qc_status='ACCEPTED' AND source_lane='AWC'"
+            " GROUP BY station_id"
+        )
+    }
+    span_days = conn.execute(
+        "SELECT COUNT(DISTINCT local_date)"
+        " FROM calibration_station_daily_high_truth WHERE qc_status='ACCEPTED'"
+    ).fetchone()
+    calendar_days = int((span_days or [0])[0] or 0)
+    for folder in sorted(TAF_TRAINING_ROOT.iterdir()):
+        station = folder.name
+        receipt = folder / "receipt.json"
+        rolling = folder / f"{station}_rolling_native_oos.json"
+        if not receipt.is_file() or not rolling.is_file():
+            continue
+        try:
+            rec = json.loads(receipt.read_text())
+            roll = json.loads(rolling.read_text())
+        except (ValueError, OSError):
+            continue
+        scope = rec.get("live_p0_scope") or {}
+        want = (
+            str(scope.get("season_bin") or ""),
+            str(scope.get("lead_bucket") or ""),
+        )
+        best: dict[str, Any] | None = None
+        refused = False
+        for entry in roll.get("accumulating") or []:
+            if (
+                str(entry.get("season_bin") or ""),
+                str(entry.get("lead_bucket") or ""),
+            ) != want:
+                continue
+            if entry.get("state") == "OOS_REJECTED":
+                refused = True
+            plan = entry.get("plan") or {}
+            missing = int(plan.get("missing_common_case_count") or 0)
+            if best is None or missing < int(best["missing"]):
+                best = {
+                    "missing": missing,
+                    "have": int(plan.get("common_case_count") or 0),
+                    "need": int(plan.get("required_common_case_count") or 0),
+                    "pair": [
+                        str(value)
+                        for value in (entry.get("selected_system_ids") or [])
+                    ],
+                    "refused": entry.get("state") == "OOS_REJECTED",
+                }
+        have_truth = truth_days.get(station, 0)
+        rows.append({
+            "station_id": station,
+            "station_label": STATION_LABELS.get(station, ""),
+            "lead_bucket": want[1],
+            "state": str(rec.get("state") or ""),
+            "missing": best["missing"] if best else None,
+            "have": best["have"] if best else 0,
+            "need": best["need"] if best else 0,
+            "pair": best["pair"] if best else [],
+            "oos_refused": bool(best and best["refused"]) or refused,
+            "truth_days": have_truth,
+            "truth_short": max(0, calendar_days - have_truth),
+        })
+    rows.sort(key=lambda item: (
+        item["missing"] if item["missing"] is not None else 10_000
+    ))
+    ready = [r for r in rows if r["missing"] == 0]
+    return {
+        "stations": rows,
+        "summary": {
+            "station_count": len(rows),
+            "calendar_days": calendar_days,
+            "evidence_ready": len(ready),
+            "oos_refused": len([r for r in rows if r["oos_refused"]]),
+            "within_three_days": len([
+                r for r in rows
+                if r["missing"] is not None and 0 < r["missing"] <= 3
+            ]),
+            "truth_days_missing_total": sum(r["truth_short"] for r in rows),
+        },
+    }
+
+
 def collect_gaps(
     conn: sqlite3.Connection,
     members: list[dict[str, Any]],
@@ -535,6 +641,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     stages = collect_band_stages(conn)
     chain = collect_chain(conn)
     gaps = collect_gaps(conn, members, stages, tables)
+    p0m = collect_p0m_progress(conn)
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -572,6 +679,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "stages": stages,
         "chain": chain,
         "gaps": gaps,
+        "p0m": p0m,
         "worker": worker,
     }
 
@@ -1034,9 +1142,50 @@ function makeSortable(table){
   });
 }
 
+// P0-M is the one stage with no output at all, and the page used to say
+// nothing about why.  It is not broken: the training lane runs every cycle
+// for every station and refuses to fit on evidence it does not have.  Show
+// the distance, per station, so the wait is a number instead of a mystery.
+function p0m(){
+  const P=D.p0m||{stations:[],summary:{}}, s=P.summary||{};
+  if(!P.stations.length) return "";
+  const rows=P.stations.map(r=>{
+    const label=r.station_label||"";
+    const pair=(r.pair||[]).map(x=>x.replace(/_(ENS|GLOBAL|EPS|IFS)?.*$/,"")).join(" + ");
+    const dist=r.missing===null?`<span class="pill red">活档无序列</span>`
+      :r.oos_refused?`<span class="pill amber">证据够了 · OOS 未通过</span>`
+      :r.missing===0?`<span class="pill green">证据已够</span>`
+      :`<b>还差 ${r.missing} 天</b>`;
+    return `<tr><td>${h(r.station_id)} <span class="muted">${h(label)}</span></td>
+      <td>${h(r.lead_bucket)}</td><td>${dist}</td>
+      <td>${r.have}/${r.need}</td><td class="muted">${h(pair)}</td>
+      <td>${r.truth_days}</td>
+      <td>${r.truth_short>0?`<span class="pill red">缺 ${r.truth_short} 天</span>`:"—"}</td></tr>`;
+  }).join("");
+  return `<h2>十、P0-M 为什么还没有产出</h2>
+  <p class="sub">P0-M 是"当天早上机场人工预报对开仓概率的确认"。它自 7 月 30 日起没有
+  任何产出——不是坏了：训练每轮都在跑，但每个站都要先攒够
+  <b>${s.calendar_days ? 36 : 36} 个双方都有预报、且当天真值已结算</b>的日子，
+  才允许拟合；攒够后还要在严格样本外比赛里赢过基线才发布。下面是每站离那条线还有多远。</p>
+  <div class="grid g4" style="margin-bottom:10px">
+    <div class="card"><div class="muted">证据已攒够</div>
+      <div style="font-size:22px"><b>${s.evidence_ready||0}</b> / ${s.station_count||0} 站</div></div>
+    <div class="card"><div class="muted">还差 3 天以内</div>
+      <div style="font-size:22px"><b>${s.within_three_days||0}</b> 站</div></div>
+    <div class="card"><div class="muted">攒够但 OOS 没赢</div>
+      <div style="font-size:22px"><b>${s.oos_refused||0}</b> 站</div></div>
+    <div class="card"><div class="muted">全站累计缺的真值天数</div>
+      <div style="font-size:22px"><b>${s.truth_days_missing_total||0}</b> 天
+      <span class="muted" style="font-size:12px">这是主要卡点</span></div></div>
+  </div>
+  <table><thead><tr><th>站点</th><th>提前量档</th><th>离可拟合还差</th>
+    <th>已有/需要</th><th>最接近的模型组合</th><th>已结算真值天数</th><th>真值缺口</th></tr></thead>
+  <tbody>${rows}</tbody></table>`;
+}
+
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
-  coverage() + roster() + anomalies() +
+  coverage() + roster() + anomalies() + p0m() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);

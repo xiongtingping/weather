@@ -4334,10 +4334,14 @@ class TargetProductionWorker:
         # And the same for the TAF revision chain, which is what the resident
         # P0-M stage has been waiting on: it consumes only the registry file
         # this lane's builder writes.
-        taf_revision_training = self._run_taf_revision_training(
+        # Kept rather than discarded.  P0-M has published nothing since
+        # 2026-07-30 and this lane is the only thing that can end that, but
+        # its verdict was dropped on the floor every cycle -- so "why is
+        # there no P0-M" could only be answered by reading receipts off
+        # disk.  It answers that question every cycle; let it be read.
+        self._taf_revision_training_state = self._run_taf_revision_training(
             as_of_utc=as_of_utc
         )
-        del taf_revision_training
         # And the evidence that lane trains on.  AWC serves 30 days, so a
         # closed day not captured while it is still inside that window can
         # never be captured at all -- this belongs with ICON among the passes

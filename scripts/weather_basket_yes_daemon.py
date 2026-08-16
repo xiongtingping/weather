@@ -2597,6 +2597,15 @@ def main() -> int:
                 }
             elif production_future is None:
                 state.pop("production_inflight", None)
+            # The P0-M training lane's verdict, which is the only thing that
+            # can end that stage's silence.  It runs every cycle for one due
+            # station and says exactly what it is short of; without this it
+            # said so only to a receipt file nobody reads.
+            taf_training = getattr(
+                production_worker, "_taf_revision_training_state", None
+            )
+            if taf_training:
+                state["taf_revision_training"] = taf_training
             if production_future is not None and production_future.done():
                 try:
                     production_result = production_future.result()
