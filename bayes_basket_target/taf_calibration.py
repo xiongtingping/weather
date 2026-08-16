@@ -440,11 +440,17 @@ def fit_taf_revision_artifact(
         baseline_means,
         baseline_scale,
     )
-    if (
+    # Third and last place the same contest was enforced.  Under the
+    # 2026-08-15 ruling P0-M publishes on sample, so the verdict is carried
+    # on the artifact instead of refusing to build one -- and it is carried
+    # honestly, which is why ``joint_physical_oos_validated`` below is this
+    # value rather than the literal True it used to be.  Nothing gates on
+    # that field; the serving side checks live-compatibility, which is a
+    # different claim and still enforced.
+    joint_physical_oos_validated = not (
         calibrated_metrics["nll"] > baseline_metrics["nll"] + 1e-12
         or calibrated_metrics["crps"] > baseline_metrics["crps"] + 1e-12
-    ):
-        raise ContractError("taf_calibration_oos_gate_failed")
+    )
     taf_oos_residuals = [
         actual - mean
         for actual, mean in zip(actuals, calibrated_means)
@@ -543,7 +549,7 @@ def fit_taf_revision_artifact(
         ),
         "correlation_discount_method": TAF_CORRELATION_METHOD,
         "correlation_discount": correlation_discount,
-        "joint_physical_oos_validated": True,
+        "joint_physical_oos_validated": joint_physical_oos_validated,
         "valid_from_utc": str(valid_from_utc),
         "valid_until_utc": str(valid_until_utc),
         "authority_scope": TAF_AUTHORITY_SCOPE,

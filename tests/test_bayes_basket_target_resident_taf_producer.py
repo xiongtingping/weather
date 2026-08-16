@@ -278,10 +278,10 @@ def test_missing_artifact_is_not_configured_not_fake_activation(
             {"correlation_discount": 0.9},
             "correlation_discount_invalid",
         ),
-        (
-            {"joint_physical_oos_validated": False},
-            "joint_physical_oos_not_validated",
-        ),
+        # Ruling 2026-08-15: a lost out-of-sample comparison no longer
+        # withholds a P0-M artifact, so this case moved to its own test
+        # below -- the field is now a verdict the artifact carries, not a
+        # condition of its existence.
         (
             {"authority_scope": "RESEARCH_ONLY"},
             "not_active_for_production_no_live",
@@ -300,6 +300,20 @@ def test_artifact_oos_activation_and_correlation_fail_closed(
         producer.refresh_resident_taf_inputs(**kwargs)
 
     assert not kwargs["output_inbox_path"].exists()
+
+
+def test_artifact_serves_despite_lost_oos_comparison(tmp_path: Path) -> None:
+    """P0-M publishes on sample; the losing verdict rides along."""
+
+    kwargs = _inputs(tmp_path, [_capture()])
+    write_bounded_json(
+        kwargs["artifact_path"],
+        _artifact(joint_physical_oos_validated=False),
+    )
+
+    result = producer.refresh_resident_taf_inputs(**kwargs)
+
+    assert result["capture_count"] == 1
 
 
 def test_timezone_mismatch_and_bare_taf_fail_closed(tmp_path: Path) -> None:

@@ -371,8 +371,12 @@ class TafRevisionArtifact:
             raise ContractError("taf_method_version_invalid")
         if value.correlation_discount_method != TAF_CORRELATION_METHOD:
             raise ContractError("taf_correlation_discount_method_invalid")
-        if not value.joint_physical_oos_validated:
-            raise ContractError("taf_joint_physical_oos_not_validated")
+        # Not asserted.  Under the 2026-08-15 ruling P0-M publishes on
+        # sample, so this field records whether the fit beat its baseline
+        # out of sample rather than deciding whether the artifact may
+        # exist.  Live compatibility below is a different claim -- that the
+        # artifact was fitted on the model set the root actually mixes --
+        # and that one is still enforced, here and at serving time.
         if bridge_present and (
             value.nwp_combination_artifact_kind
             != TAF_NWP_CROSSFIT_ARTIFACT_KIND

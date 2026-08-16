@@ -611,23 +611,30 @@ def test_fit_taf_revision_artifact_rejects_declared_scope_mismatch() -> None:
         )
 
 
-def test_fit_taf_revision_artifact_rejects_oos_regression() -> None:
+def test_fit_taf_revision_artifact_records_oos_regression() -> None:
+    """A losing fit still builds, and says on the artifact that it lost.
+
+    Ruling 2026-08-15: P0-M publishes on sample rather than on beating its
+    baseline out of sample.  What used to be a refusal is now a recorded
+    verdict, so the assertion moves from "raises" to "says so".
+    """
+
     rows = _samples()
     split = 32
     for index, row in enumerate(rows):
         row["truth_tmax_c"] = row["tx_c"] + (3.0 if index < split else -3.0)
-    with pytest.raises(ContractError, match="oos_gate_failed"):
-        fit_taf_revision_artifact(
-            rows,
-            artifact_id="regressed",
-            activation_id="regressed-activation",
-            season_bin="summer",
-            lead_bucket="d0",
-            run_cycle="18Z",
-            settlement_definition="official_daily_tmax_c",
-            valid_from_utc="2026-06-10T15:01:00Z",
-            valid_until_utc="2026-09-01T00:00:00Z",
-        )
+    artifact, _scorecard = fit_taf_revision_artifact(
+        rows,
+        artifact_id="regressed",
+        activation_id="regressed-activation",
+        season_bin="summer",
+        lead_bucket="d0",
+        run_cycle="18Z",
+        settlement_definition="official_daily_tmax_c",
+        valid_from_utc="2026-06-10T15:01:00Z",
+        valid_until_utc="2026-09-01T00:00:00Z",
+    )
+    assert artifact.joint_physical_oos_validated is False
 
 
 def test_fit_taf_revision_artifact_rejects_nwp_decision_after_taf_arrival() -> None:

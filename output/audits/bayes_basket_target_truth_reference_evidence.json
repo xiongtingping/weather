@@ -9,7 +9,7 @@
     "writes_production_db": false
   },
   "calibration_eligible": false,
-  "evidence_sha256": "8725b10de94a7a044055a589957ef7ad920ce00ae79a98a2d6eda7942f94cf00",
+  "evidence_sha256": "66ce9b14a4ff4a0b56ef46820e2d307e2d74cde470923a5d2a8312c5f30e07f1",
   "formal_truth_fallback_allowed": false,
   "formal_truth_priority": {
     "amsc_half_hour_metar": "reference_only",
@@ -17,7 +17,7 @@
     "awc_hourly_for_amsc_station": "reference_only",
     "awc_hourly_precedence_over_amsc_hourly": false
   },
-  "generated_at_utc": "2026-08-16T00:41:10Z",
+  "generated_at_utc": "2026-08-16T01:01:36Z",
   "historical_only": true,
   "reference_observation_count": 0,
   "reference_observations": [],
@@ -26,5 +26,5 @@
     "amsc_half_hour": 0,
     "awc_hourly": 0
   },
-  "target_timezone": "America/Argentina/Buenos_Aires"
+  "target_timezone": "Asia/Shanghai"
 }
