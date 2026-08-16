@@ -135,13 +135,19 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             side = "aligned"
         cost = float(r[7])
         win = float(r[6])
-        # What the seat covers, what it costs, and what that pair is worth.
+        # What the seat covers, what it cost, and what that pair is worth.
         # Coverage is the calibrated probability summed over the seated
-        # buckets, and the ask total is those same buckets' offers -- both
-        # about the basket, not about the whole book.
-        seat_ask_total = sum(
+        # buckets; the cost is what the basket was actually filled at.
+        #
+        # It used to be the sum of the seated buckets' *top-of-book* offers,
+        # which is a different number the moment a clip outruns the level
+        # quoting it -- ZGSZ 2026-08-15 showed 0.004 here beside a P&L
+        # computed on the 0.01771 it really paid, so the page reported a
+        # return no price on it could produce.  One number, the paid one.
+        seat_top_of_book_total = sum(
             max(0.0, prices.get(b, 0.0)) for b in json.loads(r[4])
         )
+        seat_ask_total = cost
         # EV per USDC staked.  A basket costing C pays 1 when the truth lands
         # inside it, so a unit of stake buys 1/C of payout and returns
         # p/C - 1 in expectation.  This is the same quantity the edge (p - C)
@@ -151,6 +157,7 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         stake = float(r[9])
         out.append({
             "seat_ask_total": seat_ask_total,
+            "seat_top_of_book_total": seat_top_of_book_total,
             "ev_per_usdc": ev_per_usdc,
             "ev_usdc": (
                 None if ev_per_usdc is None else stake * ev_per_usdc
