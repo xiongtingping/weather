@@ -47,6 +47,7 @@ from .awc_observation_contract import (
     CanonicalAWCObservationRevisionFact,
 )
 from .band_reliability_store import load_band_table
+from .center_width_store import load_center_width
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .materialization import insert_probability_envelope, materialize_p1
 from .market_bucket_bridge import (
@@ -341,6 +342,10 @@ def materialize_p1_from_canonical_observation(
         # the root, and an identity table (which is what P1 serves until its
         # evidence clears the hurdles) leaves the posterior byte-identical.
         band_table=load_band_table(conn, stage="P1"),
+        # The temperature-axis correction, fitted and gated the same way.
+        # None until its own forward window admits one, which leaves the
+        # posterior byte-identical.
+        center_width=load_center_width(conn, stage="P1"),
         prediction_root=prediction_root,
         trajectory_artifact=trajectory_artifact,
         trajectory_proof=trajectory_proof,

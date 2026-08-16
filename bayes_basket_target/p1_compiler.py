@@ -299,8 +299,19 @@ def compile_station_p1_packets(
         MetarTrajectoryLikelihoodArtifact | Mapping[str, Any] | None
     ) = None,
     maturity_bin: str = "D0",
+    band_table: tuple[
+        Sequence[tuple[tuple[float, float], float]], str
+    ] | None = None,
+    center_width: tuple[float, float, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Compile every canonical P1 prefix; flag only running-high advances."""
+    """Compile every canonical P1 prefix; flag only running-high advances.
+
+    The two post-hoc correction layers are passed in rather than loaded here:
+    this module takes no connection by design, and the compiled packet is the
+    envelope the worker commits verbatim.  Passing None leaves the posterior
+    byte-identical, which is what every caller that has not been given a
+    table gets.
+    """
 
     previous = (
         predecessor
@@ -571,6 +582,8 @@ def compile_station_p1_packets(
             truth_observation_revision_content_sha256=(
                 truth_revision_sha_by_observation.get(observation_id) or None
             ),
+            band_table=band_table,
+            center_width=center_width,
         )
         packets.append({
             "observation_id": observation_id,

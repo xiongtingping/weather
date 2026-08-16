@@ -20,6 +20,11 @@ from .contracts import (
     timestamp_lt,
     timestamp_lte,
 )
+from .center_width_calibration import (
+    apply_center_width_calibration,
+    bucket_centers_from_intervals,
+)
+from .center_width_store import EDGE_WIDTH_C
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
 from .settlement_time import settlement_day_window
@@ -113,6 +118,41 @@ def _anchor_bucket_for_temperature(
         )
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def _bucket_centers_c(
+    lineage: Mapping[str, Any],
+    *,
+    bucket_ordinals: Mapping[str, int],
+) -> tuple[list[str], list[float]] | None:
+    """The stage's bucket axis in degrees, or None when it has none.
+
+    Same tolerance as ``_anchor_bucket_for_temperature``: a root that
+    publishes no interval geometry is not an error, it is a root the
+    temperature-axis corrections do not apply to.
+    """
+
+    raw = lineage.get("bucket_intervals_c_json")
+    if not raw:
+        return None
+    try:
+        intervals = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(intervals, Mapping) or set(intervals) != set(
+        bucket_ordinals
+    ):
+        return None
+    ordered = sorted(bucket_ordinals, key=lambda key: bucket_ordinals[key])
+    try:
+        centers = bucket_centers_from_intervals(
+            intervals, ordered_keys=ordered, edge_width_c=EDGE_WIDTH_C
+        )
+    except (ValueError, TypeError):
+        return None
+    if any(b <= a for a, b in zip(centers, centers[1:])):
+        return None
+    return ordered, centers
 
 
 def _text(name: str, value: Any) -> str:
@@ -567,6 +607,7 @@ def _posterior(
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
+    center_width: tuple[float, float, str] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -594,13 +635,50 @@ def _posterior(
     if not math.isfinite(total) or total <= 0.0:
         raise ContractError("probability_posterior_empty_after_hard_bound")
     probabilities = {bucket: value / total for bucket, value in unnormalized.items()}
+    lineage = dict(lineage)
+    # Geometry before claim.  This moves the distribution along the
+    # temperature axis; the band table below rescales the claim that
+    # distribution produces, and its factors were measured on served claims,
+    # so it has to see the final one.  Applying them the other way round
+    # would band the pre-shift claim and then move it out from under the
+    # band that was chosen for it.
+    if center_width is not None:
+        shift_c, width_lambda, center_width_sha = center_width
+        centers = _bucket_centers_c(
+            lineage, bucket_ordinals=predecessor.bucket_ordinals
+        )
+        if centers is None:
+            # A root that publishes no bucket geometry cannot be corrected on
+            # a temperature axis it does not define.  That is the pre-store
+            # behaviour and stays available rather than failing the commit.
+            lineage["center_width_json"] = json.dumps(
+                {
+                    "schema": "center_width_receipt_v1",
+                    "state": "SKIPPED_NO_BUCKET_GEOMETRY",
+                    "center_width_sha256": str(center_width_sha),
+                },
+                sort_keys=True,
+            )
+        else:
+            ordered_keys, key_centers_c = centers
+            probabilities, center_receipt = apply_center_width_calibration(
+                probabilities,
+                delta_c=shift_c,
+                width_lambda=width_lambda,
+                ordered_keys=ordered_keys,
+                key_centers_c=key_centers_c,
+                excluded_buckets=sorted(excluded),
+            )
+            center_receipt["center_width_sha256"] = str(center_width_sha)
+            lineage["center_width_json"] = json.dumps(
+                center_receipt, sort_keys=True
+            )
     # Outermost, exactly as at P0: this stage's own band table corrects the
     # claim the likelihood step actually produced.  P0's correction already
     # rode in through the root, so what is measured -- and corrected -- here
     # is only the residual this stage's own multiplication leaves.  Absent
     # or all-identity table means the distribution and its content hash stay
     # byte-identical to the pre-store behaviour.
-    lineage = dict(lineage)
     if band_table is not None:
         band_factors, band_sha = band_table
         probabilities, band_receipt = apply_band_reliability(
@@ -656,6 +734,7 @@ def materialize_p0m(
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
+    center_width: tuple[float, float, str] | None = None,
 ) -> ProbabilityEnvelope:
     """Materialize TAF confirmation/correction as the P0-M checkpoint.
 
@@ -765,6 +844,7 @@ def materialize_p0m(
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
         band_table=band_table,
+        center_width=center_width,
     )
 
 
@@ -814,6 +894,7 @@ def materialize_p1(
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
+    center_width: tuple[float, float, str] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1080,6 +1161,7 @@ def materialize_p1(
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
         band_table=band_table,
+        center_width=center_width,
     )
 
 
