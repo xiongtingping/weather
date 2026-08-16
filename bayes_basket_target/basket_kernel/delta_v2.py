@@ -30,6 +30,7 @@ ACTION_EVALUATION_SCHEMA = "delta_basket_action_evaluation_v2"
 ACTION_SELECTION_SCHEMA = "delta_basket_action_selection_v2"
 BUNDLE_EVALUATION_SCHEMA = "delta_basket_bundle_evaluation_v2"
 BUNDLE_SELECTION_SCHEMA = "delta_basket_bundle_selection_v2"
+BUNDLE_RESCORE_SCHEMA = "delta_basket_bundle_rescore_v2"
 RESERVATION_SCHEMA = "delta_basket_reservation_price_v2"
 PORTFOLIO_SELECTION_SCHEMA = "delta_basket_portfolio_selection_v2"
 KERNEL_VERSION = "delta_basket_score_kernel_v2"
@@ -1427,6 +1428,378 @@ def _bounded_maker_bundle_candidates(
     }
 
 
+def _evaluate_maker_bundle_combo(
+    combo: Sequence[Mapping[str, Any]],
+    *,
+    required: Sequence[str],
+    probabilities: Mapping[str, Any],
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    target: Mapping[str, float],
+    baseline: Mapping[str, Any],
+    protected_buckets: Sequence[str],
+    shortfall_buckets: Sequence[str],
+    breakthrough_buckets: Sequence[str],
+    value_weights: ValueWeightsV2,
+    execution_weights: ExecutionWeightsV2,
+    capital: float,
+    required_floor: float,
+    fee: float,
+    outcome_row_budget: int,
+    shares_by_bucket: Mapping[str, float] | None = None,
+    reserved_by_bucket: Mapping[str, float] | None = None,
+) -> tuple[dict[str, Any], int]:
+    """Score one complete Maker bundle over its joint fill lattice.
+
+    Extracted so that exactly one implementation answers "is this basket
+    authorized".  The selector runs it over every candidate combination; the
+    re-score runs it once over the winner with the sizes that will actually
+    be sent.  Two implementations of this arithmetic would be two different
+    answers to the same question, and the one that decides execution has to
+    be the one that granted the authorization.
+
+    ``shares_by_bucket`` and ``reserved_by_bucket`` override each leg's
+    quantity and reserved cash.  Absent, the actions' own numbers are used
+    and the evaluation is the ordinary candidate scoring.
+
+    Returns the evaluation and how many joint outcome rows it consumed, so
+    the caller keeps ownership of the resource bound across candidates.
+    """
+
+    def _leg_shares(action: Mapping[str, Any]) -> float:
+        bucket = str(action["bucket"])
+        if shares_by_bucket is not None:
+            return _nonnegative(
+                "delta_v2_bundle_sized_shares", shares_by_bucket.get(bucket)
+            )
+        return float(action["maximum_shares"])
+
+    reserved = 0.0
+    for row in combo:
+        bucket = str(dict(row["action"])["bucket"])
+        reserved += (
+            _nonnegative(
+                "delta_v2_bundle_sized_reserved", reserved_by_bucket.get(bucket)
+            )
+            if reserved_by_bucket is not None
+            else float(row.get("capital_reserved_usdc") or 0.0)
+        )
+    structural_blockers: set[str] = set()
+    for row in combo:
+        for gate, passed in dict(row.get("hard_gates") or {}).items():
+            if passed is not True and gate not in {
+                "budget_ok",
+                "profit_floor_ok",
+            }:
+                structural_blockers.add(str(gate))
+        for blocker in row.get("blockers", ()):
+            if blocker not in {
+                "budget_ok",
+                "profit_floor_ok",
+            }:
+                structural_blockers.add(str(blocker))
+    if reserved > capital + EPS:
+        structural_blockers.add("budget_ok")
+
+    distributions = [
+        tuple(dict(outcome) for outcome in row.get("fill_distribution", ()))
+        for row in combo
+    ]
+    if any(not distribution for distribution in distributions):
+        raise ContractError("delta_v2_fill_distribution_missing")
+    joint_rows: list[dict[str, Any]] = []
+    expected_delta = 0.0
+    outcome_rows = 0
+    for outcomes in product(*distributions):
+        outcome_rows += 1
+        if outcome_rows > outcome_row_budget:
+            raise ContractError("delta_v2_bundle_outcome_bound_exceeded")
+        probability = math.prod(
+            _probability(
+                "delta_v2_joint_fill_probability",
+                outcome.get("probability"),
+            )
+            for outcome in outcomes
+        )
+        resulting_shares = dict(current_shares)
+        resulting_cost = dict(current_cost)
+        fills: list[dict[str, Any]] = []
+        for evaluation, outcome in zip(combo, outcomes):
+            action = dict(evaluation["action"])
+            bucket = str(action["bucket"])
+            fraction = _probability(
+                "delta_v2_joint_fill_fraction",
+                outcome.get("fill_fraction"),
+            )
+            filled_shares = _leg_shares(action) * fraction
+            price = float(action["limit_price"])
+            resulting_shares[bucket] += filled_shares
+            resulting_cost[bucket] += filled_shares * price * (1.0 + fee)
+            fills.append({
+                "bucket": bucket,
+                "fill_fraction": fraction,
+                "filled_shares": filled_shares,
+                "filled_notional_usdc": filled_shares * price,
+            })
+        value = evaluate_basket_value_v2(
+            probabilities=probabilities,
+            shares_by_bucket=resulting_shares,
+            cost_by_bucket=resulting_cost,
+            protected_buckets=protected_buckets,
+            shortfall_buckets=shortfall_buckets,
+            breakthrough_buckets=breakthrough_buckets,
+            weights=value_weights,
+            target_shares_by_bucket=target,
+        )
+        delta = float(value["value"]) - float(baseline["value"])
+        expected_delta += probability * delta
+        joint_rows.append({
+            "probability": probability,
+            "fills": fills,
+            "delta_value": delta,
+            "resulting_value_sha256": value["content_sha256"],
+            "resulting_profit_floor": value["profit_floor"],
+        })
+    probability_mass = sum(row["probability"] for row in joint_rows)
+    if abs(probability_mass - 1.0) > 1e-8:
+        raise ContractError("delta_v2_joint_fill_probability_mass_invalid")
+    if any(
+        row["resulting_profit_floor"] + EPS < required_floor
+        for row in joint_rows
+    ):
+        structural_blockers.add("profit_floor_ok")
+    execution_cost = sum(
+        float(row.get("normalized_execution_cost") or 0.0)
+        for row in combo
+    )
+    score = expected_delta - execution_cost
+    expected_shares = dict(current_shares)
+    for evaluation in combo:
+        action = dict(evaluation["action"])
+        bucket = str(action["bucket"])
+        expected_fraction = sum(
+            float(outcome["probability"])
+            * float(outcome["fill_fraction"])
+            for outcome in evaluation["fill_distribution"]
+        )
+        expected_shares[bucket] += _leg_shares(action) * expected_fraction
+    fit = sum(
+        max(0.0, target[bucket] - expected_shares[bucket]) ** 2
+        for bucket in required
+    )
+    authorized = (
+        not structural_blockers
+        and score > execution_weights.epsilon_score + EPS
+    )
+    identity = {
+        "schema": BUNDLE_EVALUATION_SCHEMA,
+        "kernel_version": KERNEL_VERSION,
+        "required_buckets": list(required),
+        "selected_action_sha256s": sorted(
+            str(row["content_sha256"]) for row in combo
+        ),
+        "selected_actions": sorted(
+            (dict(row) for row in combo),
+            key=lambda row: (
+                str(dict(row["action"]).get("bucket") or ""),
+                str(row.get("content_sha256") or ""),
+            ),
+        ),
+        "baseline_value_sha256": baseline["content_sha256"],
+        "joint_fill_outcomes": joint_rows,
+        "expected_delta_value": expected_delta,
+        "normalized_execution_cost": execution_cost,
+        "delta_basket_score_v2": score,
+        "inventory_fit_distance": fit,
+        "capital_reserved_usdc": reserved,
+        "capital_available_usdc": capital,
+        "minimum_profit_floor": required_floor,
+        "blockers": sorted(structural_blockers),
+        "authorized": authorized,
+        "state": "TRADE" if authorized else "HOLD",
+        "basket_complete": True,
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+    if shares_by_bucket is not None:
+        identity["sized_shares_by_bucket"] = {
+            str(bucket): float(shares_by_bucket[bucket])
+            for bucket in sorted(shares_by_bucket)
+        }
+    if reserved_by_bucket is not None:
+        identity["sized_reserved_by_bucket"] = {
+            str(bucket): float(reserved_by_bucket[bucket])
+            for bucket in sorted(reserved_by_bucket)
+        }
+    return (
+        {**identity, "content_sha256": content_sha256(identity)},
+        outcome_rows,
+    )
+
+
+def rescore_maker_bundle_v2(
+    selected_actions: Sequence[Mapping[str, Any]],
+    *,
+    required_buckets: Sequence[str],
+    probabilities: Mapping[str, Any],
+    current_shares_by_bucket: Mapping[str, Any],
+    current_cost_by_bucket: Mapping[str, Any],
+    target_shares_by_bucket: Mapping[str, Any],
+    protected_buckets: Sequence[str],
+    shortfall_buckets: Sequence[str],
+    breakthrough_buckets: Sequence[str],
+    value_weights: ValueWeightsV2,
+    execution_weights: ExecutionWeightsV2,
+    capital_available_usdc: Any,
+    minimum_profit_floor: Any,
+    sized_shares_by_bucket: Mapping[str, Any],
+    sized_notional_by_bucket: Mapping[str, Any],
+    fee_rate: Any = 0.0,
+) -> dict[str, Any]:
+    """Re-authorize the bundle at the sizes that will actually be sent.
+
+    Depth, budget or a share quantum can cut a leg below the clip the
+    selector authorized.  The result is not a smaller version of the
+    authorized basket -- floor, CVaR, concentration and coverage are joint
+    over the legs, so shrinking one changes all of them and can turn a legal
+    basket illegal.  Rather than refuse every cut basket or send an unscored
+    one, this puts the actual sizes back through the identical evaluation the
+    selector used and lets the same gates rule on it: no structural blocker,
+    every joint fill outcome above the profit floor, reserved within capital,
+    and a score still clearing epsilon.
+
+    The verdict is a receipt, not an authority: the caller decides what to do
+    with a refusal, and this writes nothing.
+    """
+
+    required = tuple(sorted(
+        set(_text("delta_v2_required_bucket", x) for x in required_buckets)
+    ))
+    if len(required) != len(tuple(required_buckets)):
+        raise ContractError("delta_v2_required_bucket_duplicate")
+    if not required:
+        raise ContractError("delta_v2_rescore_required_buckets_empty")
+    capital = _nonnegative("delta_v2_capital_available", capital_available_usdc)
+    required_floor = _finite(
+        "delta_v2_minimum_profit_floor", minimum_profit_floor
+    )
+    fee = _nonnegative("delta_v2_fee_rate", fee_rate)
+    if fee >= 1.0:
+        raise ContractError("delta_v2_fee_rate_invalid")
+    buckets = _canonical_buckets(probabilities)
+    if set(required) - set(buckets):
+        raise ContractError("delta_v2_required_bucket_unknown")
+    current_shares = _canonical_map(
+        "delta_v2_current_shares", current_shares_by_bucket, buckets
+    )
+    current_cost = _canonical_map(
+        "delta_v2_current_cost", current_cost_by_bucket, buckets
+    )
+    target = _canonical_map(
+        "delta_v2_target_shares", target_shares_by_bucket, buckets
+    )
+    combo: list[dict[str, Any]] = []
+    seen_buckets: set[str] = set()
+    for raw in selected_actions:
+        if not isinstance(raw, Mapping):
+            raise ContractError("delta_v2_action_evaluation_mapping_required")
+        if raw.get("schema") != ACTION_EVALUATION_SCHEMA:
+            raise ContractError("delta_v2_action_evaluation_schema_invalid")
+        action = raw.get("action")
+        if not isinstance(action, Mapping):
+            raise ContractError("delta_v2_action_mapping_required")
+        if str(action.get("order_mode") or "").upper() != "MAKER":
+            raise ContractError("delta_v2_rescore_order_mode_invalid")
+        bucket = str(action.get("bucket") or "")
+        if bucket in seen_buckets:
+            raise ContractError("delta_v2_rescore_leg_duplicate")
+        seen_buckets.add(bucket)
+        combo.append(dict(raw))
+    if seen_buckets != set(required):
+        # A re-score is only ever of the complete authorized bundle; a proper
+        # subset is the incomplete basket the atomicity contract forbids.
+        raise ContractError("delta_v2_rescore_bundle_incomplete")
+    shares = {
+        bucket: _nonnegative(
+            "delta_v2_bundle_sized_shares", sized_shares_by_bucket.get(bucket)
+        )
+        for bucket in required
+    }
+    notional = {
+        bucket: _nonnegative(
+            "delta_v2_bundle_sized_reserved",
+            sized_notional_by_bucket.get(bucket),
+        )
+        for bucket in required
+    }
+    combo.sort(key=lambda row: str(dict(row["action"]).get("bucket") or ""))
+    baseline = evaluate_basket_value_v2(
+        probabilities=probabilities,
+        shares_by_bucket=current_shares,
+        cost_by_bucket=current_cost,
+        protected_buckets=protected_buckets,
+        shortfall_buckets=shortfall_buckets,
+        breakthrough_buckets=breakthrough_buckets,
+        weights=value_weights,
+        target_shares_by_bucket=target,
+    )
+    evaluation, _rows = _evaluate_maker_bundle_combo(
+        combo,
+        required=required,
+        probabilities=probabilities,
+        current_shares=current_shares,
+        current_cost=current_cost,
+        target=target,
+        baseline=baseline,
+        protected_buckets=protected_buckets,
+        shortfall_buckets=shortfall_buckets,
+        breakthrough_buckets=breakthrough_buckets,
+        value_weights=value_weights,
+        execution_weights=execution_weights,
+        capital=capital,
+        required_floor=required_floor,
+        fee=fee,
+        outcome_row_budget=min(
+            MAX_BUNDLE_JOINT_OUTCOME_ROWS,
+            execution_weights.maximum_candidates ** 3,
+        ),
+        shares_by_bucket=shares,
+        reserved_by_bucket=notional,
+    )
+    identity = {
+        "schema": BUNDLE_RESCORE_SCHEMA,
+        "kernel_version": KERNEL_VERSION,
+        "required_buckets": list(required),
+        "authorized_bundle_action_sha256s": evaluation[
+            "selected_action_sha256s"
+        ],
+        "sized_shares_by_bucket": {
+            bucket: shares[bucket] for bucket in required
+        },
+        "sized_notional_by_bucket": {
+            bucket: notional[bucket] for bucket in required
+        },
+        "delta_basket_score_v2": evaluation["delta_basket_score_v2"],
+        "expected_delta_value": evaluation["expected_delta_value"],
+        "normalized_execution_cost": evaluation["normalized_execution_cost"],
+        "capital_reserved_usdc": evaluation["capital_reserved_usdc"],
+        "capital_available_usdc": capital,
+        "minimum_profit_floor": required_floor,
+        "epsilon_score": execution_weights.epsilon_score,
+        "blockers": evaluation["blockers"],
+        "authorized": evaluation["authorized"],
+        "state": evaluation["state"],
+        "rescored_evaluation_sha256": evaluation["content_sha256"],
+        "calls_order_gateway": False,
+        "places_orders": False,
+        "orders_submitted": 0,
+        "live_submit_authorized": False,
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
 def select_complete_maker_bundle_v2(
     actions: Sequence[Mapping[str, Any]],
     *,
@@ -1562,154 +1935,28 @@ def select_complete_maker_bundle_v2(
             combination_count += 1
             if combination_count > combination_bound:
                 raise ContractError("delta_v2_bundle_combination_bound_exceeded")
-            reserved = sum(
-                float(row.get("capital_reserved_usdc") or 0.0)
-                for row in combo
-            )
-            structural_blockers: set[str] = set()
-            for row in combo:
-                for gate, passed in dict(row.get("hard_gates") or {}).items():
-                    if passed is not True and gate not in {
-                        "budget_ok",
-                        "profit_floor_ok",
-                    }:
-                        structural_blockers.add(str(gate))
-                for blocker in row.get("blockers", ()):
-                    if blocker not in {
-                        "budget_ok",
-                        "profit_floor_ok",
-                    }:
-                        structural_blockers.add(str(blocker))
-            if reserved > capital + EPS:
-                structural_blockers.add("budget_ok")
-
-            distributions = [
-                tuple(dict(outcome) for outcome in row.get("fill_distribution", ()))
-                for row in combo
-            ]
-            if any(not distribution for distribution in distributions):
-                raise ContractError("delta_v2_fill_distribution_missing")
-            joint_rows: list[dict[str, Any]] = []
-            expected_delta = 0.0
-            for outcomes in product(*distributions):
-                outcome_count += 1
-                if outcome_count > resource_bound["outcome_row_limit"]:
-                    raise ContractError("delta_v2_bundle_outcome_bound_exceeded")
-                probability = math.prod(
-                    _probability(
-                        "delta_v2_joint_fill_probability",
-                        outcome.get("probability"),
-                    )
-                    for outcome in outcomes
-                )
-                resulting_shares = dict(current_shares)
-                resulting_cost = dict(current_cost)
-                fills: list[dict[str, Any]] = []
-                for evaluation, outcome in zip(combo, outcomes):
-                    action = dict(evaluation["action"])
-                    bucket = str(action["bucket"])
-                    fraction = _probability(
-                        "delta_v2_joint_fill_fraction",
-                        outcome.get("fill_fraction"),
-                    )
-                    filled_shares = float(action["maximum_shares"]) * fraction
-                    price = float(action["limit_price"])
-                    resulting_shares[bucket] += filled_shares
-                    resulting_cost[bucket] += filled_shares * price * (1.0 + fee)
-                    fills.append({
-                        "bucket": bucket,
-                        "fill_fraction": fraction,
-                        "filled_shares": filled_shares,
-                        "filled_notional_usdc": filled_shares * price,
-                    })
-                value = evaluate_basket_value_v2(
-                    probabilities=probabilities,
-                    shares_by_bucket=resulting_shares,
-                    cost_by_bucket=resulting_cost,
-                    protected_buckets=protected_buckets,
-                    shortfall_buckets=shortfall_buckets,
-                    breakthrough_buckets=breakthrough_buckets,
-                    weights=value_weights,
-                    target_shares_by_bucket=target,
-                )
-                delta = float(value["value"]) - float(baseline["value"])
-                expected_delta += probability * delta
-                joint_rows.append({
-                    "probability": probability,
-                    "fills": fills,
-                    "delta_value": delta,
-                    "resulting_value_sha256": value["content_sha256"],
-                    "resulting_profit_floor": value["profit_floor"],
-                })
-            probability_mass = sum(row["probability"] for row in joint_rows)
-            if abs(probability_mass - 1.0) > 1e-8:
-                raise ContractError("delta_v2_joint_fill_probability_mass_invalid")
-            if any(
-                row["resulting_profit_floor"] + EPS < required_floor
-                for row in joint_rows
-            ):
-                structural_blockers.add("profit_floor_ok")
-            execution_cost = sum(
-                float(row.get("normalized_execution_cost") or 0.0)
-                for row in combo
-            )
-            score = expected_delta - execution_cost
-            expected_shares = dict(current_shares)
-            for evaluation in combo:
-                action = dict(evaluation["action"])
-                bucket = str(action["bucket"])
-                expected_fraction = sum(
-                    float(outcome["probability"])
-                    * float(outcome["fill_fraction"])
-                    for outcome in evaluation["fill_distribution"]
-                )
-                expected_shares[bucket] += (
-                    float(action["maximum_shares"]) * expected_fraction
-                )
-            fit = sum(
-                max(0.0, target[bucket] - expected_shares[bucket]) ** 2
-                for bucket in required
-            )
-            authorized = (
-                not structural_blockers
-                and score > execution_weights.epsilon_score + EPS
-            )
-            identity = {
-                "schema": BUNDLE_EVALUATION_SCHEMA,
-                "kernel_version": KERNEL_VERSION,
-                "required_buckets": list(required),
-                "selected_action_sha256s": sorted(
-                    str(row["content_sha256"]) for row in combo
+            evaluation, consumed = _evaluate_maker_bundle_combo(
+                combo,
+                required=required,
+                probabilities=probabilities,
+                current_shares=current_shares,
+                current_cost=current_cost,
+                target=target,
+                baseline=baseline,
+                protected_buckets=protected_buckets,
+                shortfall_buckets=shortfall_buckets,
+                breakthrough_buckets=breakthrough_buckets,
+                value_weights=value_weights,
+                execution_weights=execution_weights,
+                capital=capital,
+                required_floor=required_floor,
+                fee=fee,
+                outcome_row_budget=(
+                    resource_bound["outcome_row_limit"] - outcome_count
                 ),
-                "selected_actions": sorted(
-                    (dict(row) for row in combo),
-                    key=lambda row: (
-                        str(dict(row["action"]).get("bucket") or ""),
-                        str(row.get("content_sha256") or ""),
-                    ),
-                ),
-                "baseline_value_sha256": baseline["content_sha256"],
-                "joint_fill_outcomes": joint_rows,
-                "expected_delta_value": expected_delta,
-                "normalized_execution_cost": execution_cost,
-                "delta_basket_score_v2": score,
-                "inventory_fit_distance": fit,
-                "capital_reserved_usdc": reserved,
-                "capital_available_usdc": capital,
-                "minimum_profit_floor": required_floor,
-                "blockers": sorted(structural_blockers),
-                "authorized": authorized,
-                "state": "TRADE" if authorized else "HOLD",
-                "basket_complete": True,
-                "calls_order_gateway": False,
-                "places_orders": False,
-                "orders_submitted": 0,
-                "live_submit_authorized": False,
-            }
-            evaluated.append({
-                **identity,
-                "content_sha256": content_sha256(identity),
-            })
+            )
+            outcome_count += consumed
+            evaluated.append(evaluation)
 
     eligible = [row for row in evaluated if row["authorized"] is True]
     winner = max(

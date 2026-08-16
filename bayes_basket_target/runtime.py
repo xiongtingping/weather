@@ -18,6 +18,10 @@ from .basket_kernel.contracts import (
     TargetBasketPolicy,
     TargetBasketSnapshot,
 )
+from .basket_kernel.delta_v2 import (
+    BUNDLE_RESCORE_SCHEMA,
+    rescore_maker_bundle_v2,
+)
 from .cash_phase import (
     BasketCashPhaseInput,
     BasketCashPhasePolicyArtifact,
@@ -531,6 +535,122 @@ def _executable_depth_cash(
     return max(0.0, float(cash_clip))
 
 
+CLAMPED_CLIP_REASON = "sizing_clamped_below_authorized_clip"
+
+
+def _rescore_clamped_bundle(
+    *,
+    sizing_decisions: Sequence[Any],
+    resize: Any,
+    delta_plan: Mapping[str, Any],
+    snapshot: TargetBasketSnapshot,
+    delta_policy: DeltaV2PolicyArtifact,
+    policy: TargetBasketPolicy,
+    capital_available_usdc: float,
+    selected_action_evaluations: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Re-authorize the bundle at the sizes execution would actually send.
+
+    Returns None when nothing was cut -- the ordinary case, and the one where
+    the authorization already covers what goes out.  Otherwise it re-sizes
+    with the cut permitted, and puts those exact quantities back through
+    ``rescore_maker_bundle_v2``: the same joint fill lattice, the same value
+    weights, the same floor and epsilon that granted the original
+    authorization.  Every input is taken from where the compile put it rather
+    than reconstructed -- ``bundle_scored_scopes`` exists because the risk
+    scopes the bundle was scored against are the seat-intersected ones and
+    the plan's diagnostic fields are not.
+
+    The receipt is returned either way; a refusal leaves the caller's
+    refusing sizing in place, which is what blocks the trade.
+    """
+
+    if not any(
+        item.reason_code == CLAMPED_CLIP_REASON
+        for item in sizing_decisions
+        if item.candidate_present
+    ):
+        return None
+    required = tuple(sorted(
+        str(value) for value in delta_plan.get("execution_gap_support", ())
+    ))
+    scopes = delta_plan.get("bundle_scored_scopes")
+    solution = delta_plan.get("target_solution")
+    if not required or not isinstance(scopes, Mapping) or not isinstance(
+        solution, Mapping
+    ):
+        return {
+            "schema": BUNDLE_RESCORE_SCHEMA,
+            "authorized": False,
+            "blockers": ["rescore_inputs_unavailable"],
+        }
+    cut, _remaining = resize(clamped_clip_authorized=True)
+    sized = {
+        item.bucket: item for item in cut if item.candidate_present
+    }
+    if set(sized) != set(required) or not all(
+        item.eligible for item in sized.values()
+    ):
+        # Something other than the clip cut refuses these legs -- a clip under
+        # the minimum, an empty book.  Those are not a re-scoring question.
+        return {
+            "schema": BUNDLE_RESCORE_SCHEMA,
+            "authorized": False,
+            "blockers": sorted({
+                item.reason_code
+                for item in sized.values()
+                if not item.eligible
+            } or {"rescore_bundle_incomplete"}),
+        }
+    try:
+        return rescore_maker_bundle_v2(
+            selected_action_evaluations,
+            required_buckets=required,
+            probabilities={
+                row.bucket: row.probability for row in snapshot.buckets
+            },
+            current_shares_by_bucket={
+                row.bucket: row.filled_shares for row in snapshot.buckets
+            },
+            current_cost_by_bucket={
+                row.bucket: row.filled_cost_usdc for row in snapshot.buckets
+            },
+            target_shares_by_bucket=dict(
+                solution.get("target_shares_by_bucket") or {}
+            ),
+            protected_buckets=tuple(
+                str(value) for value in scopes.get("protected_buckets", ())
+            ),
+            shortfall_buckets=tuple(
+                str(value) for value in scopes.get("shortfall_buckets", ())
+            ),
+            breakthrough_buckets=tuple(
+                str(value)
+                for value in scopes.get("breakthrough_buckets", ())
+            ),
+            value_weights=delta_policy.value_weights,
+            execution_weights=delta_policy.execution_weights,
+            capital_available_usdc=capital_available_usdc,
+            minimum_profit_floor=float(
+                policy.minimum_expected_pnl_after_usdc
+            ),
+            sized_shares_by_bucket={
+                bucket: item.q_order for bucket, item in sized.items()
+            },
+            sized_notional_by_bucket={
+                bucket: item.c_order for bucket, item in sized.items()
+            },
+            fee_rate=policy.fee_rate,
+        )
+    except ContractError as exc:
+        # A re-score that cannot be computed is a refusal, never a pass.
+        return {
+            "schema": BUNDLE_RESCORE_SCHEMA,
+            "authorized": False,
+            "blockers": [f"rescore_contract_error:{exc}"],
+        }
+
+
 def _compile_target_plan(
     *,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
@@ -583,6 +703,7 @@ def _compile_target_plan(
             "delta_v2_audit": delta_audit,
             "cash_phase_decision": None,
             "order_sizing_decisions": [],
+            "bundle_rescore": None,
             "cadence_decision": CadenceDecision.HOLD.value,
             "cadence_allows_candidate": False,
             "remaining_budget_usdc_before": remaining_budget_before,
@@ -809,6 +930,10 @@ def _compile_target_plan(
         )
 
     selected_actions_by_bucket: dict[str, dict[str, Any]] = {}
+    # The whole action evaluations, not just their actions: a re-score needs
+    # the fill distribution, the hard gates and the execution cost that the
+    # authorization was computed from.
+    selected_action_evaluations: list[dict[str, Any]] = []
     if isinstance(delta_plan.get("delta_v2_action_selection"), Mapping):
         selected_rows = delta_plan["delta_v2_action_selection"].get(
             "selected_actions", ()
@@ -825,6 +950,7 @@ def _compile_target_plan(
                 bucket = str(action.get("bucket") or "")
                 if bucket:
                     selected_actions_by_bucket[bucket] = dict(action)
+                    selected_action_evaluations.append(dict(selected))
     selected_authorized = (
         delta_plan.get("state") == "TRADE"
         and dict(delta_plan.get("delta_v2_audit", {})).get("authorized") is True
@@ -901,57 +1027,98 @@ def _compile_target_plan(
         )
 
     row_by_bucket = {row.bucket: row for row in snapshot.buckets}
-    order_sizing_decisions: list[OrderSizingDecision] = []
-    remaining_after = remaining_budget
-    for row in delta_plan.get("targets", []) if isinstance(delta_plan, Mapping) else []:
-        row_bucket = str(row.get("bucket", ""))
-        snap_row = row_by_bucket[row_bucket]
-        candidate_price = float(row.get("candidate_price", 0.0) or 0.0)
-        delta_shares = float(row.get("delta_shares", 0.0) or 0.0)
-        clip_notional = row.get("clip_notional_usdc")
-        execution_candidate = str(row.get("execution_candidate", "NONE"))
-        is_selected = (
-            selected_authorized
-            and execution_candidate != "NONE"
-            and row_bucket in selected_actions_by_bucket
+
+    def _size_every_leg(
+        *,
+        clamped_clip_authorized: bool,
+    ) -> tuple[list[OrderSizingDecision], float]:
+        decisions: list[OrderSizingDecision] = []
+        remaining = remaining_budget
+        rows = (
+            delta_plan.get("targets", [])
+            if isinstance(delta_plan, Mapping)
+            else []
         )
-        selected_action = selected_actions_by_bucket.get(row_bucket, {})
-        candidate_present = (
-            is_selected
-            and float(selected_action.get("cash_clip") or 0.0) > 0.0
-        )
-        executable_depth_cash = (
-            _executable_depth_cash(
-                ask_levels=snap_row.ask_levels,
-                execution_candidate=execution_candidate,
-                limit_price=candidate_price,
-                cash_clip=float(selected_action.get("cash_clip") or 0.0),
+        for row in rows:
+            row_bucket = str(row.get("bucket", ""))
+            snap_row = row_by_bucket[row_bucket]
+            candidate_price = float(row.get("candidate_price", 0.0) or 0.0)
+            delta_shares = float(row.get("delta_shares", 0.0) or 0.0)
+            clip_notional = row.get("clip_notional_usdc")
+            execution_candidate = str(row.get("execution_candidate", "NONE"))
+            is_selected = (
+                selected_authorized
+                and execution_candidate != "NONE"
+                and row_bucket in selected_actions_by_bucket
             )
-            if candidate_present
-            else 0.0
+            selected_action = selected_actions_by_bucket.get(row_bucket, {})
+            candidate_present = (
+                is_selected
+                and float(selected_action.get("cash_clip") or 0.0) > 0.0
+            )
+            executable_depth_cash = (
+                _executable_depth_cash(
+                    ask_levels=snap_row.ask_levels,
+                    execution_candidate=execution_candidate,
+                    limit_price=candidate_price,
+                    cash_clip=float(selected_action.get("cash_clip") or 0.0),
+                )
+                if candidate_present
+                else 0.0
+            )
+            sizing = OrderSizingDecision.compute(
+                bucket=row_bucket,
+                phase_decision=cash_phase_decision,
+                delta_shares=delta_shares,
+                r_limit=candidate_price,
+                remaining_budget=remaining,
+                executable_depth_cash=executable_depth_cash,
+                candidate_present=candidate_present,
+                target_clip_notional_usdc=(
+                    float(clip_notional)
+                    if (candidate_present and clip_notional is not None)
+                    else None
+                ),
+                minimum_clip_notional_usdc=float(
+                    policy.clip_min_notional_usdc
+                ),
+                # DeltaBasketScore v2 owns the selected adaptive clip.  The
+                # legacy phase cash template remains auditable cadence
+                # context, but may not silently replace the unique
+                # objective's size.
+                cash_template_caps_target=False,
+                share_quantum=float(
+                    market_snapshot.get("share_quantum", 0.01) or 0.01
+                ),
+                clamped_clip_authorized=clamped_clip_authorized,
+            )
+            decisions.append(sizing)
+            remaining = sizing.remaining_budget_after
+        return decisions, remaining
+
+    order_sizing_decisions, remaining_after = _size_every_leg(
+        clamped_clip_authorized=False
+    )
+    # Depth, budget or a shrunken gap can cut a leg below the clip the
+    # objective authorized.  The cut basket is not a smaller version of the
+    # authorized one -- floor, CVaR, concentration and coverage are joint
+    # over the legs -- so it is neither sent unexamined nor refused on sight:
+    # the sizes that would actually go out are put back through the identical
+    # evaluation that granted the authorization, and the same gates rule.
+    bundle_rescore = _rescore_clamped_bundle(
+        sizing_decisions=order_sizing_decisions,
+        resize=_size_every_leg,
+        delta_plan=delta_plan,
+        snapshot=snapshot,
+        delta_policy=resolved_delta_policy,
+        policy=policy,
+        capital_available_usdc=remaining_budget,
+        selected_action_evaluations=selected_action_evaluations,
+    )
+    if bundle_rescore is not None and bundle_rescore.get("authorized") is True:
+        order_sizing_decisions, remaining_after = _size_every_leg(
+            clamped_clip_authorized=True
         )
-        sizing = OrderSizingDecision.compute(
-            bucket=row_bucket,
-            phase_decision=cash_phase_decision,
-            delta_shares=delta_shares,
-            r_limit=candidate_price,
-            remaining_budget=remaining_after,
-            executable_depth_cash=executable_depth_cash,
-            candidate_present=candidate_present,
-            target_clip_notional_usdc=(
-                float(clip_notional)
-                if (candidate_present and clip_notional is not None)
-                else None
-            ),
-            minimum_clip_notional_usdc=float(policy.clip_min_notional_usdc),
-            # DeltaBasketScore v2 owns the selected adaptive clip.  The
-            # legacy phase cash template remains auditable cadence context,
-            # but may not silently replace the unique objective's size.
-            cash_template_caps_target=False,
-            share_quantum=float(market_snapshot.get("share_quantum", 0.01) or 0.01),
-        )
-        order_sizing_decisions.append(sizing)
-        remaining_after = sizing.remaining_budget_after
 
     candidate_present_for_cadence = any(
         item.candidate_present for item in order_sizing_decisions
@@ -979,6 +1146,15 @@ def _compile_target_plan(
     blockers.extend(
         reason for reason in sizing_blockers if reason not in blockers
     )
+    if bundle_rescore is not None and bundle_rescore.get("authorized") is not True:
+        # The refusing sizing above is what actually blocks; these name the
+        # reason the cut basket could not be re-authorized.
+        for reason in [
+            "bundle_rescore_refused",
+            *(str(value) for value in bundle_rescore.get("blockers", ())),
+        ]:
+            if reason not in blockers:
+                blockers.append(reason)
     effective_cadence_snapshot = (
         cadence_snapshot if cadence_snapshot is not None else market_snapshot.get("cadence_snapshot")
     )
@@ -1094,6 +1270,9 @@ def _compile_target_plan(
         "plan": plan,
         "cash_phase_decision": cash_phase_decision.to_dict(),
         "order_sizing_decisions": [item.to_dict() for item in order_sizing_decisions],
+        # Present only when sizing cut a leg below its authorized clip; the
+        # verdict that decided whether the cut basket could still be sent.
+        "bundle_rescore": bundle_rescore,
         "cadence_decision": cadence_decision,
         "cadence_authority": cadence_authority,
         "cadence_allows_candidate": cadence_allows,

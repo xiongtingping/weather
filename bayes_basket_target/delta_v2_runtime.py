@@ -1264,6 +1264,15 @@ def compile_delta_v2_runtime_plan(
     )
     ordered_support = seated_support
     desired = set(seated_support)
+    # The risk scopes as intersected with the *seated* support -- the exact
+    # tuples every action, the bundle and the realised value are scored
+    # against.  Derived once and published on the plan, because a re-score
+    # after execution sizing has to reproduce the authorization's inputs
+    # byte for byte, and the diagnostic ``underreach_risk_buckets`` below is
+    # the pre-seat intersection: close enough to look right in an audit and
+    # wrong enough to score a different basket.
+    scored_shortfall = tuple(sorted(shortfall & desired))
+    scored_breakthrough = tuple(sorted(breakthrough & desired))
     target_shares = dict(target_solution["target_shares_by_bucket"])
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
     current_cost = {row.bucket: row.filled_cost_usdc for row in snapshot.buckets}
@@ -1411,8 +1420,8 @@ def compile_delta_v2_runtime_plan(
             "confirmed_pending_cost_by_bucket": pending_cost,
             "target_shares_by_bucket": target_shares,
             "protected_buckets": ordered_support,
-            "shortfall_buckets": tuple(sorted(shortfall & desired)),
-            "breakthrough_buckets": tuple(sorted(breakthrough & desired)),
+            "shortfall_buckets": scored_shortfall,
+            "breakthrough_buckets": scored_breakthrough,
             "value_weights": delta_policy.value_weights,
             "execution_weights": delta_policy.execution_weights,
             "hard_gates": _hard_gates(
@@ -1540,8 +1549,8 @@ def compile_delta_v2_runtime_plan(
         current_cost_by_bucket=current_cost,
         target_shares_by_bucket=target_shares,
         protected_buckets=ordered_support,
-        shortfall_buckets=tuple(sorted(shortfall & desired)),
-        breakthrough_buckets=tuple(sorted(breakthrough & desired)),
+        shortfall_buckets=scored_shortfall,
+        breakthrough_buckets=scored_breakthrough,
         value_weights=delta_policy.value_weights,
         execution_weights=delta_policy.execution_weights,
         capital_available_usdc=capital_available_usdc,
@@ -1628,8 +1637,8 @@ def compile_delta_v2_runtime_plan(
         shares_by_bucket=current_shares,
         cost_by_bucket=current_cost,
         protected_buckets=ordered_support,
-        shortfall_buckets=tuple(sorted(shortfall & desired)),
-        breakthrough_buckets=tuple(sorted(breakthrough & desired)),
+        shortfall_buckets=scored_shortfall,
+        breakthrough_buckets=scored_breakthrough,
         weights=delta_policy.value_weights,
         target_shares_by_bucket=target_shares,
     )
@@ -1829,6 +1838,14 @@ def compile_delta_v2_runtime_plan(
         "core_transition": core_transition,
         "candidate_support": list(ordered_support),
         "final_support": list(final_support),
+        # Exactly what the bundle was scored against, so a re-score at
+        # execution sizing reproduces the authorization instead of
+        # approximating it.
+        "bundle_scored_scopes": {
+            "protected_buckets": list(ordered_support),
+            "shortfall_buckets": list(scored_shortfall),
+            "breakthrough_buckets": list(scored_breakthrough),
+        },
         "basket_completion_required": True,
         "basket_target_activated": basket_target_activated,
         "execution_gap_support": list(execution_gap_support),

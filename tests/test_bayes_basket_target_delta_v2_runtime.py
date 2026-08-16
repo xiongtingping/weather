@@ -1192,3 +1192,166 @@ def test_continuous_candidate_reads_the_belief_the_ranking_scores() -> None:
         for bucket, value in snapshot_belief.items()
     }
     assert continuous_costs(snapshot_belief) != continuous_costs(deflated)
+
+
+def _sizing(
+    *,
+    bucket: str,
+    depth_cash: float,
+    clip: float,
+    limit: float,
+    clamped_clip_authorized: bool = False,
+):
+    from bayes_basket_target.cash_phase import (
+        BasketCashPhaseInput,
+        BasketCashPhasePolicyArtifact,
+        OrderSizingDecision,
+        evaluate_cash_phase,
+    )
+
+    artifact = BasketCashPhasePolicyArtifact.create(
+        policy_version="rescore-test-v1",
+        station_id="RKPK",
+        station_timezone="Asia/Seoul",
+        heavy_to_standard_local_time="19:54",
+        standard_to_tail_local_time="09:58",
+        cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0},
+        valid_from_utc="2026-07-01T00:00:00Z",
+        valid_until_utc="2026-09-01T00:00:00Z",
+        evidence_status="DESIGN_CANDIDATE",
+    )
+    phase = evaluate_cash_phase(
+        artifact,
+        BasketCashPhaseInput.from_mapping({
+            "policy_version": artifact.policy_version,
+            "station_id": "RKPK",
+            "current_phase": "HEAVY",
+            "event_date_local": "2026-07-28",
+            "observed_at_utc": "2026-07-28T03:00:00Z",
+            "station_timezone": "Asia/Seoul",
+            "checkpoint_id": "ck-1",
+        }),
+    )
+    return OrderSizingDecision.compute(
+        bucket=bucket,
+        phase_decision=phase,
+        delta_shares=1000.0,
+        r_limit=limit,
+        remaining_budget=12.0,
+        executable_depth_cash=depth_cash,
+        candidate_present=True,
+        target_clip_notional_usdc=clip,
+        minimum_clip_notional_usdc=0.01,
+        cash_template_caps_target=False,
+        share_quantum=0.01,
+        clamped_clip_authorized=clamped_clip_authorized,
+    )
+
+
+def test_a_cut_bundle_is_re_authorized_before_it_is_sent() -> None:
+    # The clamp path is unreachable in the current production configuration
+    # by construction, which is exactly why it is tested directly: an
+    # unexercised fail-open is how a refusal quietly becomes an approval.
+    from bayes_basket_target.basket_kernel.delta_v2 import evaluate_action_v2
+    from bayes_basket_target.runtime import _rescore_clamped_bundle
+
+    snapshot = _snapshot()
+    policy = _basket_policy()
+    delta_policy = _delta_policy()
+    probabilities = {row.bucket: row.probability for row in snapshot.buckets}
+    actions = [
+        evaluate_action_v2(
+            event_id="RKPK-2026-07-28",
+            bucket=bucket,
+            cash_clip=1.0,
+            limit_price=0.10,
+            timeout_seconds=60.0,
+            order_mode="MAKER",
+            fill_distribution=[
+                {"fill_fraction": 0.0, "probability": 0.1},
+                {"fill_fraction": 0.5, "probability": 0.2},
+                {"fill_fraction": 1.0, "probability": 0.7},
+            ],
+            probabilities=probabilities,
+            current_shares_by_bucket={key: 0.0 for key in probabilities},
+            current_cost_by_bucket={key: 0.0 for key in probabilities},
+            target_shares_by_bucket={key: 12.0 for key in probabilities},
+            protected_buckets=("35", "36"),
+            shortfall_buckets=(),
+            breakthrough_buckets=(),
+            value_weights=delta_policy.value_weights,
+            execution_weights=delta_policy.execution_weights,
+            hard_gates={gate: True for gate in (
+                "unique_ssot", "lineage_complete", "registry_timezone_matches",
+                "bucket_contract_matches", "official_ws_fresh",
+                "inventory_known", "order_state_known",
+                "positive_inventory_gap", "budget_ok", "profit_floor_ok",
+                "resource_probe_ok", "reservation_price_ok",
+            )},
+            capital_available_usdc=12.0,
+            minimum_profit_floor=-12.0,
+            reservation_price=0.8,
+            wait_cost=0.0, queue_risk=0.0, adverse_selection=0.0,
+            reprice_risk=0.0, capital_lock_cost=0.0,
+        )
+        for bucket in ("35", "36")
+    ]
+    plan = {
+        "execution_gap_support": ["35", "36"],
+        "bundle_scored_scopes": {
+            "protected_buckets": ["35", "36"],
+            "shortfall_buckets": [],
+            "breakthrough_buckets": [],
+        },
+        "target_solution": {
+            "target_shares_by_bucket": {key: 12.0 for key in probabilities},
+        },
+    }
+
+    def _call(decisions, resized, **overrides):
+        return _rescore_clamped_bundle(
+            sizing_decisions=decisions,
+            resize=lambda *, clamped_clip_authorized: (resized, 12.0),
+            delta_plan=plan,
+            snapshot=snapshot,
+            delta_policy=delta_policy,
+            policy=overrides.get("policy", policy),
+            capital_available_usdc=12.0,
+            selected_action_evaluations=actions,
+        )
+
+    uncut = [
+        _sizing(bucket=bucket, depth_cash=99.0, clip=1.0, limit=0.10)
+        for bucket in ("35", "36")
+    ]
+    assert all(item.reason_code == "sized_discrete" for item in uncut)
+    # Nothing was cut, so nothing is re-scored and no work is done.
+    assert _call(uncut, uncut) is None
+
+    cut = [
+        _sizing(bucket="35", depth_cash=0.40, clip=1.0, limit=0.10),
+        _sizing(bucket="36", depth_cash=99.0, clip=1.0, limit=0.10),
+    ]
+    assert cut[0].reason_code == "sizing_clamped_below_authorized_clip"
+    permitted = [
+        _sizing(
+            bucket="35", depth_cash=0.40, clip=1.0, limit=0.10,
+            clamped_clip_authorized=True,
+        ),
+        _sizing(bucket="36", depth_cash=99.0, clip=1.0, limit=0.10),
+    ]
+    verdict = _call(cut, permitted)
+    assert verdict is not None
+    assert verdict["sized_shares_by_bucket"]["35"] == pytest.approx(
+        permitted[0].q_order
+    )
+    assert verdict["authorized"] is True
+
+    # A floor the full basket cleared, broken by the cut, refuses it.
+    strict = TargetBasketPolicy.from_mapping({
+        **_basket_policy().to_dict(),
+        "minimum_expected_pnl_after_usdc": -0.05,
+    })
+    refused = _call(cut, permitted, policy=strict)
+    assert refused["authorized"] is False
+    assert "profit_floor_ok" in refused["blockers"]

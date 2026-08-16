@@ -401,6 +401,7 @@ class OrderSizingDecision:
     target_clip_notional_usdc: float | None
     minimum_clip_notional_usdc: float
     cash_template_caps_target: bool
+    clamped_clip_authorized: bool
     share_quantum: float
     r_limit: float
     c_base: float
@@ -430,6 +431,7 @@ class OrderSizingDecision:
         minimum_clip_notional_usdc: float = 0.0,
         cash_template_caps_target: bool = True,
         share_quantum: float = 0.01,
+        clamped_clip_authorized: bool = False,
     ) -> "OrderSizingDecision":
         bucket = _text("bucket", bucket)
         delta = _nonnegative("delta_shares", delta_shares)
@@ -439,6 +441,8 @@ class OrderSizingDecision:
         minimum_clip = _nonnegative("minimum_clip_notional_usdc", minimum_clip_notional_usdc)
         if not isinstance(cash_template_caps_target, bool):
             raise ContractError("cash_template_caps_target_invalid")
+        if not isinstance(clamped_clip_authorized, bool):
+            raise ContractError("clamped_clip_authorized_invalid")
         quantum = _positive("share_quantum", share_quantum)
         if target_clip_notional_usdc is not None:
             target_clip = _nonnegative("target_clip_notional_usdc", target_clip_notional_usdc)
@@ -488,6 +492,7 @@ class OrderSizingDecision:
             elif (
                 target_clip is not None
                 and not cash_template_caps_target
+                and not clamped_clip_authorized
                 and raw_c_order + EPS < target_clip
             ):
                 # The objective authorized a specific clip on a specific
@@ -495,16 +500,21 @@ class OrderSizingDecision:
                 # depth, an exhausted budget, a gap that shrank under the plan
                 # -- does not produce a smaller version of that basket, it
                 # produces a different one: floor, CVaR and concentration are
-                # joint quantities over the legs, and nothing re-scores them
-                # here.  So a leg the caps cut is refused, and the complete
-                # bundle HOLDs rather than sending a shape no argmax ever saw.
+                # joint quantities over the legs, so shrinking one moves all
+                # of them and can turn a legal basket illegal.  Sizing cannot
+                # rule on that by itself, so it refuses and says why.
                 #
-                # Share-quantum rounding below is the one permitted
-                # difference and is deliberately not caught here: it is
-                # bounded by a single quantum and cannot re-shape a basket.
-                # Measured over 2,697 sized legs since 2026-08-10 this
-                # condition fired zero times and quantum rounding 1,991, so
-                # the refusal costs nothing it should not cost.
+                # ``clamped_clip_authorized`` is the caller coming back with
+                # a verdict: it has put these exact cut sizes through
+                # ``rescore_maker_bundle_v2`` -- the identical evaluation that
+                # granted the original authorization -- and the same gates
+                # passed.  Only then does the cut basket size.
+                #
+                # Share-quantum rounding below is exempt and needs no
+                # re-score: it is bounded by a single quantum and cannot
+                # re-shape a basket.  Measured over 2,697 sized legs since
+                # 2026-08-10, a material clamp arose zero times and quantum
+                # rounding 1,991.
                 #
                 # The legacy cadence path is exempt: when the phase cash
                 # template is allowed to cap the target, capping below it is
@@ -518,6 +528,13 @@ class OrderSizingDecision:
                 reason = "clip_below_minimum"
                 c_order = 0.0
                 q_order = 0.0
+            elif (
+                target_clip is not None
+                and not cash_template_caps_target
+                and clamped_clip_authorized
+                and raw_c_order + EPS < target_clip
+            ):
+                reason = "sized_discrete_after_rescore"
             else:
                 reason = "sized_discrete"
         else:
@@ -535,6 +552,7 @@ class OrderSizingDecision:
             "target_clip_notional_usdc": target_clip,
             "minimum_clip_notional_usdc": minimum_clip,
             "cash_template_caps_target": cash_template_caps_target,
+            "clamped_clip_authorized": clamped_clip_authorized,
             "share_quantum": quantum,
             "r_limit": limit,
             "c_base": c_base,

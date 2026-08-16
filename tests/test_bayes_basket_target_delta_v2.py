@@ -13,6 +13,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
     evaluate_action_v2,
     evaluate_basket_value_v2,
     select_action_v2,
+    rescore_maker_bundle_v2,
     select_complete_maker_bundle_v2,
     solve_reservation_price_v2,
     solve_target_inventory_v2,
@@ -731,4 +732,138 @@ def test_invalid_scales_probabilities_and_candidate_sizes_fail_closed() -> None:
             breakthrough_buckets=[],
             weights=_value_weights(),
             maximum_candidates=2,
+        )
+
+
+_BUNDLE_COMMON = {
+    "probabilities": {"35": 0.5, "36": 0.5},
+    "target_shares_by_bucket": {"35": 12.0, "36": 12.0},
+}
+
+
+def _rescore(
+    bundle: dict[str, object],
+    *,
+    shares: dict[str, float],
+    notional: dict[str, float],
+    capital: float = 12.0,
+    minimum_profit_floor: float = -12.0,
+) -> dict[str, object]:
+    return rescore_maker_bundle_v2(
+        bundle["selected_actions"],
+        required_buckets=["35", "36"],
+        probabilities={"35": 0.5, "36": 0.5},
+        current_shares_by_bucket={"35": 0.0, "36": 0.0},
+        current_cost_by_bucket={"35": 0.0, "36": 0.0},
+        target_shares_by_bucket={"35": 12.0, "36": 12.0},
+        protected_buckets=["35", "36"],
+        shortfall_buckets=[],
+        breakthrough_buckets=[],
+        value_weights=_value_weights(),
+        execution_weights=_execution_weights(),
+        capital_available_usdc=capital,
+        minimum_profit_floor=minimum_profit_floor,
+        sized_shares_by_bucket=shares,
+        sized_notional_by_bucket=notional,
+    )
+
+
+def test_rescore_at_the_authorized_sizes_reproduces_the_authorization() -> None:
+    # The property that makes a re-score trustworthy at all: fed the sizes
+    # the selector authorized, it must return the selector's own verdict and
+    # the selector's own score.  Anything else means execution is being
+    # ruled on by different arithmetic than authorization was.
+    bundle = _complete_bundle([
+        evaluate_action_v2(**_action_kwargs(bucket=bucket, **_BUNDLE_COMMON))
+        for bucket in ("35", "36")
+    ])
+    assert bundle["authorized"] is True
+    authorized = {
+        str(dict(row["action"])["bucket"]): dict(row["action"])
+        for row in bundle["selected_actions"]
+    }
+
+    identical = _rescore(
+        bundle,
+        shares={
+            bucket: float(action["maximum_shares"])
+            for bucket, action in authorized.items()
+        },
+        notional={
+            bucket: float(action["cash_clip"])
+            for bucket, action in authorized.items()
+        },
+    )
+    assert identical["authorized"] is True
+    assert identical["delta_basket_score_v2"] == pytest.approx(
+        float(bundle["selected_bundle"]["delta_basket_score_v2"])
+    )
+    assert identical["capital_reserved_usdc"] == pytest.approx(
+        float(bundle["selected_bundle"]["capital_reserved_usdc"])
+    )
+    assert identical["blockers"] == []
+
+
+def test_rescore_rules_on_the_cut_basket_and_refuses_an_illegal_one() -> None:
+    bundle = _complete_bundle([
+        evaluate_action_v2(**_action_kwargs(bucket=bucket, **_BUNDLE_COMMON))
+        for bucket in ("35", "36")
+    ])
+    assert bundle["authorized"] is True
+    authorized = {
+        str(dict(row["action"])["bucket"]): dict(row["action"])
+        for row in bundle["selected_actions"]
+    }
+    full_shares = {
+        bucket: float(action["maximum_shares"])
+        for bucket, action in authorized.items()
+    }
+    full_notional = {
+        bucket: float(action["cash_clip"])
+        for bucket, action in authorized.items()
+    }
+
+    # One leg cut in half is a different basket, and scored as one.
+    cut = _rescore(
+        bundle,
+        shares={**full_shares, "35": full_shares["35"] * 0.5},
+        notional={**full_notional, "35": full_notional["35"] * 0.5},
+    )
+    assert cut["delta_basket_score_v2"] != pytest.approx(
+        float(bundle["selected_bundle"]["delta_basket_score_v2"])
+    )
+    assert cut["sized_shares_by_bucket"]["35"] == pytest.approx(
+        full_shares["35"] * 0.5
+    )
+
+    # A floor the full basket cleared can be broken by the cut, and then the
+    # cut basket is refused -- which is the whole point of asking.
+    strict = _rescore(
+        bundle,
+        shares={**full_shares, "35": full_shares["35"] * 0.02},
+        notional={**full_notional, "35": full_notional["35"] * 0.02},
+        minimum_profit_floor=-0.55,
+    )
+    assert strict["authorized"] is False
+    assert "profit_floor_ok" in strict["blockers"]
+
+    # A proper subset is never re-scored: atomicity is not negotiable here
+    # either.
+    with pytest.raises(ContractError, match="rescore_bundle_incomplete"):
+        rescore_maker_bundle_v2(
+            [bundle["selected_actions"][0]],
+            required_buckets=["35", "36"],
+            probabilities={"35": 0.5, "36": 0.5},
+            current_shares_by_bucket={"35": 0.0, "36": 0.0},
+            current_cost_by_bucket={"35": 0.0, "36": 0.0},
+            target_shares_by_bucket={"35": 12.0, "36": 12.0},
+            protected_buckets=["35", "36"],
+            shortfall_buckets=[],
+            breakthrough_buckets=[],
+            value_weights=_value_weights(),
+            execution_weights=_execution_weights(),
+            capital_available_usdc=12.0,
+            minimum_profit_floor=-12.0,
+            sized_shares_by_bucket=full_shares,
+            sized_notional_by_bucket=full_notional,
         )

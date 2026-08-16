@@ -426,6 +426,35 @@ def test_a_leg_cut_below_its_authorized_clip_is_refused_not_shrunk() -> None:
     assert legacy.eligible is True
     assert legacy.c_order <= 3.00 + 1e-9
 
+    # Once the caller has put the cut sizes back through the bundle
+    # evaluation and the same gates passed, the cut basket sizes -- and says
+    # in its reason code that it did so on a re-score, not on the original
+    # authorization.
+    rescored = OrderSizingDecision.compute(
+        remaining_budget=20.0,
+        executable_depth_cash=3.00,
+        **{**common, "clamped_clip_authorized": True},
+    )
+    assert rescored.eligible is True
+    assert rescored.reason_code == "sized_discrete_after_rescore"
+    assert rescored.c_order <= 3.00 + 1e-9
+    assert rescored.c_order > 0.0
+
+    # The permission does not reach a leg nothing cut: an uncut leg still
+    # reports the ordinary reason.
+    assert OrderSizingDecision.compute(
+        remaining_budget=20.0,
+        executable_depth_cash=99.0,
+        **{**common, "clamped_clip_authorized": True},
+    ).reason_code == "sized_discrete"
+
+    with pytest.raises(ContractError, match="clamped_clip_authorized_invalid"):
+        OrderSizingDecision.compute(
+            remaining_budget=20.0,
+            executable_depth_cash=3.00,
+            **{**common, "clamped_clip_authorized": "yes"},
+        )
+
 
 def test_a_maker_bid_is_not_sized_by_the_offer_it_never_touches() -> None:
     from bayes_basket_target.basket_kernel.contracts import AskLevel
