@@ -741,16 +741,37 @@ def _compile_target_plan(
             station_policy=resolved.to_dict(),
         )
 
-    delta_plan = compile_delta_v2_runtime_plan(
-        snapshot=snapshot,
-        basket_policy=policy,
-        delta_policy=resolved_delta_policy,
-        fill_resolver=delta_v2_fill_resolver,
-        capital_available_usdc=remaining_budget,
-        minimum_profit_floor=float(policy.minimum_expected_pnl_after_usdc),
-        resource_probe_ok=resource_probe_ok,
-        previous_probabilities=previous_probabilities,
-    )
+    try:
+        delta_plan = compile_delta_v2_runtime_plan(
+            snapshot=snapshot,
+            basket_policy=policy,
+            delta_policy=resolved_delta_policy,
+            fill_resolver=delta_v2_fill_resolver,
+            capital_available_usdc=remaining_budget,
+            minimum_profit_floor=float(
+                policy.minimum_expected_pnl_after_usdc
+            ),
+            resource_probe_ok=resource_probe_ok,
+            previous_probabilities=previous_probabilities,
+        )
+    except ContractError as exc:
+        # No window can hold a seat is a HOLD, not a crash.  Clause 50 says
+        # a ladder that cannot reach its floor should not be bought at all,
+        # and once the incumbent lost its waiver (2026-08-16) a station whose
+        # every window fails the centre rung or the length floor reaches this
+        # path in the ordinary course of a day rather than as a contract
+        # breach.  Only these two are absorbed: everything else here is still
+        # a real violation and must surface.
+        if str(exc) not in {
+            "delta_v2_support_empty",
+            "delta_v2_no_solvable_support_window",
+        }:
+            raise
+        return _blocked(
+            blockers=[str(exc)],
+            remaining_budget_before=remaining_budget_before,
+            station_policy=resolved.to_dict(),
+        )
 
     selected_actions_by_bucket: dict[str, dict[str, Any]] = {}
     if isinstance(delta_plan.get("delta_v2_action_selection"), Mapping):

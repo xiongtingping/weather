@@ -1666,13 +1666,15 @@ def test_clause_49_negative_ev_centre_is_still_the_anchor() -> None:
     assert solo["edge"] < 0
 
 
-def test_clause_49_ladder_rule_never_evicts_the_incumbent() -> None:
-    """The continuous core's own support stays on the menu, core-touching or not.
+def test_clause_49_ladder_rule_evicts_an_off_rung_incumbent() -> None:
+    """The centre rung has no exemption left, not even for the incumbent.
 
     ``desired`` is what ``_choose_support`` admitted on evidence, not filled
-    inventory.  In practice it is mass-selected and so touches the probability
-    core anyway; the exemption exists so that a coverage target which drifted
-    off it shows up as a visible seat rather than an empty menu.
+    inventory, and it used to ride onto the menu whether or not it held the
+    rung.  The 2026-08-16 ruling states the requirement with no exemption
+    attached: a seated window must contain the centre bucket, full stop.  A
+    coverage target that has drifted off the rung is now visible as a refusal
+    rather than as a seat, which is the same fault reported one layer earlier.
     """
 
     from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
@@ -1703,15 +1705,11 @@ def test_clause_49_ladder_rule_never_evicts_the_incumbent() -> None:
         center_bucket="34",
     )
     seats = [tuple(row["buckets"]) for row in windows]
-    assert ("37",) in seats, "the evidence-admitted support is exempt"
-    held = next(row for row in windows if row["buckets"] == ("37",))
-    assert held["is_incumbent"] is True
-    assert held["holds_probability_core"] is False
-    assert all(
-        audit["ladder_center_bucket"] in seat
-        for seat, row in zip(seats, windows)
-        if not row["is_incumbent"]
-    )
+    assert ("37",) not in seats, "an off-rung incumbent is refused like any other"
+    assert seats, "refusing it must not empty the menu"
+    # No exemption survives: every seat holds the rung, incumbent or not.
+    assert all(audit["ladder_center_bucket"] in seat for seat in seats)
+    assert audit["center_refused_window_count"] > 0, "the rule must bite"
 
 
 def test_clause_42_p0_membership_is_won_never_granted() -> None:

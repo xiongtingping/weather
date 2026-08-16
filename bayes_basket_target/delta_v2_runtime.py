@@ -50,6 +50,11 @@ from .shadow_objective import solve_fractional_kelly
 
 
 SCHEMA = "delta_basket_score_runtime_plan_v2"
+# P1 is the converging stage: the ladder is allowed to walk down 4 -> 3 -> 2
+# as the day resolves, and stops at two because the second rung is the tail
+# one still carrying the insurance (user ruling, 2026-08-16).  The opening
+# stages keep the policy's three -- see clause 50.
+P1_MINIMUM_SUPPORT_BUCKETS = 2
 MAKER_EXECUTION_CONTRACT = "maker_post_only"
 FOK_EXECUTION_CONTRACT = "single_bucket_fok"
 FillResolver = Callable[..., Mapping[str, Any]]
@@ -123,6 +128,7 @@ def _support_windows(
     maximum_support_buckets: int,
     center_bucket: str,
     minimum_support_buckets: int = 1,
+    probability_stage: str = "",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -202,31 +208,30 @@ def _support_windows(
     # touching the run grown from it); the measured shoulder evidence that
     # motivated that gate -- off-centre windows realize 0.77-0.83 of what
     # they claim -- now backs the stronger rung.
+    # The centre is the heaviest bucket of the combined model distribution
+    # (user ruling, 2026-08-16), open edge buckets included and competing on
+    # the same footing.  This supersedes the clause 42 seeding anchor, which
+    # used the point estimate precisely to keep an unbounded edge bucket from
+    # winning the argmax on width rather than conviction -- 8/17 measured 17
+    # of 30 stations moving their centre under the new definition and 6
+    # landing on an edge bucket, ZUUU from 30C to "33C or higher" (0.359
+    # against 0.059).  The ruling is aware of that case; the code follows it.
+    ladder_center = max(
+        admitted,
+        key=lambda bucket: (
+            float(probabilities.get(bucket, 0.0)),
+            -int(by_bucket[bucket].ordinal),
+        ),
+    ) if admitted else center_bucket
     core = probability_core(
         probabilities,
         ordinals={
             bucket: int(row.ordinal) for bucket, row in by_bucket.items()
         },
-        # One anchor for both layers: the run is grown from the same point
-        # estimate the off-centre deflation measures against, so the two can
-        # never disagree about where the middle is.
-        center_bucket=center_bucket,
-    )
-    # The rung is the model centre while it is still alive.  When the hard
-    # bound has killed that bucket (P1 after the reported high passes it),
-    # the distribution has renormalised and its heaviest admitted bucket is
-    # the centre of what remains -- the same fallback ``probability_core``
-    # uses when its anchor is gone.
-    ladder_center = (
-        center_bucket
-        if center_bucket in admitted
-        else max(
-            admitted,
-            key=lambda bucket: (
-                float(probabilities.get(bucket, 0.0)),
-                -int(by_bucket[bucket].ordinal),
-            ),
-        )
+        # One anchor for both layers, still: the run has to be grown from the
+        # same bucket the seat rule requires, or the two disagree about where
+        # the middle is and a window can hold the rung while missing the core.
+        center_bucket=ladder_center,
     )
     center_refused = 0
     short_refused = 0
@@ -247,7 +252,25 @@ def _support_windows(
     # from its own dispersion (user ruling, 2026-08-15) and is bounded by
     # that floor and the cap.  A sharp distribution seats fewer rungs, a
     # diffuse one more, and neither is a rule about direction.
-    policy_min = max(1, min(int(minimum_support_buckets), max_size))
+    # P1 converges rather than opens: the ladder walks 4 -> 3 -> 2 as the day
+    # resolves, and two is the floor because one of the two is still the tail
+    # rung carrying the insurance (user ruling, 2026-08-16).  Opening stages
+    # keep the policy's three, because that is where the five hard
+    # requirements of clause 50 have to be reachable.  P1 may also add a
+    # bucket the ladder did not open with -- the floor bounds the seat, it
+    # does not forbid a new rung.
+    stage_min = (
+        P1_MINIMUM_SUPPORT_BUCKETS
+        if str(probability_stage) == "P1"
+        else int(minimum_support_buckets)
+    )
+    # The floor cannot ask for more rungs than the day still has.  Late in P1
+    # the hard bound prunes every bucket the reported high has passed, and a
+    # station can arrive here with one live outcome left; demanding two then
+    # is not a floor but a ban on the one basket that is still correct.  The
+    # floor binds where there is a choice to constrain, which is the whole of
+    # its purpose in clauses 50/50a.
+    policy_min = max(1, min(stage_min, max_size, len(admitted)))
     wanted_size, dispersion_receipt = dispersion_support_size(
         probabilities,
         ordinals={
@@ -287,16 +310,16 @@ def _support_windows(
             price = sum(quote for quote in quotes if quote is not None)
             edge = win - price if priced else None
             is_incumbent = window == incumbent
-            # The incumbent -- the continuous core's own support, not held
-            # inventory -- keeps its exemption from the centre rung, because
-            # it was admitted on evidence and this function is a price filter
-            # rather than a second opinion on that.  The exemption is a belt,
-            # not a bypass: the core resolver selects by mass, so its support
-            # touches the probability core on every live scope checked
-            # (ZUUU/VILK/LEMD/LTAC 2026-08-15), and a coverage target that
-            # drifted off it would be a fault to see, not to hide.
+            # The incumbent has no exemption left.  It used to be waived past
+            # both floors on the reasoning that the continuous-core resolver
+            # admits it on evidence and this function is only a price filter;
+            # the 2026-08-16 ruling ends that for the centre rung as well as
+            # the length, because "must contain the centre bucket" was ruled
+            # with no exemption attached.  What the resolver admits still
+            # bounds what can be seated -- windows are drawn from the same
+            # admitted set -- it just no longer gets a seat the rules refuse.
             #
-            # It does NOT extend to the rung count.  A two-bucket core is
+            # The length floor likewise.  A two-bucket core is
             # still a two-rung ladder, and the five hard requirements clause
             # 50 names -- basket completeness, the model envelope, the centre
             # envelope, the TAF direction correction, whole-basket positive
@@ -317,7 +340,7 @@ def _support_windows(
             # windows holding the rung, the flanks compete on curve score
             # and the better-priced side wins its rungs automatically.
             holds_core = bool(core) and bool(set(window) & core)
-            if not is_incumbent and ladder_center not in window:
+            if ladder_center not in window:
                 center_refused += 1
                 continue
             if len(window) < min_size:
@@ -1125,6 +1148,7 @@ def compile_delta_v2_runtime_plan(
         maximum_support_buckets=basket_policy.maximum_support_buckets,
         minimum_support_buckets=basket_policy.minimum_support_buckets,
         center_bucket=center.bucket,
+        probability_stage=str(snapshot.evidence.probability_stage or ""),
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --

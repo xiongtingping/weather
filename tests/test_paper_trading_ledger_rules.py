@@ -46,14 +46,22 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = conn.execute(
-            "SELECT window_size, COUNT(*) FROM paper_trade_position"
-            " WHERE event_date >= '2026-08-15' GROUP BY window_size"
+            "SELECT stage, window_size, COUNT(*) FROM paper_trade_position"
+            " WHERE event_date >= '2026-08-16' GROUP BY stage, window_size"
         ).fetchall()
     except sqlite3.DatabaseError:
         return
     finally:
         conn.close()
-    for size, count in rows:
-        assert 3 <= int(size) <= 4, (
-            f"{count} seats recorded at {size} buckets, outside [3, 4]"
+    # P1 converges: the ladder walks down to two rungs as the day resolves,
+    # and further still once the hard bound leaves one live outcome (user
+    # ruling, 2026-08-16).  The opening stages keep the three-rung floor.
+    # The window starts the day after the ruling, because seats booked under
+    # the previous rules are held to settlement by clause 51 and re-reading
+    # them against today's floor would fail on history nobody can change.
+    for stage, size, count in rows:
+        low = 1 if str(stage) == "P1" else 3
+        assert low <= int(size) <= 4, (
+            f"{count} {stage} seats recorded at {size} buckets, "
+            f"outside [{low}, 4]"
         )
