@@ -172,6 +172,7 @@ from .shadow_objective import (
 from .p0_preselection import (
     UNPERSISTED_MARKET_SNAPSHOT_KEY,
     commit_p0_preselection,
+    compile_p0_market_evidence,
     compile_p0_preselection,
     latest_visible_p0_station_ids,
     load_market_registry_snapshot,
@@ -1367,6 +1368,81 @@ def _p0_preselection_scope_version(market_snapshot: Mapping[str, Any]) -> str:
     return f"{base}:{quote_version}" if base else quote_version
 
 
+def _forward_market_evidence_rows(
+    market_snapshot: Mapping[str, Any],
+    *,
+    quote_freshness_policy_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Build the quote/inventory/order-state trio for one forward scope.
+
+    A forward day has no resident ingress writing this trio, so the
+    preselection path writes it itself.  One builder, because the bundle is
+    deduplicated by snapshot id and refuses a second row whose content hash
+    disagrees: a scope that recorded its book on a refused compile and then
+    compiled cleanly against the same quote must produce the same bytes, or
+    the successful pass would fail on its own earlier evidence.
+    """
+
+    quote_raw = dict(market_snapshot)
+    quote_raw["quote_freshness_policy_sha256"] = quote_freshness_policy_sha256
+    zero_by_bucket = {
+        str(entry.get("bucket") or ""): 0.0
+        for entry in (market_snapshot.get("buckets") or ())
+    }
+    evidence_scope = {
+        "station_id": str(market_snapshot.get("station_id") or ""),
+        "event_date": str(market_snapshot.get("event_date") or ""),
+        "settlement_timezone": str(
+            market_snapshot.get("settlement_timezone") or ""
+        ),
+        "observed_at": str(market_snapshot.get("quote_observed_at") or ""),
+    }
+    inventory_raw = {
+        **evidence_scope,
+        "inventory_snapshot_id": (
+            "p0presel-inv-"
+            + str(market_snapshot.get("quote_version") or "")
+        ),
+        # The snapshot id already varies per quote -- a new quote is a new
+        # observation, with its own observed_at -- but the version did not,
+        # so every quote added a row that the reader, which resolves by
+        # (station, day, version), then found two of.  That is the ambiguity
+        # that blocked eleven of thirteen forward scopes; the version has to
+        # move with the observation it names.
+        "inventory_version": _p0_preselection_scope_version(market_snapshot),
+        "complete": 1,
+        "inventory_json": {
+            "filled_by_bucket": zero_by_bucket,
+        },
+    }
+    order_state_raw = {
+        **evidence_scope,
+        "order_state_snapshot_id": (
+            "p0presel-ord-"
+            + str(market_snapshot.get("quote_version") or "")
+        ),
+        # Same reasoning as the inventory version above: keyed to the quote
+        # it observes.
+        "order_state_version": _p0_preselection_scope_version(
+            market_snapshot
+        ),
+        "known": 1,
+        "order_state_json": {
+            "pending_by_bucket": zero_by_bucket,
+        },
+    }
+    # The quote row names the version the reader will look the inventory up
+    # by, so it has to carry the same quote-keyed value the rows were written
+    # under, not the shared one it was copied with.
+    quote_raw["inventory_version"] = _p0_preselection_scope_version(
+        market_snapshot
+    )
+    quote_raw["order_state_version"] = _p0_preselection_scope_version(
+        market_snapshot
+    )
+    return quote_raw, inventory_raw, order_state_raw
+
+
 def _resolve_target_remaining_budget() -> float:
     """Resolve only the target-owned no-live budget.
 
@@ -2281,6 +2357,10 @@ class TargetProductionWorker:
         # same head of the alphabet, or the stations behind the truncation
         # point are the same ones every cycle.
         self._forward_p0_rotation_cursor: str = ""
+        # The receipt for the book of the most recent refused forward
+        # compile.  The refusal leaves by exception, so this is how the
+        # sweep's blocked entry learns whether the observation survived it.
+        self._forward_market_evidence_last: dict[str, Any] | None = None
         self._delta_v2_truth_fact_cursor = 0
         self._delta_v2_truth_cursor_initialized = False
         self._delta_v2_label_fact_cursor = 0
@@ -9934,6 +10014,92 @@ class TargetProductionWorker:
             })
         return rows
 
+    def _record_refused_compile_market_evidence(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        evaluation_at_utc: str,
+        registry_snapshot: Mapping[str, Any],
+        ws_manifest: Mapping[str, Any],
+        ws_quotes: Mapping[str, Mapping[str, Any]],
+        planning_budget_usdc: float,
+        activation: Mapping[str, Any],
+        compile_blocker: str,
+    ) -> dict[str, Any]:
+        """Commit the book a refused forward compile was measured against.
+
+        Its own transaction, and it never raises.  The caller is already on
+        its way out with the compile's blocker, which is the answer to what
+        happened; this is only the observation, and an observation that
+        cannot be recorded must not replace or mask the refusal that brought
+        us here.  The receipt is kept for the sweep's blocked entry so the
+        status file says whether the book survived.
+
+        The budget must be the one the compile was given: it rides in the
+        quote row's content hash, and a bundle whose snapshot id already
+        exists with different bytes is rejected outright.
+        """
+
+        receipt: dict[str, Any] = {
+            "station_id": station_id,
+            "event_date": event_date,
+            "compile_blocker": compile_blocker,
+            "state": "BLOCKED",
+            "wrote_quote": False,
+            "places_orders": False,
+            "calls_order_gateway": False,
+        }
+        try:
+            if self.commit_conn is None:
+                raise ContractError("target_atomic_writer_not_injected")
+            market_snapshot = compile_p0_market_evidence(
+                self.conn,
+                station_id=station_id,
+                event_date=event_date,
+                evaluation_at_utc=evaluation_at_utc,
+                registry_snapshot=registry_snapshot,
+                ws_manifest=ws_manifest,
+                ws_quotes=ws_quotes,
+                planning_budget_usdc=planning_budget_usdc,
+            )
+            (
+                quote_raw,
+                inventory_raw,
+                order_state_raw,
+            ) = _forward_market_evidence_rows(
+                market_snapshot,
+                quote_freshness_policy_sha256=(
+                    QuoteFreshnessPolicy.from_mapping(
+                        activation.get("quote_freshness_policy")
+                    ).content_sha256
+                ),
+            )
+            assert_connection_target_capacity(
+                self.commit_conn,
+                recover_oversized_wal=True,
+            )
+            with _writer_transaction(
+                self.commit_conn,
+                savepoint="basket_target_p0_refused_compile_evidence",
+            ):
+                bundle = insert_market_evidence_bundle(
+                    self.commit_conn,
+                    quote_raw,
+                    inventory_raw,
+                    order_state_raw,
+                )
+            receipt["state"] = "COMMITTED"
+            receipt["wrote_quote"] = bool(bundle["wrote_quote"])
+            receipt["quote_snapshot_id"] = bundle["quote_snapshot_id"]
+            receipt["quote_observed_at"] = str(
+                market_snapshot.get("quote_observed_at") or ""
+            )
+        except Exception as exc:  # noqa: BLE001 -- observational
+            receipt["market_evidence_blocker"] = f"{type(exc).__name__}:{exc}"
+        self._forward_market_evidence_last = receipt
+        return receipt
+
     def materialize_forward_p0_preselections(
         self,
         *,
@@ -10031,20 +10197,56 @@ class TargetProductionWorker:
             # Zero budget is a legal planning budget (only negative or
             # non-finite is rejected), so the trading side stays fail-closed
             # by arithmetic: nothing is affordable, no intent is written.
-            compiled.append(compile_p0_preselection(
-                self.conn,
-                station_id=station_id,
-                event_date=event_date,
-                evaluation_at_utc=evaluation_at_utc,
-                registry_snapshot=registry,
-                ws_manifest=manifest,
-                ws_quotes=quotes,
-                season_bin=str(scope["season_bin"]),
-                maturity_bin=str(scope["maturity_bin"]),
-                liquidity_bin=str(scope["liquidity_bin"]),
-                strategy_version=str(scope["strategy_version"]),
-                planning_budget_usdc=max(0.0, station_budget),
-            ))
+            try:
+                compiled.append(compile_p0_preselection(
+                    self.conn,
+                    station_id=station_id,
+                    event_date=event_date,
+                    evaluation_at_utc=evaluation_at_utc,
+                    registry_snapshot=registry,
+                    ws_manifest=manifest,
+                    ws_quotes=quotes,
+                    season_bin=str(scope["season_bin"]),
+                    maturity_bin=str(scope["maturity_bin"]),
+                    liquidity_bin=str(scope["liquidity_bin"]),
+                    strategy_version=str(scope["strategy_version"]),
+                    planning_budget_usdc=max(0.0, station_budget),
+                ))
+            except ResourceBoundError:
+                # A process at its resource ceiling must not be asked to do
+                # more work to be polite about it.
+                raise
+            except Exception as compile_error:  # noqa: BLE001
+                # Same rule the zero-budget branch above already follows,
+                # applied to the other way a plan can fail to appear.  A
+                # compile that raises is a refusal to trade -- the tape
+                # offered a sub-tick price, the regime disagreed with the
+                # support, delta-v2 had no artifact -- and none of those are
+                # reasons to discard the observation the refusal was measured
+                # against.  Measured 2026-08-16 12:06Z, one 43-scope sweep:
+                # 24 scopes raised and every one of them recorded no book at
+                # all, because the only writer of basket_official_ws_snapshot
+                # on this path sat downstream of the compile.  The quote is
+                # ephemeral -- a forward one missed cannot be refetched -- so
+                # the refusal cost the audit, the replay and the paper ledger
+                # a day of market history per scope.
+                #
+                # The blocker still propagates: this records the book, it does
+                # not forgive the plan.
+                self._record_refused_compile_market_evidence(
+                    station_id=station_id,
+                    event_date=event_date,
+                    evaluation_at_utc=evaluation_at_utc,
+                    registry_snapshot=registry,
+                    ws_manifest=manifest,
+                    ws_quotes=quotes,
+                    planning_budget_usdc=max(0.0, station_budget),
+                    activation=activation,
+                    compile_blocker=(
+                        f"{type(compile_error).__name__}:{compile_error}"
+                    ),
+                )
+                raise
             assert_process_memory_budget()
         assert_connection_target_capacity(
             self.commit_conn,
@@ -10186,78 +10388,17 @@ class TargetProductionWorker:
                     # A forward day has no resident ingress writing that trio,
                     # and _insert_once makes the write idempotent across
                     # recompiles of the same quote version.
-                    quote_raw = dict(market_snapshot)
-                    quote_raw[
-                        "quote_freshness_policy_sha256"
-                    ] = QuoteFreshnessPolicy.from_mapping(
-                        activation.get("quote_freshness_policy")
-                    ).content_sha256
-                    zero_by_bucket = {
-                        str(entry.get("bucket") or ""): 0.0
-                        for entry in (
-                            market_snapshot.get("buckets") or ()
-                        )
-                    }
-                    evidence_scope = {
-                        "station_id": str(
-                            market_snapshot.get("station_id") or ""
+                    (
+                        quote_raw,
+                        inventory_raw,
+                        order_state_raw,
+                    ) = _forward_market_evidence_rows(
+                        market_snapshot,
+                        quote_freshness_policy_sha256=(
+                            QuoteFreshnessPolicy.from_mapping(
+                                activation.get("quote_freshness_policy")
+                            ).content_sha256
                         ),
-                        "event_date": str(
-                            market_snapshot.get("event_date") or ""
-                        ),
-                        "settlement_timezone": str(
-                            market_snapshot.get("settlement_timezone") or ""
-                        ),
-                        "observed_at": str(
-                            market_snapshot.get("quote_observed_at") or ""
-                        ),
-                    }
-                    inventory_raw = {
-                        **evidence_scope,
-                        "inventory_snapshot_id": (
-                            "p0presel-inv-"
-                            + str(market_snapshot.get("quote_version") or "")
-                        ),
-                        # The snapshot id already varies per quote -- a new
-                        # quote is a new observation, with its own observed_at
-                        # -- but the version did not, so every quote added a
-                        # row that the reader, which resolves by (station, day,
-                        # version), then found two of.  That is the ambiguity
-                        # that blocked eleven of thirteen forward scopes; the
-                        # version has to move with the observation it names.
-                        "inventory_version": _p0_preselection_scope_version(
-                            market_snapshot
-                        ),
-                        "complete": 1,
-                        "inventory_json": {
-                            "filled_by_bucket": zero_by_bucket,
-                        },
-                    }
-                    order_state_raw = {
-                        **evidence_scope,
-                        "order_state_snapshot_id": (
-                            "p0presel-ord-"
-                            + str(market_snapshot.get("quote_version") or "")
-                        ),
-                        # Same reasoning as the inventory version above: keyed
-                        # to the quote it observes.
-                        "order_state_version": (
-                            _p0_preselection_scope_version(market_snapshot)
-                        ),
-                        "known": 1,
-                        "order_state_json": {
-                            "pending_by_bucket": zero_by_bucket,
-                        },
-                    }
-                    # The quote row names the version the reader will look the
-                    # inventory up by, so it has to carry the same quote-keyed
-                    # value the rows were written under, not the shared one it
-                    # was copied with.
-                    quote_raw["inventory_version"] = (
-                        _p0_preselection_scope_version(market_snapshot)
-                    )
-                    quote_raw["order_state_version"] = (
-                        _p0_preselection_scope_version(market_snapshot)
                     )
                     # Evidence first, in a savepoint of its own.  Set before
                     # the bundle is written, not after: the bundle refuses a
@@ -11788,6 +11929,9 @@ class TargetProductionWorker:
                         continue
                 try:
                     preselection_evaluation_at = utc_now()
+                    # Cleared per scope: a receipt left over from an earlier
+                    # scope's refusal must not be read as this one's book.
+                    self._forward_market_evidence_last = None
                     with self._temporary_scope_manifest(
                         ws_scope["manifest"]
                     ) as scope_manifest_path:
@@ -11822,6 +11966,12 @@ class TargetProductionWorker:
                             line.strip()
                             for line in traceback.format_exception(exc)[-4:]
                         ],
+                        # A blocked plan no longer implies a lost book.  This
+                        # says which of the two happened, without opening the
+                        # ledger.
+                        "market_evidence": (
+                            self._forward_market_evidence_last
+                        ),
                         "preliminary_decision_count": 0,
                         "intents_written": 0,
                         "reservations_written": 0,

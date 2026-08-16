@@ -582,6 +582,143 @@ def _market_snapshot(
     }
 
 
+def _bind_scope_market_evidence(
+    conn: sqlite3.Connection,
+    *,
+    envelope: Any,
+    artifacts: Any,
+    station_id: str,
+    event_date: str,
+    evaluation_at_utc: str,
+    registry_snapshot: Mapping[str, Any],
+    ws_manifest: Mapping[str, Any],
+    ws_quotes: Mapping[str, Mapping[str, Any]],
+    planning_budget_usdc: float,
+    cash_phase_authority_manifest: (
+        CashPhaseAuthorityManifest | Mapping[str, Any] | None
+    ) = None,
+) -> tuple[dict[str, Any], Any, BasketCashPhaseInput]:
+    """Resolve the scope's book and the cash-phase input bound into it.
+
+    This is the evidence half of a preselection, and the only builder of it:
+    the compile path and the evidence-only path below must produce the same
+    bytes for the same quote, because ``insert_market_evidence_bundle``
+    deduplicates by ``snapshot_id`` and rejects a second row whose content
+    hash disagrees.  Two builders would have made that conflict inevitable.
+    """
+
+    authority_manifest = cash_phase_authority_manifest
+    if authority_manifest is None:
+        authority_manifest = load_cash_phase_authority_manifest(
+            conn,
+            station_id=station_id,
+            observed_at_utc=evaluation_at_utc,
+            required_authority_scope=AUTHORITY_SCOPE,
+        )
+    cash_policy = resolve_active_cash_phase_policy(
+        artifacts.cash_phase_policies,
+        authority_manifest=authority_manifest,
+        station_id=station_id,
+        observed_at_utc=evaluation_at_utc,
+        required_authority_scope=AUTHORITY_SCOPE,
+    )
+    market = _market_snapshot(
+        envelope=envelope,
+        registry_rows=_registry_rows(
+            registry_snapshot,
+            station_id=station_id,
+            event_date=event_date,
+        ),
+        quotes=ws_quotes,
+        manifest=ws_manifest,
+        evaluation_at_utc=evaluation_at_utc,
+        planning_budget_usdc=planning_budget_usdc,
+    )
+    phase_input = BasketCashPhaseInput.from_mapping({
+        "policy_version": cash_policy.policy_version,
+        "station_id": station_id,
+        "current_phase": CashPhase.HEAVY.value,
+        "event_date_local": event_date,
+        # This is evidence lineage, not the daemon poll clock. Duplicate
+        # transport frames must not manufacture a new cash decision.
+        "observed_at_utc": market["quote_observed_at"],
+        "station_timezone": cash_policy.station_timezone,
+        "checkpoint_id": "p0_cash_" + envelope.checkpoint_id,
+    })
+    # The stage-open persists this snapshot as the forward evidence trio
+    # (charter 46/48); the materializer requires the cash-phase input bound
+    # into the quote row itself.
+    market["cash_phase_input"] = phase_input.to_dict()
+    return market, cash_policy, phase_input
+
+
+def compile_p0_market_evidence(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    evaluation_at_utc: str,
+    registry_snapshot: Mapping[str, Any],
+    ws_manifest: Mapping[str, Any],
+    ws_quotes: Mapping[str, Mapping[str, Any]],
+    planning_budget_usdc: float,
+    cash_phase_authority_manifest: (
+        CashPhaseAuthorityManifest | Mapping[str, Any] | None
+    ) = None,
+) -> dict[str, Any]:
+    """Resolve one scope's market snapshot without compiling a plan.
+
+    The book and the plan are not the same kind of thing.  A plan is a
+    trading decision and may legitimately refuse -- the tape offers a
+    sub-tick price, the regime disagrees with the support, delta-v2 has no
+    artifact yet -- but the quote that refusal was measured against is an
+    observation, and a forward quote missed is not refetchable.  This entry
+    point exists so the caller can record the observation on exactly the
+    paths where the decision refused.
+
+    It therefore asserts nothing about trading authority: no probability
+    bridge, no formal-model authority, no P0/P0-M stage gate.  Those decide
+    whether the book may be acted on, which is precisely the question this
+    path is not asking.  Everything the *snapshot* depends on -- registry
+    support, manifest binding, strict-as-of freshness -- is still enforced
+    by the shared builder, so an unrecordable book still fails closed.
+    """
+
+    expected_source_lane = target_registry_source_lane(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+    )
+    envelopes = load_materialized_probability_envelopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        evaluation_at_utc=evaluation_at_utc,
+        expected_source_lane=expected_source_lane,
+    )
+    envelope = select_current_stage(envelopes, at_utc=evaluation_at_utc)
+    artifacts = load_production_artifacts(
+        conn,
+        station_id=station_id,
+        evaluation_at_utc=evaluation_at_utc,
+        require_calibration=False,
+    )
+    market, _cash_policy, _phase_input = _bind_scope_market_evidence(
+        conn,
+        envelope=envelope,
+        artifacts=artifacts,
+        station_id=station_id,
+        event_date=event_date,
+        evaluation_at_utc=evaluation_at_utc,
+        registry_snapshot=registry_snapshot,
+        ws_manifest=ws_manifest,
+        ws_quotes=ws_quotes,
+        planning_budget_usdc=planning_budget_usdc,
+        cash_phase_authority_manifest=cash_phase_authority_manifest,
+    )
+    return market
+
+
 def compile_p0_preselection(
     conn: sqlite3.Connection,
     *,
@@ -646,48 +783,19 @@ def compile_p0_preselection(
         # gate for an otherwise valid native envelope.
         require_calibration=False,
     )
-    authority_manifest = cash_phase_authority_manifest
-    if authority_manifest is None:
-        authority_manifest = load_cash_phase_authority_manifest(
-            conn,
-            station_id=station_id,
-            observed_at_utc=evaluation_at_utc,
-            required_authority_scope=AUTHORITY_SCOPE,
-        )
-    cash_policy = resolve_active_cash_phase_policy(
-        artifacts.cash_phase_policies,
-        authority_manifest=authority_manifest,
-        station_id=station_id,
-        observed_at_utc=evaluation_at_utc,
-        required_authority_scope=AUTHORITY_SCOPE,
-    )
-    market = _market_snapshot(
+    market, cash_policy, phase_input = _bind_scope_market_evidence(
+        conn,
         envelope=envelope,
-        registry_rows=_registry_rows(
-            registry_snapshot,
-            station_id=station_id,
-            event_date=event_date,
-        ),
-        quotes=ws_quotes,
-        manifest=ws_manifest,
+        artifacts=artifacts,
+        station_id=station_id,
+        event_date=event_date,
         evaluation_at_utc=evaluation_at_utc,
+        registry_snapshot=registry_snapshot,
+        ws_manifest=ws_manifest,
+        ws_quotes=ws_quotes,
         planning_budget_usdc=planning_budget_usdc,
+        cash_phase_authority_manifest=cash_phase_authority_manifest,
     )
-    phase_input = BasketCashPhaseInput.from_mapping({
-        "policy_version": cash_policy.policy_version,
-        "station_id": station_id,
-        "current_phase": CashPhase.HEAVY.value,
-        "event_date_local": event_date,
-        # This is evidence lineage, not the daemon poll clock. Duplicate
-        # transport frames must not manufacture a new cash decision.
-        "observed_at_utc": market["quote_observed_at"],
-        "station_timezone": cash_policy.station_timezone,
-        "checkpoint_id": "p0_cash_" + envelope.checkpoint_id,
-    })
-    # The stage-open persists this snapshot as the forward evidence trio
-    # (charter 46/48); the materializer requires the cash-phase input bound
-    # into the quote row itself.
-    market["cash_phase_input"] = phase_input.to_dict()
     (
         delta_v2_artifact,
         delta_v2_fill_resolver,
@@ -928,6 +1036,7 @@ __all__ = [
     "SCHEMA",
     "STATE",
     "commit_p0_preselection",
+    "compile_p0_market_evidence",
     "compile_p0_preselection",
     "latest_visible_p0_station_ids",
     "load_market_registry_snapshot",
