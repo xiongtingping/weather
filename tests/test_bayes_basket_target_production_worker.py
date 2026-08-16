@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5547,3 +5548,143 @@ def test_sweep_merges_one_event_day_and_refuses_to_mix_days() -> None:
         ContractError, match="resident_target_ws_sweep_manifest_empty"
     ):
         _merge_scope_manifests([])
+
+
+def _forward_scope(station: str, observed_at: str) -> dict:
+    return {
+        "scope_key": f"{station}|2026-08-17",
+        "station_id": station,
+        "event_date": "2026-08-17",
+        "event_day_state": "not_started",
+        "probability_stage": "P0",
+        "probability_evidence_fresh": True,
+        "scope_blocker": "",
+        "manifest": {"connection_observed_at": observed_at},
+    }
+
+
+def test_forward_scope_age_is_the_quantity_the_compile_rejects_on() -> None:
+    """Measure the book's age the way ``compile_p0_preselection`` does.
+
+    That compile raises ``p0_preselection_manifest_stale`` when the scope
+    manifest's ``connection_observed_at`` is further from the evaluation
+    instant than ``max_ws_snapshot_age_sec``.  The sweep re-reads on the same
+    quantity, so it refreshes before the compile can refuse rather than after.
+    """
+
+    now = datetime(2026, 8, 16, 12, 0, 0, tzinfo=timezone.utc)
+
+    fresh = TargetProductionWorker._ws_scope_manifest_age_sec(
+        _forward_scope("ZUUU", "2026-08-16T11:59:55.000Z"), now=now
+    )
+    aged = TargetProductionWorker._ws_scope_manifest_age_sec(
+        _forward_scope("ZUUU", "2026-08-16T11:57:00.000Z"), now=now
+    )
+
+    assert fresh == 5.0
+    assert aged == 180.0
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {},
+        {"connection_observed_at": ""},
+        {"connection_observed_at": "not-a-timestamp"},
+        # No zone is not "assume UTC": guessing here would silently pass a
+        # book that is hours old.
+        {"connection_observed_at": "2026-08-16T11:59:00"},
+    ],
+)
+def test_forward_scope_without_a_readable_clock_is_maximally_stale(
+    manifest,
+) -> None:
+    scope = {"manifest": manifest}
+
+    age = TargetProductionWorker._ws_scope_manifest_age_sec(
+        scope, now=datetime(2026, 8, 16, 12, 0, 0, tzinfo=timezone.utc)
+    )
+
+    # Infinity forces a re-read rather than a compile against a book whose
+    # age cannot be established.
+    assert age == float("inf")
+
+
+def test_forward_sweep_order_covers_every_scope_exactly_once() -> None:
+    keys = [f"S{index:02d}" for index in range(43)]
+
+    rotated = TargetProductionWorker._forward_preselection_order(
+        keys, resume_at="S20"
+    )
+
+    assert rotated[0] == "S20"
+    assert rotated[-1] == "S19"
+    assert sorted(rotated) == sorted(keys)
+    assert len(set(rotated)) == len(keys)
+
+
+def test_forward_sweep_order_ignores_a_cursor_that_no_longer_exists() -> None:
+    # A scope that closed, or a cursor carried across a manifest change, must
+    # not drop the pass or reorder it into something unrecognisable.
+    keys = ["CYYZ|d", "KORD|d", "ZUUU|d"]
+
+    assert TargetProductionWorker._forward_preselection_order(
+        keys, resume_at="RETIRED|d"
+    ) == keys
+    assert TargetProductionWorker._forward_preselection_order(
+        keys, resume_at=""
+    ) == keys
+
+
+def test_a_systematically_truncated_sweep_still_reaches_every_scope() -> None:
+    """The property the rotation exists for.
+
+    Measured 2026-08-16: the pass reached scope 20 of 43 before every
+    remaining scope failed, and it restarted at the same head of the
+    alphabet every cycle -- so KORD, KSEA and ZUUU held no forward book at
+    all, and a forward quote that is missed cannot be fetched again.  With
+    the cursor, the same truncation serves everyone within a few cycles.
+    """
+
+    keys = [f"S{index:02d}" for index in range(43)]
+    cursor = ""
+    served: set[str] = set()
+    cycles = 0
+
+    while len(served) < len(keys):
+        cycles += 1
+        assert cycles <= 10, "rotation failed to converge"
+        order = TargetProductionWorker._forward_preselection_order(
+            keys, resume_at=cursor
+        )
+        for position, key in enumerate(order):
+            cursor = order[(position + 1) % len(order)]
+            served.add(key)
+            if position + 1 >= 20:  # the measured truncation point
+                break
+
+    assert cycles == 3
+    assert served == set(keys)
+
+
+def test_forward_scope_skip_matches_the_lane_it_guards() -> None:
+    fresh = _forward_scope("ZUUU", "2026-08-16T12:00:00.000Z")
+
+    assert TargetProductionWorker._forward_preselection_scope_skipped(
+        fresh
+    ) is False
+    # Open days are the resident decision path's, not this lane's.
+    assert TargetProductionWorker._forward_preselection_scope_skipped(
+        {**fresh, "event_day_state": "open"}
+    ) is True
+    assert TargetProductionWorker._forward_preselection_scope_skipped(
+        {**fresh, "probability_evidence_fresh": False}
+    ) is True
+    assert TargetProductionWorker._forward_preselection_scope_skipped(
+        {**fresh, "scope_blocker": "resident_target_ws_future_scope_rootless"}
+    ) is True
+    # A scope that vanished from a refreshed catalog resolves to None, and
+    # must be skipped rather than dereferenced.
+    assert TargetProductionWorker._forward_preselection_scope_skipped(
+        None
+    ) is True

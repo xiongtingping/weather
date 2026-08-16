@@ -95,12 +95,14 @@ from .resident_canonical import (
 )
 from .resident_market_ingress import materialize_resident_no_live_market_evidence
 from .resource_bounds import (
+    ResourceBoundError,
     assert_connection_target_capacity,
     assert_process_memory_budget,
     load_bounded_json,
     write_bounded_json,
     write_bounded_json_if_changed,
 )
+from .performance_budget import load_performance_budget
 from .nwp_rotation_state import (
     build_rotation_state,
     load_rotation_state,
@@ -2272,6 +2274,11 @@ class TargetProductionWorker:
         self.commit_error = commit_error
         self._last_delta_v2_truth_scan_monotonic: float | None = None
         self._last_delta_v2_label_scan_monotonic: float | None = None
+        # Where the next forward-day sweep starts.  A pass that does not
+        # survive to the end of the catalog must not hand the next pass the
+        # same head of the alphabet, or the stations behind the truncation
+        # point are the same ones every cycle.
+        self._forward_p0_rotation_cursor: str = ""
         self._delta_v2_truth_fact_cursor = 0
         self._delta_v2_truth_cursor_initialized = False
         self._delta_v2_label_fact_cursor = 0
@@ -7806,6 +7813,70 @@ class TargetProductionWorker:
         return sorted(catalog, key=lambda item: item["scope_key"])
 
     @staticmethod
+    def _ws_scope_manifest_age_sec(
+        scope: Mapping[str, Any],
+        *,
+        now: datetime,
+    ) -> float:
+        """How old this scope's book is, by the clock the compile will use.
+
+        ``compile_p0_preselection`` rejects a manifest whose
+        ``connection_observed_at`` is further than the performance budget's
+        ``max_ws_snapshot_age_sec`` from the evaluation instant.  Measuring
+        the same quantity here is what lets the sweep re-read *before* that
+        check can fail rather than discovering it forty scopes in.
+
+        An unreadable or unclocked stamp returns infinity: re-read rather
+        than compile against a manifest whose age cannot be established.
+        """
+
+        nested = scope.get("manifest")
+        observed = ""
+        if isinstance(nested, Mapping):
+            observed = str(nested.get("connection_observed_at") or "")
+        if not observed:
+            return float("inf")
+        try:
+            parsed = datetime.fromisoformat(observed.replace("Z", "+00:00"))
+        except ValueError:
+            return float("inf")
+        if parsed.tzinfo is None:
+            return float("inf")
+        return (now - parsed).total_seconds()
+
+    @staticmethod
+    def _forward_preselection_order(
+        scope_keys: Sequence[str],
+        *,
+        resume_at: str,
+    ) -> list[str]:
+        """The catalog's own order, rotated to where the last pass stopped.
+
+        Every scope still appears exactly once -- this moves where a pass
+        begins, not what it covers.  It matters only when a pass does not
+        reach the end: without it the survivors are always the same head of
+        the alphabet, and the stations behind the truncation point are
+        starved every cycle rather than served on the next one.
+        """
+
+        order = list(scope_keys)
+        if resume_at in order:
+            start = order.index(resume_at)
+            order = order[start:] + order[:start]
+        return order
+
+    @staticmethod
+    def _forward_preselection_scope_skipped(scope: Any) -> bool:
+        """Whether this scope has no forward preselection to make right now."""
+
+        return (
+            not isinstance(scope, Mapping)
+            or scope.get("event_day_state") != "not_started"
+            or not scope.get("probability_evidence_fresh")
+            or bool(scope.get("scope_blocker"))
+        )
+
+    @staticmethod
     def _scope_input_fingerprint(scope: Mapping[str, Any]) -> tuple[str, str]:
         """What this scope's answer depends on: its probability and its book.
 
@@ -11561,39 +11632,82 @@ class TargetProductionWorker:
             registry_snapshot_path = (
                 self.nwp_runtime_root / "market_registry_forward.json"
             )
-            preselection_catalog_read_mono = time.monotonic()
-            for ws_scope in ws_scope_catalog:
-                if (
-                    ws_scope["event_day_state"] != "not_started"
-                    or not ws_scope["probability_evidence_fresh"]
-                    or ws_scope.get("scope_blocker")
-                ):
+            # The catalog was snapshotted at loop entry, but each scope
+            # evaluates at its own now(): a compile costs seconds, so forty-odd
+            # scopes in, the snapshot's connection clock is past the
+            # strict-as-of age budget and every remaining scope dies
+            # manifest_stale.  Measured 2026-08-16: scopes 0-19 committed and
+            # LTAC onward -- twenty-two of forty-three -- all raised
+            # p0_preselection_manifest_stale, losing those stations' forward
+            # book for the day, because a forward quote missed is not
+            # refetchable.
+            #
+            # A re-read every sixty seconds was already here and did not fix
+            # it: it rebound only the single scope in hand and discarded the
+            # rest of the refreshed catalog, so exactly one late scope per
+            # minute survived.  That signature is visible in the same
+            # measurement -- RJTT, and only RJTT, committed after the
+            # truncation point.
+            #
+            # Re-read against the budget the compile actually enforces, and
+            # keep the answer for every scope behind this one.  A read costs
+            # ~360ms against a ~4s compile, and the publisher republishes
+            # every few seconds, so the refreshed book is near-zero age.
+            try:
+                max_ws_snapshot_age_sec = float(
+                    load_performance_budget()["limits"][
+                        "max_ws_snapshot_age_sec"
+                    ]
+                )
+            except Exception:
+                max_ws_snapshot_age_sec = 120.0
+            # Half the budget: the age is re-measured at the far end of a
+            # compile, so the refresh has to leave room for one to run.
+            preselection_manifest_max_age_sec = max(
+                15.0, max_ws_snapshot_age_sec / 2.0
+            )
+            preselection_catalog_by_key = {
+                item["scope_key"]: item for item in ws_scope_catalog
+            }
+            # Rotate the start so a truncated pass does not starve the same
+            # tail every cycle.  The order is otherwise the catalog's, and
+            # every scope is still visited exactly once per pass -- this moves
+            # where the pass begins, not which scopes it covers.
+            preselection_order = self._forward_preselection_order(
+                [item["scope_key"] for item in ws_scope_catalog],
+                resume_at=self._forward_p0_rotation_cursor,
+            )
+            for position, scope_key in enumerate(preselection_order):
+                # Advance before the work, not after: whatever ends this pass
+                # -- an escaping exception, a lock, a restart -- the next one
+                # resumes at the scope this one did not finish.
+                self._forward_p0_rotation_cursor = preselection_order[
+                    (position + 1) % len(preselection_order)
+                ]
+                ws_scope = preselection_catalog_by_key.get(scope_key)
+                if self._forward_preselection_scope_skipped(ws_scope):
                     continue
-                # The catalog was snapshotted at loop entry, but each scope
-                # evaluates at its own now(): forty-odd compiles later the
-                # snapshot's connection clock is past the strict-as-of age
-                # budget and every remaining scope dies manifest_stale.  The
-                # publisher republishes every few seconds, so re-reading is
-                # cheap; a scope that vanished or grew a blocker in the
-                # meantime is skipped on the fresh answer.
-                if time.monotonic() - preselection_catalog_read_mono > 60.0:
+                if (
+                    self._ws_scope_manifest_age_sec(
+                        ws_scope, now=datetime.now(timezone.utc)
+                    )
+                    > preselection_manifest_max_age_sec
+                ):
                     try:
-                        refreshed_catalog = {
+                        preselection_catalog_by_key = {
                             item["scope_key"]: item
                             for item in self._resident_ws_scope_catalog()
                         }
-                    except ContractError:
-                        refreshed_catalog = {}
-                    preselection_catalog_read_mono = time.monotonic()
-                    refreshed = refreshed_catalog.get(ws_scope["scope_key"])
-                    if (
-                        refreshed is None
-                        or refreshed["event_day_state"] != "not_started"
-                        or not refreshed["probability_evidence_fresh"]
-                        or refreshed.get("scope_blocker")
-                    ):
+                    except (ContractError, ResourceBoundError):
+                        # A torn or rejected read is not this sweep's to fail
+                        # on: keep the catalog in hand and let the compile's
+                        # own freshness check refuse the scope.  Letting it
+                        # escape here would abort the pass and lose every
+                        # scope behind it, which is the failure being fixed.
+                        pass
+                    ws_scope = preselection_catalog_by_key.get(scope_key)
+                    if self._forward_preselection_scope_skipped(ws_scope):
                         continue
-                    ws_scope = refreshed
                 try:
                     preselection_evaluation_at = utc_now()
                     with self._temporary_scope_manifest(
