@@ -11651,8 +11651,16 @@ class TargetProductionWorker:
             #
             # Re-read against the budget the compile actually enforces, and
             # keep the answer for every scope behind this one.  A read costs
-            # ~360ms against a ~4s compile, and the publisher republishes
-            # every few seconds, so the refreshed book is near-zero age.
+            # ~360ms against a ~4s compile.
+            #
+            # Measured 2026-08-16, because it sizes the threshold: the
+            # publisher republishes every 60-100s, not every few seconds, so
+            # the manifest's own age sawtooths most of the way to the 120s
+            # budget on its own.  A re-read therefore often returns the same
+            # document -- that is fine and cheap -- and when the publisher is
+            # genuinely behind, the scope fails closed on a book that really
+            # is too old.  What must not happen again is one stale read
+            # condemning every scope behind it.
             try:
                 max_ws_snapshot_age_sec = float(
                     load_performance_budget()["limits"][
