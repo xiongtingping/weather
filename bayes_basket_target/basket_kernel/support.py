@@ -74,12 +74,11 @@ def expected_direction_from_probability_vector(
     *,
     evidence_fresh: bool = True,
 ) -> Direction:
-    """Resolve B05/B06 from the current stage probability vector only.
+    """Resolve the lean from the current stage probability vector only.
 
-    The market is intentionally absent from this function. B06 disables the
-    bias direction when the stage is stale, too entropic, or lacks enough
-    probability mass on the direction side; the caller may still use the
-    neutral/base basket, but cannot manufacture a directional bias.
+    The market is intentionally absent here: direction is which side of the
+    centre the calibrated mass sits on, and nothing else votes.  A stale
+    stage yields no direction, since it has nothing current to lean with.
     """
 
     parsed = _validated_probability_vector(
@@ -106,12 +105,18 @@ def expected_direction_from_probability_vector(
         if int(ordinals[bucket]) > center
     )
     skew = upper - lower
-    if not evidence_fresh or abs(skew) < policy.direction_skew_deadband:
-        return Direction.NEUTRAL
-    if _normalized_entropy(parsed.values()) > policy.direction_entropy_max + EPS:
-        return Direction.NEUTRAL
-    side_mass = upper if skew > 0.0 else lower
-    if side_mass + EPS < policy.direction_min_side_mass:
+    # Direction is the mass, with nothing between (charter 52c, extended
+    # 2026-08-16).  The three thresholds that used to sit here -- a skew
+    # deadband, an entropy ceiling and a floor on the leaning side's mass --
+    # each answered "is this lean big enough to believe", which is a question
+    # the objective already answers better and with the prices in hand: a
+    # thin lean produces a thin bias and the curve score sizes it
+    # accordingly, whereas a threshold discards it and calls the day neutral.
+    # They were also a second opinion on p(t) inside the strategy layer, the
+    # same defect as the regime gate.  What survives is not a threshold: a
+    # stale stage cannot speak to direction at all, and an exactly balanced
+    # distribution has no side to lean to.
+    if not evidence_fresh or skew == 0.0:
         return Direction.NEUTRAL
     return Direction.UP if skew > 0.0 else Direction.DOWN
 
