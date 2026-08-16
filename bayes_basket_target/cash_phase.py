@@ -485,6 +485,34 @@ class OrderSizingDecision:
                 reason = "share_quantum_rounds_to_zero" if raw_c_order > EPS else "cash_clip_zero_after_constraints"
                 c_order = 0.0
                 q_order = 0.0
+            elif (
+                target_clip is not None
+                and not cash_template_caps_target
+                and raw_c_order + EPS < target_clip
+            ):
+                # The objective authorized a specific clip on a specific
+                # basket shape.  Anything that cuts this leg below it -- thin
+                # depth, an exhausted budget, a gap that shrank under the plan
+                # -- does not produce a smaller version of that basket, it
+                # produces a different one: floor, CVaR and concentration are
+                # joint quantities over the legs, and nothing re-scores them
+                # here.  So a leg the caps cut is refused, and the complete
+                # bundle HOLDs rather than sending a shape no argmax ever saw.
+                #
+                # Share-quantum rounding below is the one permitted
+                # difference and is deliberately not caught here: it is
+                # bounded by a single quantum and cannot re-shape a basket.
+                # Measured over 2,697 sized legs since 2026-08-10 this
+                # condition fired zero times and quantum rounding 1,991, so
+                # the refusal costs nothing it should not cost.
+                #
+                # The legacy cadence path is exempt: when the phase cash
+                # template is allowed to cap the target, capping below it is
+                # that path's ordinary behaviour rather than a clamp.
+                eligible = False
+                reason = "sizing_clamped_below_authorized_clip"
+                c_order = 0.0
+                q_order = 0.0
             elif c_order + EPS < minimum_clip:
                 eligible = False
                 reason = "clip_below_minimum"

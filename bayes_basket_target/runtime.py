@@ -496,6 +496,41 @@ def _assert_current_p1_source_lane(
         raise ContractError("probability_p1_root_stage_mismatch")
 
 
+def _executable_depth_cash(
+    *,
+    ask_levels: Sequence[Any],
+    execution_candidate: str,
+    limit_price: float,
+    cash_clip: float,
+) -> float:
+    """How much of the book this order can actually consume, in cash.
+
+    A Taker lifts the offer, so the offer at or below its limit is exactly
+    what it can take.
+
+    A post-only Maker bid rests inside the spread and takes nothing off the
+    offer, so the offer is not a bound on how large it may be.  Capping a
+    Maker leg by total ask depth -- what this did until 2026-08-16 -- refused
+    it outright with ``executable_depth_empty`` on a book with no offer at
+    all, which is precisely the book where resting a bid is the only thing
+    left to do.  Maker fill risk is priced where it is measured: the queue
+    ahead, the spread and the depth all enter the fill distribution the
+    bundle scored, so charging it a second time here as a hard size cap is
+    the double counting clause 43 forbids.  What genuinely bounds a Maker leg
+    is its own clip, the inventory gap and the budget, and the sizing step
+    caps by all three already; this returns the clip so the depth term is
+    present, auditable and non-binding rather than absent.
+    """
+
+    if str(execution_candidate) == "TAKER_FOK":
+        return sum(
+            float(level.price) * float(level.shares)
+            for level in ask_levels
+            if float(level.price) <= float(limit_price) + 1e-9
+        )
+    return max(0.0, float(cash_clip))
+
+
 def _compile_target_plan(
     *,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
@@ -885,15 +920,16 @@ def _compile_target_plan(
             is_selected
             and float(selected_action.get("cash_clip") or 0.0) > 0.0
         )
-        executable_depth_cash = 0.0
-        if candidate_present:
-            executable_depth_cash = snap_row.executable_depth_shares * candidate_price
-            if execution_candidate == "TAKER_FOK":
-                executable_depth_cash = sum(
-                    level.price * level.shares
-                    for level in snap_row.ask_levels
-                    if level.price <= candidate_price + 1e-9
-                )
+        executable_depth_cash = (
+            _executable_depth_cash(
+                ask_levels=snap_row.ask_levels,
+                execution_candidate=execution_candidate,
+                limit_price=candidate_price,
+                cash_clip=float(selected_action.get("cash_clip") or 0.0),
+            )
+            if candidate_present
+            else 0.0
+        )
         sizing = OrderSizingDecision.compute(
             bucket=row_bucket,
             phase_decision=cash_phase_decision,

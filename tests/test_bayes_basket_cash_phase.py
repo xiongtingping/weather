@@ -380,3 +380,72 @@ def test_cash_policy_resolution_requires_one_exact_valid_artifact() -> None:
             observed_at_utc="2026-07-23T00:00:00Z",
             required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
         )
+
+
+def test_a_leg_cut_below_its_authorized_clip_is_refused_not_shrunk() -> None:
+    # The objective authorized a clip on a joint basket shape.  When a cap
+    # other than that clip binds, sizing must refuse rather than serve a
+    # smaller leg nobody scored -- floor, CVaR and concentration are joint.
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+    common = {
+        "bucket": "38",
+        "phase_decision": phase,
+        "delta_shares": 100.0,
+        "r_limit": 0.30,
+        "candidate_present": True,
+        "target_clip_notional_usdc": 4.10,
+        "minimum_clip_notional_usdc": 1.00,
+        "cash_template_caps_target": False,
+        "share_quantum": 0.10,
+    }
+    clamped = OrderSizingDecision.compute(
+        remaining_budget=20.0, executable_depth_cash=3.00, **common
+    )
+    assert clamped.eligible is False
+    assert clamped.reason_code == "sizing_clamped_below_authorized_clip"
+    assert clamped.c_order == 0.0
+    assert clamped.remaining_budget_after == pytest.approx(20.0)
+
+    # Share-quantum rounding is the one permitted difference: it is bounded
+    # by a quantum and cannot re-shape a basket.
+    rounded = OrderSizingDecision.compute(
+        remaining_budget=20.0, executable_depth_cash=99.0, **common
+    )
+    assert rounded.eligible is True
+    assert rounded.reason_code == "sized_discrete"
+    assert rounded.c_order < 4.10
+    assert rounded.c_order > 4.10 - 0.10 * 0.30 - 1e-9
+
+    # The legacy cadence path keeps capping by its cash template.
+    legacy = OrderSizingDecision.compute(
+        remaining_budget=20.0,
+        executable_depth_cash=3.00,
+        **{**common, "cash_template_caps_target": True},
+    )
+    assert legacy.eligible is True
+    assert legacy.c_order <= 3.00 + 1e-9
+
+
+def test_a_maker_bid_is_not_sized_by_the_offer_it_never_touches() -> None:
+    from bayes_basket_target.basket_kernel.contracts import AskLevel
+    from bayes_basket_target.runtime import _executable_depth_cash
+
+    offer = (AskLevel(price=0.30, shares=5.0), AskLevel(price=0.40, shares=50.0))
+
+    # Taker: the offer at or below its limit is exactly what it can lift.
+    assert _executable_depth_cash(
+        ask_levels=offer, execution_candidate="TAKER_FOK",
+        limit_price=0.30, cash_clip=99.0,
+    ) == pytest.approx(1.50)
+
+    # Maker: bounded by its own clip, never by the offer -- including on a
+    # book with no offer at all, where a resting bid is all that is left.
+    assert _executable_depth_cash(
+        ask_levels=offer, execution_candidate="MAKER",
+        limit_price=0.25, cash_clip=4.10,
+    ) == pytest.approx(4.10)
+    assert _executable_depth_cash(
+        ask_levels=(), execution_candidate="MAKER",
+        limit_price=0.25, cash_clip=4.10,
+    ) == pytest.approx(4.10)

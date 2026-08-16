@@ -540,6 +540,10 @@ def _solve_over_support_windows(
                         basket_policy.clip_min_notional_usdc
                     ),
                     bankroll_usdc=bankroll_usdc,
+                    # The deflated belief, not the snapshot's: the generator
+                    # must propose against the distribution the ranking on
+                    # the next line scores.
+                    probabilities_by_bucket=window_probabilities,
                 ),
                 # The floor guards the whole live set exactly when full
                 # coverage is structurally possible (charter 38, amended
@@ -648,8 +652,16 @@ def _target_candidates(
     capital_available_usdc: float,
     minimum_clip_notional_usdc: float,
     bankroll_usdc: float,
+    probabilities_by_bucket: Mapping[str, float],
 ) -> list[dict[str, Any]]:
-    """Build a bounded q-grid priced from official WS ask depth."""
+    """Build a bounded q-grid priced from official WS ask depth.
+
+    ``probabilities_by_bucket`` is the belief this window is *scored* against,
+    which is not always the snapshot's: an off-centre window has its claim
+    deflated by the measured factor before the objective ever reads it.  The
+    generator has to be handed the same numbers, or the continuous candidate
+    it offers is the optimum of a distribution nobody ranks.
+    """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
@@ -751,6 +763,7 @@ def _target_candidates(
         capital_available_usdc=capital_available_usdc,
         minimum_clip_notional_usdc=minimum_clip_notional_usdc,
         bankroll_usdc=bankroll_usdc,
+        probabilities_by_bucket=probabilities_by_bucket,
     ))
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
@@ -770,6 +783,7 @@ def _continuous_optimum_candidates(
     capital_available_usdc: float,
     minimum_clip_notional_usdc: float,
     bankroll_usdc: float,
+    probabilities_by_bucket: Mapping[str, float],
 ) -> list[dict[str, Any]]:
     """Offer the split the clip grid cannot express.
 
@@ -802,6 +816,16 @@ def _continuous_optimum_candidates(
     would always win; serving the unspent remainder as ``W`` -- what this did
     before -- made the generator's risk preference drift within the day while
     the score judging it did not.
+
+    The minimum clip is a *lower bound on the decision*, and is solved as
+    one.  Basket activation is atomic, so every seated leg is bought at the
+    floor whatever the solve prefers; pasting that floor on afterwards spent
+    money the optimum had not allocated and then rescaled the whole vector to
+    fit, which could re-breach the floor and silently drop the candidate
+    entirely.  Seating the floor as inventory the position already carries --
+    the machinery the initial condition gave us -- and solving the remaining
+    budget on top of it yields the constrained optimum directly, with no
+    rescale and nothing to drop.
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
@@ -816,7 +840,7 @@ def _continuous_optimum_candidates(
             return []
         prices.append(float(levels[0].price))
         caps.append(sum(float(level.shares) for level in levels))
-        probabilities.append(float(row.probability))
+        probabilities.append(float(probabilities_by_bucket.get(bucket, 0.0)))
         held.append(
             float(current_shares.get(bucket, 0.0))
             + float(pending_shares.get(bucket, 0.0))
@@ -824,7 +848,15 @@ def _continuous_optimum_candidates(
     if any(price <= EPS or price >= 1.0 for price in prices):
         return []
     floor = max(float(minimum_clip_notional_usdc), 0.0)
-    if floor * len(ordered) > capital_available_usdc + EPS:
+    seat_cost_usdc = floor * len(ordered)
+    if seat_cost_usdc > capital_available_usdc + EPS:
+        return []
+    seat_shares = [floor / price for price in prices]
+    if any(
+        seat > cap + EPS for seat, cap in zip(seat_shares, caps)
+    ):
+        # The offer cannot even seat the floor on some leg; the depth walk
+        # below would refuse every candidate anyway.
         return []
     # Selling is forbidden and the seat window moves, so a station routinely
     # holds buckets this window cannot add to.  They still settle, so they
@@ -840,10 +872,14 @@ def _continuous_optimum_candidates(
             + float(pending_shares.get(row.bucket, 0.0))
         )
         if inventory > EPS:
-            outside_position.append((float(row.probability), inventory))
+            outside_position.append((
+                float(probabilities_by_bucket.get(row.bucket, 0.0)),
+                inventory,
+            ))
     sunk_cost_usdc = sum(current_cost.values()) + sum(pending_cost.values())
 
     effective_bankroll_usdc = float(bankroll_usdc) / DEFAULT_KELLY_FRACTION
+    free_budget_usdc = max(0.0, capital_available_usdc - seat_cost_usdc)
 
     results: list[dict[str, Any]] = []
     seen: set[tuple[float, ...]] = set()
@@ -852,26 +888,28 @@ def _continuous_optimum_candidates(
             stakes = solve_fractional_kelly(
                 probabilities=probabilities,
                 prices=prices,
-                depth_caps=caps,
-                budget_usdc=float(capital_available_usdc),
+                depth_caps=[
+                    max(0.0, cap - seat) for cap, seat in zip(caps, seat_shares)
+                ],
+                budget_usdc=free_budget_usdc,
                 bankroll_usdc=effective_bankroll_usdc,
                 kelly_fraction=fraction,
-                held_shares=held,
-                sunk_cost_usdc=sunk_cost_usdc,
+                held_shares=[
+                    hold + seat for hold, seat in zip(held, seat_shares)
+                ],
+                sunk_cost_usdc=sunk_cost_usdc + seat_cost_usdc,
                 held_outside=outside_position,
             )
         except ContractError:
             continue
+        # Round the free part down so the floor is never breached from below
+        # and the budget never from above; the leftover cents stay unspent.
         cash = [
-            max(floor, round(stake * price, 2))
+            floor + math.floor(stake * price * 100.0) / 100.0
             for stake, price in zip(stakes, prices)
         ]
-        total = sum(cash)
-        if total > capital_available_usdc + EPS:
-            scale = capital_available_usdc / total
-            cash = [max(floor, round(value * scale, 2)) for value in cash]
-            if sum(cash) > capital_available_usdc + EPS:
-                continue
+        if sum(cash) > capital_available_usdc + EPS:
+            continue
         key = tuple(cash)
         if key in seen:
             continue

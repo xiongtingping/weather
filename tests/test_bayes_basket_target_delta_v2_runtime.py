@@ -555,6 +555,9 @@ def test_target_grid_uses_each_bucket_official_ask_depth_not_static_price_grid()
         capital_available_usdc=5.0,
         minimum_clip_notional_usdc=0.01,
         bankroll_usdc=_basket_policy().total_budget_usdc,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in snapshot.buckets
+        },
     )
     both = next(
         row
@@ -1105,6 +1108,9 @@ def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
         capital_available_usdc=5.0,
         minimum_clip_notional_usdc=_basket_policy().clip_min_notional_usdc,
         bankroll_usdc=_basket_policy().total_budget_usdc,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in _snapshot().buckets
+        },
     )
     origins = {row["candidate_origin"] for row in produced}
     assert origins == {"CLIP_GRID_PRODUCT", "CONTINUOUS_LOG_OPTIMUM"}
@@ -1119,3 +1125,70 @@ def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
         if row["candidate_origin"] == "CONTINUOUS_LOG_OPTIMUM"
     }
     assert continuous_costs - grid_costs == continuous_costs
+
+
+def test_continuous_candidate_seats_the_clip_floor_inside_the_solve() -> None:
+    # The minimum clip is a lower bound on the decision, so it is solved as
+    # one.  Pasting it on afterwards spent money the optimum had not
+    # allocated and then rescaled the whole vector to fit, which could
+    # re-breach the floor and drop the candidate outright.
+    snapshot = _snapshot()
+    floor = 0.50
+    capital = 5.0
+    produced = _target_candidates(
+        snapshot=snapshot,
+        desired=("35", "36"),
+        artifact=_delta_policy(),
+        capital_available_usdc=capital,
+        minimum_clip_notional_usdc=floor,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in snapshot.buckets
+        },
+    )
+    continuous = [
+        row for row in produced
+        if row["candidate_origin"] == "CONTINUOUS_LOG_OPTIMUM"
+    ]
+    # The floor never drops the candidate any more, and the solve is what
+    # divides whatever is left after every leg is seated.
+    assert continuous
+    for row in continuous:
+        legs = [row["cost_by_bucket"][bucket] for bucket in ("35", "36")]
+        assert all(cost + 1e-9 >= floor for cost in legs)
+        assert sum(legs) <= capital + 1e-9
+
+
+def test_continuous_candidate_reads_the_belief_the_ranking_scores() -> None:
+    # An off-centre window has its claim deflated before the objective sees
+    # it.  The generator must propose against that deflated distribution, not
+    # against the snapshot's, or it offers the optimum of a belief nobody
+    # ranks.
+    snapshot = _snapshot()
+    common = dict(
+        snapshot=snapshot,
+        desired=("35", "36"),
+        artifact=_delta_policy(),
+        capital_available_usdc=5.0,
+        minimum_clip_notional_usdc=0.01,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
+    )
+
+    def continuous_costs(probabilities: dict[str, float]) -> set[tuple[float, ...]]:
+        return {
+            tuple(
+                round(row["cost_by_bucket"][bucket], 6)
+                for bucket in ("35", "36")
+            )
+            for row in _target_candidates(
+                **common, probabilities_by_bucket=probabilities
+            )
+            if row["candidate_origin"] == "CONTINUOUS_LOG_OPTIMUM"
+        }
+
+    snapshot_belief = {row.bucket: row.probability for row in snapshot.buckets}
+    deflated = {
+        bucket: value * (0.85 if bucket in {"35", "36"} else 1.0)
+        for bucket, value in snapshot_belief.items()
+    }
+    assert continuous_costs(snapshot_belief) != continuous_costs(deflated)
