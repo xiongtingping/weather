@@ -2614,6 +2614,33 @@ def main() -> int:
             )
             if taf_training:
                 state["taf_revision_training"] = taf_training
+            # And the model-capture lane's, for the same reason.  Every poll
+            # decides which published run a scope should hold, whether the
+            # packet in hand is superseded, and what the capture returned --
+            # then stored the answer on the worker and published none of it.
+            # "The four models are twelve hours old" was therefore a question
+            # the page could not answer: the rotation counters it did carry
+            # say a scope was visited, not which run it came back with.
+            nwp_cycle = getattr(
+                forecast_worker, "_last_official_nwp_state", None
+            )
+            if nwp_cycle:
+                state["official_nwp_cycle"] = {
+                    key: nwp_cycle[key]
+                    for key in (
+                        "state",
+                        "reason",
+                        "station_id",
+                        "event_date",
+                        "source_role",
+                        "official_probe_reason",
+                        "official_native_capture",
+                        "official_packet_reused",
+                        "scopes_advanced_this_poll",
+                        "blocked_scope_count_this_poll",
+                    )
+                    if key in nwp_cycle
+                }
             if production_future is not None and production_future.done():
                 try:
                     production_result = production_future.result()
