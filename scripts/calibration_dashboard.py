@@ -1000,6 +1000,64 @@ function coverage(){
 }
 
 
+// A station's whole-window account, one row per station.  These averages
+// used to ride along on every row of the daily roster, where a station with
+// no book that day still showed an ask total and an EV and read as that
+// day's price.  Here the window is stated once in the header and a row is a
+// station, so the number cannot be mistaken for a date's.
+function stationSummary(){
+  const S=D.selection||{};const ss=S.station_stats||[];
+  if(!ss.length) return "";
+  const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
+  // Stations that never took a credible seat have nothing to average, so
+  // they are absent from this table by construction.  Say so, or their
+  // absence reads as an omission rather than as the fact it is.
+  const seated=new Set(ss.map(s=>s.station_id));
+  const silent=[...new Set((S.station_roster||[]).map(e=>e.station_id))]
+    .filter(id=>!seated.has(id)).sort();
+  const rows=ss.map(s=>{
+    const sd=s.sides||{};const cal=s.calibration_ratio;
+    const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
+    return `<tr>
+      <td><span class="mono">${h(s.station_id)}</span>
+        <span class="muted">${h(s.station_label)}</span></td>
+      <td>${s.position_count}</td>
+      <td>${s.settled_count}</td>
+      <td>${s.window_size_mean==null?"—":s.window_size_mean.toFixed(1)}</td>
+      <td class="muted">${sd.above||0}/${sd.aligned||0}/${sd.below||0}</td>
+      <td>${p2(s.model_coverage_mean)}</td>
+      <td class="mono">${n2(s.seat_ask_total_mean)}</td>
+      <td class="mono">${s.odds_mean==null?"—":n2(s.odds_mean,1)+"x"}</td>
+      <td class="${ev==null?"":(ev>0?"up":"down")}">${ev==null?"—":((ev>0?"+":"")+n2(ev,2))}</td>
+      <td>${p2(s.hit_rate)}</td>
+      <td>${p2(s.claimed_win_probability_mean)}</td>
+      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
+      <td class="mono">${n2(s.staked_usdc,2)}</td>
+      <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
+      <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td></tr>`;
+  }).join("");
+  const note=silent.length?`<div class="muted" style="margin-top:8px">
+    另有 ${silent.length} 个站在这段窗口里一笔可成交仓位都没有，因此没有可平均的数，
+    只出现在下一节的逐日明细里：<span class="mono">${silent.map(h).join(" ")}</span></div>`:"";
+  return `<h2>八、逐站汇总（跨日）</h2>
+  <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
+  （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
+  「这个站长期表现如何」，逐日的账在下一节。</p>
+  <div class="why"><b>列的意思：</b>「仓位」是参与平均的笔数，样本少于三笔时右侧的
+  命中率与实现/声称基本读不出信号；「位置」是相对市场偏上/一致/偏下的笔数；
+  「概率和/卖价和/赔率/EV」同第七节，只是范围缩到这一个站；
+  「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
+  <div class="card"><div class="scroll"><table><thead><tr>
+    <th>站点</th><th>仓位</th><th>已结算</th><th>均桶数</th>
+    <th>位置<br><span class="muted">上/平/下</span></th>
+    <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
+    <th>命中率</th><th>声称</th><th>实现/声称</th>
+    <th>投入</th><th>实得</th><th>兑现比</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>${note}</div>`;
+}
+
+
 function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
@@ -1063,12 +1121,12 @@ function roster(){
          : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
     const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
       `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
-    // The per-station statistics belong on the station's own row; a rewrite
-    // dropped them from the header and they stopped rendering.
-    const st=e.stats||{};
-    const p2=v=>v==null?"—":(v*100).toFixed(1)+"%";
-    const n2=(v,d=3)=>v==null?"—":Number(v).toFixed(d);
-    const cal=st.calibration_ratio;
+    // Only what happened at this station on this day.  The averages that
+    // used to sit here -- coverage, ask total, odds, EV, hit rate,
+    // calibration -- are computed over the station's whole window, so the
+    // same six numbers repeated on every date and read as the day's own
+    // account: ZUUU showed an ask total of 0.514 on 2026-08-17, a day whose
+    // book never reached the table.  They now live in section eight.
     return `<tr>
       <td><div class="mono">${h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div></td>
@@ -1076,18 +1134,11 @@ function roster(){
       ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"])}
       ${cell(e.stages.P1,drift,(e.refusals||{}).P1)}
       <td>${side}${note}</td>
-      <td>${p2(st.model_coverage_mean)}</td>
-      <td class="mono">${n2(st.seat_ask_total_mean)}</td>
-      <td class="mono">${st.odds_mean==null?"—":n2(st.odds_mean,1)+"x"}</td>
-      <td class="${st.ev_per_usdc_mean==null?"":(st.ev_per_usdc_mean>0?"up":"down")}">${st.ev_per_usdc_mean==null?"—":((st.ev_per_usdc_mean>0?"+":"")+n2(st.ev_per_usdc_mean,2))}</td>
-      <td>${st.hit_rate==null?"—":p2(st.hit_rate)}</td>
-      <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
       <td class="mono">${pnl}</td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>位置</th><th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
-    <th>命中率</th><th>实现/声称</th><th>实测</th><th>实得</th></tr>`;
+    <th>位置</th><th>实测</th><th>实得</th></tr>`;
   const dates=S.roster_event_dates||[];
   const block=(day,open)=>{
     const rows=rs.filter(e=>e.event_date===day);
@@ -1106,10 +1157,11 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  return `<h2>八、逐站明细与统计</h2>
+  return `<h2>九、逐站逐日明细</h2>
   <p class="sub">每个事件日一组，全部 45 个站都在，包括没有座位的——没坐比坐了更值得看清原因。
   每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率；空格里写的是账本自己给出的拒绝理由，
-  不再统一算作「未入座」。最新一天默认展开，更早的日期折叠在下方。</p>
+  不再统一算作「未入座」。每行只讲这一天：跨日均值在上一节。最新一天默认展开，
+  更早的日期折叠在下方。</p>
   <div class="why">${legend}</div>
   ${dates.map((day,index)=>block(day,index===0)).join("")}`;
 }
@@ -1117,7 +1169,7 @@ function roster(){
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>九、异常盘口</h2>
+  if(!an.length) return `<h2>十、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -1127,7 +1179,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"虚价（整篮不足1分）":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>九、异常盘口</h2>
+  return `<h2>十、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -1191,7 +1243,7 @@ function p0m(){
       <td>${r.truth_days}</td>
       <td>${r.truth_short>0?`<span class="pill red">缺 ${r.truth_short} 天</span>`:"—"}</td></tr>`;
   }).join("");
-  return `<h2>十、P0-M 为什么还没有产出</h2>
+  return `<h2>十一、P0-M 为什么还没有产出</h2>
   <p class="sub">P0-M 是"当天早上机场人工预报对开仓概率的确认"。它自 7 月 30 日起没有
   任何产出——不是坏了：训练每轮都在跑，但每个站都要先攒够
   <b>${s.calendar_days ? 36 : 36} 个双方都有预报、且当天真值已结算</b>的日子，
@@ -1214,7 +1266,7 @@ function p0m(){
 
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
-  coverage() + roster() + anomalies() + p0m() +
+  coverage() + stationSummary() + roster() + anomalies() + p0m() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);
