@@ -91,8 +91,12 @@ def expected_direction_from_probability_vector(
         ordinals,
         policy,
     )
-    if not center_stable:
-        return Direction.NEUTRAL
+    # A centre whose lead is thin is not a day without direction -- it is a
+    # day whose mass is spread, and the spread itself is the lean.  The
+    # stability test used to blank the direction here (charter 52c, extended
+    # 2026-08-16); it is the same "is this big enough to believe" question
+    # the three thresholds below asked, and the objective answers it with
+    # prices in hand.  ``center_stable`` remains a diagnostic elsewhere.
     center = int(ordinals[center_bucket])
     lower = sum(
         float(value)

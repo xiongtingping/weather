@@ -2330,10 +2330,15 @@ def compile_native_ensemble_p0(
         },
         taf_witness=taf_witness,
     )
-    # The witness stays resolved and recorded on every stage -- the lineage
-    # is what a reader diagnoses a station-day with, and the stage test above
-    # needs it -- but only P0-M spends it.
-    taf_stage_witness = taf_witness if compiled_stage == "P0-M" else None
+    # Once the forecaster has spoken, every later compile hears it -- the P0-M
+    # that the revision drove and every P0 the next model run drives after it
+    # (ruling clarified 2026-08-16).  What P0-M owns is the *stage label* on a
+    # forecaster-driven update, not exclusive use of the evidence: a witness
+    # that entered the envelope on one compile and left it on the next would
+    # make the envelope breathe, and clause 42's union only ever widens.  The
+    # opening compile has no witness to read yet, which is why the first
+    # basket is the models' alone without a rule saying so.
+    taf_stage_witness = taf_witness
     if taf_stage_witness is not None:
         taf_tx_c = float(taf_stage_witness["tx_c"])
         envelope_lower_c = min(lower_center_c, taf_tx_c)
