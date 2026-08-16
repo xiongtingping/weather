@@ -538,6 +538,23 @@ def _executable_depth_cash(
 CLAMPED_CLIP_REASON = "sizing_clamped_below_authorized_clip"
 
 
+def _station_capital_usdc(
+    *,
+    station_bankroll_usdc: float,
+    committed_usdc: float,
+) -> float:
+    """What is left of this station's own bankroll, never the pool's.
+
+    A station may risk at most its own allotment, ever, and what it has
+    already committed -- filled and confirmed pending alike -- has spent part
+    of that allotment whether or not it has settled.
+    """
+
+    return max(
+        0.0, float(station_bankroll_usdc) - float(committed_usdc)
+    )
+
+
 def _rescore_clamped_bundle(
     *,
     sizing_decisions: Sequence[Any],
@@ -880,6 +897,36 @@ def _compile_target_plan(
         raise ContractError("remaining_budget_usdc_invalid") from exc
     if not math.isfinite(remaining_budget) or remaining_budget < 0.0:
         raise ContractError("remaining_budget_usdc_invalid")
+    # A station may risk at most its own bankroll, ever (user ruling,
+    # 2026-08-16: one station, 30 USDC).  What arrives here is the *pool's*
+    # remaining balance, and the allocator hands it to a station unchanged
+    # whenever that station has no history to split on -- 514.29 to each of
+    # forty-five stations against a book that holds 514.29 once.
+    #
+    # Letting a station spend past its own bankroll breaks the objective
+    # rather than merely over-committing the book, because the curve is
+    # scored against that bankroll: at ``total_budget_usdc`` 30 the effective
+    # bankroll is 30/f = 120, so a settlement outside the basket costs the
+    # whole 121 already spent and ``curve_score`` returns minus infinity --
+    # for every candidate including buying nothing.  The station then holds
+    # forever, with no reason code, because nothing can outscore anything.
+    # Measured on a manufactured position: 20 spent still traded, 90 already
+    # held, 121 was the wall.
+    #
+    # Capping here makes that wall unreachable by construction rather than by
+    # hope: 30 of an effective 120 leaves the worst settlement at 0.75 of the
+    # bankroll.  The ceiling is the resolved policy's, so a station that is
+    # later allotted more follows it without a second dial to keep in sync.
+    station_committed_usdc = sum(
+        row.filled_cost_usdc + row.pending_notional_usdc
+        for row in snapshot.buckets
+    )
+    station_capital_usdc = _station_capital_usdc(
+        station_bankroll_usdc=float(policy.total_budget_usdc),
+        committed_usdc=station_committed_usdc,
+    )
+    pool_remaining_usdc = remaining_budget
+    remaining_budget = min(remaining_budget, station_capital_usdc)
 
     try:
         resolved_delta_policy = (
@@ -1278,6 +1325,11 @@ def _compile_target_plan(
         "cadence_allows_candidate": cadence_allows,
         "remaining_budget_usdc_before": remaining_budget,
         "remaining_budget_usdc_after": remaining_after,
+        # Both sides of the cap, so a reader can tell a station held back by
+        # its own bankroll from one held back by an empty book.
+        "station_capital_usdc": station_capital_usdc,
+        "station_committed_usdc": station_committed_usdc,
+        "pool_remaining_usdc": pool_remaining_usdc,
         "station_reserve_violations": [],
         "delta_v2_audit": dict(delta_plan.get("delta_v2_audit", {})),
         "boundary": {

@@ -478,3 +478,60 @@ def test_a_maker_bid_is_not_sized_by_the_offer_it_never_touches() -> None:
         ask_levels=(), execution_candidate="MAKER",
         limit_price=0.25, cash_clip=4.10,
     ) == pytest.approx(4.10)
+
+
+def test_a_station_may_never_spend_past_its_own_bankroll() -> None:
+    # The pool's remaining balance is the whole book's, and the allocator
+    # hands it to a station unchanged whenever that station has no history
+    # to split on -- 514.29 to each of forty-five stations against a book
+    # that holds 514.29 once.  A station spending past its own allotment
+    # does not merely over-commit the book, it breaks its own objective: the
+    # curve is scored against that allotment, so once the committed cost
+    # passes the effective bankroll every candidate scores minus infinity,
+    # buying nothing included, and the station holds forever with no reason
+    # code.  Measured: 20 spent still traded, 90 already held, 121 was the
+    # wall.  The cap makes the wall unreachable rather than unlikely.
+    from bayes_basket_target.runtime import _station_capital_usdc
+
+    # Nothing committed: the whole allotment, never the pool's 514.29.
+    assert _station_capital_usdc(
+        station_bankroll_usdc=30.0, committed_usdc=0.0
+    ) == pytest.approx(30.0)
+
+    # Committed cost -- filled and confirmed pending alike -- spends it.
+    assert _station_capital_usdc(
+        station_bankroll_usdc=30.0, committed_usdc=18.5
+    ) == pytest.approx(11.5)
+
+    # Spent out is zero, never negative: a negative capital would fail a
+    # nonnegative contract downstream instead of simply buying nothing.
+    assert _station_capital_usdc(
+        station_bankroll_usdc=30.0, committed_usdc=30.0
+    ) == 0.0
+    assert _station_capital_usdc(
+        station_bankroll_usdc=30.0, committed_usdc=99.0
+    ) == 0.0
+
+    # The ceiling follows the resolved policy, so a station allotted more
+    # needs no second dial kept in sync.
+    assert _station_capital_usdc(
+        station_bankroll_usdc=500.0, committed_usdc=18.5
+    ) == pytest.approx(481.5)
+
+    # The property that matters: committed can never exceed the bankroll, so
+    # the worst settlement stays a fraction of the effective bankroll W/f
+    # and curve_score can never return minus infinity.
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        DEFAULT_KELLY_FRACTION,
+    )
+
+    bankroll = 30.0
+    committed = 0.0
+    for _round in range(50):
+        allowed = _station_capital_usdc(
+            station_bankroll_usdc=bankroll, committed_usdc=committed
+        )
+        committed += min(allowed, 4.0)
+    assert committed <= bankroll + 1e-9
+    worst_wealth = 1.0 - committed / (bankroll / DEFAULT_KELLY_FRACTION)
+    assert worst_wealth >= 0.75 - 1e-9
