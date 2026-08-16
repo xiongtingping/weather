@@ -2487,22 +2487,48 @@ def compile_native_ensemble_p0(
         envelope_upper_c,
         intervals_raw,
     )
+    # ``run_cycle`` above is the *calibration* scope -- the cycle the chosen
+    # activation was fitted under (line ``run_cycle = selected_run_cycle``).
+    # The native-forward block describes something else entirely: the runs
+    # today's capture actually carries.  Once the activation match started
+    # tolerating named cycle riders, those two stopped being the same value,
+    # and stamping the fitted cycle here published a packet that swore every
+    # system shared one cycle while its own per-system map said otherwise.
+    # Materialization checks exactly that pair, so P1 fail-closed on every
+    # such root: 30 of 43 scopes on 2026-08-16, and 86% of that day's P0
+    # envelopes carried the contradiction.  Describe the packet from the
+    # packet.
+    native_forward_cycle_by_system = {
+        system_id: official_lineage["run_cycle_by_system"][system_id]
+        for system_id in system_ids
+    }
+    packet_cycles = {
+        str(cycle or "").strip()
+        for cycle in native_forward_cycle_by_system.values()
+    }
+    native_forward_same_cycle = official_snapshot and len(packet_cycles) == 1
     active_run_cycle_scope = (
-        "PER_SYSTEM_NATIVE_CYCLE"
-        if official_snapshot and run_cycle == MIXED_NATIVE_CYCLES
-        else (
+        (
             "SAME_NATIVE_CYCLE"
-            if official_snapshot
-            else official_lineage["run_cycle_scope"]
+            if native_forward_same_cycle
+            else "PER_SYSTEM_NATIVE_CYCLE"
         )
+        if official_snapshot
+        else official_lineage["run_cycle_scope"]
+    )
+    native_forward_run_cycle = (
+        (
+            next(iter(packet_cycles))
+            if native_forward_same_cycle
+            else MIXED_NATIVE_CYCLES
+        )
+        if official_snapshot
+        else run_cycle
     )
     native_forward_lineage = {
         "run_cycle_scope": active_run_cycle_scope,
-        "run_cycle": run_cycle,
-        "run_cycle_by_system": {
-            system_id: official_lineage["run_cycle_by_system"][system_id]
-            for system_id in system_ids
-        },
+        "run_cycle": native_forward_run_cycle,
+        "run_cycle_by_system": native_forward_cycle_by_system,
         "run_init_utc_by_system": {
             system_id: official_lineage["run_init_utc_by_system"][system_id]
             for system_id in system_ids
@@ -2772,7 +2798,15 @@ def compile_native_ensemble_p0(
         # longer equals the calendar label above.  Without it a plan cannot be
         # traced back to the fit that priced it.
         "training_lead_bucket": training_lead_bucket,
+        # Calibration scope, not capture.  The resident TAF lane matches an
+        # artifact on this exact value (``root.lineage["run_cycle"]`` vs
+        # ``artifact.run_cycle``), so it has to keep naming the cycle the fit
+        # was scoped to -- no TAF artifact is ever fitted at MIXED.
         "run_cycle": run_cycle,
+        # ...and the capture, recorded beside it, because they diverge the
+        # moment a cycle rider is tolerated.  Materialization reads this pair
+        # to decide whether the packet may claim one shared cycle.
+        "native_forward_run_cycle": native_forward_run_cycle,
         "run_cycle_scope": active_run_cycle_scope,
         "run_cycle_by_system_json": _json(
             native_forward_lineage["run_cycle_by_system"]

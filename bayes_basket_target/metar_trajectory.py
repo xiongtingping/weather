@@ -11,12 +11,13 @@ from __future__ import annotations
 import math
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
     ProbabilityEnvelope,
     content_sha256,
@@ -106,6 +107,9 @@ _LOCAL_TIME_BUCKETS = {
     "EVENING": range(18, 24),
 }
 _EPS = 1e-12
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 
 
 def _text(name: str, value: Any) -> str:
@@ -849,7 +853,16 @@ def canonicalize_metar_trajectory_observations(
             if by_id[event.observation_id].content_sha256 != value.content_sha256:
                 raise ContractError("metar_trajectory_duplicate_id_conflict")
             continue
-        if _parsed(event.observed_at_utc) > _parsed(as_of):
+        # ``as_of`` here is the step's decision time, which the compiler takes
+        # from the observation's own commit.  A report transmitted slightly
+        # before the minute it is stamped for therefore looks a few seconds
+        # "future" against the very commit that admitted it.  Allow the same
+        # lead the reader and settlement allow; a genuinely later report is
+        # at least a cadence away and still refused.
+        if (
+            _parsed(event.observed_at_utc) - _parsed(as_of)
+            > _MAX_TRANSMISSION_LEAD
+        ):
             raise ContractError("metar_trajectory_future_observation_forbidden")
         local_date = _parsed(event.observed_at_utc).astimezone(timezone).date()
         if local_date.isoformat() != event_date:

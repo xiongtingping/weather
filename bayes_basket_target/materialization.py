@@ -163,6 +163,27 @@ def _lineage_json_identity(name: str, value: Mapping[str, Any]) -> dict[str, Any
     return identity
 
 
+def _named_cycle_riders(root_lineage: Mapping[str, Any]) -> set[str]:
+    """Systems the root itself declared as riding another run cycle.
+
+    Part of the root's content hash, so it cannot be added after the fact to
+    excuse a drift the compiler never accepted.  An unreadable list yields
+    nothing, which fails the caller closed rather than open.
+    """
+
+    try:
+        declared = json.loads(
+            str(root_lineage.get("activation_cycle_riders_json") or "[]")
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return set()
+    if not isinstance(declared, Sequence) or isinstance(
+        declared, (str, bytes, bytearray)
+    ):
+        return set()
+    return {str(system_id) for system_id in declared}
+
+
 def _native_forward_lineage(
     stage: str,
     *,
@@ -214,7 +235,20 @@ def _native_forward_lineage(
             raise ContractError(f"{stage}_native_forward_lineage_missing:{key}")
 
     scope = _text("run_cycle_scope", root_lineage.get("run_cycle_scope"))
-    run_cycle = _text("run_cycle", root_lineage.get("run_cycle"))
+    # Two cycles live in a P0 root and they are not the same question.
+    # ``run_cycle`` names the calibration scope the activation was fitted
+    # under -- the resident TAF lane matches artifacts on it, so it stays.
+    # ``native_forward_run_cycle`` names what the capture actually carried,
+    # which is the only one this block may check the per-system map against.
+    # They diverge whenever the activation match tolerates a cycle rider, and
+    # reading the fitted one here rejected every such root.  Older envelopes
+    # predate the split and carry only the one value, which was correct for
+    # them precisely because nothing rode.
+    run_cycle = _text(
+        "run_cycle",
+        root_lineage.get("native_forward_run_cycle")
+        or root_lineage.get("run_cycle"),
+    )
     if scope not in _NATIVE_FORWARD_SCOPES:
         raise ContractError(f"{stage}_native_forward_run_cycle_scope_invalid")
     mixed = scope == "PER_SYSTEM_NATIVE_CYCLE" or run_cycle == _MIXED_NATIVE_CYCLES
@@ -237,8 +271,28 @@ def _native_forward_lineage(
         raise ContractError(f"{stage}_native_forward_system_lineage_incomplete")
     if mixed and not cycles:
         raise ContractError(f"{stage}_native_forward_system_lineage_empty")
-    if not mixed and any(str(value or "").strip() != run_cycle for value in cycles.values()):
-        raise ContractError(f"{stage}_native_forward_same_cycle_mismatch")
+    if not mixed:
+        off_cycle = {
+            str(system_id)
+            for system_id, value in cycles.items()
+            if str(value or "").strip() != run_cycle
+        }
+        # An envelope written before the capture cycle was recorded beside
+        # the calibration cycle can only offer the fitted one, and under a
+        # tolerated rider those disagree by construction.  The root is not
+        # silent about which systems rode: the compiler wrote them into
+        # ``activation_cycle_riders_json``, inside the same content hash, at
+        # the moment the activation match accepted them.  Admit exactly that
+        # named set and nothing else -- every one of the 13669 such envelopes
+        # on the roster is fully covered by its own list, so a system that
+        # drifted without being named is still a mismatch.  A root carrying
+        # the capture cycle needs no allowance: its scope already tells the
+        # truth, so ``off_cycle`` is empty and this branch never fires.
+        if off_cycle and (
+            root_lineage.get("native_forward_run_cycle")
+            or off_cycle - _named_cycle_riders(root_lineage)
+        ):
+            raise ContractError(f"{stage}_native_forward_same_cycle_mismatch")
 
     for system_id in sorted(cycles):
         cycle = _text("run_cycle_by_system", cycles[system_id]).upper()

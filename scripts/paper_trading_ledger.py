@@ -684,6 +684,13 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                     ),
                 )
                 counts["positions"] += 1
+                # Land each seat as it is taken.  Batching the whole pass into
+                # one transaction held the write lock for the better part of a
+                # minute, and once this ran on a schedule beside the resident
+                # that cost the worker whole scopes to ``database is locked``.
+                # Every row is append-only and uniquely keyed, so a pass that
+                # stops early just leaves the rest for the next sweep.
+                conn.commit()
                 actual = truth.get((station_id, event_date))
                 if actual is None:
                     counts["open_unsettled"] += 1
@@ -726,6 +733,7 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                     ),
                 )
                 counts["settlements"] += 1
+                conn.commit()
                 day_pnl[stage] += pnl
         # The day is over: realise it, then let the next day size off the
         # book it actually leaves behind.

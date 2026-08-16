@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import sqlite3
 from typing import Any, Mapping, Sequence
 
-from .contracts import ContractError
+from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+)
 from .correction_review import assert_station_day_corrections_resolved
 from .source_policy import source_policy_reason
 from .settlement_time import (
@@ -16,6 +19,9 @@ from .settlement_time import (
 
 
 MAX_FORMAL_OBSERVATIONS_PER_SCOPE = 64
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 
 
 def _utc(value: Any, *, reason: str) -> datetime:
@@ -123,7 +129,18 @@ def load_resident_formal_observations(
         )
         if not (start <= valid_at < end):
             raise ContractError("resident_p1_observation_outside_window")
-        if committed_at > decision_at or valid_at > committed_at:
+        # Two different claims live in this gate.  ``committed_at <=
+        # decision_at`` is the as-of rule and stays absolute: nothing may be
+        # read before it existed.  ``valid_at <= committed_at`` was meant to
+        # catch a record back-dated into the future, but it also caught
+        # ordinary wire jitter -- a routine METAR is transmitted a few seconds
+        # before the minute it is stamped for, so SBGR (25 reports, up to
+        # 15.2s early) and MPMG fail-closed for the whole station-day and P1
+        # never ran there.  Allow the transmission lead, keep the rest.
+        if (
+            committed_at > decision_at
+            or valid_at - committed_at > _MAX_TRANSMISSION_LEAD
+        ):
             raise ContractError("resident_p1_observation_not_strict_asof")
         report_type = str(row[3] or "").strip().upper()
         if report_type not in {"METAR", "SPECI"}:

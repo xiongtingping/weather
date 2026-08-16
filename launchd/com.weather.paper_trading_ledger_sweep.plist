@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.paper_trading_ledger_sweep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/paper_trading_ledger_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- Every quarter hour, the same cadence the capture lane holds an open
+       event day to.  A seat is taken at the first stage moment that has a
+       book within 30 minutes of it, so a sweep interval wider than that
+       window can lose the seat entirely rather than merely date it late.
+       A full pass costs about 50 seconds and writes nothing when there is
+       nothing new. -->
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/paper_trading_ledger_sweep.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/paper_trading_ledger_sweep.err.log</string>
+</dict>
+</plist>

@@ -8,7 +8,12 @@ import math
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    ProbabilityEnvelope,
+    content_sha256,
+)
 from .materialization import materialize_p1
 from .metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
@@ -21,6 +26,11 @@ from .metar_trajectory import (
     compile_metar_trajectory_update_proof,
 )
 from .stages import STAGE_PRECEDENCE
+
+
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 
 
 def _parse_utc(value: str) -> datetime:
@@ -386,7 +396,11 @@ def compile_station_p1_packets(
         valid_at = _parse_utc(str(observation.get("valid_at_utc") or ""))
         if committed > compile_at:
             raise ContractError("p1_canonical_commit_not_strict_asof")
-        if valid_at > committed:
+        # Same split as the resident reader's as-of gate: the commit may not
+        # follow the decision, but a report's own nominal minute may sit a
+        # transmission lead ahead of its commit.  Both gates have to allow it
+        # or the second one re-closes the station-day the first just opened.
+        if valid_at - committed > _MAX_TRANSMISSION_LEAD:
             raise ContractError("p1_canonical_observation_time_order_invalid")
         try:
             reported_c = float(observation["reported_temperature_c"])
@@ -450,8 +464,51 @@ def compile_station_p1_packets(
             if isinstance(trajectory_artifact, Mapping)
             else None
         )
+        decision = max(
+            committed,
+            last_decision + timedelta(microseconds=1),
+        )
+        decision_text = _stamp(decision)
+        # The caller resolves one promoted artifact from the wall clock, but
+        # this loop replays the whole station-day: every observation gets its
+        # own decision time, and those walk backwards through the local-time
+        # buckets.  A promoted artifact is fitted for exactly one bucket and
+        # the proof refuses to be applied outside it, so handing the
+        # afternoon's artifact to the morning's observation raised
+        # ``metar_trajectory_local_time_bucket_mismatch`` and fail-closed the
+        # entire station-day (six stations on 2026-08-16, all of them at
+        # UTC+8 with a morning already behind them).  Out of its own bucket a
+        # promoted artifact has nothing fitted to say, which is the exact
+        # situation the identity fallback exists for.
+        # The hourly-curve method reads a conditional future-temperature
+        # curve off the root.  A root compiled before that curve existed --
+        # and on the event day itself the root is frozen from the day before,
+        # so it cannot be recompiled to grow one -- has nothing for it to
+        # read, and the proof raised
+        # ``metar_trajectory_root_future_curve_missing`` rather than
+        # degrading.  Same rule as the bucket: the promoted artifact governs
+        # only where it can actually be evaluated.
+        artifact_governs_root = explicit_artifact is not None and (
+            explicit_artifact.method_version
+            != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+            or bool(
+                root.lineage.get(
+                    "conditional_future_temperature_curve_json"
+                )
+            )
+        )
+        artifact_in_bucket = (
+            artifact_governs_root
+            and explicit_artifact.local_time_bucket
+            == _local_time_bucket(decision_text, root.settlement_timezone)
+        )
+        # The conditional/curve methods need three observations behind them
+        # before they may speak.  That minimum belongs to the promoted
+        # artifact, so it only applies on the steps that artifact actually
+        # governs; on a fallback step it would skip an observation the
+        # identity update was ready to consume.
         if (
-            explicit_artifact is not None
+            artifact_in_bucket
             and explicit_artifact.method_version
             in {
                 METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
@@ -460,21 +517,10 @@ def compile_station_p1_packets(
             and len(trajectory_prefix) < 3
         ):
             continue
-        decision = max(
-            committed,
-            last_decision + timedelta(microseconds=1),
-        )
         generation += 1
-        decision_text = _stamp(decision)
         governed_artifact = (
-            trajectory_artifact
-            if isinstance(
-                trajectory_artifact, MetarTrajectoryLikelihoodArtifact
-            )
-            else MetarTrajectoryLikelihoodArtifact.from_mapping(
-                trajectory_artifact
-            )
-            if isinstance(trajectory_artifact, Mapping)
+            explicit_artifact
+            if artifact_in_bucket
             else _fallback_trajectory_artifact(
                 root,
                 source_lane=str(

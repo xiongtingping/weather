@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -25,7 +25,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    content_sha256,
+)
 from bayes_basket_target.correction_review import (
     CLEAR_REFERENCE_ONLY,
     QUARANTINE_STATION_DAY,
@@ -265,7 +269,13 @@ def _observation_row(
         raise ContractError("awc_correction_review_report_type_invalid")
     valid_at = _utc("correction_valid_at", raw["valid_at"])
     committed_at = _utc("correction_committed_at", raw["canonical_committed_at"])
-    if valid_at > committed_at:
+    # Same transmission-lead allowance the P1 and settlement readers use.  A
+    # correction refused here never gets a review receipt, and no receipt
+    # means the station-day stays halted -- so this gate has to admit exactly
+    # what the other two do or it reopens the outage from the side.
+    if valid_at - committed_at > timedelta(
+        seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+    ):
         raise ContractError("awc_correction_review_valid_after_commit")
     if valid_at.astimezone(ZoneInfo(timezone_name)).date().isoformat() != event_date:
         return None

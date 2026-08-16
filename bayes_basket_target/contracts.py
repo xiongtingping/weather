@@ -45,6 +45,13 @@ PROBABILITY_MAX_STALE_SECONDS = 3 * 60 * 60
 # issuance, and a lapsed cadence there means the run everyone else has moved
 # on from -- the fix is to recompile off the newer run, which is available.
 STAGES_SERVABLE_PAST_CADENCE = frozenset({"P1"})
+# How far ahead of the moment it was committed a report's own nominal minute
+# may sit.  A routine METAR goes on the wire slightly before the minute it is
+# stamped for; measured lead across the roster is under 16 seconds (SBGR and
+# MPMG are the two that do it).  Reading that as a record dated into the
+# future fail-closed both stations for the whole day and P1 never ran there.
+# Past a minute it is no longer transmission jitter.
+MAX_REPORT_TRANSMISSION_LEAD_SECONDS = 60
 EPS = 1e-9
 
 

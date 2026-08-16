@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .contracts import ContractError, content_sha256
+from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    content_sha256,
+)
+
+
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 
 
 def _text(name: str, value: Any) -> str:
@@ -243,7 +252,15 @@ class CanonicalObservationEvent:
             raise ContractError("canonical_observation_revision_requires_review")
         observed = _timestamp("observed_at_utc", raw.get("observed_at_utc"))
         received = _timestamp("received_at_utc", raw.get("received_at_utc"))
-        if _parsed(observed) > _parsed(received):
+        # A routine report goes on the wire slightly before the minute it is
+        # stamped for, so observed may lead received by a transmission
+        # jitter.  Same allowance as the P1 reader and the settlement reader;
+        # all three have to agree or whichever is strictest closes the
+        # station-day for the other two.
+        if (
+            _parsed(observed) - _parsed(received)
+            > _MAX_TRANSMISSION_LEAD
+        ):
             raise ContractError("canonical_observation_received_before_observed")
         return cls(
             observation_id=_text("observation_id", raw.get("observation_id")),

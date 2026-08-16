@@ -16,6 +16,7 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
     assert_timestamp_not_future,
     canonical_json,
@@ -38,6 +39,9 @@ from .source_policy import (
 )
 
 
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 SCHEMA = "bayes_basket_target_resident_settlement_truth_v1"
 AUTHORITY_SCOPE = "FORMAL_NATIVE_ELIGIBLE"
 CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1 = (
@@ -279,7 +283,14 @@ def materialize_settled_station_truth(
             raise ContractError("settlement_truth_report_type_invalid")
         valid_at = _utc("settlement_truth_valid_at", row[2])
         committed_at = _utc("settlement_truth_committed_at", row[5])
-        if not (start <= valid_at < end) or valid_at > committed_at:
+        # P1 and settlement have to admit the same physical set or the stage
+        # is scored against evidence it was never allowed to read.  P1 allows
+        # a report's nominal minute to lead its commit by a transmission
+        # jitter, so this side allows exactly the same lead.
+        if (
+            not (start <= valid_at < end)
+            or valid_at - committed_at > _MAX_TRANSMISSION_LEAD
+        ):
             raise ContractError("settlement_truth_observation_time_invalid")
         if int(row[6] or 0) != 0:
             continue
