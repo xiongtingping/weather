@@ -1,16 +1,23 @@
 #!/bin/bash
 # Sweep newly-eligible stage seats into the paper ledger.
 #
-# The ledger opens a seat the first moment a stage can be entered with a book
-# to trade against, so the sweep has to run while the day is running.  It had
-# no schedule at all -- cron and launchd both had nothing -- and was only ever
-# invoked by hand.  On 2026-08-16 that left three stations (RKPK, CYYZ, KATL)
-# holding an eligible P1 moment with a fresh book and no seat, and 52 seats
-# across three event days appeared the moment it was finally run.
+# The ledger dates a seat from the first stage moment that had a book, all of
+# it read out of stored history, so a late sweep still records the right seat
+# at the right price -- what a missing sweep costs is a page that does not
+# know about it.  It had no schedule at all: cron and launchd both had
+# nothing, and it was only ever invoked by hand.  On 2026-08-16 that hid 52
+# seats across three event days until someone finally ran it.
 #
-# --backfill is append-only and idempotent: an already-recorded stage scope is
-# skipped, so re-running costs a scan and writes nothing.  --rebuild is the
+# --backfill is append-only and idempotent; an already-seated stage scope is
+# skipped, so a pass with nothing to do writes nothing.  --rebuild is the
 # destructive one and is never used here.
+#
+# Safe to run beside the resident: the half-minute scan is all reads, which in
+# WAL mode do not block a writer, and every insert is buffered into one short
+# burst at the end.  That matters because the resident deliberately gives up
+# on a busy database after five seconds rather than stall a production cadence
+# -- so a maintenance writer that holds the lock across its own scan does not
+# slow the resident down, it fail-closes P0 and P1 for that whole cycle.
 
 set -euo pipefail
 

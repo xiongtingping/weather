@@ -141,6 +141,16 @@ def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
     else:
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
     conn.execute("PRAGMA busy_timeout=60000")
+    if writable:
+        # Never checkpoint from here.  The WAL on this database sits past the
+        # 1000-page autocheckpoint threshold essentially always, so with the
+        # default every one of this pass's commits would try to fold a
+        # fifty-megabyte WAL into a ten-gigabyte database -- while the
+        # resident, whose own lock patience is five seconds, is trying to
+        # write.  That is how a read-only scorer took the P1 stage down with
+        # ``database is locked``.  Appending to the WAL and letting the owner
+        # of the database checkpoint on its own schedule costs nothing here.
+        conn.execute("PRAGMA wal_autocheckpoint=0")
     return conn
 
 
@@ -485,12 +495,30 @@ def _settled_bucket(
     return None
 
 
-def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
+def backfill(
+    conn: sqlite3.Connection,
+    *,
+    verbose: bool = False,
+    recent_days: int | None = None,
+) -> dict:
     ensure_schema(conn)
     truth = _truth(conn)
+    # A day whose history and book are both closed cannot grow a new seat, and
+    # re-deriving its refusals is what made the pass expensive: roughly two
+    # hundred scopes that will answer "no positive kelly" or "no book" forever
+    # were re-answered every run.  On a schedule that read is what the
+    # resident's WAL checkpoint waits on.  ``recent_days`` bounds an
+    # incremental pass to the window that can still change; a rebuild leaves
+    # it None and walks everything, because that is the pass whose equity
+    # actually compounds day over day.
     scopes = conn.execute(
         "SELECT DISTINCT station_id, event_date"
-        " FROM basket_probability_bridge_history ORDER BY event_date, station_id"
+        " FROM basket_probability_bridge_history"
+        " WHERE (?1 IS NULL OR event_date >= date("
+        "   (SELECT max(event_date) FROM basket_probability_bridge_history),"
+        "   '-' || ?1 || ' days'))"
+        " ORDER BY event_date, station_id",
+        (recent_days,),
     ).fetchall()
     counts: dict[str, int] = defaultdict(int)
     # Equity advances a day at a time, and every position opened on a day is
@@ -499,6 +527,8 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
     # ones beside it, which no book can do -- they are all opened before any
     # of them resolve.
     equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
+    pending_positions: list[tuple] = []
+    pending_settlements: list[tuple] = []
     by_day: dict[str, list[str]] = defaultdict(list)
     for station_id, event_date in scopes:
         by_day[str(event_date)].append(str(station_id))
@@ -506,16 +536,39 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
         day_pnl: dict[str, float] = defaultdict(float)
         day_staked: dict[str, float] = defaultdict(float)
         for station_id in sorted(by_day[event_date]):
+            # Ask the cheap question first.  Resolving a stage's opening
+            # distribution walks its whole history looking for the earliest
+            # decision that has a book, and doing that for scopes already
+            # seated was most of the pass: a steady-state sweep spent the
+            # better part of a minute re-deriving 268 answers it was about
+            # to throw away.  On a schedule beside the resident that long
+            # read is what a WAL checkpoint has to wait on, and the resident
+            # gives up after five seconds -- so the wasted work was not just
+            # slow, it fail-closed P0 and P1.
+            seated = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT stage FROM paper_trade_position"
+                    " WHERE station_id=? AND event_date=?",
+                    (station_id, event_date),
+                )
+            }
+            present = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT DISTINCT stage FROM basket_probability_bridge_history"
+                    " WHERE station_id=? AND event_date=?",
+                    (station_id, event_date),
+                )
+            }
+            if present and present <= seated:
+                counts["already_recorded"] += len(present)
+                continue
             stages = _stage_distributions(conn, station_id, event_date)
             if not stages:
                 continue
             for stage, payload in stages.items():
-                existing = conn.execute(
-                    "SELECT 1 FROM paper_trade_position"
-                    " WHERE station_id=? AND event_date=? AND stage=?",
-                    (station_id, event_date, stage),
-                ).fetchone()
-                if existing:
+                if stage in seated:
                     counts["already_recorded"] += 1
                     continue
                 priced = _quotes_at(
@@ -655,16 +708,7 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                     "stake_usdc": round(stake, 6),
                 }
                 position_id = "paper-pos-" + content_sha256(identity)[:24]
-                conn.execute(
-                    "INSERT OR IGNORE INTO paper_trade_position ("
-                    " position_id, station_id, event_date, stage,"
-                    " decision_at_utc, quote_observed_at_utc,"
-                    " ladder_center_bucket, window_buckets_json, window_size,"
-                    " win_probability, all_in_cost, edge, curve_rank,"
-                    " kelly_fraction, stake_usdc, shares,"
-                    " probabilities_json, prices_json, center_c,"
-                    " refused_window_count, content_sha256"
-                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                pending_positions.append(
                     (
                         position_id, station_id, event_date, stage,
                         payload["decision_at_utc"], observed_at,
@@ -681,16 +725,9 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                         payload.get("center_c"),
                         int(audit.get("center_refused_window_count") or 0),
                         content_sha256(identity),
-                    ),
+                    )
                 )
                 counts["positions"] += 1
-                # Land each seat as it is taken.  Batching the whole pass into
-                # one transaction held the write lock for the better part of a
-                # minute, and once this ran on a schedule beside the resident
-                # that cost the worker whole scopes to ``database is locked``.
-                # Every row is append-only and uniquely keyed, so a pass that
-                # stops early just leaves the rest for the next sweep.
-                conn.commit()
                 actual = truth.get((station_id, event_date))
                 if actual is None:
                     counts["open_unsettled"] += 1
@@ -713,13 +750,7 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                 center_error = None
                 if payload.get("center_c") is not None:
                     center_error = float(payload["center_c"]) - actual
-                conn.execute(
-                    "INSERT OR IGNORE INTO paper_trade_settlement ("
-                    " settlement_id, position_id, station_id, event_date, stage,"
-                    " settled_tmax_c, settled_bucket, hit, stake_usdc,"
-                    " payout_usdc, pnl_usdc, claimed_win_probability,"
-                    " center_error_c, bucket_distance, settled_at_utc"
-                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                pending_settlements.append(
                     (
                         "paper-set-" + content_sha256(
                             {**identity, "truth": actual}
@@ -730,15 +761,44 @@ def backfill(conn: sqlite3.Connection, *, verbose: bool = False) -> dict:
                         distance,
                         datetime.now(timezone.utc)
                         .isoformat().replace("+00:00", "Z"),
-                    ),
+                    )
                 )
                 counts["settlements"] += 1
-                conn.commit()
                 day_pnl[stage] += pnl
         # The day is over: realise it, then let the next day size off the
         # book it actually leaves behind.
         for stage in STAGES:
             equity[stage] = max(0.0, equity[stage] + day_pnl[stage])
+    # Every write in one short burst at the end.  The scan above reads most of
+    # a ten-gigabyte database and takes about half a minute; holding the write
+    # lock across it is what cost the resident whole cycles to
+    # ``database is locked``, and the resident is right to give up fast --
+    # "a concurrent maintenance writer must not consume a whole production
+    # cadence" is its own stated rule.  Reads do not block it, so the only
+    # thing that has to be brief is this, and a few dozen inserts are.
+    if pending_positions:
+        conn.executemany(
+            "INSERT OR IGNORE INTO paper_trade_position ("
+            " position_id, station_id, event_date, stage,"
+            " decision_at_utc, quote_observed_at_utc,"
+            " ladder_center_bucket, window_buckets_json, window_size,"
+            " win_probability, all_in_cost, edge, curve_rank,"
+            " kelly_fraction, stake_usdc, shares,"
+            " probabilities_json, prices_json, center_c,"
+            " refused_window_count, content_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            pending_positions,
+        )
+    if pending_settlements:
+        conn.executemany(
+            "INSERT OR IGNORE INTO paper_trade_settlement ("
+            " settlement_id, position_id, station_id, event_date, stage,"
+            " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+            " payout_usdc, pnl_usdc, claimed_win_probability,"
+            " center_error_c, bucket_distance, settled_at_utc"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            pending_settlements,
+        )
     conn.commit()
     return dict(counts)
 
@@ -860,8 +920,21 @@ def main() -> int:
             " a strategy that no longer runs."
         ),
     )
+    parser.add_argument(
+        "--recent-days",
+        type=int,
+        default=4,
+        help=(
+            "how far back an incremental --backfill looks, counted from the"
+            " newest event day the bridge knows.  Older days have a closed"
+            " history and a closed book, so re-reading them only costs the"
+            " lock.  0 means no bound.  --rebuild always walks everything."
+        ),
+    )
     parser.add_argument("--report", action="store_true")
     args = parser.parse_args()
+    if args.recent_days is not None and args.recent_days <= 0:
+        args.recent_days = None
     database = args.db.expanduser().resolve(strict=True)
     if args.backfill or args.rebuild:
         conn = _connect(database, writable=True)
@@ -870,7 +943,10 @@ def main() -> int:
             conn.execute("DELETE FROM paper_trade_settlement")
             conn.execute("DELETE FROM paper_trade_position")
             conn.commit()
-        counts = backfill(conn)
+        counts = backfill(
+            conn,
+            recent_days=None if args.rebuild else args.recent_days,
+        )
         print(json.dumps(
             {"schema": "paper_trading_backfill_v1", "counts": counts},
             ensure_ascii=False, sort_keys=True,

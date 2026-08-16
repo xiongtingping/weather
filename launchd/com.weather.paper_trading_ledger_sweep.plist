@@ -11,12 +11,11 @@
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/xiong/weather</string>
-  <!-- Every quarter hour, the same cadence the capture lane holds an open
-       event day to.  A seat is taken at the first stage moment that has a
-       book within 30 minutes of it, so a sweep interval wider than that
-       window can lose the seat entirely rather than merely date it late.
-       A full pass costs about 50 seconds and writes nothing when there is
-       nothing new. -->
+  <!-- Every quarter hour.  A pass is about half a minute of reading and
+       writes nothing when there is nothing new, and the resident runs
+       essentially back to back, so waiting for a quiet moment would mean
+       never running at all.  Overlapping is fine: see the script for why the
+       scan cannot take the lock away from the resident. -->
   <key>StartInterval</key>
   <integer>900</integer>
   <key>RunAtLoad</key>
