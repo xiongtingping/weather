@@ -2601,8 +2601,16 @@ def main() -> int:
             # can end that stage's silence.  It runs every cycle for one due
             # station and says exactly what it is short of; without this it
             # said so only to a receipt file nobody reads.
+            # ...off the worker that actually runs it.  The lane lives in
+            # ``refresh_resident_nwp``, which this daemon submits against
+            # ``forecast_worker``, not the decision-path one -- so reading the
+            # attribute from ``production_worker`` found nothing every cycle
+            # and the key stayed absent, which is the same silence this was
+            # written to end.
             taf_training = getattr(
-                production_worker, "_taf_revision_training_state", None
+                forecast_worker, "_taf_revision_training_state", None
+            ) or getattr(
+                forecast_worker, "_taf_revision_last_result", None
             )
             if taf_training:
                 state["taf_revision_training"] = taf_training
