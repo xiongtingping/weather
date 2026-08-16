@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -96,6 +98,31 @@ DUST_COST_FLOOR = 0.01
 # only bounds the read for a scope that will refuse all day, and the next sweep
 # starts the walk again from the top.
 MAX_ENTRY_CYCLES_PER_STAGE = 240
+# Which bucket-selection rule this sweep runs.  ``live`` is production's own
+# ``_support_windows`` ordering; the rest exist so a strategy question can be
+# answered against real ask depth and the kernel's own fill bound instead of
+# a notebook.  Four separate simulations of the live strategy returned
+# -17.2%, +24.3%, +73.5% and +146% against this ledger's -0.2% -- all wrong
+# the same way, because a penny leg's payout dominates any P&L it enters.
+WINDOW_STRATEGY = (
+    os.environ.get("PAPER_LEDGER_WINDOW_STRATEGY", "live").strip() or "live"
+)
+# How a chosen basket is assumed to be filled.  ``taker`` crosses the spread
+# and is the only one that is not a hypothesis: it is what the live path
+# does and what every number before 2026-08-17 was measured under.
+#
+# The maker modes answer "what if we posted instead", and they are an upper
+# bound, not a forecast.  A resting bid fills only when someone chooses to
+# sell into it, which is adverse by construction -- the fills you get are
+# the ones the other side wanted to give you.  Nothing in a depth snapshot
+# says which of our orders would have filled, so these runs assume all of
+# them do and should be read as "the best this could possibly be worth".
+# They are worth measuring because the spread is large: 27.3% of ask at the
+# median, and the whole of the book's 8.6% vig.
+EXECUTION_MODE = (
+    os.environ.get("PAPER_LEDGER_EXECUTION", "taker").strip() or "taker"
+)
+EXECUTION_MODES = ("taker", "maker_bid", "maker_improve", "mid")
 # Every structural rule a recorded seat depends on.  Positions are derived rows,
 # so a change to any of these makes the ones already in the table describe a
 # strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the
@@ -114,6 +141,8 @@ SELECTION_RULE_SHA256 = content_sha256({
     # runs.  These two travel with the fingerprint for the same reason the
     # ladder floor does.
     "window_ranking": "probability_mass",
+    "window_strategy": WINDOW_STRATEGY,
+    "execution_mode": EXECUTION_MODE,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
@@ -526,6 +555,215 @@ def _build_snapshot(
     return snapshot, probabilities, prices, depth
 
 
+# The strategies the comparison sweep can put in production's place.  Each
+# returns the same shape ``_support_windows`` does, so everything downstream
+# -- the positive-EV gate, Kelly, the depth walk, settlement -- is unchanged
+# and the only thing varying between runs is which buckets were chosen.
+#
+# Why these run through the ledger rather than a notebook: four separate
+# simulations of the live strategy returned -17.2%, +24.3%, +73.5% and
+# +146%, against the ledger's -0.2%.  Every one of them was wrong in the
+# same direction, because a penny leg's payout dominates any P&L it enters
+# and only the ledger walks real ask depth with the "average price under the
+# win probability" bound the kernel enforces.  Strategy questions are
+# answered here or not at all.
+WINDOW_STRATEGIES = (
+    "live",             # whatever _support_windows currently ranks first
+    "mass4",            # widest window holding the centre, most mass (D)
+    "mass3",
+    "peak4",            # most-mass contiguous run, centre not required (C)
+    "mu4",              # centred on the distribution mean (B)
+    "centre1",          # the ladder centre alone (E)
+    "mu1",              # the mean bucket alone (F)
+    "leg_positive_ev",  # every bucket whose own p exceeds its own ask (G)
+    "mass3_best_leg",   # take mass3's basket, then buy only its best p/c leg
+    "mass4_best_leg",
+)
+
+
+def _execution_price(row: Any) -> float | None:
+    """The per-share price this run assumes for one leg."""
+
+    if not row.ask_available:
+        return None
+    ask = float(row.ask_price) * (1.0 + FEE_RATE)
+    if EXECUTION_MODE == "taker":
+        return ask
+    bid = float(getattr(row, "bid_price", 0.0) or 0.0)
+    if bid <= 0.0:
+        # No resting bid to join or improve: a maker order here would be
+        # alone on its side, which is the one-sided quote this ledger
+        # already refuses to treat as a price.
+        return None
+    tick = float(getattr(row, "price_tick_size", 0.001) or 0.001)
+    if EXECUTION_MODE == "maker_bid":
+        price = bid
+    elif EXECUTION_MODE == "maker_improve":
+        price = min(bid + tick, ask)
+    elif EXECUTION_MODE == "mid":
+        price = (bid + ask) / 2.0
+    else:
+        raise ValueError(f"unknown execution mode: {EXECUTION_MODE}")
+    return price * (1.0 + FEE_RATE)
+
+
+def _maker_leg_prices(snapshot: Any, buckets: Sequence[str]) -> list[float]:
+    """The assumed resting price for each leg, in the seat's own order."""
+
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    prices = []
+    for bucket in buckets:
+        row = by_bucket.get(str(bucket))
+        price = None if row is None else _execution_price(row)
+        # A leg with no price here cannot have been seated: the strategy
+        # builder refuses those.  Falling back to the ask keeps the walk
+        # well-formed if a caller ever gets here another way.
+        prices.append(
+            float(price)
+            if price is not None
+            else float(row.ask_price) * (1.0 + FEE_RATE)
+        )
+    return prices
+
+
+def _window_row(
+    buckets: Sequence[str],
+    *,
+    snapshot: Any,
+    probabilities: Mapping[str, float],
+) -> dict[str, Any] | None:
+    """Price a chosen bucket set the way ``_support_windows`` prices one."""
+
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    ordered = [b for b in buckets if b in by_bucket]
+    if not ordered:
+        return None
+    quotes = []
+    for bucket in ordered:
+        quote = _execution_price(by_bucket[bucket])
+        if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
+            return None
+        quotes.append(quote)
+    win = sum(float(probabilities.get(b, 0.0)) for b in ordered)
+    price = sum(quotes)
+    return {
+        "buckets": tuple(
+            sorted(ordered, key=lambda b: by_bucket[b].ordinal)
+        ),
+        "win_probability": win,
+        "all_in_price": price,
+        "edge": win - price,
+        "log_growth_rank": None,
+        "is_incumbent": False,
+    }
+
+
+def _strategy_windows(
+    strategy: str,
+    *,
+    snapshot: Any,
+    probabilities: Mapping[str, float],
+    center: str,
+    ordinals: Mapping[str, int],
+) -> list[dict[str, Any]]:
+    """One candidate seat under the named strategy, priced and gated.
+
+    Returned as a list so the caller's ``priced_windows[0]`` and its
+    "nothing priced" refusal both keep working unchanged.
+    """
+
+    by_ordinal = sorted(probabilities, key=lambda b: ordinals[b])
+    count = len(by_ordinal)
+    if not count:
+        return []
+    index = {bucket: position for position, bucket in enumerate(by_ordinal)}
+    mass = lambda seg: sum(  # noqa: E731
+        float(probabilities.get(b, 0.0)) for b in seg
+    )
+    centre_at = index.get(center)
+    if centre_at is None:
+        centre_at = max(
+            range(count), key=lambda j: probabilities.get(by_ordinal[j], 0.0)
+        )
+    mean_at = sum(
+        j * float(probabilities.get(by_ordinal[j], 0.0)) for j in range(count)
+    ) / max(sum(probabilities.values()), 1e-12)
+
+    def contiguous(width: int, *, hold_centre: bool) -> list[str] | None:
+        width = min(width, count)
+        starts = range(0, count - width + 1)
+        if hold_centre:
+            starts = [
+                a for a in starts if a <= centre_at < a + width
+            ]
+        best = None
+        for start in starts:
+            seg = by_ordinal[start:start + width]
+            value = mass(seg)
+            if best is None or value > best[0]:
+                best = (value, seg)
+        return None if best is None else best[1]
+
+    if strategy == "mass4":
+        chosen = contiguous(4, hold_centre=True)
+    elif strategy == "mass3":
+        chosen = contiguous(3, hold_centre=True)
+    elif strategy == "peak4":
+        chosen = contiguous(4, hold_centre=False)
+    elif strategy == "mu4":
+        low = max(0, min(int(round(mean_at - 1.5)), count - 4))
+        chosen = by_ordinal[low:low + 4]
+    elif strategy == "centre1":
+        chosen = [by_ordinal[centre_at]]
+    elif strategy == "mu1":
+        chosen = [by_ordinal[max(0, min(int(round(mean_at)), count - 1))]]
+    elif strategy in ("mass3_best_leg", "mass4_best_leg"):
+        # The basket is chosen exactly as mass3/mass4 would, and has to clear
+        # the whole-basket gate downstream -- but the money goes to one leg.
+        # This separates "is this window the right region" from "is spreading
+        # across it worth what it costs".
+        width = 3 if strategy == "mass3_best_leg" else 4
+        seg = contiguous(width, hold_centre=True)
+        chosen = None
+        if seg:
+            by_bucket = {row.bucket: row for row in snapshot.buckets}
+            ranked = []
+            for bucket in seg:
+                row = by_bucket.get(bucket)
+                if row is None:
+                    continue
+                price = _execution_price(row)
+                if price is None or price < MINIMUM_LEG_ALL_IN_ASK:
+                    continue
+                ranked.append(
+                    (float(probabilities.get(bucket, 0.0)) / price, bucket)
+                )
+            if ranked:
+                chosen = [max(ranked)[1]]
+    elif strategy == "leg_positive_ev":
+        # Every bucket the model prices above the market, contiguity not
+        # required.  This is the one shape the live contract forbids, and
+        # the reason to measure it here rather than argue about it.
+        by_bucket = {row.bucket: row for row in snapshot.buckets}
+        chosen = [
+            bucket for bucket in by_ordinal
+            if bucket in by_bucket
+            and by_bucket[bucket].ask_available
+            and (_execution_price(by_bucket[bucket]) or 9.9)
+            >= MINIMUM_LEG_ALL_IN_ASK
+            and float(probabilities.get(bucket, 0.0))
+            > (_execution_price(by_bucket[bucket]) or 9.9)
+        ]
+    else:
+        raise ValueError(f"unknown window strategy: {strategy}")
+    if not chosen:
+        return []
+    row = _window_row(
+        chosen, snapshot=snapshot, probabilities=probabilities
+    )
+    return [] if row is None else [row]
+
+
 def _kelly_stake(
     *, win_probability: float, cost: float, equity: float
 ) -> tuple[float, float]:
@@ -824,6 +1062,14 @@ def backfill(
                         if row.get("all_in_price") is not None
                         and row.get("edge") is not None
                     ]
+                    if WINDOW_STRATEGY != "live":
+                        priced_windows = _strategy_windows(
+                            WINDOW_STRATEGY,
+                            snapshot=snapshot,
+                            probabilities=probabilities,
+                            center=center,
+                            ordinals=ordinals,
+                        )
                     if not priced_windows:
                         refusal = (
                             "no_priced_window",
@@ -869,6 +1115,28 @@ def backfill(
                     legs = [
                         depth.get(bucket) or [] for bucket in seat["buckets"]
                     ]
+                    if EXECUTION_MODE != "taker":
+                        # A resting order fills at its own price, not by
+                        # walking the offer ladder, so the ladder is replaced
+                        # by a single level at the assumed maker price.  Its
+                        # size is still bounded by the visible offer depth --
+                        # not because a maker consumes it, but because it is
+                        # the only measure of how much trades here at all,
+                        # and letting the clip run past it would reproduce
+                        # the 24,213-shares-at-0.004 fiction in a new place.
+                        legs = [
+                            [{
+                                "price": float(price),
+                                "shares": sum(
+                                    level["shares"]
+                                    for level in (depth.get(bucket) or [])
+                                ),
+                            }]
+                            for bucket, price in zip(
+                                seat["buckets"],
+                                _maker_leg_prices(snapshot, seat["buckets"]),
+                            )
+                        ]
                     capacity = min(
                         (
                             sum(level["shares"] for level in leg)
