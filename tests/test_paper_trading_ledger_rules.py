@@ -28,6 +28,10 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
     assert "desired={center}," not in source
     # And it is trimmed to the cap before it can act as an incumbent.
     assert "if len(core) > MAXIMUM_SUPPORT_BUCKETS:" in source
+    # The floor is per stage: charter 50a gives P1 two rungs while the
+    # opening stages keep three.  Held to the opening floor, the ledger
+    # reported P1 refusing seats production takes.
+    assert "probability_stage=stage," in source
 
 
 def test_recorded_seats_obey_the_ladder_bounds() -> None:
@@ -47,7 +51,9 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     try:
         rows = conn.execute(
             "SELECT stage, window_size, COUNT(*) FROM paper_trade_position"
-            " WHERE decision_at_utc >= '2026-08-16T04:45:00Z'"
+            " WHERE selection_rule_sha256 = ("
+            "  SELECT selection_rule_sha256 FROM paper_trade_position"
+            "  ORDER BY decision_at_utc DESC LIMIT 1)"
             " GROUP BY stage, window_size"
         ).fetchall()
     except sqlite3.DatabaseError:
@@ -57,11 +63,13 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     # P1 converges: the ladder walks down to two rungs as the day resolves,
     # and further still once the hard bound leaves one live outcome (user
     # ruling, 2026-08-16).  The opening stages keep the three-rung floor.
-    # The cut is on decision time, not event date: a seat is bound by the
-    # rules in force when it was taken, and 2026-08-17's book holds seats
-    # decided on 08-15 under the old floor.  Clause 51 holds those to
-    # settlement, so re-reading them against today's rule would fail on
-    # history nobody can change.  04:45Z is when clause 52a/52b went live.
+    # The cut is on the rule stamp, not on decision time.  It used to be a
+    # timestamp because a rule change could not reach rows already recorded,
+    # so 2026-08-17's book kept five two-bucket P0 seats taken under the old
+    # floor and the assertion had to be narrowed around them.  Positions are
+    # derived rows: they now carry the rule set that produced them and the
+    # sweep re-derives any stamped with another, so every row under the
+    # current stamp is answerable to the current rule.
     for stage, size, count in rows:
         low = 1 if str(stage) == "P1" else 3
         assert low <= int(size) <= 4, (

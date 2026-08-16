@@ -55,6 +55,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    P1_MINIMUM_SUPPORT_BUCKETS,
     _support_windows,
 )
 
@@ -86,6 +87,43 @@ MAX_QUOTE_STALENESS_MINUTES = 30.0
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
 DUST_COST_FLOOR = 0.01
+# How many distinct books one stage may be offered before the pass gives up on
+# it for this sweep.  Production re-decides on every model update and opens the
+# moment its objective says yes, so the ledger walks the same sequence; the cap
+# only bounds the read for a scope that will refuse all day, and the next sweep
+# starts the walk again from the top.
+MAX_ENTRY_CYCLES_PER_STAGE = 240
+# Every structural rule a recorded seat depends on.  Positions are derived rows,
+# so a change to any of these makes the ones already in the table describe a
+# strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the
+# five two-bucket P0 seats written before it stayed on the page for a day,
+# because the pass skips a stage it has already recorded.  Rows stamped with a
+# different rule set are dropped and re-derived instead.
+SELECTION_RULE_SHA256 = content_sha256({
+    "schema": "paper_trade_selection_rule_v2",
+    "entry": "first_cycle_whose_objective_seats",
+    "fee_rate": FEE_RATE,
+    "initial_capital_usdc": INITIAL_CAPITAL_USDC,
+    "kelly_fraction": KELLY_FRACTION,
+    "max_quote_staleness_minutes": MAX_QUOTE_STALENESS_MINUTES,
+    "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
+    "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
+    "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
+    "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
+    "stage_floor": "per_stage",
+})
+# Why a station-day has no seat, in the ledger's own words.  The page used to
+# infer this from the absence of a row and could only ever say "the objective
+# looked and did not sit" -- true of one of these and wrong about the other
+# four, which are four different problems with four different owners.
+REFUSAL_REASONS = (
+    "no_book_at_decision",
+    "incomplete_book",
+    "selection_failed",
+    "no_priced_window",
+    "no_positive_kelly",
+    "no_depth",
+)
 
 _POSITION_DDL = """
 CREATE TABLE IF NOT EXISTS paper_trade_position (
@@ -113,6 +151,19 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   UNIQUE(station_id, event_date, stage)
 )
 """
+_REFUSAL_DDL = """
+CREATE TABLE IF NOT EXISTS paper_trade_refusal (
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),
+  reason TEXT NOT NULL CHECK(reason IN (%s)),
+  detail TEXT NOT NULL,
+  cycles_examined INTEGER NOT NULL,
+  last_decision_at_utc TEXT NOT NULL,
+  recorded_at_utc TEXT NOT NULL,
+  PRIMARY KEY(station_id, event_date, stage)
+)
+""" % ",".join("'%s'" % reason for reason in REFUSAL_REASONS)
 _SETTLEMENT_DDL = """
 CREATE TABLE IF NOT EXISTS paper_trade_settlement (
   settlement_id TEXT PRIMARY KEY,
@@ -157,6 +208,54 @@ def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_POSITION_DDL)
     conn.execute(_SETTLEMENT_DDL)
+    conn.execute(_REFUSAL_DDL)
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(paper_trade_position)")
+    }
+    if "selection_rule_sha256" not in columns:
+        # Rows written before the stamp existed were written under a rule set
+        # nothing records, so they carry the empty string and the sweep below
+        # re-derives them.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN selection_rule_sha256 TEXT NOT NULL DEFAULT ''"
+        )
+
+
+def _drop_superseded_positions(
+    conn: sqlite3.Connection, *, recent_days: int | None
+) -> int:
+    """Discard seats recorded under a rule set that no longer runs.
+
+    Only within the window this pass can re-derive: a row deleted outside it
+    would leave the page emptier than the ledger, which is the opposite of what
+    the stamp is for.
+    """
+
+    earliest = ""
+    if recent_days is not None:
+        floor = conn.execute(
+            "SELECT date((SELECT max(event_date)"
+            " FROM basket_probability_bridge_history), '-' || ?1 || ' days')",
+            (recent_days,),
+        ).fetchone()
+        earliest = str((floor or [""])[0] or "")
+    conn.execute(
+        "DELETE FROM paper_trade_settlement WHERE position_id IN ("
+        "  SELECT position_id FROM paper_trade_position"
+        "  WHERE selection_rule_sha256<>? AND event_date>=?)",
+        (SELECTION_RULE_SHA256, earliest),
+    )
+    cursor = conn.execute(
+        "DELETE FROM paper_trade_position"
+        " WHERE selection_rule_sha256<>? AND event_date>=?",
+        (SELECTION_RULE_SHA256, earliest),
+    )
+    dropped = int(cursor.rowcount or 0)
+    if dropped:
+        conn.commit()
+    return dropped
 
 
 def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
@@ -175,55 +274,76 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
     return out
 
 
-def _stage_distributions(
+def _stage_entry_candidates(
     conn: sqlite3.Connection,
     station_id: str,
     event_date: str,
-) -> dict[str, dict[str, Any]]:
-    """Opening snapshot per stage, with its buckets and decision time.
+    stage: str,
+):
+    """Every book this stage was offered, oldest first.
 
-    A stage is entered the first moment it can be: the earliest decision
-    that has a book to trade against.  Taking the *last* decision instead
-    dated every P0 entry to the close of its own event day -- WMKK's P0
-    ran 205 times on 2026-08-15 and the last landed 23:36 local, against a
-    book that had already resolved to 34C with every other bucket dumped
-    at one tick.  Buying those is not an edge, it is reading the answer
-    off the market and then claiming to have forecast it.
+    A stage is entered the first moment it *can* be, and the earliest decision
+    with a book is only the first thing that could count as that moment -- not
+    the only one.  Production re-decides on every model update (charter 46) and
+    opens whenever its objective seats a window, so a listing-window book too
+    wide to trade is a cycle it declines, not a day it forfeits.  Stopping at
+    the first priced decision made the ledger forfeit: measured on 2026-08-17 it
+    seated 12 of 43 stations, while walking the same sequence seats 23, and
+    every one of the eleven it had been dropping was a later cycle of a station
+    whose listing book alone was unaffordable -- ZGGG's whole book asked 2.09
+    for a partition worth 1.00 at 21:15, and 0.50 for the seated four rungs
+    nineteen minutes later.
+
+    There is no hindsight in that: each cycle is priced against the book as it
+    stood at that cycle, and the walk stops at the first one that seats rather
+    than choosing among them.  Taking the *last* decision would be the cheat --
+    WMKK's P0 ran 205 times on 2026-08-15 and the last landed 23:36 local,
+    against a book that had already resolved to 34C.
+
+    Consecutive decisions that resolve to the same book and the same
+    distribution cannot answer differently, so they are yielded once.
     """
 
-    stages: dict[str, dict[str, Any]] = {}
-    for stage in STAGES:
-        row = None
-        for candidate in conn.execute(
-            "SELECT history_id, decision_at_utc, envelope_json"
-            " FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND stage=?"
-            " ORDER BY decision_at_utc ASC",
-            (station_id, event_date, stage),
-        ):
-            if _quotes_at(
-                conn, station_id, event_date, str(candidate[1])
-            ) is not None:
-                row = candidate
-                break
-        if row is None:
+    seen: set[tuple] = set()
+    for history_id, decided, envelope_json in conn.execute(
+        "SELECT history_id, decision_at_utc, envelope_json"
+        " FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND stage=?"
+        " ORDER BY decision_at_utc ASC",
+        (station_id, event_date, stage),
+    ).fetchall():
+        priced = _quotes_at(conn, station_id, event_date, str(decided))
+        if priced is None:
             continue
+        quotes, observed_at = priced
         buckets = conn.execute(
             "SELECT bucket, ordinal, lower_c, upper_c, probability"
             " FROM basket_probability_bridge_bucket_probability"
             " WHERE history_id=? ORDER BY ordinal",
-            (row[0],),
+            (history_id,),
         ).fetchall()
         if not buckets:
             continue
-        lineage = (json.loads(row[2]) or {}).get("lineage") or {}
-        stages[stage] = {
-            "decision_at_utc": str(row[1]),
+        signature = (
+            observed_at,
+            tuple(
+                (str(row[0]), round(float(row[4]), 6)) for row in buckets
+            ),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+        yield {
+            "decision_at_utc": str(decided),
+            "quotes": quotes,
+            "observed_at": observed_at,
             "buckets": buckets,
             "center_bucket": str(lineage.get("model_center_bucket") or ""),
             "center_c": lineage.get("model_center_c"),
         }
-    return stages
+        if len(seen) >= MAX_ENTRY_CYCLES_PER_STAGE:
+            return
 
 
 def _quotes_at(
@@ -502,6 +622,7 @@ def backfill(
     recent_days: int | None = None,
 ) -> dict:
     ensure_schema(conn)
+    superseded = _drop_superseded_positions(conn, recent_days=recent_days)
     truth = _truth(conn)
     # A day whose history and book are both closed cannot grow a new seat, and
     # re-deriving its refusals is what made the pass expensive: roughly two
@@ -521,6 +642,8 @@ def backfill(
         (recent_days,),
     ).fetchall()
     counts: dict[str, int] = defaultdict(int)
+    if superseded:
+        counts["superseded_rule_dropped"] = superseded
     # Equity advances a day at a time, and every position opened on a day is
     # sized off the equity the book held when that day opened.  Compounding
     # within the day would let a station-day that settles first bankroll the
@@ -529,6 +652,7 @@ def backfill(
     equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
     pending_positions: list[tuple] = []
     pending_settlements: list[tuple] = []
+    pending_refusals: list[tuple] = []
     by_day: dict[str, list[str]] = defaultdict(list)
     for station_id, event_date in scopes:
         by_day[str(event_date)].append(str(station_id))
@@ -564,207 +688,276 @@ def backfill(
             if present and present <= seated:
                 counts["already_recorded"] += len(present)
                 continue
-            stages = _stage_distributions(conn, station_id, event_date)
-            if not stages:
-                continue
-            for stage, payload in stages.items():
+            for stage in (s for s in STAGES if s in present):
                 if stage in seated:
                     counts["already_recorded"] += 1
                     continue
-                priced = _quotes_at(
-                    conn, station_id, event_date, payload["decision_at_utc"]
-                )
-                if priced is None:
-                    counts["no_book_at_decision"] += 1
-                    continue
-                quotes, observed_at = priced
-                built = _build_snapshot(
-                    station_id=station_id,
-                    event_date=event_date,
-                    observed_at=observed_at,
-                    buckets=payload["buckets"],
-                    quotes=quotes,
-                )
-                if built is None:
-                    counts["incomplete_book"] += 1
-                    continue
-                snapshot, probabilities, prices, depth = built
-                center = payload["center_bucket"] or max(
-                    probabilities, key=lambda b: probabilities[b]
-                )
-                if center not in probabilities:
-                    center = max(probabilities, key=lambda b: probabilities[b])
-                ordinals = {
-                    row.bucket: int(row.ordinal)
-                    for row in snapshot.buckets
-                }
-                core = probability_core(
-                    probabilities,
-                    ordinals=ordinals,
-                    center_bucket=center,
-                )
-                # The production resolver converges its support to the cap
-                # before anything downstream sees it; the raw core has no
-                # such trim, and an over-wide one entered here as an
-                # incumbent -- which is exempt from the cap -- and seated a
-                # five-bucket basket the live rule forbids.  Trim from the
-                # far end of the centre, which is the order the resolver
-                # drops buckets in.
-                if len(core) > MAXIMUM_SUPPORT_BUCKETS:
-                    centre_ordinal = ordinals.get(center)
-                    if centre_ordinal is None:
-                        centre_ordinal = ordinals[
-                            max(probabilities, key=lambda b: probabilities[b])
-                        ]
-                    core = frozenset(
-                        sorted(
-                            core,
-                            key=lambda b: (
-                                abs(ordinals[b] - centre_ordinal),
-                                -probabilities.get(b, 0.0),
-                            ),
-                        )[:MAXIMUM_SUPPORT_BUCKETS]
+                # Why this stage has no seat, kept as the walk goes so the
+                # last cycle's answer is the one the page gets told.  It starts
+                # at "no book" because a stage with no priced decision yields
+                # nothing below and would otherwise be reported as nothing at
+                # all.
+                refusal = ("no_book_at_decision", "", 0, "")
+                opened = False
+                for payload in _stage_entry_candidates(
+                    conn, station_id, event_date, stage
+                ):
+                    cycles = refusal[2] + 1
+                    quotes = payload["quotes"]
+                    observed_at = payload["observed_at"]
+                    built = _build_snapshot(
+                        station_id=station_id,
+                        event_date=event_date,
+                        observed_at=observed_at,
+                        buckets=payload["buckets"],
+                        quotes=quotes,
                     )
-                try:
-                    windows, audit = _support_windows(
-                        snapshot=snapshot,
-                        # There is no incumbent here -- the ledger opens each
-                        # station-day fresh -- so the evidence support is the
-                        # mass-selected run the continuous-core resolver would
-                        # produce, which is what probability_core computes.
-                        # A bare centre made a one-bucket incumbent, and the
-                        # incumbent is exempt from every floor, so the ledger
-                        # seated windows the live rule refuses.
-                        desired=set(core) or {center},
-                        probabilities=probabilities,
-                        fee_rate=FEE_RATE,
-                        maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
-                        minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS,
+                    if built is None:
+                        missing = [
+                            str(row[0]) for row in payload["buckets"]
+                            if str(row[0]) not in quotes
+                        ]
+                        refusal = (
+                            "incomplete_book", ",".join(missing[:4]),
+                            cycles, payload["decision_at_utc"],
+                        )
+                        continue
+                    snapshot, probabilities, prices, depth = built
+                    center = payload["center_bucket"] or max(
+                        probabilities, key=lambda b: probabilities[b]
+                    )
+                    if center not in probabilities:
+                        center = max(
+                            probabilities, key=lambda b: probabilities[b]
+                        )
+                    ordinals = {
+                        row.bucket: int(row.ordinal)
+                        for row in snapshot.buckets
+                    }
+                    core = probability_core(
+                        probabilities,
+                        ordinals=ordinals,
                         center_bucket=center,
                     )
-                except Exception:  # noqa: BLE001 -- a scope that cannot price is skipped
-                    counts["selection_failed"] += 1
-                    continue
-                priced_windows = [
-                    row for row in windows
-                    if row.get("all_in_price") is not None
-                    and row.get("edge") is not None
-                ]
-                if not priced_windows:
-                    counts["no_priced_window"] += 1
-                    continue
-                seat = priced_windows[0]
-                # Sized off the book as it stood when the day opened, and
-                # never beyond the equity this day has left to deploy.
-                equity_at_open = equity[stage]
-                fraction, stake = _kelly_stake(
-                    win_probability=float(seat["win_probability"]),
-                    cost=float(seat["all_in_price"]),
-                    equity=equity_at_open,
-                )
-                stake = min(
-                    stake, max(0.0, equity_at_open - day_staked[stage])
-                )
-                if stake <= 0.0:
-                    counts["no_positive_kelly"] += 1
-                    continue
-                # A complete basket buys the same share count on every leg
-                # (atomicity), so the size is set by the thinnest ladder --
-                # and the price by how deep into each the clip has to reach.
-                # Charging the whole clip the top-of-book price is what let a
-                # 30-share offer at one tick "fill" 24,213 shares at 0.004
-                # when walking the ladders for that size costs 3.06 a set,
-                # three times anything the basket can pay out.
-                legs = [
-                    depth.get(bucket) or [] for bucket in seat["buckets"]
-                ]
-                capacity = min(
-                    (sum(level["shares"] for level in leg) for leg in legs),
-                    default=0.0,
-                )
-                filled = _fillable_size(
-                    legs=legs,
-                    win_probability=float(seat["win_probability"]),
-                    budget=stake,
-                    fee_rate=FEE_RATE,
-                    capacity=capacity,
-                )
-                if filled is None:
-                    counts["no_depth"] += 1
-                    continue
-                shares, stake = filled
-                # What the basket actually cost per set, which is the number
-                # every downstream P&L and edge reading has to be built on.
-                all_in_cost = stake / shares
-                if all_in_cost > float(seat["all_in_price"]) + 1e-9:
-                    counts["walked_book"] += 1
-                day_staked[stage] += stake
-                identity = {
-                    "station_id": station_id,
-                    "event_date": event_date,
-                    "stage": stage,
-                    "decision_at_utc": payload["decision_at_utc"],
-                    "window": list(seat["buckets"]),
-                    "stake_usdc": round(stake, 6),
-                }
-                position_id = "paper-pos-" + content_sha256(identity)[:24]
-                pending_positions.append(
-                    (
-                        position_id, station_id, event_date, stage,
-                        payload["decision_at_utc"], observed_at,
-                        str(audit.get("ladder_center_bucket") or center),
-                        json.dumps(list(seat["buckets"]), ensure_ascii=False),
-                        len(seat["buckets"]),
-                        float(seat["win_probability"]),
-                        all_in_cost,
-                        float(seat["win_probability"]) - all_in_cost,
-                        seat.get("log_growth_rank"),
-                        fraction, stake, shares,
-                        json.dumps(probabilities, ensure_ascii=False),
-                        json.dumps(prices, ensure_ascii=False),
-                        payload.get("center_c"),
-                        int(audit.get("center_refused_window_count") or 0),
-                        content_sha256(identity),
+                    # The production resolver converges its support to the cap
+                    # before anything downstream sees it; the raw core has no
+                    # such trim, and an over-wide one entered here as an
+                    # incumbent -- which is exempt from the cap -- and seated a
+                    # five-bucket basket the live rule forbids.  Trim from the
+                    # far end of the centre, which is the order the resolver
+                    # drops buckets in.
+                    if len(core) > MAXIMUM_SUPPORT_BUCKETS:
+                        centre_ordinal = ordinals.get(center)
+                        if centre_ordinal is None:
+                            centre_ordinal = ordinals[
+                                max(
+                                    probabilities,
+                                    key=lambda b: probabilities[b],
+                                )
+                            ]
+                        core = frozenset(
+                            sorted(
+                                core,
+                                key=lambda b: (
+                                    abs(ordinals[b] - centre_ordinal),
+                                    -probabilities.get(b, 0.0),
+                                ),
+                            )[:MAXIMUM_SUPPORT_BUCKETS]
+                        )
+                    try:
+                        windows, audit = _support_windows(
+                            snapshot=snapshot,
+                            # There is no incumbent here -- the ledger opens
+                            # each station-day fresh -- so the evidence support
+                            # is the mass-selected run the continuous-core
+                            # resolver would produce, which is what
+                            # probability_core computes.  A bare centre made a
+                            # one-bucket incumbent, and the incumbent is exempt
+                            # from every floor, so the ledger seated windows
+                            # the live rule refuses.
+                            desired=set(core) or {center},
+                            probabilities=probabilities,
+                            fee_rate=FEE_RATE,
+                            maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
+                            minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS,
+                            center_bucket=center,
+                            # P1 converges rather than opens, so charter 50a
+                            # gives it a floor of two while the opening stages
+                            # keep three.  Left unset the enumeration held P1
+                            # to the opening floor, which is a rule production
+                            # does not run -- the ledger would report a stage
+                            # refusing seats the live system takes.
+                            probability_stage=stage,
+                        )
+                    except Exception as exc:  # noqa: BLE001 -- scope skipped
+                        refusal = (
+                            "selection_failed", f"{type(exc).__name__}",
+                            cycles, payload["decision_at_utc"],
+                        )
+                        continue
+                    priced_windows = [
+                        row for row in windows
+                        if row.get("all_in_price") is not None
+                        and row.get("edge") is not None
+                    ]
+                    if not priced_windows:
+                        refusal = (
+                            "no_priced_window",
+                            "中心桶拒绝 %d · 桶数不足拒绝 %d" % (
+                                int(audit.get(
+                                    "center_refused_window_count") or 0),
+                                int(audit.get(
+                                    "short_refused_window_count") or 0),
+                            ),
+                            cycles, payload["decision_at_utc"],
+                        )
+                        continue
+                    seat = priced_windows[0]
+                    # Sized off the book as it stood when the day opened, and
+                    # never beyond the equity this day has left to deploy.
+                    equity_at_open = equity[stage]
+                    fraction, stake = _kelly_stake(
+                        win_probability=float(seat["win_probability"]),
+                        cost=float(seat["all_in_price"]),
+                        equity=equity_at_open,
                     )
-                )
-                counts["positions"] += 1
-                actual = truth.get((station_id, event_date))
-                if actual is None:
-                    counts["open_unsettled"] += 1
-                    continue
-                landed = _settled_bucket(payload["buckets"], actual)
-                if landed is None:
-                    counts["truth_outside_book"] += 1
-                    continue
-                settled_bucket, settled_ordinal = landed
-                hit = 1 if settled_bucket in set(seat["buckets"]) else 0
-                payout = shares if hit else 0.0
-                pnl = payout - stake
-                ordinals = {
-                    str(b): int(o) for b, o, _l, _u, _p in payload["buckets"]
-                }
-                distance = min(
-                    abs(ordinals[b] - settled_ordinal)
-                    for b in seat["buckets"]
-                )
-                center_error = None
-                if payload.get("center_c") is not None:
-                    center_error = float(payload["center_c"]) - actual
-                pending_settlements.append(
-                    (
-                        "paper-set-" + content_sha256(
-                            {**identity, "truth": actual}
-                        )[:24],
-                        position_id, station_id, event_date, stage,
-                        actual, settled_bucket, hit, stake, payout, pnl,
-                        float(seat["win_probability"]), center_error,
-                        distance,
-                        datetime.now(timezone.utc)
-                        .isoformat().replace("+00:00", "Z"),
+                    stake = min(
+                        stake, max(0.0, equity_at_open - day_staked[stage])
                     )
-                )
-                counts["settlements"] += 1
-                day_pnl[stage] += pnl
+                    if stake <= 0.0:
+                        refusal = (
+                            "no_positive_kelly",
+                            "概率 %.3f · 成本 %.3f" % (
+                                float(seat["win_probability"]),
+                                float(seat["all_in_price"]),
+                            ),
+                            cycles, payload["decision_at_utc"],
+                        )
+                        continue
+                    # A complete basket buys the same share count on every leg
+                    # (atomicity), so the size is set by the thinnest ladder --
+                    # and the price by how deep into each the clip has to
+                    # reach.  Charging the whole clip the top-of-book price is
+                    # what let a 30-share offer at one tick "fill" 24,213
+                    # shares at 0.004 when walking the ladders for that size
+                    # costs 3.06 a set, three times anything the basket can pay
+                    # out.
+                    legs = [
+                        depth.get(bucket) or [] for bucket in seat["buckets"]
+                    ]
+                    capacity = min(
+                        (
+                            sum(level["shares"] for level in leg)
+                            for leg in legs
+                        ),
+                        default=0.0,
+                    )
+                    filled = _fillable_size(
+                        legs=legs,
+                        win_probability=float(seat["win_probability"]),
+                        budget=stake,
+                        fee_rate=FEE_RATE,
+                        capacity=capacity,
+                    )
+                    if filled is None:
+                        refusal = (
+                            "no_depth", "最薄一档 %.0f 份" % capacity,
+                            cycles, payload["decision_at_utc"],
+                        )
+                        continue
+                    shares, stake = filled
+                    opened = True
+                    # What the basket actually cost per set, which is the
+                    # number every downstream P&L and edge reading has to be
+                    # built on.
+                    all_in_cost = stake / shares
+                    if all_in_cost > float(seat["all_in_price"]) + 1e-9:
+                        counts["walked_book"] += 1
+                    day_staked[stage] += stake
+                    identity = {
+                        "station_id": station_id,
+                        "event_date": event_date,
+                        "stage": stage,
+                        "decision_at_utc": payload["decision_at_utc"],
+                        "window": list(seat["buckets"]),
+                        "stake_usdc": round(stake, 6),
+                    }
+                    position_id = "paper-pos-" + content_sha256(identity)[:24]
+                    pending_positions.append(
+                        (
+                            position_id, station_id, event_date, stage,
+                            payload["decision_at_utc"], observed_at,
+                            str(audit.get("ladder_center_bucket") or center),
+                            json.dumps(
+                                list(seat["buckets"]), ensure_ascii=False
+                            ),
+                            len(seat["buckets"]),
+                            float(seat["win_probability"]),
+                            all_in_cost,
+                            float(seat["win_probability"]) - all_in_cost,
+                            seat.get("log_growth_rank"),
+                            fraction, stake, shares,
+                            json.dumps(probabilities, ensure_ascii=False),
+                            json.dumps(prices, ensure_ascii=False),
+                            payload.get("center_c"),
+                            int(audit.get("center_refused_window_count") or 0),
+                            content_sha256(identity),
+                            SELECTION_RULE_SHA256,
+                        )
+                    )
+                    counts["positions"] += 1
+                    counts["entry_cycle_%s" % (
+                        "first" if cycles == 1 else "later"
+                    )] += 1
+                    actual = truth.get((station_id, event_date))
+                    if actual is None:
+                        counts["open_unsettled"] += 1
+                        break
+                    landed = _settled_bucket(payload["buckets"], actual)
+                    if landed is None:
+                        counts["truth_outside_book"] += 1
+                        break
+                    settled_bucket, settled_ordinal = landed
+                    hit = 1 if settled_bucket in set(seat["buckets"]) else 0
+                    payout = shares if hit else 0.0
+                    pnl = payout - stake
+                    settled_ordinals = {
+                        str(b): int(o)
+                        for b, o, _l, _u, _p in payload["buckets"]
+                    }
+                    distance = min(
+                        abs(settled_ordinals[b] - settled_ordinal)
+                        for b in seat["buckets"]
+                    )
+                    center_error = None
+                    if payload.get("center_c") is not None:
+                        center_error = float(payload["center_c"]) - actual
+                    pending_settlements.append(
+                        (
+                            "paper-set-" + content_sha256(
+                                {**identity, "truth": actual}
+                            )[:24],
+                            position_id, station_id, event_date, stage,
+                            actual, settled_bucket, hit, stake, payout, pnl,
+                            float(seat["win_probability"]), center_error,
+                            distance,
+                            datetime.now(timezone.utc)
+                            .isoformat().replace("+00:00", "Z"),
+                        )
+                    )
+                    counts["settlements"] += 1
+                    day_pnl[stage] += pnl
+                    break
+                if not opened:
+                    counts[refusal[0]] += 1
+                    pending_refusals.append(
+                        (
+                            station_id, event_date, stage, refusal[0],
+                            refusal[1], refusal[2], refusal[3],
+                            datetime.now(timezone.utc)
+                            .isoformat().replace("+00:00", "Z"),
+                        )
+                    )
         # The day is over: realise it, then let the next day size off the
         # book it actually leaves behind.
         for stage in STAGES:
@@ -785,8 +978,8 @@ def backfill(
             " win_probability, all_in_cost, edge, curve_rank,"
             " kelly_fraction, stake_usdc, shares,"
             " probabilities_json, prices_json, center_c,"
-            " refused_window_count, content_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " refused_window_count, content_sha256, selection_rule_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:
@@ -798,6 +991,29 @@ def backfill(
             " center_error_c, bucket_distance, settled_at_utc"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_settlements,
+        )
+    # A refusal is the current answer for a scope, not an event log: the next
+    # sweep re-walks it and may seat where this one did not, so the row is
+    # replaced rather than appended.
+    if pending_refusals:
+        conn.executemany(
+            "INSERT INTO paper_trade_refusal ("
+            " station_id, event_date, stage, reason, detail,"
+            " cycles_examined, last_decision_at_utc, recorded_at_utc"
+            ") VALUES (?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(station_id,event_date,stage) DO UPDATE SET"
+            "  reason=excluded.reason, detail=excluded.detail,"
+            "  cycles_examined=excluded.cycles_examined,"
+            "  last_decision_at_utc=excluded.last_decision_at_utc,"
+            "  recorded_at_utc=excluded.recorded_at_utc",
+            pending_refusals,
+        )
+    # A scope that seated has no refusal to explain any more.
+    if pending_positions:
+        conn.executemany(
+            "DELETE FROM paper_trade_refusal"
+            " WHERE station_id=? AND event_date=? AND stage=?",
+            [(row[1], row[2], row[3]) for row in pending_positions],
         )
     conn.commit()
     return dict(counts)
@@ -942,6 +1158,7 @@ def main() -> int:
             ensure_schema(conn)
             conn.execute("DELETE FROM paper_trade_settlement")
             conn.execute("DELETE FROM paper_trade_position")
+            conn.execute("DELETE FROM paper_trade_refusal")
             conn.commit()
         counts = backfill(
             conn,

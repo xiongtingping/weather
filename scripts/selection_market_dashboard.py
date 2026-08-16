@@ -287,6 +287,28 @@ def build_payload(db: Path) -> dict[str, Any]:
         (STATS_START_EVENT_DATE,),
     ):
         taf_tx[(str(station), str(day))] = float(value)
+    # Why the ledger did not seat, in its own words rather than the page's
+    # guess.  Absence used to be read off two existence checks, so every scope
+    # with a probability and a book was reported as "the objective looked and
+    # did not sit" -- true of one refusal and wrong about the four others,
+    # including the thirteen 2026-08-17 stations whose every admissible window
+    # priced above the model and the three whose book never reached the table.
+    refusals: dict[tuple[str, str, str], dict[str, Any]] = {}
+    try:
+        for station, day, stage, reason, detail, cycles in conn.execute(
+            "SELECT station_id, event_date, stage, reason, detail,"
+            " cycles_examined FROM paper_trade_refusal WHERE event_date >= ?",
+            (STATS_START_EVENT_DATE,),
+        ):
+            refusals[(str(station), str(day), str(stage))] = {
+                "reason": str(reason),
+                "detail": str(detail or ""),
+                "cycles_examined": int(cycles or 0),
+            }
+    except sqlite3.DatabaseError:
+        # The table arrives with the ledger's next sweep; until then the page
+        # falls back to the existence checks below.
+        refusals = {}
     # P1 re-solves as observations arrive, so its rung moves during the day.
     p1_history: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for station, day, decided, envelope_json in conn.execute(
@@ -313,6 +335,10 @@ def build_payload(db: Path) -> dict[str, Any]:
             "taf_tx_c": taf_tx.get((station, day)),
             "p1_history": p1_history.get((station, day), [])[-12:],
             "stages": {},
+        }
+        entry["refusals"] = {
+            stage: refusals.get((station, day, stage))
+            for stage in ("P0", "P0-M", "P1")
         }
         for stage in ("P0", "P0-M", "P1"):
             row = seated.get((station, day, stage))
@@ -350,21 +376,28 @@ def build_payload(db: Path) -> dict[str, Any]:
             if settled else None
         )
         if entry["seated_stage_count"] == 0:
-            has_probability = conn.execute(
-                "SELECT 1 FROM basket_probability_bridge_history"
-                " WHERE station_id=? AND event_date=? LIMIT 1",
-                (station, day),
-            ).fetchone() is not None
-            has_book = conn.execute(
-                "SELECT 1 FROM basket_official_ws_snapshot"
-                " WHERE station_id=? AND event_date=? LIMIT 1",
-                (station, day),
-            ).fetchone() is not None
-            entry["absent_reason"] = (
-                "no_probability" if not has_probability
-                else ("no_market_book" if not has_book
-                      else "no_seat_taken")
+            recorded = entry["refusals"].get("P0") or next(
+                (v for v in entry["refusals"].values() if v), None
             )
+            if recorded is not None:
+                entry["absent_reason"] = recorded["reason"]
+                entry["absent_detail"] = recorded["detail"]
+            else:
+                has_probability = conn.execute(
+                    "SELECT 1 FROM basket_probability_bridge_history"
+                    " WHERE station_id=? AND event_date=? LIMIT 1",
+                    (station, day),
+                ).fetchone() is not None
+                has_book = conn.execute(
+                    "SELECT 1 FROM basket_official_ws_snapshot"
+                    " WHERE station_id=? AND event_date=? LIMIT 1",
+                    (station, day),
+                ).fetchone() is not None
+                entry["absent_reason"] = (
+                    "no_probability" if not has_probability
+                    else ("no_market_book" if not has_book
+                          else "no_seat_taken")
+                )
         roster.append(entry)
 
     # Aggregates over credible fills only; a sub-one-cent basket has an EV

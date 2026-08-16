@@ -3532,6 +3532,68 @@ class TargetProductionWorker:
                 scopes.append(item)
         return scopes
 
+    def _taf_revision_cursor_path(self) -> Path:
+        return (
+            self.nwp_runtime_root
+            / "taf_revision_training"
+            / "rotation_cursor.json"
+        )
+
+    def _taf_revision_cursor(self, *, as_of_utc: str) -> int:
+        """Where the station rotation left off, across restarts.
+
+        The rotation used to live only on the instance, so every restart sent
+        it back to the first station.  This daemon restarts far more often
+        than one pass takes -- measured 2026-08-16: roughly one restart every
+        25 minutes against a pass of about 45 -- which made the tail of the
+        alphabet unreachable in principle, not merely slow.  The two stations
+        with evidence ready to fit both sit in that tail.
+        """
+
+        cached = getattr(self, "_taf_revision_station_cursor", None)
+        if cached is not None:
+            return int(cached)
+        resume = ""
+        try:
+            state = load_bounded_json(self._taf_revision_cursor_path())
+            if isinstance(state, Mapping):
+                resume = str(state.get("next_station_id") or "")
+        except Exception:
+            resume = ""
+        # By name, not by index: the allowlist is not a fixed-length thing,
+        # and resuming a stale index would silently skip or repeat a station
+        # whenever the roster changed.
+        cursor = (
+            self.station_allowlist.index(resume)
+            if resume in self.station_allowlist
+            else 0
+        )
+        self._taf_revision_station_cursor = cursor
+        return cursor
+
+    def _advance_taf_revision_cursor(self, cursor: int) -> None:
+        self._taf_revision_station_cursor = cursor
+        if not self.station_allowlist:
+            return
+        try:
+            path = self._taf_revision_cursor_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_bounded_json_if_changed(
+                path,
+                {
+                    "schema": (
+                        "bayes_basket_target_taf_revision_rotation_v1"
+                    ),
+                    "next_station_id": self.station_allowlist[
+                        cursor % len(self.station_allowlist)
+                    ],
+                },
+            )
+        except Exception:
+            # A rotation that cannot be written is a slower rotation, never a
+            # stopped one.  The in-memory cursor still advances this run.
+            pass
+
     @staticmethod
     def _taf_rolling_accumulation(
         rolling_path: Path,
@@ -3654,7 +3716,7 @@ class TargetProductionWorker:
         inflight = getattr(self, "_taf_revision_inflight", None)
         if inflight is not None and not inflight.done():
             return {"state": "IN_FLIGHT", **boundary}
-        cursor = int(getattr(self, "_taf_revision_station_cursor", 0))
+        cursor = self._taf_revision_cursor(as_of_utc=as_of_utc)
         throttle: dict[str, float] = getattr(
             self, "_taf_revision_attempts", None
         ) or {}
@@ -3680,14 +3742,14 @@ class TargetProductionWorker:
                 continue
             if due:
                 chosen = (station, scope)
-                self._taf_revision_station_cursor = (
-                    cursor + offset + 1
-                ) % len(self.station_allowlist)
+                self._advance_taf_revision_cursor(
+                    (cursor + offset + 1) % len(self.station_allowlist)
+                )
                 break
         if chosen is None:
-            self._taf_revision_station_cursor = (
-                cursor + 1
-            ) % len(self.station_allowlist)
+            self._advance_taf_revision_cursor(
+                (cursor + 1) % len(self.station_allowlist)
+            )
             return {"state": "NOT_DUE", **boundary}
         station, scope = chosen
         throttle[station] = now_mono
@@ -10009,154 +10071,176 @@ class TargetProductionWorker:
                 if isinstance(market_snapshot, Mapping) and isinstance(
                     compiled_plan, Mapping
                 ):
-                    # Its own savepoint: a plan that fails partway through the
-                    # bundle must leave no half-written cycle behind for the
-                    # preliminary record that follows it.
+                    # Two savepoints, because two different kinds of thing are
+                    # written here.  The evidence bundle is the book as it
+                    # stood; the stage open is a trading decision about it.
+                    # They used to share one, so every stage-open refusal
+                    # rolled the quote back out with it -- and a station whose
+                    # opens all refuse then has no book at all.  Measured
+                    # 2026-08-16: KORD, KSEA and ZUUU each refused every
+                    # 2026-08-17 open on
+                    # ``stage_evidence_intent_outside_bound`` -- a legitimate
+                    # refusal, the intent sat outside the hard bound -- and
+                    # between them wrote zero rows to
+                    # basket_official_ws_snapshot for that day while the
+                    # publisher held all 11 tokens of each live.  The forward
+                    # book is ephemeral: the quote that was rolled back cannot
+                    # be fetched again, so the refusal cost the audit, the
+                    # replay and the paper ledger a day of market history
+                    # apiece.  Same rule the zero-budget compile above already
+                    # follows: evidence is recorded whether or not the book can
+                    # act on it.
+                    #
+                    # The stage open still binds to *persisted* rows -- the
+                    # forward validation joins the quote by snapshot_id and the
+                    # inventory/order state by version -- so the bundle has to
+                    # be committed before it, not merely attempted beside it.
+                    # A forward day has no resident ingress writing that trio,
+                    # and _insert_once makes the write idempotent across
+                    # recompiles of the same quote version.
+                    quote_raw = dict(market_snapshot)
+                    quote_raw[
+                        "quote_freshness_policy_sha256"
+                    ] = QuoteFreshnessPolicy.from_mapping(
+                        activation.get("quote_freshness_policy")
+                    ).content_sha256
+                    zero_by_bucket = {
+                        str(entry.get("bucket") or ""): 0.0
+                        for entry in (
+                            market_snapshot.get("buckets") or ()
+                        )
+                    }
+                    evidence_scope = {
+                        "station_id": str(
+                            market_snapshot.get("station_id") or ""
+                        ),
+                        "event_date": str(
+                            market_snapshot.get("event_date") or ""
+                        ),
+                        "settlement_timezone": str(
+                            market_snapshot.get("settlement_timezone") or ""
+                        ),
+                        "observed_at": str(
+                            market_snapshot.get("quote_observed_at") or ""
+                        ),
+                    }
+                    inventory_raw = {
+                        **evidence_scope,
+                        "inventory_snapshot_id": (
+                            "p0presel-inv-"
+                            + str(market_snapshot.get("quote_version") or "")
+                        ),
+                        # The snapshot id already varies per quote -- a new
+                        # quote is a new observation, with its own observed_at
+                        # -- but the version did not, so every quote added a
+                        # row that the reader, which resolves by (station, day,
+                        # version), then found two of.  That is the ambiguity
+                        # that blocked eleven of thirteen forward scopes; the
+                        # version has to move with the observation it names.
+                        "inventory_version": _p0_preselection_scope_version(
+                            market_snapshot
+                        ),
+                        "complete": 1,
+                        "inventory_json": {
+                            "filled_by_bucket": zero_by_bucket,
+                        },
+                    }
+                    order_state_raw = {
+                        **evidence_scope,
+                        "order_state_snapshot_id": (
+                            "p0presel-ord-"
+                            + str(market_snapshot.get("quote_version") or "")
+                        ),
+                        # Same reasoning as the inventory version above: keyed
+                        # to the quote it observes.
+                        "order_state_version": (
+                            _p0_preselection_scope_version(market_snapshot)
+                        ),
+                        "known": 1,
+                        "order_state_json": {
+                            "pending_by_bucket": zero_by_bucket,
+                        },
+                    }
+                    # The quote row names the version the reader will look the
+                    # inventory up by, so it has to carry the same quote-keyed
+                    # value the rows were written under, not the shared one it
+                    # was copied with.
+                    quote_raw["inventory_version"] = (
+                        _p0_preselection_scope_version(market_snapshot)
+                    )
+                    quote_raw["order_state_version"] = (
+                        _p0_preselection_scope_version(market_snapshot)
+                    )
+                    # Evidence first, in a savepoint of its own.  Set before
+                    # the bundle is written, not after: the bundle refuses a
+                    # quote whose version does not match the inventory row
+                    # beside it, and the assignment sitting below the call left
+                    # every scope failing that check.
+                    evidence_written = False
                     try:
                         with _writer_transaction(
                             self.commit_conn,
-                            savepoint="basket_target_p0_stage_open",
+                            savepoint="basket_target_p0_market_evidence",
                         ):
-                            # The atomic open binds to persisted evidence
-                            # rows, not to the in-memory snapshot: the
-                            # forward validation joins the quote by
-                            # snapshot_id and the inventory/order state by
-                            # version.  A forward day has no resident
-                            # ingress writing that trio, so the stage-open
-                            # persists it here from its own snapshot -- the
-                            # inventory and order state are the opening
-                            # stage's true zeros, and _insert_once makes the
-                            # write idempotent across recompiles of the same
-                            # quote version.
-                            quote_raw = dict(market_snapshot)
-                            quote_raw[
-                                "quote_freshness_policy_sha256"
-                            ] = QuoteFreshnessPolicy.from_mapping(
-                                activation.get("quote_freshness_policy")
-                            ).content_sha256
-                            zero_by_bucket = {
-                                str(entry.get("bucket") or ""): 0.0
-                                for entry in (
-                                    market_snapshot.get("buckets") or ()
-                                )
-                            }
-                            evidence_scope = {
-                                "station_id": str(
-                                    market_snapshot.get("station_id") or ""
-                                ),
-                                "event_date": str(
-                                    market_snapshot.get("event_date") or ""
-                                ),
-                                "settlement_timezone": str(
-                                    market_snapshot.get(
-                                        "settlement_timezone"
-                                    )
-                                    or ""
-                                ),
-                                "observed_at": str(
-                                    market_snapshot.get("quote_observed_at")
-                                    or ""
-                                ),
-                            }
-                            inventory_raw = {
-                                **evidence_scope,
-                                "inventory_snapshot_id": (
-                                    "p0presel-inv-"
-                                    + str(
-                                        market_snapshot.get(
-                                            "quote_version"
-                                        )
-                                        or ""
-                                    )
-                                ),
-                                # The snapshot id already varies per quote --
-                                # a new quote is a new observation, with its
-                                # own observed_at -- but the version did not,
-                                # so every quote added a row that the reader,
-                                # which resolves by (station, day, version),
-                                # then found two of.  That is the ambiguity
-                                # that blocked eleven of thirteen forward
-                                # scopes; the version has to move with the
-                                # observation it names.
-                                "inventory_version": _p0_preselection_scope_version(
-                                    market_snapshot
-                                ),
-                                "complete": 1,
-                                "inventory_json": {
-                                    "filled_by_bucket": zero_by_bucket,
-                                },
-                            }
-                            order_state_raw = {
-                                **evidence_scope,
-                                "order_state_snapshot_id": (
-                                    "p0presel-ord-"
-                                    + str(
-                                        market_snapshot.get(
-                                            "quote_version"
-                                        )
-                                        or ""
-                                    )
-                                ),
-                                # Same reasoning as the inventory version
-                                # above: keyed to the quote it observes.
-                                "order_state_version": (
-                                    _p0_preselection_scope_version(
-                                        market_snapshot
-                                    )
-                                ),
-                                "known": 1,
-                                "order_state_json": {
-                                    "pending_by_bucket": zero_by_bucket,
-                                },
-                            }
-                            # The quote row names the version the reader will
-                            # look the inventory up by, so it has to carry the
-                            # same quote-keyed value the rows were written
-                            # under, not the shared one it was copied with.
-                            quote_raw["inventory_version"] = (
-                                _p0_preselection_scope_version(market_snapshot)
-                            )
-                            quote_raw["order_state_version"] = (
-                                _p0_preselection_scope_version(market_snapshot)
-                            )
-                            # Set before the bundle is written, not after:
-                            # the bundle refuses a quote whose version does
-                            # not match the inventory row beside it, and the
-                            # assignment sitting below the call left every
-                            # scope failing that check.
                             insert_market_evidence_bundle(
                                 self.commit_conn,
                                 quote_raw,
                                 inventory_raw,
                                 order_state_raw,
                             )
-                            # The forward binding names the persisted rows by
-                            # content hash; recompute them through the same
-                            # builders the insert used.
-                            quote_raw["inventory_sha256"] = (
-                                build_confirmed_inventory_snapshot(
-                                    inventory_raw
-                                )["content_sha256"]
-                            )
-                            quote_raw["order_state_sha256"] = (
-                                build_order_state_snapshot(
-                                    order_state_raw
-                                )["content_sha256"]
-                            )
-                            opened = commit_production_candidate_atomic(
-                                self.commit_conn,
-                                compiled_plan=compiled_plan,
-                                market_snapshot=quote_raw,
-                                awc_observation_contract=None,
-                                truth_observation_revision_content_sha256="",
-                                bound=None,
-                                created_at_utc=evaluation_at_utc,
-                            )
+                        evidence_written = True
                     except (ContractError, AtomicLedgerError) as exc:
-                        opened = None
                         preselection_receipt[
-                            "stage_open_blocker"
+                            "market_evidence_blocker"
                         ] = f"{type(exc).__name__}:{exc}"
+                    # The forward binding names the persisted rows by content
+                    # hash; recompute them through the same builders the insert
+                    # used.
+                    quote_raw["inventory_sha256"] = (
+                        build_confirmed_inventory_snapshot(
+                            inventory_raw
+                        )["content_sha256"]
+                    )
+                    quote_raw["order_state_sha256"] = (
+                        build_order_state_snapshot(
+                            order_state_raw
+                        )["content_sha256"]
+                    )
+                    if not evidence_written:
+                        # The open binds to persisted rows, so without them it
+                        # cannot be attempted -- and that absence is the
+                        # blocker, named per charter 46 rather than left to the
+                        # preliminary record to imply.
+                        preselection_receipt["stage_open_blocker"] = (
+                            "stage_open_not_attempted:"
+                            "market_evidence_not_persisted"
+                        )
+                    else:
+                        # Its own savepoint: a plan that fails partway through
+                        # must leave no half-written cycle behind for the
+                        # preliminary record that follows it -- and now no
+                        # longer takes the book down with it.
+                        try:
+                            with _writer_transaction(
+                                self.commit_conn,
+                                savepoint="basket_target_p0_stage_open",
+                            ):
+                                opened = commit_production_candidate_atomic(
+                                    self.commit_conn,
+                                    compiled_plan=compiled_plan,
+                                    market_snapshot=quote_raw,
+                                    awc_observation_contract=None,
+                                    truth_observation_revision_content_sha256=(
+                                        ""
+                                    ),
+                                    bound=None,
+                                    created_at_utc=evaluation_at_utc,
+                                )
+                        except (ContractError, AtomicLedgerError) as exc:
+                            opened = None
+                            preselection_receipt[
+                                "stage_open_blocker"
+                            ] = f"{type(exc).__name__}:{exc}"
                 if opened is not None:
                     # The submission receipt is the only record of what
                     # happened at the exchange boundary -- which intents were

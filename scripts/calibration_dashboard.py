@@ -1003,13 +1003,35 @@ function coverage(){
 function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
+  // The ledger now records why it did not seat, so these are its own words
+  // rather than the page's guess.  The last three are what "未入座" used to
+  // cover indiscriminately, and they are three different problems: an empty
+  // shortlist is the market pricing above the model, a refused Kelly is the
+  // basket costing more than it can pay, and no depth is a book too thin to
+  // fill at any size.
   const REASON={no_probability:["无概率","这一天没有为该站算出概率"],
     no_market_book:["无盘口","有概率但没抓到可定价的市场"],
+    no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
+    incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
+    selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
+    no_priced_window:["无合格窗口","含中心桶且够长的窗口全是负边际——市场比模型贵"],
+    no_positive_kelly:["赔率不划算","有窗口，但成本高于胜率，Kelly 给出零仓位"],
+    no_depth:["盘口太薄","价格划算但挂单量填不满最小整篮"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
-  const cell=(s,extra)=>{
-    if(!s) return `<td class="muted">—${extra||""}</td>`;
+  // An empty stage cell used to be a dash and nothing else, so a station with
+  // no P0 basket looked identical whether the market was never quoted or the
+  // objective priced it and declined.  The refusal goes in the cell it
+  // belongs to.
+  const why=(r)=>{
+    if(!r) return "";
+    const lab=REASON[r.reason]||[r.reason,""];
+    return `<div class="muted" title="${h(lab[1])}">${h(lab[0])}</div>`+
+      (r.detail?`<div class="muted mono" style="font-size:11px">${h(r.detail)}</div>`:"");
+  };
+  const cell=(s,extra,refusal)=>{
+    if(!s) return `<td class="muted">—${why(refusal)}${extra||""}</td>`;
     const w=s.window.map(short).join("+");
     const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
     // "Dust offer" is trading jargon and reads as nothing in Chinese; the
@@ -1050,7 +1072,9 @@ function roster(){
     return `<tr>
       <td><div class="mono">${h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div></td>
-      ${cell(e.stages.P0)}${cell(e.stages["P0-M"],taf)}${cell(e.stages.P1,drift)}
+      ${cell(e.stages.P0,"",(e.refusals||{}).P0)}
+      ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"])}
+      ${cell(e.stages.P1,drift,(e.refusals||{}).P1)}
       <td>${side}${note}</td>
       <td>${p2(st.model_coverage_mean)}</td>
       <td class="mono">${n2(st.seat_ask_total_mean)}</td>
@@ -1068,9 +1092,13 @@ function roster(){
   const block=(day,open)=>{
     const rows=rs.filter(e=>e.event_date===day);
     const seated=rows.filter(e=>e.seated_stage_count>0).length;
+    // P0 counted on its own: it is the opening stage, so "how many stations
+    // got a basket today" is a question about P0 and the all-stage count
+    // answers it only by accident.
+    const p0=rows.filter(e=>e.stages.P0).length;
     return `<details class="card" ${open?"open":""}>
       <summary><b class="mono">${h(day)}</b>
-        <span class="muted">${rows.length} 站 · ${seated} 有座位</span></summary>
+        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}</span></summary>
       <div class="scroll" style="margin-top:10px"><table>
         <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
     </details>`;
@@ -1080,7 +1108,8 @@ function roster(){
   // Newest day open, everything older folded away beneath it.
   return `<h2>八、逐站明细与统计</h2>
   <p class="sub">每个事件日一组，全部 45 个站都在，包括没有座位的——没坐比坐了更值得看清原因。
-  每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率。最新一天默认展开，更早的日期折叠在下方。</p>
+  每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率；空格里写的是账本自己给出的拒绝理由，
+  不再统一算作「未入座」。最新一天默认展开，更早的日期折叠在下方。</p>
   <div class="why">${legend}</div>
   ${dates.map((day,index)=>block(day,index===0)).join("")}`;
 }
