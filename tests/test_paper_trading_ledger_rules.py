@@ -76,3 +76,76 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
             f"{count} {stage} seats recorded at {size} buckets, "
             f"outside [{low}, 4]"
         )
+
+
+def test_only_credible_fills_bankroll_the_book() -> None:
+    """Phantom wins must not size real seats.
+
+    A basket bought under ``DUST_COST_FLOOR`` is a one-sided tail quote, and
+    the report has always split the book on that line.  Sizing did not: the
+    daily compounding fed on the unsplit P&L, so 2026-08-13's dust -- +3713
+    (P0) and +3733 (P1) on baskets costing a tenth of a cent -- lifted equity
+    from about a thousand to 4615/4792 and the 2% per-scope cap sized
+    2026-08-15's seats at 73 USDC apiece instead of 20.  Every one of those
+    was a real fill losing real money at nearly four times its right size.
+
+    The invariant that catches it without re-running the sweep: replay the
+    compounding on credible settlements alone and no recorded stake may
+    exceed the per-scope cap against the equity its day opened with.
+    """
+
+    import sqlite3
+    from collections import defaultdict
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The two places the split has to bite: what compounds, and what the day
+    # is allowed to deploy.
+    assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
+    assert "if credible:\n                        day_staked[stage] += stake" in source
+    assert "if credible:\n                        day_pnl[stage] += pnl" in source
+
+    db = root / "data" / "bayes_basket_target_ssot.db"
+    if not db.is_file():
+        return
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
+    try:
+        rows = conn.execute(
+            "SELECT p.event_date, p.stage, p.stake_usdc, p.all_in_cost,"
+            " s.pnl_usdc"
+            " FROM paper_trade_position p"
+            " LEFT JOIN paper_trade_settlement s USING(position_id)"
+            " WHERE p.selection_rule_sha256 = ("
+            "  SELECT selection_rule_sha256 FROM paper_trade_position"
+            "  ORDER BY decision_at_utc DESC LIMIT 1)"
+            " ORDER BY p.event_date"
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return
+    finally:
+        conn.close()
+    if not rows:
+        return
+
+    initial, cap, floor = 1000.0, 0.02, 0.01
+    equity: dict[str, float] = defaultdict(lambda: initial)
+    by_day: dict[str, list] = defaultdict(list)
+    for event_date, stage, stake, cost, pnl in rows:
+        by_day[str(event_date)].append((str(stage), stake, cost, pnl))
+    for event_date in sorted(by_day):
+        realised: dict[str, float] = defaultdict(float)
+        for stage, stake, cost, pnl in by_day[event_date]:
+            opening = equity[stage]
+            assert float(stake) <= opening * cap + 1e-6, (
+                f"{stage} {event_date} staked {float(stake):.2f} against an "
+                f"opening equity of {opening:.2f} -- over the "
+                f"{cap:.0%} per-scope cap, which means the compounding fed "
+                f"on something the report calls a dust offer"
+            )
+            if pnl is not None and float(cost) >= floor:
+                realised[stage] += float(pnl)
+        for stage, amount in realised.items():
+            equity[stage] = max(0.0, equity[stage] + amount)

@@ -100,7 +100,9 @@ MAX_ENTRY_CYCLES_PER_STAGE = 240
 # because the pass skips a stage it has already recorded.  Rows stamped with a
 # different rule set are dropped and re-derived instead.
 SELECTION_RULE_SHA256 = content_sha256({
-    "schema": "paper_trade_selection_rule_v2",
+    "schema": "paper_trade_selection_rule_v3",
+    "compounding": "credible_fills_only",
+    "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
     "fee_rate": FEE_RATE,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
@@ -649,6 +651,18 @@ def backfill(
     # within the day would let a station-day that settles first bankroll the
     # ones beside it, which no book can do -- they are all opened before any
     # of them resolve.
+    #
+    # Only credible fills compound.  The report has always split the book at
+    # ``DUST_COST_FLOOR`` because a basket bought under a cent is a one-sided
+    # tail quote rather than a price anyone would fill, and a 0.001 leg that
+    # lands returns a thousand times its stake.  Sizing was still reading the
+    # unsplit number, so those phantom wins bankrolled the real ones: on
+    # 2026-08-13 dust manufactured +3713 (P0) and +3733 (P1), lifting equity
+    # from about a thousand to 4615/4792, and the 2% per-scope cap then sized
+    # 2026-08-15's seats at 73 USDC apiece instead of 20.  Dust seats are
+    # still recorded and still reported -- charter 35 buys the negative-EV leg
+    # and refusing one-sided quotes outright leaves a single tradable basket
+    # -- they just no longer set the size of anything.
     equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
     pending_positions: list[tuple] = []
     pending_settlements: list[tuple] = []
@@ -873,7 +887,15 @@ def backfill(
                     all_in_cost = stake / shares
                     if all_in_cost > float(seat["all_in_price"]) + 1e-9:
                         counts["walked_book"] += 1
-                    day_staked[stage] += stake
+                    # One book, one rule: a seat that does not compound does
+                    # not consume the day's budget either.  Charging dust
+                    # against a bankroll its own wins are barred from feeding
+                    # would let the phantom side crowd out the real one.
+                    credible = all_in_cost >= DUST_COST_FLOOR
+                    if credible:
+                        day_staked[stage] += stake
+                    else:
+                        counts["dust_fill_excluded_from_equity"] += 1
                     identity = {
                         "station_id": station_id,
                         "event_date": event_date,
@@ -946,7 +968,8 @@ def backfill(
                         )
                     )
                     counts["settlements"] += 1
-                    day_pnl[stage] += pnl
+                    if credible:
+                        day_pnl[stage] += pnl
                     break
                 if not opened:
                     counts[refusal[0]] += 1
