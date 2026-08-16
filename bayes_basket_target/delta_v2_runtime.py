@@ -120,6 +120,12 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
     return tuple(sorted(price for price in values if price > EPS))
 
 
+# The cheapest all-in ask a leg may carry and still be bought.  Below this a
+# quote is a one-sided tail offer rather than a price: it states no
+# probability, and its payout dominates whatever P&L it lands in.
+MINIMUM_LEG_ALL_IN_ASK = 0.01
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -139,9 +145,12 @@ def _support_windows(
     a second opinion on any of that.  Windows are drawn from the same admitted
     set, so nothing here can seat a bucket the core refused.
 
-    Ranking is by ``p - all_in_ask`` because that is the quantity the log
-    objective maximises anyway; it only orders the shortlist, and the seat is
-    decided by the objective itself on the full curve.
+    Ranking is by the window's probability mass.  It only orders the
+    shortlist; the seat is decided by the objective itself on the full curve.
+    Price enters as two floors rather than as the ranking -- the per-leg
+    minimum below, and the whole-basket edge requirement -- because any
+    ranking on belief-minus-price is maximised where model and market
+    disagree most, which is measured to be where this model is worst.
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
@@ -236,6 +245,7 @@ def _support_windows(
     )
     center_refused = 0
     short_refused = 0
+    leg_floor_refused = 0
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -347,6 +357,34 @@ def _support_windows(
             if len(window) < min_size:
                 short_refused += 1
                 continue
+            # Third floor: every leg must carry a price a market could
+            # plausibly have made.  A leg offered at a tenth of a cent is the
+            # known one-sided tail quote -- it does not state a probability,
+            # and buying it converts the basket into a lottery ticket whose
+            # payout dominates any P&L it appears in.  Measured over the
+            # settled book, every window whose cheapest leg was under 0.01
+            # returned +487% while all four dearer strata returned between
+            # -12% and -100%: the entire apparent edge of this strategy lived
+            # on those legs.  The floor is on the leg, not the basket,
+            # because a basket average hides exactly the case that matters --
+            # three fair legs plus one penny leg prices like a fair basket.
+            #
+            # The incumbent is not dropped by this, it is de-priced.  Dropping
+            # it would take "keep what we hold" off the menu entirely: the
+            # enumeration has already recorded the window as seen, so the
+            # append-the-missing-incumbent branch below cannot rescue it, and
+            # a scope holding a penny leg would silently lose its own support.
+            # A window with no price cannot be bought either way -- it is
+            # simply still visible, which is what an unquoted leg has always
+            # produced here.
+            if priced and any(
+                quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
+            ):
+                leg_floor_refused += 1
+                if not is_incumbent:
+                    continue
+                priced = False
+                edge = None
             # Second, friction: the all-in price already carries the fee, so an
             # edge smaller than tick-rounding across the legs is quantisation
             # noise, not signal.
@@ -394,6 +432,14 @@ def _support_windows(
         # exists to close, so it is appended here instead.
         quotes = [_all_in(bucket) for bucket in incumbent]
         priced = all(quote is not None for quote in quotes)
+        # The incumbent reaches the list without passing the loop's floors,
+        # but the leg floor is about what the quote *means*, not about which
+        # window earned its place -- an inherited support resting on a penny
+        # leg is the same lottery as a freshly enumerated one.
+        if priced and any(
+            quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
+        ):
+            priced = False
         price = sum(quote for quote in quotes if quote is not None)
         win = sum(float(probabilities[bucket]) for bucket in incumbent)
         incumbent_kl = None
@@ -414,18 +460,26 @@ def _support_windows(
             "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
         })
-    # An unpriced window has no edge to rank on, so it sorts last rather than
-    # being compared against numbers it does not have; the objective still
-    # scores it, and its own curve decides whether it is seated.
-    # Rank by the objective's own quantity: the curve score at optimal stake
-    # is the KL divergence between our belief and the market's implied odds
-    # (charter 35), so the shortlist order is the seat contest itself run on
-    # the cheap.  Raw edge over-ranks penny lotteries; KL prices the whole
-    # win/lose geometry.
+    # Rank by belief alone.  KL replaced raw edge here because raw edge
+    # over-ranks penny lotteries, and it does price the whole win/lose
+    # geometry -- but both are divergences between our belief and the
+    # market's, so both are maximised exactly where the two disagree most,
+    # and that is measured to be where this model is least reliable.  Over
+    # 158 settled seats the flank the divergence chose was cheaper than its
+    # mirror 96% of the time and the truth landed on the mirror 83%; of 123
+    # misses, 101 fell on the side the window had declined to extend toward
+    # (p = 3e-13).  Split by whether the model agreed with the direction the
+    # price implied, the same book hit 35% when it did and 13% when it did
+    # not.  Ordering by probability mass instead makes the ladder extend
+    # toward what the model believes, and leaves price to the two things
+    # that are properly price's job: the leg floor above, and the whole-basket
+    # positive-EV requirement below.  An unpriced window still sorts last --
+    # it has no basket to admit -- and the curve score still decides the seat
+    # among those shortlisted.
     windows.sort(
         key=lambda row: (
-            row["log_growth_rank"] is None,
-            -(row["log_growth_rank"] or 0.0),
+            row["all_in_price"] is None,
+            -float(row["win_probability"]),
             len(row["buckets"]),
             row["buckets"],
         )
@@ -441,6 +495,8 @@ def _support_windows(
         "policy_minimum_support_buckets": policy_min,
         "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
+        "leg_floor_refused_window_count": leg_floor_refused,
+        "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,

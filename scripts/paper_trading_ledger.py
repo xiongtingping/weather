@@ -9,10 +9,12 @@ own two tables.
 Faithfulness is the whole point, so the selection is not re-implemented
 here.  Each scope is priced from the same ``basket_official_ws_snapshot``
 rows production reads, run through the same ``_support_windows`` ladder
-enumeration, and seated on the same ordering: charter 35 establishes that
-the curve score at optimal stake is the KL divergence between belief and
-the market's implied odds, which is exactly the key the enumeration sorts
-by, so the head of that list is the seat.
+enumeration, and seated on the same ordering -- whatever that ordering
+currently is.  It was the KL divergence between belief and the market's
+implied odds until 2026-08-17, when the measured cost of ranking on any
+belief-minus-price quantity retired it in favour of probability mass; the
+head of the list is the seat either way, and this module deliberately does
+not know which key produced it.
 
 Each stage is scored as an independent entry rather than as one position
 adjusted three times.  Production opens at P0 and adjusts at P0-M and P1
@@ -55,6 +57,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
     _support_windows,
 )
@@ -100,11 +103,18 @@ MAX_ENTRY_CYCLES_PER_STAGE = 240
 # because the pass skips a stage it has already recorded.  Rows stamped with a
 # different rule set are dropped and re-derived instead.
 SELECTION_RULE_SHA256 = content_sha256({
-    "schema": "paper_trade_selection_rule_v3",
+    "schema": "paper_trade_selection_rule_v4",
     "compounding": "credible_fills_only",
     "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
     "fee_rate": FEE_RATE,
+    # The ledger replays production's own ``_support_windows``, so a change
+    # to how that ranks or filters is a change to what the ledger records --
+    # and rows written under the old one describe a strategy that no longer
+    # runs.  These two travel with the fingerprint for the same reason the
+    # ladder floor does.
+    "window_ranking": "probability_mass",
+    "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
     "max_quote_staleness_minutes": MAX_QUOTE_STALENESS_MINUTES,
