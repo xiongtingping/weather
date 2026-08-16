@@ -17,7 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    content_sha256,
+)
 from bayes_basket_target.metar_path_state import (
     PATH_STATE_SCHEMA,
     compile_conditional_metar_path_state,
@@ -640,9 +644,40 @@ def build_training_packet(
                 )
             ]
             if candidates:
-                cutoff = min(
-                    _parsed_utc(str(row.get("canonical_committed_at") or ""))
-                    for row in candidates
+                # Anchor on the *earliest report*, ordered by valid time, and
+                # take that one report's receipt.  Taking ``min`` over every
+                # candidate's ``canonical_committed_at`` was a different
+                # quantity: on days whose observations were backfilled, the
+                # receipt records when the row was written, not when the
+                # report existed, so the anchor jumped to the backfill.  WMKK
+                # 2026-08-04 anchored at 2026-08-10T09:27Z -- six days after
+                # its own event date, identically for all three buckets --
+                # which is neither the bucket it claims nor strictly as-of.
+                # The reconstruction already treats retained transport
+                # timestamps as transport rather than availability for the
+                # curve side; observations get the same treatment here.
+                anchor = min(
+                    candidates,
+                    key=lambda row: (
+                        _parsed_utc(str(row.get("valid_at") or "")),
+                        _parsed_utc(
+                            str(row.get("canonical_committed_at") or "")
+                        ),
+                    ),
+                )
+                # The later of the two keeps the fold strictly as-of on the
+                # live lane, where the receipt trails the report by seconds.
+                cutoff = max(
+                    _parsed_utc(str(anchor.get("valid_at") or "")),
+                    min(
+                        _parsed_utc(
+                            str(anchor.get("canonical_committed_at") or "")
+                        ),
+                        _parsed_utc(str(anchor.get("valid_at") or ""))
+                        + timedelta(
+                            seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+                        ),
+                    ),
                 )
                 prefix = [
                     row
