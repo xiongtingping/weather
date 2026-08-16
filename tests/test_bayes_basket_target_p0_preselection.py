@@ -775,3 +775,215 @@ def test_an_unfunded_station_still_records_its_market_evidence() -> None:
     # The skip this replaced must not come back.
     assert "if station_budget <= 0.0:" not in body
     assert "evidence" in body, "the reason must stay next to the code"
+
+
+def _activation() -> dict[str, object]:
+    """The target activation, for the one field the evidence row needs."""
+
+    return json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "trading"
+            / "bayes_basket_target_production_no_live_activation_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def _forward_evidence_schema(conn: sqlite3.Connection) -> None:
+    """Apply the three schema units the evidence bundle reads and writes."""
+
+    from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
+    from bayes_basket_target.ssot import apply_target_ssot_schema
+
+    apply_target_ssot_schema(conn)
+    apply_target_ledger_schema(conn)
+    apply_production_ssot_schema(conn)
+
+
+def _forward_market_snapshot(
+    *,
+    event_date: str = "2026-07-24",
+    observed_at: str = "2026-07-23T12:00:10Z",
+    planning_budget_usdc: float = 0.0,
+) -> dict[str, object]:
+    """One forward scope's book, built by the builder the compile uses."""
+
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at=observed_at
+    )
+    envelope.event_date = event_date
+    envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+    for row in registry_rows:
+        row["event_date"] = event_date
+    market = _market_snapshot(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=planning_budget_usdc,
+    )
+    market["cash_phase_input"] = {
+        "policy_version": "cash-phase-test",
+        "station_id": "ZUUU",
+        "current_phase": "HEAVY",
+        "event_date_local": event_date,
+        "observed_at_utc": market["quote_observed_at"],
+        "station_timezone": "America/New_York",
+        "checkpoint_id": "p0_cash_test",
+    }
+    return market
+
+
+def test_a_refused_compile_still_records_the_book_it_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plan may refuse; the observation it refused against still happened.
+
+    Measured 2026-08-16 12:06Z, one full 43-scope sweep: 24 scopes raised out
+    of ``compile_p0_preselection`` -- 14 on a sub-tick official price, 6 on a
+    regime that disagreed with the support, one each on an empty delta-v2
+    support, an incomplete quote manifest, an unadmitted support centre, and
+    a locked database -- and every one of them recorded no book at all,
+    because the only writer of ``basket_official_ws_snapshot`` on this path
+    sat downstream of the compile.  A forward quote missed is not
+    refetchable, so each of those was a day of market history lost for that
+    station.
+    """
+
+    from bayes_basket_target import production_worker
+
+    market = _forward_market_snapshot()
+    monkeypatch.setattr(
+        production_worker,
+        "compile_p0_market_evidence",
+        lambda *args, **kwargs: market,
+    )
+    worker = production_worker.TargetProductionWorker.__new__(
+        production_worker.TargetProductionWorker
+    )
+    with sqlite3.connect(":memory:") as conn:
+        _forward_evidence_schema(conn)
+        worker.conn = conn
+        worker.commit_conn = conn
+        worker._forward_market_evidence_last = None
+
+        receipt = worker._record_refused_compile_market_evidence(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+            registry_snapshot={},
+            ws_manifest={},
+            ws_quotes={},
+            planning_budget_usdc=0.0,
+            activation=_activation(),
+            compile_blocker=(
+                "ContractError:bucket_price_tick_size_outside_unit_interval"
+            ),
+        )
+
+        assert receipt["state"] == "COMMITTED"
+        assert receipt["wrote_quote"] is True
+        assert receipt["compile_blocker"].endswith(
+            "bucket_price_tick_size_outside_unit_interval"
+        )
+        assert worker._forward_market_evidence_last is receipt
+        rows = conn.execute(
+            "SELECT station_id,event_date FROM basket_official_ws_snapshot"
+        ).fetchall()
+        assert rows == [("ZUUU", "2026-07-24")]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_confirmed_inventory_snapshot"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_order_state_snapshot"
+        ).fetchone()[0] == 1
+        # No plan, no decision: this records the book, it does not forgive
+        # the compile.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_p0_preselection_plan"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM auto_trade_decisions"
+        ).fetchone()[0] == 0
+
+
+def test_recording_a_refused_book_never_replaces_the_refusal() -> None:
+    """The compile's blocker is the answer; the book is only the evidence.
+
+    An evidence write that cannot happen -- no writer, a locked database,
+    a book too stale to describe -- must leave the refusal on its way out
+    untouched, so the receipt carries the failure and the method returns.
+    """
+
+    from bayes_basket_target.production_worker import TargetProductionWorker
+
+    worker = TargetProductionWorker.__new__(TargetProductionWorker)
+    with sqlite3.connect(":memory:") as conn:
+        _forward_evidence_schema(conn)
+        worker.conn = conn
+        worker.commit_conn = None
+        worker._forward_market_evidence_last = None
+
+        receipt = worker._record_refused_compile_market_evidence(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+            registry_snapshot={},
+            ws_manifest={},
+            ws_quotes={},
+            planning_budget_usdc=0.0,
+            activation=_activation(),
+            compile_blocker="ContractError:regime_direction_mismatch",
+        )
+
+        assert receipt["state"] == "BLOCKED"
+        assert receipt["wrote_quote"] is False
+        assert "target_atomic_writer_not_injected" in (
+            receipt["market_evidence_blocker"]
+        )
+        assert receipt["compile_blocker"] == (
+            "ContractError:regime_direction_mismatch"
+        )
+
+
+def test_forward_evidence_rows_have_one_builder() -> None:
+    """Both paths write the same bytes for the same quote, or neither can.
+
+    ``insert_market_evidence_bundle`` deduplicates by snapshot id and rejects
+    a second row whose content hash disagrees.  A scope that recorded its
+    book on a refused compile and then compiled cleanly against the same
+    quote would fail on its own earlier evidence if the two paths built the
+    trio separately.
+    """
+
+    from bayes_basket_target.production_worker import (
+        _forward_market_evidence_rows,
+    )
+
+    market = _forward_market_snapshot()
+    first = _forward_market_evidence_rows(
+        market, quote_freshness_policy_sha256="c" * 64
+    )
+    second = _forward_market_evidence_rows(
+        market, quote_freshness_policy_sha256="c" * 64
+    )
+    assert first == second
+    quote_raw, inventory_raw, order_state_raw = first
+    assert quote_raw["inventory_version"] == (
+        inventory_raw["inventory_version"]
+    )
+    assert quote_raw["order_state_version"] == (
+        order_state_raw["order_state_version"]
+    )
+
+    worker = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert worker.count("_forward_market_evidence_rows(") == 3, (
+        "one definition, one call from the compiled path, one from the "
+        "refused path"
+    )
