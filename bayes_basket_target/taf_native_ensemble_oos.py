@@ -143,6 +143,15 @@ def resolve_native_live_contract(
             )
         if packet.get("probability_pathway") != P0_PROBABILITY_PATHWAY:
             continue
+        # The root being resolved is a P0 one, and the pathway alone does not
+        # say so: the native compiler stamps the same pathway on its P0-M
+        # stage packets, which carry no predecessor and so raise from the
+        # builder below.  One of those in the inbox therefore aborted this
+        # resolution for every station, not just its own -- and the inbox
+        # holds a station's P0-M packet in place of its P0 one once the day
+        # has moved on, which is exactly when the TAF gate needs to run.
+        if str(packet.get("stage") or "") != "P0":
+            continue
         envelope = build_probability_envelope(packet)
         lineage = envelope.lineage
         if (
