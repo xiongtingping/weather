@@ -485,8 +485,15 @@ def build_rolling_origin_native_oos(
     station_id: str,
     as_of_utc: str,
     required_blocks: int = MAX_BLOCKS,
+    require_oos_pass: bool = False,
 ) -> dict[str, Any]:
-    """Build up to three disjoint official-native OOS blocks without writes."""
+    """Build up to three disjoint official-native OOS blocks without writes.
+
+    ``require_oos_pass`` withholds a series whose blocks lost the strict-OOS
+    comparison.  It defaults off because the only consumer is P0-M, which
+    publishes on sample under the 2026-08-15 ruling; the losing verdict is
+    still recorded on each candidate.
+    """
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError("rolling_native_taf_foundation_schema_required")
@@ -504,6 +511,7 @@ def build_rolling_origin_native_oos(
     )
     candidates: list[dict[str, Any]] = []
     accumulating: list[dict[str, Any]] = []
+    waived: list[dict[str, Any]] = []
     caps = dict(DEFAULT_FAMILY_WEIGHT_CAPS)
     for (season_bin, lead_bucket), by_system in sorted(scoped.items()):
         for left, right in combinations(sorted(by_system), 2):
@@ -553,9 +561,34 @@ def build_rolling_origin_native_oos(
                 )
                 for block in plan["blocks"]
             ]
-            if any(candidate["state"] != "PRODUCTION_NO_LIVE_OOS_PASS" for candidate in block_candidates):
+            refused = [
+                candidate for candidate in block_candidates
+                if candidate["state"] != "PRODUCTION_NO_LIVE_OOS_PASS"
+            ]
+            if refused and require_oos_pass:
                 accumulating.append({**identity, "state": "OOS_REJECTED"})
                 continue
+            if refused:
+                # Ruling 2026-08-15: this series feeds P0-M only, and P0-M
+                # publishes on sample rather than on beating a baseline out
+                # of sample.  The refusal is recorded here rather than on the
+                # candidates -- those are content-addressed and adding a key
+                # to one breaks the hash every consumer verifies -- so a
+                # losing pair stays legible without withholding the series.
+                # P0's own lane does not run through here and keeps its
+                # strict admission.
+                waived.append({
+                    "season_bin": season_bin,
+                    "lead_bucket": lead_bucket,
+                    "selected_system_ids": [left, right],
+                    "refused_block_indexes": [
+                        int(item["rolling_origin_block"]["block_index"])
+                        for item in refused
+                    ],
+                    "refused_states": sorted({
+                        str(item["state"]) for item in refused
+                    }),
+                })
             candidates.extend(block_candidates)
     if len(candidates) > MAX_STATION_CANDIDATES:
         raise ContractError("rolling_native_taf_candidate_bound_exceeded")
@@ -569,6 +602,7 @@ def build_rolling_origin_native_oos(
         "minimum_taf_oos_sample_n": DEFAULT_MIN_HOLDOUT_DAYS * MIN_BLOCKS,
         "candidates": candidates,
         "accumulating": accumulating,
+        "oos_admission_waived": waived,
         "state": "READY" if candidates else "ACCUMULATING",
         "boundary": {
             "offline_only": True,

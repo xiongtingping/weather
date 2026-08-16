@@ -553,7 +553,13 @@ def evaluate_taf_native_ensemble_oos(
         and taf_metrics
         and taf_metrics["crps"] <= base_metrics["crps"] + 1e-12
     )
-    validated = bool(enough and nll_not_worse and crps_not_worse)
+    # Ruling 2026-08-15: P0-M publishes on sample, not on winning a contest.
+    # The metric comparison still runs and is still reported -- a stage that
+    # scores worse than its own baseline is a thing to see -- but it no
+    # longer withholds the artifact.  P0 is untouched by this and keeps its
+    # strict-OOS admission.
+    metric_gate_passed = bool(nll_not_worse and crps_not_worse)
+    validated = bool(enough)
     evidence = None
     if evaluated:
         evidence_identity = {
@@ -602,9 +608,12 @@ def evaluate_taf_native_ensemble_oos(
             "required_sample_n": minimum_sample_n,
             "actual_sample_n": len(evaluated),
         })
-    elif not validated:
+    elif not metric_gate_passed:
+        # Recorded, not enforced: the artifact publishes anyway under the
+        # ruling above, and this is how a losing one stays visible.
         gaps.append({
             "code": "taf_native_oos_metric_gate_failed",
+            "enforced": False,
             "nll_not_worse": nll_not_worse,
             "crps_not_worse": crps_not_worse,
         })
@@ -633,6 +642,7 @@ def evaluate_taf_native_ensemble_oos(
         "transport_oos_metrics": taf_metrics,
         "nll_not_worse": nll_not_worse,
         "crps_not_worse": crps_not_worse,
+        "metric_gate_passed": metric_gate_passed,
         "validated": validated,
         "evidence": evidence,
         "evaluated_rows": evaluated,
