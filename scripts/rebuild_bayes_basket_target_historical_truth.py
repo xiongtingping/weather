@@ -683,15 +683,18 @@ def _awc_fetch(
                 report_type = str(row.get("metarType") or "METAR").strip().upper()
                 if report_type not in {"METAR", "SPECI"}:
                     continue
-                # The unified AWC truth lane accepts routine METAR only at
-                # the official :00 slot.  Effective SPECI retains its own
-                # report time.  Filter before raw retention so off-cadence
-                # reports cannot become a delayed formal candidate.
-                if (
-                    report_type == "METAR"
-                    and (valid_at.minute != 0 or valid_at.second != 0)
-                ):
-                    continue
+                # Routine METAR is formal at whatever minute the station
+                # files it, which is what the live lane does and what this
+                # one has to match to be a backfill of it.  The ":00 only"
+                # rule that stood here was not the live rule: EHAM's own
+                # settled truth is built from its :25 and :55 reports, and
+                # this filter discarded all 48 of them for every day it was
+                # asked to recover.  It cost most of Europe and the US --
+                # the stations that do not file on the hour -- while Asia,
+                # which does, sailed through, which is exactly the shape of
+                # the truth-coverage gap.  ``metarType`` already separates
+                # routine from special, so no minute test is needed to keep
+                # an off-cadence report out of the formal set.
                 raw_sha = _sha_bytes(raw_text.encode("utf-8"))
                 record = {
                     "station_id": station,
