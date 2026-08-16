@@ -1857,6 +1857,61 @@ def test_clause_50_a_seat_needs_at_least_three_rungs() -> None:
     assert audit["short_refused_window_count"] > 0, "the rule must bite"
     # The rung rule from clause 49 still holds on top of the length rule.
     assert all(audit["ladder_center_bucket"] in seat for seat in seats)
+    # The floor binds the incumbent too.  A two-bucket core is a two-rung
+    # ladder however it arrived, and clause 50's five hard requirements are
+    # equally unreachable from it -- so the evidence support stays on the
+    # menu only when it is long enough to hold a seat.
+    assert all(len(row["buckets"]) >= 3 for row in windows)
+    assert ("34", "35") not in [tuple(row["buckets"]) for row in windows]
+
+
+def test_clause_50_floor_is_not_waived_for_an_inherited_two_rung_ladder() -> (
+    None
+):
+    """A short incumbent must lose its seat to a long window, not keep it.
+
+    The exemption was written for a market that can only quote two live
+    buckets.  Measured on 2026-08-17 that was not the case it was serving:
+    RKSI, RPLL and ZHHH each seated a two-bucket incumbent while three-bucket
+    windows sat admissible on the same plan, so the waiver was not keeping a
+    starved day tradeable -- it was letting the curve score buy the narrower
+    ladder it prefers.  The seat has to go to a window that can carry basket
+    completeness, the envelopes, the TAF correction and whole-basket EV.
+    """
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "base_coverage": 0.6,
+        "maximum_coverage": 0.8,
+        "entropy_coverage_gain": 0.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+    probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
+    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    by_bucket = {
+        row.bucket: float(row.probability) for row in snapshot.buckets
+    }
+    windows, audit = _support_windows(
+        snapshot=snapshot,
+        # The two-bucket support the continuous core resolved: the incumbent.
+        desired={"34", "35"},
+        probabilities=by_bucket,
+        fee_rate=0.0,
+        maximum_support_buckets=policy.maximum_support_buckets,
+        minimum_support_buckets=policy.minimum_support_buckets,
+        center_bucket="34",
+    )
+    incumbents = [row for row in windows if row["is_incumbent"]]
+    assert not incumbents, "a two-rung incumbent may not hold a seat"
+    assert windows, "refusing it must not empty the menu when longer windows exist"
+    assert min(len(row["buckets"]) for row in windows) >= 3
+    assert audit["short_refused_window_count"] > 0
 
 
 def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:

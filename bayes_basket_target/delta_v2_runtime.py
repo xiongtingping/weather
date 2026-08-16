@@ -288,13 +288,27 @@ def _support_windows(
             edge = win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent -- the continuous core's own support, not held
-            # inventory -- is exempt from both floors below, because it was
-            # admitted on evidence and this function is a price filter rather
-            # than a second opinion on that.  The exemption is a belt, not a
-            # bypass: the core resolver selects by mass, so its support
+            # inventory -- keeps its exemption from the centre rung, because
+            # it was admitted on evidence and this function is a price filter
+            # rather than a second opinion on that.  The exemption is a belt,
+            # not a bypass: the core resolver selects by mass, so its support
             # touches the probability core on every live scope checked
             # (ZUUU/VILK/LEMD/LTAC 2026-08-15), and a coverage target that
             # drifted off it would be a fault to see, not to hide.
+            #
+            # It does NOT extend to the rung count.  A two-bucket core is
+            # still a two-rung ladder, and the five hard requirements clause
+            # 50 names -- basket completeness, the model envelope, the centre
+            # envelope, the TAF direction correction, whole-basket positive
+            # EV -- are exactly as unreachable from one whether the two rungs
+            # arrived by argmax or by inheritance.  The exemption was written
+            # for a market that can only quote two live buckets; measured on
+            # 2026-08-17 that is not the case it was serving.  RKSI, RPLL and
+            # ZHHH each seated a two-bucket incumbent while three-bucket
+            # windows sat admissible beside it on the same plan, so the
+            # exemption was not keeping a starved day tradeable, it was
+            # letting the curve score buy the narrower ladder it prefers.
+            # Those three now seat the three-rung window instead of the two.
             #
             # There are exactly two hard admission floors, and everything else
             # is ranking -- the seat belongs to the curve score alone.  First,
@@ -306,7 +320,7 @@ def _support_windows(
             if not is_incumbent and ladder_center not in window:
                 center_refused += 1
                 continue
-            if not is_incumbent and len(window) < min_size:
+            if len(window) < min_size:
                 short_refused += 1
                 continue
             # Second, friction: the all-in price already carries the fee, so an
