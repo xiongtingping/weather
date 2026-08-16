@@ -306,6 +306,7 @@ def _load_cases(
                 "cold_hit": cold_hit,
                 "claim_by_bucket": probability,
                 "landed_bucket": landed,
+                "bucket_centers_c": centers,
                 # Whether a physical field is a *tail* signal or just an
                 # under-scaled centre shift is settled by this: a centre still
                 # displaced in the field's direction says the shift is too
