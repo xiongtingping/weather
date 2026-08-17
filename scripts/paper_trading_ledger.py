@@ -195,6 +195,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     "selection_rule_label": SELECTION_RULE_LABEL,
     "allocation_shape": ALLOCATION_SHAPE,
     "allocation_basis": "share_count",
+    # The divisor of ``all_in_cost`` under weighted allocation.  It is a
+    # recorded quantity, so changing how it is computed changes what every
+    # row means -- and leaving it out of the fingerprint let a corrected
+    # ledger keep serving rows derived under the old arithmetic, which is
+    # how a "verification" ended up reading the numbers it was meant to
+    # check.
+    "cost_basis": "expected_payout_equivalent_shares",
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
@@ -1585,17 +1592,34 @@ def backfill(
                         # expects to return, so ``shares`` becomes the
                         # expectation-equivalent count the settlement math
                         # already assumes.
-                        # Under equal shares every rung pays the same, so a
-                        # single count is the payout.  Weighted, the payout
-                        # is whichever rung lands, so the per-leg counts are
-                        # what settlement has to read -- carrying an
-                        # "expectation-equivalent" count here instead scored
-                        # a basket at a payout no outcome actually produces.
+                        # Two different questions, two different numbers.
+                        #
+                        # Settlement pays the rung that landed, so it reads
+                        # the per-leg counts -- a single basket-level count
+                        # would credit a payout no outcome produces.
+                        #
+                        # ``shares`` is the divisor of ``all_in_cost``, which
+                        # the positive-EV gate, the dust floor and the whole
+                        # page are built on, and it has to mean "cost per
+                        # unit of payout".  Taking the thinnest leg made that
+                        # a number no outcome produces either, in the other
+                        # direction: FACT 2026-07-31 recorded 0.3400 against
+                        # a 0.2800 top-of-book total -- a resting basket
+                        # costing *more* than crossing, which cannot happen.
+                        # The payout-weighted count is the honest analogue
+                        # and degenerates to the equal-share case exactly:
+                        # with q_i all equal, sum(p_i q_i)/p_win = q.
                         per_leg = {
                             str(b): float(q)
                             for b, q in zip(seat["buckets"], leg_shares)
                         }
-                        shares = min(leg_shares)
+                        expected_payout = sum(
+                            float(probabilities.get(b, 0.0)) * q
+                            for b, q in zip(seat["buckets"], leg_shares)
+                        )
+                        shares = expected_payout / max(
+                            float(seat["win_probability"]), 1e-9
+                        )
                     opened = True
                     # What the basket actually cost per set, which is the
                     # number every downstream P&L and edge reading has to be
