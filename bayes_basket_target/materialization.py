@@ -454,7 +454,24 @@ def _native_forward_lineage(
             compatibility_fingerprint,
         )
 
-    native_values = {"run_cycle": run_cycle}
+    # Inheritance is checked key against the same key.  ``run_cycle`` above
+    # deliberately prefers ``native_forward_run_cycle`` because the scope and
+    # mixed-cycle tests ask what the capture actually carried -- but using
+    # that value as the expectation for the *``run_cycle`` key* compares two
+    # different questions: the calibration scope an activation was fitted
+    # under, against the cycle the archive delivered.  On 3827 of 18561 P0
+    # roots those differ (native 18Z against a 00Z activation scope), and
+    # every one of them raised ``native_forward_lineage_conflict:run_cycle``
+    # -- including when the predecessor *was* the root, since the root's own
+    # ``run_cycle`` key could never equal its ``native_forward_run_cycle``.
+    # P0-M refused 14 scopes a cycle on this.
+    # Only ``run_cycle`` is inherited: descendants do not carry
+    # ``native_forward_run_cycle`` at all (checked -- absent on every P0-M
+    # and P1 row), so demanding it would replace one false conflict with
+    # another.
+    native_values = {
+        "run_cycle": _text("run_cycle", root_lineage.get("run_cycle")),
+    }
     native_values.update({
         key: _text(key, root_lineage.get(key))
         for key in _NATIVE_FORWARD_CORE_KEYS
