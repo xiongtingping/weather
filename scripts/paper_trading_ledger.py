@@ -134,6 +134,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     "compounding": "credible_fills_only",
     "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
+    "pre_listing_decision": "first_book_after_listing",
     "fee_rate": FEE_RATE,
     # The ledger replays production's own ``_support_windows``, so a change
     # to how that ranks or filters is a change to what the ledger records --
@@ -162,6 +163,12 @@ REFUSAL_REASONS = (
     "incomplete_book",
     "selection_failed",
     "no_priced_window",
+    # Our own floor, not the market's doing.  Folding it into
+    # ``no_priced_window`` said "the market is dearer than the model" about
+    # scopes where the market never got a say -- every window held a leg
+    # quoted under a cent and we declined to price it.  The two have
+    # different owners and different fixes, so they are different reasons.
+    "leg_below_floor",
     "no_positive_kelly",
     "no_depth",
 )
@@ -250,6 +257,19 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_POSITION_DDL)
     conn.execute(_SETTLEMENT_DDL)
     conn.execute(_REFUSAL_DDL)
+    # A new reason cannot be recorded through an existing CHECK, and
+    # ``CREATE TABLE IF NOT EXISTS`` will not widen one.  Rebuild in place
+    # when the live constraint is missing a reason this code can emit;
+    # refusals are re-derived every sweep, so nothing is lost.
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table'"
+        " AND name='paper_trade_refusal'"
+    ).fetchone()
+    live = str((row or [""])[0] or "")
+    if live and any(f"'{name}'" not in live for name in REFUSAL_REASONS):
+        conn.execute("DROP TABLE paper_trade_refusal")
+        conn.execute(_REFUSAL_DDL)
+        conn.commit()
     columns = {
         str(row[1])
         for row in conn.execute("PRAGMA table_info(paper_trade_position)")
@@ -387,6 +407,21 @@ def _stage_entry_candidates(
             return
 
 
+def _decode_quotes(payload: Any) -> dict[str, dict[str, Any]]:
+    quotes: dict[str, dict[str, Any]] = {}
+    try:
+        rows = json.loads(payload)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return quotes
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        bucket = str(item.get("bucket") or "")
+        if bucket:
+            quotes[bucket] = item
+    return quotes
+
+
 def _quotes_at(
     conn: sqlite3.Connection,
     station_id: str,
@@ -397,6 +432,20 @@ def _quotes_at(
 
     Pricing a decision on a book that did not exist yet is the one way a
     paper ledger flatters itself, so the cutoff is strict.
+
+    With one exception, and it is the opening stage's whole point.  P0
+    decides before the market lists -- that is what an opening stage is --
+    and charter 48 seats it at listing.  Requiring a book that predates the
+    decision made those scopes permanently unseatable: of 227 P0 refusals
+    for "no book at decision", 153 had a book, just minutes later.  EPWA
+    2026-07-31 decided at 22:24 against a market that opened at 22:26 and
+    was recorded as having no market at all.
+
+    So a decision with nothing behind it may use the *first* book that
+    appears after it.  Not any later book -- the first, and only when
+    nothing earlier exists.  Waiting for a better price is the cheat this
+    guard exists to stop; waiting for the market to open is not, and the
+    entry walk still has to find a cycle whose objective actually seats.
     """
 
     row = conn.execute(
@@ -407,7 +456,18 @@ def _quotes_at(
         (station_id, event_date, decision_at_utc),
     ).fetchone()
     if row is None:
-        return None
+        row = conn.execute(
+            "SELECT observed_at, buckets_json"
+            " FROM basket_official_ws_snapshot"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND observed_at > ?"
+            " ORDER BY observed_at ASC LIMIT 1",
+            (station_id, event_date, decision_at_utc),
+        ).fetchone()
+        if row is None:
+            return None
+        quotes = _decode_quotes(row[1])
+        return (quotes, str(row[0])) if quotes else None
     try:
         quoted = datetime.fromisoformat(
             str(row[0]).replace("Z", "+00:00")
@@ -420,13 +480,7 @@ def _quotes_at(
     age_minutes = (decided - quoted).total_seconds() / 60.0
     if age_minutes > MAX_QUOTE_STALENESS_MINUTES:
         return None
-    quotes: dict[str, dict[str, Any]] = {}
-    for item in json.loads(row[1]):
-        if not isinstance(item, dict):
-            continue
-        bucket = str(item.get("bucket") or "")
-        if bucket:
-            quotes[bucket] = item
+    quotes = _decode_quotes(row[1])
     return (quotes, str(row[0])) if quotes else None
 
 
@@ -1071,13 +1125,28 @@ def backfill(
                             ordinals=ordinals,
                         )
                     if not priced_windows:
+                        # Name every floor that turned windows away, or the
+                        # page reports a refusal whose stated causes do not
+                        # add up to it.  The leg floor landed on 2026-08-17
+                        # and was not listed here, so 112 P0 refusals were
+                        # attributed to a centre-bucket count that could not
+                        # explain them.
+                        centre_out = int(audit.get(
+                            "center_refused_window_count") or 0)
+                        short_out = int(audit.get(
+                            "short_refused_window_count") or 0)
+                        leg_out = int(audit.get(
+                            "leg_floor_refused_window_count") or 0)
                         refusal = (
-                            "no_priced_window",
-                            "中心桶拒绝 %d · 桶数不足拒绝 %d" % (
-                                int(audit.get(
-                                    "center_refused_window_count") or 0),
-                                int(audit.get(
-                                    "short_refused_window_count") or 0),
+                            (
+                                "leg_below_floor"
+                                if leg_out > centre_out + short_out
+                                else "no_priced_window"
+                            ),
+                            "中心桶拒绝 %d · 桶数不足拒绝 %d"
+                            " · 单腿低于 %.2f 拒绝 %d" % (
+                                centre_out, short_out,
+                                MINIMUM_LEG_ALL_IN_ASK, leg_out,
                             ),
                             cycles, payload["decision_at_utc"],
                         )
