@@ -136,11 +136,22 @@ EXECUTION_MODES = (
 MAKER_RESTING_HORIZON_MINUTES = float(
     os.environ.get("PAPER_LEDGER_MAKER_HORIZON_MIN", "360") or 360.0
 )
-# The price a resting basket posts at.  One tick above the bid is the
-# probe's best measured compromise: 30.4% filled in five minutes with
-# almost no adverse selection (23.1% hit against 24.0% unconditional),
-# against 5.8% for joining the bid.
+# A resting leg posts across a band, not at a point (user ruling,
+# 2026-08-17).  The probe measured the two ends 14x apart on fill rate --
+# joining the bid filled 5.8% in five minutes, a tick under the ask filled
+# 82.8% -- and a single price has to pick one of those and live with it.
+# A ladder takes both: the cheap rungs save the spread when the market
+# comes all the way down, the dear rungs make sure the leg fills at all.
+#
+# The band runs from one tick above the bid (the best price worth waiting
+# for) to one tick below the ask (the dearest price that is still a maker
+# order rather than a crossing trade).  Size is split evenly, because
+# weighting it toward the cheap end reintroduces the same "hope the market
+# collapses" bet the shape work just removed.
 MAKER_RESTING_IMPROVE_TICKS = 1
+MAKER_RESTING_LADDER_STEPS = int(
+    os.environ.get("PAPER_LEDGER_MAKER_LADDER_STEPS", "5") or 5
+)
 # How the stake is split across the basket's rungs.  ``equal_shares`` is
 # what the ledger has always done -- one share count for the whole basket,
 # which is what atomicity means for a complete basket and is why allocation
@@ -173,6 +184,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
+    None
+    if EXECUTION_MODE != "maker_resting"
+    else f"阶梯{MAKER_RESTING_LADDER_STEPS}档",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v4",
@@ -204,6 +218,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     "cost_basis": "expected_payout_equivalent_shares",
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
+    "maker_ladder_steps": MAKER_RESTING_LADDER_STEPS,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
@@ -261,6 +276,7 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   content_sha256 TEXT NOT NULL,
   selection_rule_label TEXT NOT NULL DEFAULT '',
   leg_shares_json TEXT NOT NULL DEFAULT '',
+  resting_fill_json TEXT NOT NULL DEFAULT '',
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -343,6 +359,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN leg_shares_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "resting_fill_json" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN resting_fill_json TEXT NOT NULL DEFAULT ''"
         )
     if "selection_rule_label" not in columns:
         conn.execute(
@@ -724,6 +745,45 @@ WINDOW_STRATEGIES = (
 )
 
 
+def _resting_ladder(
+    row: Any, steps: int = MAKER_RESTING_LADDER_STEPS
+) -> list[float]:
+    """The price band one leg rests across, cheapest first.
+
+    Collapses to a single price when the spread has no room for a ladder --
+    one tick of spread leaves nowhere to stand between the two sides.
+    """
+
+    if not row.ask_available:
+        return []
+    ask = float(row.ask_price)
+    bid = float(getattr(row, "bid_price", 0.0) or 0.0)
+    tick = float(getattr(row, "price_tick_size", 0.001) or 0.001)
+    if bid <= 0.0 or ask <= 0.0:
+        return []
+    # A tick under the ask is the top of the band and also its hard ceiling:
+    # at the ask the order is not resting, it is crossing, and the whole
+    # point of this mode is to be paid the spread rather than pay it.  A
+    # one-tick spread therefore collapses the band onto the bid.
+    high = ask - tick
+    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
+    if high < bid - 1e-9:
+        return []
+    if high <= low + tick / 2 or steps <= 1:
+        return [round(low, 6)]
+    span = high - low
+    prices = [
+        round(low + span * index / (steps - 1), 6) for index in range(steps)
+    ]
+    # Distinct rungs only: a band narrower than the tick grid collapses to
+    # its own endpoints, and duplicated prices would double-count a fill.
+    out: list[float] = []
+    for price in prices:
+        if not out or price > out[-1] + tick / 2:
+            out.append(price)
+    return out
+
+
 def _execution_price(row: Any) -> float | None:
     """The per-share price this run assumes for one leg."""
 
@@ -740,7 +800,13 @@ def _execution_price(row: Any) -> float | None:
         return None
     tick = float(getattr(row, "price_tick_size", 0.001) or 0.001)
     if EXECUTION_MODE == "maker_resting":
-        price = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, ask)
+        # The band's own mean: what the leg pays if the whole ladder fills.
+        # The realised price replaces this once the book has been walked --
+        # this is the number the gate and the Kelly sizing see beforehand.
+        rungs = _resting_ladder(row)
+        if not rungs:
+            return None
+        price = sum(rungs) / len(rungs)
     elif EXECUTION_MODE == "maker_bid":
         price = bid
     elif EXECUTION_MODE == "maker_improve":
@@ -910,35 +976,33 @@ def _strategy_windows(
 
 
 
-def _resting_fill(
+
+def _resting_ladder_fill(
     conn: sqlite3.Connection,
     *,
     station_id: str,
     event_date: str,
     buckets: Sequence[str],
-    limits: Sequence[float],
+    ladders: Sequence[Sequence[float]],
     placed_at_utc: str,
-) -> tuple[bool, str | None, dict[str, str]]:
-    """Did every leg of this basket get filled while resting?
+) -> tuple[dict[str, list[float]], str | None]:
+    """Which rungs of each leg's ladder the book traded through.
 
-    A complete basket is atomic: one leg left unfilled is not a cheaper
-    basket, it is a different bet with a hole in it, so the entry either
-    fills whole or does not happen.  Reported per leg anyway, because "which
-    rung failed to fill" is the number the page needs to show a fill rate at
-    all.
-
-    Fill means the book traded at or through the limit inside the horizon.
-    Queue position is ignored, which is the optimistic end -- an order
-    behind size at the same price might not have filled -- and is the same
-    assumption the shadow probe carries and stores queue depth against.
+    A leg counts as filled when any rung fills; a basket needs every leg,
+    because a complete basket is atomic.  Returns the filled prices per
+    bucket so the cost is the ladder's own average rather than an assumed
+    one.
     """
 
     deadline = (
         datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
         + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
     ).isoformat().replace("+00:00", "Z")
-    remaining = {str(b): float(px) for b, px in zip(buckets, limits)}
-    filled_at: dict[str, str] = {}
+    pending = {
+        str(bucket): sorted(prices, reverse=True)
+        for bucket, prices in zip(buckets, ladders)
+    }
+    filled: dict[str, list[float]] = {b: [] for b in pending}
     for observed, payload in conn.execute(
         "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
@@ -946,10 +1010,12 @@ def _resting_fill(
         " ORDER BY observed_at",
         (station_id, event_date, placed_at_utc, deadline),
     ):
-        if not remaining:
+        if not any(pending.values()):
             break
         quotes = _decode_quotes(payload)
-        for bucket in list(remaining):
+        for bucket, rungs in pending.items():
+            if not rungs:
+                continue
             item = quotes.get(bucket)
             if not isinstance(item, Mapping):
                 continue
@@ -959,12 +1025,14 @@ def _resting_fill(
                 ask = levels[0].get("price")
             if ask is None:
                 continue
-            if float(ask) <= remaining[bucket] + 1e-9:
-                filled_at[bucket] = str(observed)
-                remaining.pop(bucket)
-    if remaining:
-        return False, sorted(remaining)[0], filled_at
-    return True, None, filled_at
+            price = float(ask)
+            # Every rung at or above where the book traded is filled.
+            while rungs and price <= rungs[0] + 1e-9:
+                filled[bucket].append(rungs.pop(0))
+    missing = next(
+        (bucket for bucket, prices in filled.items() if not prices), None
+    )
+    return filled, missing
 
 
 def _kelly_stake(
@@ -1527,21 +1595,24 @@ def backfill(
                         )
                     resting_fills: dict[str, str] = {}
                     if EXECUTION_MODE == "maker_resting":
-                        limits = _maker_leg_prices(
-                            snapshot, seat["buckets"]
-                        )
-                        ok, missing, resting_fills = _resting_fill(
+                        by_row = {r.bucket: r for r in snapshot.buckets}
+                        ladders = [
+                            _resting_ladder(by_row[str(b)])
+                            if str(b) in by_row else []
+                            for b in seat["buckets"]
+                        ]
+                        got, missing = _resting_ladder_fill(
                             conn,
                             station_id=station_id,
                             event_date=event_date,
                             buckets=seat["buckets"],
-                            limits=limits,
+                            ladders=ladders,
                             placed_at_utc=payload["decision_at_utc"],
                         )
-                        if not ok:
+                        if missing is not None:
                             refusal = (
                                 "resting_unfilled",
-                                "挂 %d 腿 · %s 未成交（%.0f 分钟内）" % (
+                                "挂 %d 腿 · %s 全档未成交（%.0f 分钟内）" % (
                                     len(seat["buckets"]),
                                     missing,
                                     MAKER_RESTING_HORIZON_MINUTES,
@@ -1549,6 +1620,54 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             )
                             continue
+                        # The basket keeps its shape, so it is only as large
+                        # as its least-filled leg -- a ladder that filled
+                        # three rungs on one leg and one on another bought a
+                        # third of the intended basket, not a lopsided whole
+                        # one.  Each leg pays the average of what it actually
+                        # got, which is the point of resting across a band:
+                        # the cheap rungs pull that average below the single
+                        # price a point order would have had to pick.
+                        resting_fraction = min(
+                            (
+                                len(got[str(b)]) / len(ladder)
+                                for b, ladder in zip(seat["buckets"], ladders)
+                                if ladder
+                            ),
+                            default=1.0,
+                        )
+                        resting_prices = {
+                            str(b): sum(got[str(b)]) / len(got[str(b)])
+                            * (1.0 + FEE_RATE)
+                            for b in seat["buckets"]
+                            if got.get(str(b))
+                        }
+                        stake *= resting_fraction
+                        resting_fills = {
+                            str(b): "%d/%d@%.4f" % (
+                                len(got[str(b)]), len(ladder),
+                                sum(got[str(b)]) / len(got[str(b)]),
+                            )
+                            for b, ladder in zip(seat["buckets"], ladders)
+                            if ladder and got.get(str(b))
+                        }
+                        legs = [
+                            [{
+                                "price": resting_prices[str(bucket)],
+                                "shares": sum(
+                                    level["shares"]
+                                    for level in (depth.get(bucket) or [])
+                                ),
+                            }]
+                            for bucket in seat["buckets"]
+                        ]
+                        capacity = min(
+                            (
+                                sum(level["shares"] for level in leg)
+                                for leg in legs
+                            ),
+                            default=0.0,
+                        )
                     if weights is None:
                         filled = _fillable_size(
                             legs=legs,
@@ -1667,6 +1786,7 @@ def backfill(
                             SELECTION_RULE_SHA256,
                             SELECTION_RULE_LABEL,
                             json.dumps(per_leg, sort_keys=True),
+                            json.dumps(resting_fills, sort_keys=True),
                         )
                     )
                     counts["positions"] += 1
@@ -1782,8 +1902,8 @@ def backfill(
             " kelly_fraction, stake_usdc, shares,"
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
-            " selection_rule_label, leg_shares_json"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " selection_rule_label, leg_shares_json, resting_fill_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:

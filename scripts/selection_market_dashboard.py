@@ -283,6 +283,72 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
         "seated_count": total_seated,
         "unfilled_count": total_unfilled,
         "fill_rate": total_seated / denominator if denominator else None,
+        "ladder": _resting_ladder_stats(conn),
+    }
+
+
+def _resting_ladder_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How much of each leg's posted band the book actually came down to.
+
+    A leg rests across a price range rather than at a point, so "filled" is
+    a fraction, not a yes.  This is the completion ratio the page needs --
+    posted a hundred, bought eighty -- and it is also the only place the
+    realised price of a resting entry is visible, because the ladder's
+    average is what the position paid and no single quote equals it.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT resting_fill_json FROM paper_trade_position"
+            " WHERE resting_fill_json NOT IN ('', '{}')"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    legs = complete = 0
+    filled_rungs = posted_rungs = 0
+    prices: list[float] = []
+    by_depth: dict[int, dict[str, float]] = {}
+    for (payload,) in rows:
+        try:
+            record = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+        for detail in record.values():
+            try:
+                fraction, price = str(detail).split("@")
+                got, posted = (int(part) for part in fraction.split("/"))
+            except ValueError:
+                continue
+            legs += 1
+            complete += int(got == posted)
+            filled_rungs += got
+            posted_rungs += posted
+            prices.append(float(price))
+            slot = by_depth.setdefault(
+                posted, {"legs": 0.0, "filled": 0.0, "price": 0.0}
+            )
+            slot["legs"] += 1
+            slot["filled"] += got
+            slot["price"] += float(price)
+    if not legs:
+        return {}
+    return {
+        "position_count": len(rows),
+        "leg_count": legs,
+        "full_ladder_rate": complete / legs,
+        "rung_completion_rate": (
+            filled_rungs / posted_rungs if posted_rungs else None
+        ),
+        "mean_filled_price": sum(prices) / len(prices),
+        "by_posted_rungs": [
+            {
+                "posted_rungs": depth,
+                "leg_count": int(slot["legs"]),
+                "mean_filled_rungs": slot["filled"] / slot["legs"],
+                "mean_price": slot["price"] / slot["legs"],
+            }
+            for depth, slot in sorted(by_depth.items())
+        ],
     }
 
 

@@ -960,6 +960,31 @@ function makerProbe(){
     : `<div class="card" style="margin-top:12px"><span class="dot amber"></span>
        成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
   const re=S.resting_entry||{};
+  const lad=re.ladder||{};
+  const ladRows=(lad.by_posted_rungs||[]).map(r=>`<tr>
+    <td class="mono">${r.posted_rungs}</td><td>${r.leg_count}</td>
+    <td class="mono">${r.mean_filled_rungs.toFixed(2)}</td>
+    <td class="mono">${(r.mean_filled_rungs/r.posted_rungs*100).toFixed(0)}%</td>
+    <td class="mono">${r.mean_price.toFixed(4)}</td></tr>`).join("");
+  const ladBlock=ladRows?`<div style="margin-top:14px">
+    <div class="muted">阶梯挂单的完成比例（挂 100 买到多少）</div>
+    <div class="big">${(lad.rung_completion_rate*100).toFixed(1)}%</div>
+    <div class="muted">${lad.leg_count} 条腿 · 整条阶梯全档成交
+      ${(lad.full_ladder_rate*100).toFixed(1)}% · 实际成交均价
+      <span class="mono">${lad.mean_filled_price.toFixed(4)}</span></div>
+    <table style="margin-top:10px"><thead><tr><th>该腿挂几档</th><th>腿数</th>
+      <th>平均成交档</th><th>完成比例</th><th>成交均价</th></tr></thead>
+      <tbody>${ladRows}</tbody></table>
+    <div class="why" style="margin-top:8px"><b>为什么挂区间而不是单点：</b>
+    探针实测同一时刻两端差 9 倍——贴买价挂 5 分钟只成交 2.5%，
+    卖价下一跳挂成交 22.5%。单点必须二选一；区间两头都要：
+    便宜档在市场真跌下来时省下价差，贵档保证这条腿至少买得到。
+    区间是<b>买价上一跳 到 卖价下一跳</b>，永不触及卖价（触及就是吃单，
+    等于把价差付出去）。价差只有一跳时区间退化成买价一档。<br>
+    <b>档数是量出来的</b>（7/31–8/16 全账本按档数各重跑一次）：
+    1 档 −51.3%、2 档 −37.7%、5 档 −34.6%、12 档 −33.4%——5 档之后曲线在 1 个点内走平，
+    而每一档都是一张真实挂单。<b>篮子按最弱那条腿的完成比例整体缩量</b>，
+    保持形状，而不是买成歪的。</div></div>`:"";
   const reRows=(re.stages||[]).map(r=>`<tr><td>${h(r.stage)}</td>
     <td>${r.seated_count}</td><td>${r.unfilled_count}</td>
     <td class="${r.fill_rate>=0.8?"up":"down"}">${(r.fill_rate*100).toFixed(1)}%</td></tr>`).join("");
@@ -971,7 +996,7 @@ function makerProbe(){
     <table style="margin-top:10px"><thead><tr><th>阶段</th><th>建仓成功</th>
       <th>挂单落空</th><th>成功率</th></tr></thead><tbody>${reRows}</tbody></table>
     <div class="muted" style="margin-top:8px">完整篮子是原子的：一条腿没成交就不是更便宜的篮子，
-    而是带洞的另一笔赌注，所以整篮放弃。分母是「建仓 + 因挂单落空放弃」。</div></div>`:"";
+    而是带洞的另一笔赌注，所以整篮放弃。分母是「建仓 + 因挂单落空放弃」。</div>${ladBlock}</div>`:"";
   return `<h2>十二、挂单影子探针</h2>${reBlock}
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
