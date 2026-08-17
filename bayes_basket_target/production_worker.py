@@ -2145,6 +2145,33 @@ def _resident_open_event_dates(
     return tuple(sorted(dates))
 
 
+def _shift_window(
+    decision_at_utc: str, root_decision_utc: str, root_fresh_until_utc: str
+) -> str:
+    """Re-base a freshness window on a later decision, keeping its length.
+
+    P0-M roots at the P0 that was current when the forecast arrived, which
+    by construction may already have expired.  Its window is therefore the
+    root's duration measured from P0-M's own decision -- not the root's
+    absolute expiry, which would make the checkpoint stale at birth, and not
+    a constant, which would silently re-cadence a scope.
+    """
+
+    start = datetime.fromisoformat(
+        str(root_decision_utc).replace("Z", "+00:00")
+    )
+    end = datetime.fromisoformat(
+        str(root_fresh_until_utc).replace("Z", "+00:00")
+    )
+    here = datetime.fromisoformat(
+        str(decision_at_utc).replace("Z", "+00:00")
+    )
+    span = end - start
+    if span.total_seconds() <= 0:
+        raise ContractError("resident_taf_root_window_invalid")
+    return (here + span).isoformat().replace("+00:00", "Z")
+
+
 class TargetProductionWorker:
     """Resident target compiler and target-local no-live ledger writer."""
 
@@ -9280,9 +9307,23 @@ class TargetProductionWorker:
                                 forecast_source_object_sha256=(
                                     revision.source_object_sha256
                                 ),
-                                taf_tx_c=fields,
+                                    taf_tx_c=fields,
                                 decision_at_utc=decision_at,
-                                fresh_until_utc=root.fresh_until_utc,
+                                # The root is deliberately older than this
+                                # decision -- that is the whole point of
+                                # rooting as-of the forecast -- so its
+                                # freshness window has usually closed by now
+                                # and inheriting it makes the posterior
+                                # invalid before it is written.  Re-establish
+                                # the window from this stage's own decision,
+                                # carrying the root's window *length* so the
+                                # cadence is the one the scope was compiled
+                                # with rather than a number invented here.
+                                fresh_until_utc=_shift_window(
+                                    decision_at,
+                                    root.decision_at_utc,
+                                    root.fresh_until_utc,
+                                ),
                                 bridge_sha256=root.bridge_sha256,
                                 band_table=load_band_table(
                                     self.commit_conn, stage="P0-M"
@@ -9344,10 +9385,77 @@ class TargetProductionWorker:
                         "resident_taf_artifact_exact_scope_ambiguous"
                     )
                 artifact = exact_artifacts[0]
-                centers_raw = json.loads(
-                    str(root.lineage.get("bucket_centers_c_json") or "")
-                )
-                if not isinstance(centers_raw, Mapping):
+                # The next line already says what a missing axis is, but it
+                # could never be reached: ``json.loads("")`` raises before
+                # the isinstance test, so a root without the key failed as a
+                # JSONDecodeError with no station, no field and no remedy in
+                # it.  ZGSZ is one of the two stations that has a TAF
+                # artifact at all, so this took the whole stage
+                # BLOCKED_FAIL_CLOSED on every cycle.
+                # Derive the axis from the intervals when the root does not
+                # publish it.  ``bucket_centers_c_json`` stopped appearing in
+                # P0 lineage when compilation moved to the native ensemble on
+                # 2026-08-01 -- that path writes the intervals and computes
+                # centers only inside its own forward-prediction record -- and
+                # P0-M has read the key ever since.  ``json.loads("")`` raised
+                # before the missing-key test below could speak, so the stage
+                # fail-closed every cycle with a JSONDecodeError naming no
+                # station and no field.  P0-M's last checkpoint before today
+                # was 2026-07-30, the day before the key went away.
+                #
+                # Deriving rather than repairing P0: the centre of an interval
+                # is a function of the interval, so nothing is invented here,
+                # and adding a key to P0's lineage would move its content hash
+                # for every consumer of a root that is otherwise unchanged.
+                centers_text = root.lineage.get("bucket_centers_c_json")
+                if centers_text:
+                    try:
+                        centers_raw = json.loads(str(centers_text))
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise ContractError(
+                            "resident_taf_bucket_centers_invalid"
+                        ) from exc
+                else:
+                    intervals_text = root.lineage.get(
+                        "bucket_intervals_c_json"
+                    )
+                    if not intervals_text:
+                        raise ContractError(
+                            "resident_taf_bucket_centers_missing"
+                        )
+                    try:
+                        intervals_map = json.loads(str(intervals_text))
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise ContractError(
+                            "resident_taf_bucket_intervals_invalid"
+                        ) from exc
+                    if not isinstance(intervals_map, Mapping):
+                        raise ContractError(
+                            "resident_taf_bucket_intervals_invalid"
+                        )
+                    centers_raw = {}
+                    for bucket, bounds in intervals_map.items():
+                        try:
+                            lower, upper = bounds[0], bounds[1]
+                        except (TypeError, IndexError, KeyError) as exc:
+                            raise ContractError(
+                                "resident_taf_bucket_intervals_invalid"
+                            ) from exc
+                        # The same half-degree convention the native
+                        # compiler uses for its own open-ended edges.
+                        if lower is None and upper is None:
+                            raise ContractError(
+                                "resident_taf_bucket_intervals_invalid"
+                            )
+                        if lower is None:
+                            centers_raw[str(bucket)] = float(upper) - 0.5
+                        elif upper is None:
+                            centers_raw[str(bucket)] = float(lower) + 0.5
+                        else:
+                            centers_raw[str(bucket)] = (
+                                float(lower) + float(upper)
+                            ) / 2.0
+                if not isinstance(centers_raw, Mapping) or not centers_raw:
                     raise ContractError("resident_taf_bucket_centers_missing")
                 revisions = validate_forecast_revision_chain(
                     capture["forecast_revision"] for capture in captures
