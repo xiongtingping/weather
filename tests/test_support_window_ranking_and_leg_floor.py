@@ -144,34 +144,50 @@ def test_ranking_is_monotone_in_probability_mass() -> None:
     assert masses == sorted(masses, reverse=True)
 
 
-def test_a_penny_leg_disqualifies_the_window() -> None:
-    """A leg under a cent states no probability, so it cannot be bought.
+def test_a_penny_leg_is_excluded_not_the_window() -> None:
+    """A sub-floor rung leaves the domain; the rungs beside it do not.
 
     Measured on the settled book: every window whose cheapest leg was under
-    0.01 returned +487% while all four dearer strata returned between -12%
-    and -100%.  The entire apparent edge of the strategy lived on legs
-    quoted at a tenth of a cent -- the known one-sided tail offer, whose
-    payout dominates any P&L it lands in.
+    a cent returned +487% while all four dearer strata returned between -12%
+    and -100%.  The entire apparent edge lived on one-sided tail offers.
+
+    But voiding the whole window for one of them threw away the rungs beside
+    it that were priced perfectly well (user ruling, 2026-08-17).  The floor
+    now applies to the candidate domain, so the cheap rung is simply not a
+    candidate and the enumeration grows contiguous runs from what remains --
+    which is why this cannot leave a hole in a window.
     """
 
     from bayes_basket_target.delta_v2_runtime import MINIMUM_LEG_ALL_IN_ASK
 
+    rows_index = {
+        "30C": 0, "31C": 1, "32C": 2, "33C": 3, "34C": 4, "35C": 5,
+    }
     rows = (
-        ("30C", 0.05, 0.100),
-        ("31C", 0.10, 0.120),
-        ("32C", 0.25, 0.260),
-        ("33C", 0.30, 0.300),
+        ("30C", 0.05, 0.060),
+        ("31C", 0.10, 0.080),
+        ("32C", 0.25, 0.200),
+        ("33C", 0.30, 0.250),
         ("34C", 0.20, 0.001),   # penny leg
         ("35C", 0.10, 0.150),
     )
     windows, audit = _windows(rows, desired={"33C"}, center="33C")
-    assert MINIMUM_LEG_ALL_IN_ASK == 0.01
-    assert audit["leg_floor_refused_window_count"] > 0
+    assert MINIMUM_LEG_ALL_IN_ASK == 0.02
+    assert "34C" in audit["leg_floor_excluded_buckets"]
     for window in windows:
-        if window["all_in_price"] is None:
-            continue
         assert "34C" not in window["buckets"], (
-            f"{window['buckets']} was priced despite a 0.001 leg"
+            f"{window['buckets']} still contains an excluded rung"
+        )
+    # The rungs beside it are still seatable -- that is the whole change.
+    assert any(
+        window["all_in_price"] is not None and len(window["buckets"]) >= 3
+        for window in windows
+    ), "excluding one rung must not cost the window its neighbours"
+    # And nothing spans the hole it left.
+    for window in windows:
+        ordinals = [rows_index[b] for b in window["buckets"]]
+        assert max(ordinals) - min(ordinals) == len(ordinals) - 1, (
+            f"{window['buckets']} spans the excluded rung"
         )
 
 
@@ -193,8 +209,7 @@ def test_the_floor_is_per_leg_not_per_basket() -> None:
     )
     windows, _ = _windows(rows, desired={"33C"}, center="33C")
     offending = [
-        w for w in windows
-        if w["all_in_price"] is not None and "34C" in w["buckets"]
+        w for w in windows if "34C" in w["buckets"]
     ]
     assert not offending, (
         "a window averaging well above the floor still got a penny leg"

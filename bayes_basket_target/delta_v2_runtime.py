@@ -123,7 +123,16 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # The cheapest all-in ask a leg may carry and still be bought.  Below this a
 # quote is a one-sided tail offer rather than a price: it states no
 # probability, and its payout dominates whatever P&L it lands in.
-MINIMUM_LEG_ALL_IN_ASK = 0.01
+#
+# It excludes the rung, not the window (user ruling, 2026-08-17).  Voiding
+# the whole window for one cheap leg threw away the rungs beside it that
+# were priced perfectly well -- the objective lost a seat it could have
+# taken on three good rungs because a fourth was quoted at a tenth of a
+# cent.  Excluding the bucket from the candidate domain instead keeps the
+# windows contiguous by construction (a bucket that is not admitted cannot
+# leave a hole in a run grown from what is), and the remaining rungs are
+# enumerated normally.
+MINIMUM_LEG_ALL_IN_ASK = 0.02
 # The shape a basket is asked to take inside itself (user ruling,
 # 2026-08-17): a base holding on the centre rung, tilted toward legs whose
 # own edge is positive, with the far rungs held deliberately small.
@@ -196,11 +205,34 @@ def _support_windows(
     # a bucket the hard lower bound has excluded holds zero probability and
     # is not a candidate.  Evidence still decides what is possible; the
     # objective decides only what is worth buying among the possible.
+    def _priced_above_floor(row: Any) -> bool:
+        """A rung whose quote is a price, not a tail offer.
+
+        An unquoted bucket stays admitted: it was let in on evidence and is
+        held or waited on, not bought now, which is the pre-existing
+        behaviour the price filter must not change.
+        """
+
+        if not row.ask_available:
+            return True
+        return (
+            float(row.ask_price) * (1.0 + float(fee_rate))
+            >= MINIMUM_LEG_ALL_IN_ASK
+        )
+
+    leg_floor_excluded = sorted(
+        (
+            row.bucket
+            for row in snapshot.buckets
+            if float(row.probability) > EPS and not _priced_above_floor(row)
+        ),
+        key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
+    )
     admitted = sorted(
         (
             row.bucket
             for row in snapshot.buckets
-            if float(row.probability) > EPS
+            if float(row.probability) > EPS and _priced_above_floor(row)
         ),
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
     )
@@ -263,6 +295,7 @@ def _support_windows(
     center_refused = 0
     short_refused = 0
     leg_floor_refused = 0
+    gapped_refused = 0
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -320,6 +353,19 @@ def _support_windows(
             if window in seen:
                 continue
             seen.add(window)
+            # Contiguous in ordinals, not merely adjacent in the admitted
+            # list.  Once the leg floor can remove a bucket from the domain,
+            # the two stop being the same thing: with 34C excluded, the slice
+            # (32C, 33C, 35C) looks like a run and is a basket with a hole in
+            # it, which the settlement partition and the clip lattice both
+            # assume cannot happen.
+            span = (
+                by_bucket[window[-1]].ordinal
+                - by_bucket[window[0]].ordinal
+            )
+            if span != size - 1:
+                gapped_refused += 1
+                continue
             raw_win = sum(
                 float(probabilities[bucket]) for bucket in window
             )
@@ -385,21 +431,16 @@ def _support_windows(
             # on those legs.  The floor is on the leg, not the basket,
             # because a basket average hides exactly the case that matters --
             # three fair legs plus one penny leg prices like a fair basket.
-            #
-            # The incumbent is not dropped by this, it is de-priced.  Dropping
-            # it would take "keep what we hold" off the menu entirely: the
-            # enumeration has already recorded the window as seen, so the
-            # append-the-missing-incumbent branch below cannot rescue it, and
-            # a scope holding a penny leg would silently lose its own support.
-            # A window with no price cannot be bought either way -- it is
-            # simply still visible, which is what an unquoted leg has always
-            # produced here.
+            # No window-level check any more: the floor is applied to the
+            # candidate domain above, so an enumerated window cannot contain
+            # a sub-floor rung.  An inherited support still can -- it comes
+            # from the resolver, not from this enumeration -- and is
+            # de-priced rather than dropped, because dropping it would take
+            # "keep what we hold" off the menu for a scope that holds one.
             if priced and any(
                 quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
             ):
                 leg_floor_refused += 1
-                if not is_incumbent:
-                    continue
                 priced = False
                 edge = None
             # Second, friction: the all-in price already carries the fee, so an
@@ -513,6 +554,8 @@ def _support_windows(
         "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
         "leg_floor_refused_window_count": leg_floor_refused,
+        "leg_floor_excluded_buckets": leg_floor_excluded,
+        "gapped_window_refused_count": gapped_refused,
         "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
