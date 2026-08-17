@@ -689,8 +689,28 @@ HTML_TEMPLATE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>校准与链路看板</title>
 <style>
-:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--text:#e6e9ef;
---muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;--accent:#58a6ff}
+:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--soft:rgba(38,43,54,.6);
+--text:#e6e9ef;--muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;
+--accent:#58a6ff;--up:#7ee787;--down:#e3b341;--violet:#d2a8ff;
+--pill-green-bg:rgba(63,185,80,.14);--pill-green-fg:#7ee787;
+--pill-amber-bg:rgba(210,153,34,.16);--pill-amber-fg:#e3b341;
+--pill-red-bg:rgba(248,81,73,.15);--pill-red-fg:#ff7b72;
+--pill-violet-bg:rgba(188,140,255,.16);
+--why-bg:rgba(88,166,255,.07);--why-fg:#c9d4e5;--bar-bg:#232833;
+--shadow:none}
+/* The light palette is not the dark one inverted: on a white ground the
+   same hues read washed out and the greens stop being distinguishable from
+   the ambers, so each accent is darkened to its own readable weight. */
+[data-theme="light"]{--bg:#f6f7f9;--card:#ffffff;--line:#e1e4ea;
+--soft:rgba(140,149,165,.28);--text:#1c2029;--muted:#5b6472;--green:#1a7f37;
+--amber:#9a6700;--red:#cf222e;--accent:#0969da;--up:#1a7f37;--down:#9a6700;
+--violet:#8250df;
+--pill-green-bg:rgba(26,127,55,.11);--pill-green-fg:#116329;
+--pill-amber-bg:rgba(154,103,0,.13);--pill-amber-fg:#7d4e00;
+--pill-red-bg:rgba(207,34,46,.10);--pill-red-fg:#a40e26;
+--pill-violet-bg:rgba(130,80,223,.12);
+--why-bg:rgba(9,105,218,.06);--why-fg:#2b3648;--bar-bg:#e6e9ef;
+--shadow:0 1px 2px rgba(27,31,36,.06)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -699,7 +719,7 @@ h1{font-size:23px;margin:0 0 4px}
 h2{font-size:17px;margin:34px 0 6px;display:flex;align-items:center;gap:9px}
 .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);
-border-radius:11px;padding:16px 18px;margin-bottom:12px}
+border-radius:11px;padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
 .grid{display:grid;gap:12px}
 .g4{grid-template-columns:repeat(auto-fit,minmax(232px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
@@ -708,9 +728,12 @@ border-radius:11px;padding:16px 18px;margin-bottom:12px}
 .red{background:var(--red)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
 border:1px solid var(--line);color:var(--muted)}
-.pill.green{background:rgba(63,185,80,.14);color:#7ee787;border-color:transparent}
-.pill.amber{background:rgba(210,153,34,.16);color:#e3b341;border-color:transparent}
-.pill.red{background:rgba(248,81,73,.15);color:#ff7b72;border-color:transparent}
+.pill.green{background:var(--pill-green-bg);color:var(--pill-green-fg);
+border-color:transparent}
+.pill.amber{background:var(--pill-amber-bg);color:var(--pill-amber-fg);
+border-color:transparent}
+.pill.red{background:var(--pill-red-bg);color:var(--pill-red-fg);
+border-color:transparent}
 .big{font-size:26px;font-weight:650;letter-spacing:-.4px}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -720,30 +743,53 @@ th:hover{color:var(--text)}
 th[data-sorted="1"]{color:var(--accent)}
 th[data-sort-dir="asc"]::after{content:" ↑"}
 th[data-sort-dir="desc"]::after{content:" ↓"}
-td{padding:9px 10px;border-bottom:1px solid rgba(38,43,54,.6);
+td{padding:9px 10px;border-bottom:1px solid var(--soft);
 vertical-align:top}
 tr:last-child td{border-bottom:none}
 .scroll{max-height:520px;overflow:auto}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-.bar{height:6px;border-radius:99px;background:#232833;overflow:hidden;
+.bar{height:6px;border-radius:99px;background:var(--bar-bg);overflow:hidden;
 margin-top:6px}
 .bar>i{display:block;height:100%;background:var(--accent)}
 .chain{display:flex;flex-direction:column;gap:0}
 .link{display:flex;gap:13px;align-items:flex-start;padding:12px 0;
-border-bottom:1px solid rgba(38,43,54,.6)}
+border-bottom:1px solid var(--soft)}
 .link:last-child{border-bottom:none}
 .link .body{flex:1;min-width:0}
 .link .name{font-weight:600}
-.why{background:rgba(88,166,255,.07);border-left:2px solid var(--accent);
-padding:9px 13px;border-radius:0 7px 7px 0;color:#c9d4e5;font-size:13.4px;
+.why{background:var(--why-bg);border-left:2px solid var(--accent);
+padding:9px 13px;border-radius:0 7px 7px 0;color:var(--why-fg);font-size:13.4px;
 margin:9px 0 0}
 .gap{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid
-rgba(38,43,54,.6);align-items:flex-start}
+var(--soft);align-items:flex-start}
 .gap:last-child{border-bottom:none}
 .factor{font-weight:650}
-.up{color:#7ee787}.down{color:#e3b341}.flat{color:var(--muted)}
+.up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--muted)}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
-</style></head><body><div class="wrap" id="app"></div>
+#theme{position:fixed;top:14px;right:16px;z-index:9;cursor:pointer;
+background:var(--card);color:var(--muted);border:1px solid var(--line);
+border-radius:99px;padding:6px 13px;font:13px/1 inherit;
+box-shadow:var(--shadow)}
+#theme:hover{color:var(--text);border-color:var(--accent)}
+@media(max-width:820px){#theme{position:static;margin:14px 20px 0}}
+</style>
+<script>
+// Before first paint, so a light-mode reader does not get a dark flash.
+// The stored choice wins over the system one: someone who has clicked the
+// button has said something the OS setting cannot override.
+(function(){
+  try{
+    var saved = localStorage.getItem("board-theme");
+    var dark = window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme =
+      saved || (dark ? "dark" : "light");
+  }catch(e){ document.documentElement.dataset.theme = "dark"; }
+})();
+</script>
+</head><body>
+<button id="theme" type="button"></button>
+<div class="wrap" id="app"></div>
 <script>
 const D = __PAYLOAD__;
 const h = (s) => String(s == null ? "" : s);
@@ -783,7 +829,7 @@ function members(){
       训练历史 <b>${m.training_days}</b> 天 · ${m.stations} 个站 ·
       ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
     ${m.backfillable ? "" :
-      `<div class="muted" style="margin-top:6px;color:#e3b341">
+      `<div class="muted" style="margin-top:6px;color:var(--down)">
         ⚠ 此来源不留历史档案，当天没抓到就永久缺失</div>`}
   </div>`).join("");
   return `<h2>一、四家模型的数据在不在进来</h2>
@@ -1128,7 +1174,7 @@ function coverage(){
     <div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:7px">
       ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-      <span class="pill" style="background:rgba(188,140,255,.16);color:#d2a8ff">偏上 ${sd.above||0}</span>
+      <span class="pill" style="background:var(--pill-violet-bg);color:var(--violet)">偏上 ${sd.above||0}</span>
       <span class="pill green">一致 ${sd.aligned||0}</span>
       <span class="pill amber">偏下 ${sd.below||0}</span>
       <span style="flex:1"></span>
@@ -1255,7 +1301,7 @@ function roster(){
     // thing itself is a price that exists on the book but cannot be filled.
     const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
     const rung=s.centre_bucket?
-      `<div class="muted">横梁 <span class="mono" style="color:#d2a8ff">${short(s.centre_bucket)}</span></div>`:"";
+      `<div class="muted">横梁 <span class="mono" style="color:var(--violet)">${short(s.centre_bucket)}</span></div>`:"";
     // Which rule chose this basket.  A day compiled under a retired rule set
     // sits beside one compiled under the current rule and is not comparable
     // to it; without this the page invites exactly that comparison.  Current
@@ -1272,11 +1318,11 @@ function roster(){
   const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
     const side=any?`<span class="pill ${any.side==="below"?"amber":any.side==="aligned"?"green":""}"
-      ${any.side==="above"?'style="background:rgba(188,140,255,.16);color:#d2a8ff"':""}>${LAB[any.side]}</span>`:"";
+      ${any.side==="above"?'style="background:var(--pill-violet-bg);color:var(--violet)"':""}>${LAB[any.side]}</span>`:"";
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
     const taf=e.taf_tx_c==null?`<div class="muted">TAF 无温度组</div>`:
-      `<div class="muted">TAF 最高 <span class="mono" style="color:#7ee787">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
+      `<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
     // Recomputations and rung moves are different counts; conflating them
     // reads as a rung that thrashed when it never budged.
     const hist=e.p1_history||[];
@@ -1438,6 +1484,26 @@ document.getElementById("app").innerHTML = [
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);
+
+// The button lives in the static body rather than in a rendered section, so
+// it still works on a page where every section failed to draw -- which is
+// exactly when a reader is most likely to be squinting at it.
+(function(){
+  const button = document.getElementById("theme");
+  const paint = () => {
+    const dark = document.documentElement.dataset.theme !== "light";
+    button.textContent = dark ? "☀ 亮色" : "☾ 暗色";
+    button.title = dark ? "切换到亮色" : "切换到暗色";
+  };
+  button.addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme !== "light";
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+    try{ localStorage.setItem("board-theme", dark ? "light" : "dark"); }
+    catch(e){}
+    paint();
+  });
+  paint();
+})();
 </script></body></html>"""
 
 
