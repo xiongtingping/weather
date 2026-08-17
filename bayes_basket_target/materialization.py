@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import time
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
+from .atomic_ledger import ledger_span, note_ledger_span
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -719,6 +721,101 @@ def _posterior(
     })
 
 
+def materialize_p0m_observed(
+    predecessor: ProbabilityEnvelope | Mapping[str, Any],
+    *,
+    p0_root: ProbabilityEnvelope | Mapping[str, Any],
+    forecast_revision_id: str,
+    forecast_source_object_sha256: str,
+    taf_tx_c: float | None,
+    decision_at_utc: str,
+    fresh_until_utc: str,
+    bridge_sha256: str,
+    checkpoint_id: str | None = None,
+    posterior_version: str = "p0m_taf_observed_v1",
+    band_table: tuple[
+        Sequence[tuple[tuple[float, float], float]], str
+    ] | None = None,
+    center_width: tuple[float, float, str] | None = None,
+) -> ProbabilityEnvelope:
+    """Seat P0-M on a TAF that arrived without a calibrated correction.
+
+    The stage does two separable things.  It corrects the distribution using
+    a fitted TAF artifact -- and it marks a second moment at which the book
+    can be entered, hours after listing, once the airport's own forecast is
+    out.  Only the first needs the artifact, and requiring it for both is
+    why P0-M has three station-days of history: the artifact covers RKPK and
+    ZGSZ, while the inbox carries 256 captures across 44 stations, so 42
+    stations' TAF arrives and is discarded.
+
+    Here the likelihood is identity.  That is not a correction dressed as
+    one: it states exactly what is known -- the forecast landed, and nothing
+    calibrated exists to revise the distribution with -- so the probabilities
+    are P0's, unchanged, and the lineage says so under
+    ``taf_revision_state``.  What the stage contributes is the decision
+    moment itself, which the entry walk then prices against whatever book
+    exists at that hour.
+
+    The observed TX is recorded but deliberately not used as an anchor: the
+    calibrated path moves the centre only after the physical confirmation
+    step, and moving it here on a raw TAF number would be the caller-authored
+    likelihood the calibrated path exists to forbid.
+    """
+
+    previous = (
+        predecessor
+        if isinstance(predecessor, ProbabilityEnvelope)
+        else ProbabilityEnvelope.from_mapping(predecessor)
+    )
+    root = (
+        p0_root
+        if isinstance(p0_root, ProbabilityEnvelope)
+        else ProbabilityEnvelope.from_mapping(p0_root)
+    )
+    if previous.stage not in {"P0", "P0-M"}:
+        raise ContractError("p0m_predecessor_stage_invalid")
+    if root.stage != "P0":
+        raise ContractError("p0m_root_stage_invalid")
+    values = _lineage(
+        "P0-M",
+        values={
+            **_native_forward_lineage("P0-M", root=root, predecessor=previous),
+            "forecast_revision_id": _text(
+                "forecast_revision_id", forecast_revision_id
+            ),
+            "forecast_source_object_sha256": _sha(
+                "forecast_source_object_sha256", forecast_source_object_sha256
+            ),
+            # The whole point of this row, stated where a reader looks.
+            "taf_revision_state": "OBSERVED_NO_CALIBRATED_ARTIFACT",
+            "taf_likelihood_mode": "IDENTITY_NO_ARTIFACT",
+            "taf_observed_tx_c": (
+                "NONE" if taf_tx_c is None else f"{float(taf_tx_c):.17g}"
+            ),
+            "taf_hard_exclusion": "FORBIDDEN",
+        },
+        predecessor=previous,
+        required=("forecast_revision_id", "forecast_source_object_sha256"),
+    )
+    values["p0_root_checkpoint_id"] = root.checkpoint_id
+    values["p0_root_content_sha256"] = root.content_sha256
+    values["p0_root_posterior_sha256"] = root.posterior_sha256
+    values["revision_mode"] = "observed_without_artifact"
+    return _posterior(
+        root,
+        stage="P0-M",
+        likelihoods={bucket: 1.0 for bucket in root.probabilities},
+        lineage=values,
+        checkpoint_id=checkpoint_id,
+        posterior_version=posterior_version,
+        decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
+        fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
+        bridge_sha256=bridge_sha256,
+        band_table=band_table,
+        center_width=center_width,
+    )
+
+
 def materialize_p0m(
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
     *,
@@ -1174,10 +1271,16 @@ def insert_probability_envelope(
 ) -> dict[str, Any]:
     """Append one validated envelope; equal replay is idempotent."""
 
+    envelope_call_started = time.perf_counter()
     status = production_ssot_schema_status(conn)
     if not status["ok"]:
         raise ContractError("production_ssot_schema_incomplete")
     assert_connection_target_capacity(conn)
+    note_ledger_span(
+        "env_schema_capacity",
+        (time.perf_counter() - envelope_call_started) * 1000.0,
+    )
+    envelope_validate_started = time.perf_counter()
     if state not in {"COMMITTED", "QUARANTINED"}:
         raise ContractError("probability_state_invalid")
     if (
@@ -1232,10 +1335,16 @@ def insert_probability_envelope(
         event_id = envelope.lineage.get("canonical_observation_event_id")
         if not event_id:
             raise ContractError("p1_canonical_event_id_missing")
-        for row in conn.execute(
-            "SELECT lineage_json,content_sha256 FROM basket_probability_envelope WHERE station_id=? AND event_date=? AND stage='P1'",
-            (envelope.station_id, envelope.event_date),
-        ).fetchall():
+        # Every committed P1 for the station-day, with its lineage JSON, on
+        # every P1 insert -- and the JSON lives in overflow pages, so this is
+        # a table lookup and a json.loads per prior envelope.  Timed so the
+        # consume-once check can be told apart from the write it guards.
+        with ledger_span("env_p1_lineage_scan"):
+            prior_p1_rows = conn.execute(
+                "SELECT lineage_json,content_sha256 FROM basket_probability_envelope WHERE station_id=? AND event_date=? AND stage='P1'",
+                (envelope.station_id, envelope.event_date),
+            ).fetchall()
+        for row in prior_p1_rows:
             old_lineage = json.loads(str(row[0]))
             if (
                 old_lineage.get("canonical_observation_event_id") == event_id
@@ -1258,6 +1367,11 @@ def insert_probability_envelope(
                     # forever while the served P1 aged past its grace.
                     continue
                 raise ContractError("p1_canonical_event_already_consumed")
+    note_ledger_span(
+        "env_validate",
+        (time.perf_counter() - envelope_validate_started) * 1000.0,
+    )
+    envelope_insert_started = time.perf_counter()
     conn.execute(
         """INSERT INTO basket_probability_envelope(
             envelope_id,stage,checkpoint_id,station_id,event_date,settlement_timezone,decision_at_utc,
@@ -1283,6 +1397,10 @@ def insert_probability_envelope(
             state,
             created,
         ),
+    )
+    note_ledger_span(
+        "env_row_insert",
+        (time.perf_counter() - envelope_insert_started) * 1000.0,
     )
     return {"schema": MATERIALIZATION_SCHEMA, "state": "COMMITTED", "wrote": True, "envelope_id": envelope.checkpoint_id}
 

@@ -36,10 +36,16 @@ from .atomic_ledger import (
     AtomicLedgerError,
     commit_blocked_scope_decision,
     commit_preliminary_scope_decision,
+    ledger_span,
+    ledger_span_profile,
+    note_ledger_span,
+    note_writer_lock_sample,
+    reset_ledger_spans,
     reset_writer_lock_profile,
     writer_lock_profile,
 )
 from .band_reliability_store import load_band_table
+from .center_width_store import load_center_width
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -80,7 +86,7 @@ from .production_io import (
 from .quote_freshness import QuoteFreshnessPolicy
 from .market_materialization import insert_market_evidence_bundle, build_confirmed_inventory_snapshot, build_order_state_snapshot
 from .market_ingress import materialize_official_ws_evidence_cache
-from .materialization import materialize_p0m
+from .materialization import materialize_p0m, materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
@@ -152,7 +158,10 @@ from .native_ensemble_authority import (
     load_native_oos_snapshot_manifest,
 )
 from .native_ensemble_store import ingest_forward_packet
-from .metar_physical_forward import project_metar_physical_member_runs
+from .metar_physical_forward import (
+    apply_metar_physical_member_runs,
+    plan_metar_physical_member_runs,
+)
 from .native_ensemble_training_facts import ingest_forward_taf_inbox
 from .portfolio_inventory import (
     build_portfolio_inventory,
@@ -420,14 +429,35 @@ def _writer_transaction(
     """Use one fail-closed transaction without disturbing an outer writer."""
 
     own_transaction = not conn.in_transaction
+    # Only an outermost transaction acquires the file's single write lock; a
+    # savepoint nests inside one already held, so timing it would count the
+    # same lock twice.  Reported under the savepoint name because that is
+    # what identifies the call site.
+    lock_started_ns = time.perf_counter_ns()
     if own_transaction:
         conn.execute("BEGIN IMMEDIATE")
     else:
         conn.execute(f"SAVEPOINT {savepoint}")
+    acquired_ns = time.perf_counter_ns()
     try:
         yield
         if own_transaction:
-            conn.commit()
+            # Split the hold: statements the transaction ran, versus the
+            # commit that flushes them.  On a starved page cache and a near
+            # full disk these are different problems with different fixes,
+            # and a single "held for 19s" cannot tell them apart.
+            body_ns = time.perf_counter_ns()
+            note_ledger_span(
+                f"txn_body:{savepoint}",
+                (body_ns - acquired_ns) / 1_000_000.0,
+            )
+            with ledger_span(f"txn_commit:{savepoint}"):
+                conn.commit()
+            note_writer_lock_sample(
+                savepoint,
+                wait_ms=(acquired_ns - lock_started_ns) / 1_000_000.0,
+                hold_ms=(time.perf_counter_ns() - acquired_ns) / 1_000_000.0,
+            )
         else:
             conn.execute(f"RELEASE {savepoint}")
     except Exception:
@@ -8400,10 +8430,11 @@ class TargetProductionWorker:
                 "writes_target_ssot": False,
             }
         assert_process_memory_budget()
-        rows = load_started_registry_rows(
-            self.commit_conn,
-            as_of_utc=as_of_utc,
-        )
+        with self._span("p1_started_registry_rows"):
+            rows = load_started_registry_rows(
+                self.commit_conn,
+                as_of_utc=as_of_utc,
+            )
         probability_scopes = {
             (
                 str(row[0] or "").strip().upper(),
@@ -8449,18 +8480,25 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         for (station, day), registry_rows in sorted(grouped.items()):
             try:
-                expected_source_lane = target_registry_source_lane(
-                    self.commit_conn,
-                    station_id=station,
-                    event_date=day,
-                )
-                observations = load_resident_formal_observations(
-                    self.canonical_source_conn,
-                    registry_rows=registry_rows,
-                    station_id=station,
-                    event_date=day,
-                    as_of_utc=as_of_utc,
-                )
+                scope_label = f"{station}|{day}"
+                with self._span("p1_source_lane", label=scope_label):
+                    expected_source_lane = target_registry_source_lane(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                    )
+                # This one reads the 21GB canonical archive, not the SSOT --
+                # a different file, a different cache, and the only phase of
+                # P1 that leaves the target database.  Timed separately so a
+                # slow archive is never diagnosed as a slow SSOT.
+                with self._span("p1_load_observations", label=scope_label):
+                    observations = load_resident_formal_observations(
+                        self.canonical_source_conn,
+                        registry_rows=registry_rows,
+                        station_id=station,
+                        event_date=day,
+                        as_of_utc=as_of_utc,
+                    )
                 # The observations come from the read-only canonical archive,
                 # but the revision facts P1's lineage must name live in the
                 # target SSOT.  Resolved here, against the same connection the
@@ -8468,21 +8506,23 @@ class TargetProductionWorker:
                 # loader a second database: the loader's job is the strict
                 # as-of read of the archive, and nothing else on that path
                 # needs SSOT access.
-                observations = attach_truth_observation_revisions(
-                    self.commit_conn,
-                    observations,
-                    station_id=station,
-                    as_of_utc=as_of_utc,
-                )
+                with self._span("p1_attach_revisions", label=scope_label):
+                    observations = attach_truth_observation_revisions(
+                        self.commit_conn,
+                        observations,
+                        station_id=station,
+                        as_of_utc=as_of_utc,
+                    )
                 if not observations:
                     continue
-                envelopes = load_materialized_probability_envelopes(
-                    self.commit_conn,
-                    station_id=station,
-                    event_date=day,
-                    evaluation_at_utc=as_of_utc,
-                    expected_source_lane=expected_source_lane,
-                )
+                with self._span("p1_load_envelopes", label=scope_label):
+                    envelopes = load_materialized_probability_envelopes(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                        evaluation_at_utc=as_of_utc,
+                        expected_source_lane=expected_source_lane,
+                    )
                 prediction_root, predecessor, consumed, rebasing = (
                     select_p1_replay_base(
                     envelopes,
@@ -8517,6 +8557,7 @@ class TargetProductionWorker:
                     else "EVENING"
                 )
                 maturity_bin = "D0"
+                p1_trajectory_started = time.perf_counter()
                 trajectory_row = (
                     resolve_active_probability_evidence_artifact(
                         self.commit_conn,
@@ -8552,6 +8593,11 @@ class TargetProductionWorker:
                         trajectory_row["artifact"]
                     )
                 )
+                self._add_span(
+                    "p1_trajectory_artifact",
+                    (time.perf_counter() - p1_trajectory_started) * 1000.0,
+                    label=scope_label,
+                )
                 # A missing or pre-curve artifact degrades P1, it does not
                 # stop it.  Requiring the hourly-curve successor before any
                 # P1 could run inverted the codebase's own cutover rule --
@@ -8577,9 +8623,18 @@ class TargetProductionWorker:
                         METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
                     ),
                 )
+                p1_compile_started = time.perf_counter()
                 packets = compile_station_p1_packets(
                     predecessor=predecessor,
                     prediction_root=prediction_root,
+                    # The compiled packet is committed verbatim, so the
+                    # correction layers have to reach this call -- wiring them
+                    # into the single-event ingress path only left the
+                    # resident's own P1 uncorrected.
+                    band_table=load_band_table(self.commit_conn, stage="P1"),
+                    center_width=load_center_width(
+                        self.commit_conn, stage="P1"
+                    ),
                     observations=observations,
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
@@ -8601,6 +8656,11 @@ class TargetProductionWorker:
                     consumed_observation_ids=consumed,
                     trajectory_artifact=trajectory_artifact,
                     maturity_bin=maturity_bin,
+                )
+                self._add_span(
+                    "p1_compile_packets",
+                    (time.perf_counter() - p1_compile_started) * 1000.0,
+                    label=scope_label,
                 )
                 if not packets:
                     # No new reported high, so the distribution has nothing
@@ -8694,7 +8754,9 @@ class TargetProductionWorker:
                 # stage selector still rejects stale P1 for basket decisions
                 # and cannot silently downgrade to P0.
                 current_consumable = final_envelope.is_servable(as_of_utc)
-                with _writer_transaction(
+                with self._span(
+                    "p1_write_scope", label=scope_label
+                ), _writer_transaction(
                     self.commit_conn,
                     savepoint="resident_p1_scope",
                 ):
@@ -8888,17 +8950,32 @@ class TargetProductionWorker:
                         "reason": "canonical_source_conn_missing",
                     }
                 else:
-                    with _writer_transaction(
-                        self.commit_conn,
-                        savepoint="metar_physical_projection",
-                    ):
-                        projection_receipt = (
-                            project_metar_physical_member_runs(
+                    # Plan outside the lock; take it only if there is a row
+                    # to write.  Nearly every cycle plans nothing (all
+                    # station-days already projected), and those cycles now
+                    # never open a transaction at all.
+                    with self._span("metar_proj_plan"):
+                        pending_projection, projection_receipt = (
+                            plan_metar_physical_member_runs(
                                 self.commit_conn,
                                 archive_conn=self.canonical_source_conn,
                                 as_of_utc=as_of_utc,
                             )
                         )
+                    if pending_projection:
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="metar_physical_projection",
+                        ):
+                            projection_receipt = {
+                                **projection_receipt,
+                                "wrote_count": (
+                                    apply_metar_physical_member_runs(
+                                        self.commit_conn,
+                                        pending_projection,
+                                    )
+                                ),
+                            }
             except Exception as exc:  # noqa: BLE001 - stage isolation
                 projection_receipt = {
                     "state": "failed",
@@ -9015,16 +9092,14 @@ class TargetProductionWorker:
                     for item in artifacts
                     if item.station_id == station
                 ]
-                if not station_artifacts:
-                    ignored_no_artifact_scope_count += 1
-                    receipts.append({
-                        "station_id": station,
-                        "event_date": day,
-                        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
-                        "write_count": 0,
-                        "writes": [],
-                    })
-                    continue
+                # No artifact for this station is not a reason to drop the
+                # forecast.  The stage does two separable things -- correct
+                # the distribution, and mark a second moment to enter -- and
+                # only the first needs a fitted artifact.  Dropping here cost
+                # the second as well: measured 2026-08-17, the artifact
+                # covers two stations while the inbox carried 256 captures
+                # across 44, and 82 scopes a cycle were discarded whole.
+                # Fall through to the observation-only path below.
                 scope_exists = self.commit_conn.execute(
                     "SELECT 1 FROM basket_probability_envelope "
                     "WHERE station_id=? AND event_date=? "
@@ -9100,13 +9175,142 @@ class TargetProductionWorker:
                     )
                 ]
                 if not exact_artifacts:
+                    # Seat the stage on the forecast alone.  The likelihood is
+                    # identity -- nothing calibrated exists to revise with, and
+                    # inventing one here is precisely what the proof pipeline
+                    # forbids -- so the distribution stays P0's and the row
+                    # contributes the decision moment, which the entry walk
+                    # then prices against whatever book exists at that hour.
+                    # The TAF has already widened P0's own envelope upstream
+                    # (charter 42's union), so the forecaster is in the
+                    # distribution either way; what was missing was the seat.
                     ignored_no_artifact_scope_count += 1
+                    capture_by_id_tx: dict[str, float | None] = {}
+                    for item in captures:
+                        rid = str(
+                            (item.get("forecast_revision") or {}).get(
+                                "revision_id"
+                            ) or ""
+                        )
+                        fields = item.get("taf_fields")
+                        value = None
+                        if isinstance(fields, Mapping):
+                            try:
+                                value = float(fields["tx_c"])
+                            except (KeyError, TypeError, ValueError):
+                                value = None
+                        if rid:
+                            capture_by_id_tx[rid] = value
+                    # Deliberately not the chain validator.  That exists for
+                    # the correcting path, where each revision's likelihood is
+                    # applied on top of the last and a gap would silently drop
+                    # a correction.  Here every revision is its own entry
+                    # moment carrying an identity likelihood, so a sequence
+                    # gap costs nothing -- and failing the scope on one would
+                    # take the whole stage down, which is what it did on
+                    # first run: 14 stations blocked and P0-M
+                    # BLOCKED_FAIL_CLOSED.
+                    revisions = sorted(
+                        (
+                            ForecastRevision.from_mapping(
+                                item["forecast_revision"]
+                            )
+                            for item in captures
+                        ),
+                        key=lambda item: (
+                            item.received_at_utc, item.revision_id
+                        ),
+                    )
+                    seen_revisions = {
+                        str(item.lineage.get("forecast_revision_id") or "")
+                        for item in envelopes
+                        if item.stage == "P0-M"
+                    }
+                    observed_pending: list[
+                        tuple[ProbabilityEnvelope, str]
+                    ] = []
+                    observed_error: str | None = None
+                    observed_predecessor = root
+                    for revision in revisions:
+                        if revision.revision_id in seen_revisions:
+                            continue
+                        # The forecast's own arrival is the moment, and it
+                        # has to be strictly later than what it follows --
+                        # inventing a tick past the predecessor would date a
+                        # seat at a time nothing happened.  A revision that
+                        # does not clear it is simply not this stage's.
+                        decision_at = revision.received_at_utc
+                        if (
+                            decision_at
+                            <= observed_predecessor.decision_at_utc
+                            or decision_at > as_of_utc
+                        ):
+                            continue
+                        fields = capture_by_id_tx.get(revision.revision_id)
+                        try:
+                            observed = materialize_p0m_observed(
+                                observed_predecessor,
+                                p0_root=root,
+                                forecast_revision_id=revision.revision_id,
+                                forecast_source_object_sha256=(
+                                    revision.source_object_sha256
+                                ),
+                                taf_tx_c=fields,
+                                decision_at_utc=decision_at,
+                                fresh_until_utc=root.fresh_until_utc,
+                                bridge_sha256=root.bridge_sha256,
+                                band_table=load_band_table(
+                                    self.commit_conn, stage="P0-M"
+                                ),
+                                center_width=load_center_width(
+                                    self.commit_conn, stage="P0-M"
+                                ),
+                            )
+                        except ContractError as exc:
+                            # This path is additive: it seats a stage that had
+                            # none.  A scope it cannot serve must fall back to
+                            # the old silence, not fail-close the stage for
+                            # every other scope -- which is what it did on
+                            # first run, taking P0-M down on one station's
+                            # run-cycle conflict.
+                            observed_error = f"ContractError:{exc}"[:200]
+                            break
+                        observed_pending.append((observed, decision_at))
+                        observed_predecessor = observed
+                    observed_writes = []
+                    if observed_pending and observed_error is None:
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="resident_taf_observed_scope",
+                        ):
+                            for envelope, decision_at in observed_pending:
+                                observed_writes.append(
+                                    insert_probability_envelope(
+                                        self.commit_conn,
+                                        envelope,
+                                        created_at_utc=decision_at,
+                                    )
+                                )
+                    observed_count = sum(
+                        1 for write in observed_writes
+                        if write.get("wrote") is True
+                    )
                     receipts.append({
                         "station_id": station,
                         "event_date": day,
-                        "state": "IGNORED_NO_EXACT_TAF_ARTIFACT",
-                        "write_count": 0,
-                        "writes": [],
+                        "state": (
+                            "COMMITTED_OBSERVED_NO_ARTIFACT"
+                            if observed_count
+                            else "OBSERVED_PATH_REFUSED"
+                            if observed_error
+                            else "NO_NEW_TAF_REVISION"
+                        ),
+                        **(
+                            {"observed_reason": observed_error}
+                            if observed_error else {}
+                        ),
+                        "write_count": observed_count,
+                        "writes": observed_writes,
                     })
                     continue
                 if len(exact_artifacts) != 1:
@@ -9275,7 +9479,19 @@ class TargetProductionWorker:
                         # This stage's own residual table; identity until its
                         # settled history clears the hurdles, and identity
                         # leaves the posterior byte-identical.
-                        band_table=load_band_table(conn, stage="P0-M"),
+                        #
+                        # ``conn`` was a NameError here: this scope has no
+                        # such binding and neither does the module.  P0-M
+                        # returns early on an empty TAF inbox almost every
+                        # cycle, so the line had never been reached to raise
+                        # it -- which is also why no P0-M envelope has ever
+                        # carried a band receipt.
+                        band_table=load_band_table(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        center_width=load_center_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
                     )
                     pending_envelopes.append((envelope, decision_at))
                     predecessor = envelope
@@ -9590,6 +9806,7 @@ class TargetProductionWorker:
                             envelope.checkpoint_id
                         )
                         if proof is not None:
+                            p0_proof_started = time.perf_counter()
                             insert_probability_update_proof(
                                 self.commit_conn,
                                 {
@@ -9621,11 +9838,25 @@ class TargetProductionWorker:
                                 ],
                                 },
                             )
-                        write = insert_probability_envelope(
-                            self.commit_conn,
-                            envelope,
-                            created_at_utc=envelope.decision_at_utc,
-                        )
+                            self._add_span(
+                                "p0_insert_proof",
+                                (
+                                    time.perf_counter() - p0_proof_started
+                                ) * 1000.0,
+                                label=envelope.station_id,
+                            )
+                        with self._span(
+                            "p0_insert_envelope",
+                            label=(
+                                f"{envelope.station_id}"
+                                f"|{envelope.event_date}"
+                            ),
+                        ):
+                            write = insert_probability_envelope(
+                                self.commit_conn,
+                                envelope,
+                                created_at_utc=envelope.decision_at_utc,
+                            )
                         committed_receipts.append({
                             "station_id": envelope.station_id,
                             "event_date": envelope.event_date,
@@ -9666,9 +9897,17 @@ class TargetProductionWorker:
         receipt makes the order and no-live boundary explicit to the caller.
         """
 
+        # The chain is the cycle's largest pre-loop cost (239s measured
+        # 2026-08-16) and reported one number for three stages, so which of
+        # them owns it was unknown.  Mark each: the stages run in a fixed
+        # order and never overlap, so the three spans sum to what the single
+        # ``probability_chain`` mark used to report.
         p0 = self.materialize_resident_p0(as_of_utc=as_of_utc)
+        self._mark("probability_p0")
         p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
+        self._mark("probability_p0m")
         p1 = self._materialize_resident_p1(as_of_utc=as_of_utc)
+        self._mark("probability_p1")
         blocked_stages = [
             stage
             for stage, receipt in (("P0", p0), ("P0-M", p0m), ("P1", p1))
@@ -9744,6 +9983,39 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
         receipts: list[dict[str, Any]] = []
+        # Envelopes are append-only and immutable, so a companion built for
+        # one is final -- yet every cycle rebuilt and re-probed all of them.
+        # Measured 2026-08-16: 16,441 envelopes across 88 fresh scopes, each
+        # costing two idempotency SELECTs and its own savepoint transaction,
+        # for 103s a cycle of which ~79s wrote nothing.  Those 32,882 probes
+        # are one read of the same rows, so take it once: 0.5s warm.
+        #
+        # This is a shortcut around ``insert_regime_artifact``'s no-op branch
+        # and nothing else.  It fires only on an exact identity match -- one
+        # committed companion for the scope, with the same probability sha,
+        # content sha and artifact id -- which is precisely the case that
+        # function returns ``wrote=False`` for.  Every other shape (absent,
+        # duplicated, drifted) still goes through it, so the uniqueness and
+        # content-drift contracts remain where they were written.
+        committed_regime: dict[
+            tuple[str, str, str, str], list[tuple[str, str, str]]
+        ] = {}
+        for prior_row in self.conn.execute(
+            "SELECT station_id,event_date,stage,checkpoint_id,"
+            "probability_sha256,content_sha256,artifact_id "
+            "FROM basket_regime_artifact WHERE state='COMMITTED'"
+        ):
+            committed_regime.setdefault(
+                (
+                    str(prior_row[0]),
+                    str(prior_row[1]),
+                    str(prior_row[2]),
+                    str(prior_row[3]),
+                ),
+                [],
+            ).append(
+                (str(prior_row[4]), str(prior_row[5]), str(prior_row[6]))
+            )
         # Keep the resident pass resource-bounded without turning a healthy
         # multi-stage 45-station SSOT into a global blocker once the number
         # of committed envelopes exceeds the per-batch guard.  Each chunk is
@@ -9761,15 +10033,34 @@ class TargetProductionWorker:
             for envelope in chunk:
                 try:
                     artifact = build_regime_artifact(envelope)
-                    with _writer_transaction(
-                        self.commit_conn,
-                        savepoint="basket_target_regime_artifact",
-                    ):
-                        receipt = insert_regime_artifact(
-                            self.commit_conn,
-                            artifact,
-                            created_at_utc=as_of_utc,
+                    prior = committed_regime.get(
+                        (
+                            artifact.station_id,
+                            artifact.event_date,
+                            artifact.stage,
+                            artifact.checkpoint_id,
                         )
+                    ) or []
+                    if len(prior) == 1 and prior[0] == (
+                        artifact.probability_sha256,
+                        artifact.content_sha256,
+                        artifact.artifact_id,
+                    ):
+                        receipt = {
+                            "artifact_id": artifact.artifact_id,
+                            "wrote": False,
+                            "idempotent": True,
+                        }
+                    else:
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="basket_target_regime_artifact",
+                        ):
+                            receipt = insert_regime_artifact(
+                                self.commit_conn,
+                                artifact,
+                                created_at_utc=as_of_utc,
+                            )
                     receipts.append({
                         **receipt,
                         "station_id": envelope.station_id,
@@ -10138,13 +10429,20 @@ class TargetProductionWorker:
         manifest_path = Path(ws_manifest_path).expanduser().resolve()
         if manifest_path == self.market_manifest_path:
             raise RuntimeError("forward_p0_manifest_must_not_be_resident_manifest")
-        registry = load_market_registry_snapshot(registry_path)
-        manifest, quotes = load_official_ws_quotes(manifest_path)
-        stations = latest_visible_p0_station_ids(
-            self.conn,
-            event_date=event_date,
-            evaluation_at_utc=evaluation_at_utc,
-        )
+        # Each of these runs once per scope, forty-odd times a cycle, inside
+        # the loop that now owns most of it.  Naming them separately is the
+        # difference between "the sweep is slow" and knowing whether it is
+        # the registry read, the visibility query, or the compile.
+        with self._span("fwd_registry_snapshot", label=str(station_id or "")):
+            registry = load_market_registry_snapshot(registry_path)
+        with self._span("fwd_ws_quotes", label=str(station_id or "")):
+            manifest, quotes = load_official_ws_quotes(manifest_path)
+        with self._span("fwd_visible_stations", label=str(station_id or "")):
+            stations = latest_visible_p0_station_ids(
+                self.conn,
+                event_date=event_date,
+                evaluation_at_utc=evaluation_at_utc,
+            )
         if station_id is not None:
             requested_station = str(station_id or "").strip().upper()
             if not requested_station:
@@ -10168,11 +10466,12 @@ class TargetProductionWorker:
         # traded.  The allocator splits it, charging stations under one air
         # mass as a single position, and a station it cannot fund to a whole
         # atomic basket gets nothing rather than an amount that buys nothing.
-        quota_by_station = self._portfolio_quota(
-            stations=stations,
-            fallback_budget_usdc=planning_budget_usdc,
-            as_of_utc=evaluation_at_utc,
-        )
+        with self._span("fwd_portfolio_quota", label=str(station_id or "")):
+            quota_by_station = self._portfolio_quota(
+                stations=stations,
+                fallback_budget_usdc=planning_budget_usdc,
+                as_of_utc=evaluation_at_utc,
+            )
         compiled = []
         for station_id in stations:
             station_budget = float(
@@ -10198,20 +10497,21 @@ class TargetProductionWorker:
             # non-finite is rejected), so the trading side stays fail-closed
             # by arithmetic: nothing is affordable, no intent is written.
             try:
-                compiled.append(compile_p0_preselection(
-                    self.conn,
-                    station_id=station_id,
-                    event_date=event_date,
-                    evaluation_at_utc=evaluation_at_utc,
-                    registry_snapshot=registry,
-                    ws_manifest=manifest,
-                    ws_quotes=quotes,
-                    season_bin=str(scope["season_bin"]),
-                    maturity_bin=str(scope["maturity_bin"]),
-                    liquidity_bin=str(scope["liquidity_bin"]),
-                    strategy_version=str(scope["strategy_version"]),
-                    planning_budget_usdc=max(0.0, station_budget),
-                ))
+                with self._span("fwd_compile_preselection", label=station_id):
+                    compiled.append(compile_p0_preselection(
+                        self.conn,
+                        station_id=station_id,
+                        event_date=event_date,
+                        evaluation_at_utc=evaluation_at_utc,
+                        registry_snapshot=registry,
+                        ws_manifest=manifest,
+                        ws_quotes=quotes,
+                        season_bin=str(scope["season_bin"]),
+                        maturity_bin=str(scope["maturity_bin"]),
+                        liquidity_bin=str(scope["liquidity_bin"]),
+                        strategy_version=str(scope["strategy_version"]),
+                        planning_budget_usdc=max(0.0, station_budget),
+                    ))
             except ResourceBoundError:
                 # A process at its resource ceiling must not be asked to do
                 # more work to be polite about it.
@@ -10248,11 +10548,15 @@ class TargetProductionWorker:
                 )
                 raise
             assert_process_memory_budget()
-        assert_connection_target_capacity(
-            self.commit_conn,
-            recover_oversized_wal=True,
-        )
-        with _writer_transaction(
+        with self._span("fwd_capacity_guard"):
+            assert_connection_target_capacity(
+                self.commit_conn,
+                recover_oversized_wal=True,
+            )
+        # The write side of a scope, separated from the compile above it: one
+        # is read-bound work, the other holds the single writer lock, and the
+        # remedy for each is a different one.
+        with self._span("fwd_commit"), _writer_transaction(
             self.commit_conn,
             savepoint="basket_target_p0_worker_batch",
         ):
@@ -11147,6 +11451,84 @@ class TargetProductionWorker:
             self._stage_timings_ms = timings
         timings[stage] = round((now - previous) * 1000.0, 1)
 
+    def _add_span(
+        self, name: str, elapsed_ms: float, *, label: str = ""
+    ) -> None:
+        """Record one span directly, for call sites ``_span`` cannot wrap.
+
+        A ``with`` around a forty-line keyword call would re-indent the call
+        to measure it, and re-indenting working code to profile it is how a
+        profiling change becomes a behaviour change.  Such a site records
+        only on success; the loop's own handler already reports the failure.
+        """
+
+        spans = getattr(self, "_stage_spans", None)
+        if spans is None:
+            spans = {}
+            self._stage_spans = spans
+        row = spans.setdefault(
+            name,
+            {"count": 0, "total_ms": 0.0, "max_ms": 0.0, "slowest": ""},
+        )
+        row["count"] += 1
+        row["total_ms"] += elapsed_ms
+        if elapsed_ms > row["max_ms"]:
+            row["max_ms"] = elapsed_ms
+            row["slowest"] = label
+
+    @contextmanager
+    def _span(self, name: str, *, label: str = "") -> Iterator[None]:
+        """Fold one repetition of a per-item stage into a cycle summary.
+
+        ``_mark`` describes a timeline and cannot describe a loop: the two
+        stages that now dominate a cycle are both loops, and a mark around
+        either reports one number for forty-odd iterations.  This keeps the
+        count, the total, and which single item was worst -- enough to tell
+        "uniformly slow" from "one scope is pathological", which are
+        different bugs and were indistinguishable from the timeline alone.
+
+        A span never swallows an exception; a failed iteration is still
+        counted, because a fast failure that repeats is itself a finding.
+        """
+
+        started = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._add_span(
+                name,
+                (time.perf_counter() - started) * 1000.0,
+                label=label,
+            )
+
+    def _stage_span_summary(self) -> dict[str, Any]:
+        """Merge the worker's spans with the ledger's into one report.
+
+        They measure the same cycle through two modules; reporting them
+        apart just makes the reader add them up.
+        """
+
+        spans = getattr(self, "_stage_spans", None) or {}
+        merged: dict[str, Any] = dict(ledger_span_profile())
+        merged.update({
+            name: {
+                "count": int(row["count"]),
+                "total_ms": round(float(row["total_ms"]), 1),
+                "max_ms": round(float(row["max_ms"]), 1),
+                "mean_ms": round(
+                    float(row["total_ms"]) / max(1, int(row["count"])), 1
+                ),
+                "slowest": str(row["slowest"]),
+            }
+            for name, row in spans.items()
+        })
+        return dict(
+            sorted(
+                merged.items(),
+                key=lambda item: -float(item[1]["total_ms"]),
+            )
+        )
+
     def run(self) -> dict[str, Any]:
         """Run one production cycle and report where its time went.
 
@@ -11158,9 +11540,11 @@ class TargetProductionWorker:
         """
 
         self._stage_timings_ms = {}
+        self._stage_spans = {}
         self._stage_mark_at = time.perf_counter()
         started = time.perf_counter()
         reset_writer_lock_profile()
+        reset_ledger_spans()
         try:
             result = self._run_stages()
         finally:
@@ -11168,6 +11552,7 @@ class TargetProductionWorker:
             self._stage_timings_ms["cycle_total"] = total_ms
         if isinstance(result, dict):
             result.setdefault("stage_timings_ms", dict(self._stage_timings_ms))
+            result.setdefault("stage_span_ms", self._stage_span_summary())
             result.setdefault("writer_lock_profile", writer_lock_profile())
         return result
 
@@ -11813,7 +12198,6 @@ class TargetProductionWorker:
             resident_p0_ingress = resident_probability_chain["p0"]
             resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
-            self._mark("probability_chain")
             # A correction/revision halt belongs to one station-day.  It must
             # remain fail-closed for that scope, but must not suppress healthy
             # stations from reaching their own WS/decision path.  Only a
@@ -11913,10 +12297,13 @@ class TargetProductionWorker:
                     > preselection_manifest_max_age_sec
                 ):
                     try:
-                        preselection_catalog_by_key = {
-                            item["scope_key"]: item
-                            for item in self._resident_ws_scope_catalog()
-                        }
+                        with self._span(
+                            "forward_p0_catalog_reread", label=scope_key
+                        ):
+                            preselection_catalog_by_key = {
+                                item["scope_key"]: item
+                                for item in self._resident_ws_scope_catalog()
+                            }
                     except (ContractError, ResourceBoundError):
                         # A torn or rejected read is not this sweep's to fail
                         # on: keep the catalog in hand and let the compile's
@@ -11932,7 +12319,9 @@ class TargetProductionWorker:
                     # Cleared per scope: a receipt left over from an earlier
                     # scope's refusal must not be read as this one's book.
                     self._forward_market_evidence_last = None
-                    with self._temporary_scope_manifest(
+                    with self._span(
+                        "forward_p0_scope", label=scope_key
+                    ), self._temporary_scope_manifest(
                         ws_scope["manifest"]
                     ) as scope_manifest_path:
                         forward_p0_preselections.append(
