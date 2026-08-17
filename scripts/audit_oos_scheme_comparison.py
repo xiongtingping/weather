@@ -36,6 +36,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+# Always present.  Candidate weightings (min_variance, inverse_variance, ...)
+# ride in the same per-day record and are picked up by name wherever every
+# sampled day carries them, so a scheme added upstream needs no change here.
 SCHEMES = ("climate", "equal_weight", "learned")
 METRICS = ("crps", "brier", "nll")
 # Log score is reported in bits because that is the one figure comparable
@@ -82,9 +85,30 @@ def _load(
                 "candidate_set": tuple(
                     diagnostic.get("fixed_candidate_system_ids") or ()
                 ),
-                **{scheme: day[scheme] for scheme in SCHEMES},
+                **{
+                    key: value for key, value in day.items()
+                    if key != "event_date"
+                },
             })
     return rows
+
+
+def _schemes_present(rows: list[dict[str, Any]]) -> list[str]:
+    """Scheme names every sampled day carries.
+
+    A scheme that only some days scored cannot be pooled against the others:
+    its mean would be taken over a different set of weather than the mean it
+    is compared with.  Requiring presence everywhere keeps every comparison
+    paired on the same days.
+    """
+
+    shared = set(rows[0]) - {
+        "station_id", "scope", "oos_state", "event_date", "candidate_set",
+    }
+    for row in rows[1:]:
+        shared &= set(row)
+    ordered = [scheme for scheme in SCHEMES if scheme in shared]
+    return ordered + sorted(shared - set(ordered))
 
 
 def _bootstrap(
@@ -131,37 +155,62 @@ def compare(
     draws: int,
     seed: int,
 ) -> dict[str, Any]:
+    schemes = _schemes_present(rows)
     scheme_means = {
         scheme: {
             metric: statistics.mean(row[scheme][metric] for row in rows)
             for metric in METRICS
         }
-        for scheme in SCHEMES
+        for scheme in schemes
     }
-    for scheme in SCHEMES:
+    for scheme in schemes:
         scheme_means[scheme]["log_score_bits"] = (
             scheme_means[scheme]["nll"] / LN2
         )
-    # Equal minus learned, per metric.  Every score here is a loss, so a
-    # positive difference means equal weight lost and the learned weights
-    # earned their place; a negative one means averaging would have done
-    # better.
-    gap: dict[str, Any] = {}
-    for metric in METRICS:
-        by_day: dict[str, list[float]] = defaultdict(list)
+
+    def _gap(challenger: str, incumbent: str) -> dict[str, Any]:
+        """``challenger`` minus ``incumbent``, intervalled over days.
+
+        Every score is a loss, so a positive difference means the challenger
+        scored worse and the incumbent held its place.
+        """
+
+        out: dict[str, Any] = {}
+        for metric in METRICS:
+            by_day: dict[str, list[float]] = defaultdict(list)
+            for row in rows:
+                by_day[row["event_date"]].append(
+                    row[challenger][metric] - row[incumbent][metric]
+                )
+            out[metric] = _bootstrap(dict(by_day), draws=draws, seed=seed)
+        by_day_bits: dict[str, list[float]] = defaultdict(list)
         for row in rows:
-            by_day[row["event_date"]].append(
-                row["equal_weight"][metric] - row["learned"][metric]
+            by_day_bits[row["event_date"]].append(
+                (row[challenger]["nll"] - row[incumbent]["nll"]) / LN2
             )
-        gap[metric] = _bootstrap(dict(by_day), draws=draws, seed=seed)
-    by_day_bits: dict[str, list[float]] = defaultdict(list)
-    for row in rows:
-        by_day_bits[row["event_date"]].append(
-            (row["equal_weight"]["nll"] - row["learned"]["nll"]) / LN2
+        out["log_score_bits"] = _bootstrap(
+            dict(by_day_bits), draws=draws, seed=seed
         )
-    gap["log_score_bits"] = _bootstrap(
-        dict(by_day_bits), draws=draws, seed=seed
-    )
+        out["incumbent_beats_challenger_station_day_share"] = (
+            sum(
+                1 for row in rows
+                if row[incumbent]["nll"] < row[challenger]["nll"]
+            ) / len(rows)
+        )
+        return out
+
+    gap = _gap("equal_weight", "learned")
+    # Every candidate weighting against the one actually served, and against
+    # equal weight, so a scheme that only beats the incumbent by being closer
+    # to flat is visible as such.
+    challengers = {
+        scheme: {
+            "vs_learned": _gap(scheme, "learned"),
+            "vs_equal_weight": _gap(scheme, "equal_weight"),
+        }
+        for scheme in schemes
+        if scheme not in ("climate", "equal_weight", "learned")
+    }
     station_days = len(rows)
     learned_wins = sum(
         1 for row in rows
@@ -181,8 +230,10 @@ def compare(
             "+".join(candidate_set)
             for candidate_set in {row["candidate_set"] for row in rows}
         ),
+        "schemes_compared": schemes,
         "scheme_means": scheme_means,
         "equal_minus_learned": gap,
+        "candidate_weightings": challengers,
         "learned_beats_equal_station_day_share": (
             learned_wins / station_days if station_days else 0.0
         ),

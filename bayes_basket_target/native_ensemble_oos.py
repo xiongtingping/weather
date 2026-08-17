@@ -584,6 +584,8 @@ def _equal_weight_diagnostic(
     seated_weights: Mapping[str, float],
     equal_cohort_metrics: Mapping[str, float] | None = None,
     daily_scores: Sequence[Mapping[str, Any]] = (),
+    shadow_weight_schemes: Mapping[str, Mapping[str, float]] = {},
+    shadow_metrics: Mapping[str, Mapping[str, float]] = {},
 ) -> dict[str, Any]:
     """Three-way skill matrix: climatology, equal weight, learned weights.
 
@@ -674,6 +676,21 @@ def _equal_weight_diagnostic(
         matrix["comparisons"]["d_equal_cohort_vs_learned"] = _pairwise_skill(
             equal_cohort_metrics, learned_metrics
         )
+    # Candidate weightings, scored and serving nothing.  Each is the seated
+    # systems under a different rule, so its gap to the learned blend is a
+    # gap in weighting alone -- the same contrast B draws, with equal weight
+    # swapped for a covariance-aware one.
+    for label in sorted(shadow_metrics):
+        matrix.setdefault("shadow_schemes", {})[label] = {
+            "metrics": dict(shadow_metrics[label]),
+            "weights": dict(shadow_weight_schemes.get(label) or {}),
+            "vs_learned": _pairwise_skill(
+                shadow_metrics[label], learned_metrics
+            ),
+            "vs_equal_weight": _pairwise_skill(
+                shadow_metrics[label], equal_weight_metrics
+            ),
+        }
     if daily_scores:
         matrix["scheme_daily_scores"] = [
             dict(row) for row in daily_scores
@@ -1383,6 +1400,227 @@ def _select_minimum_crps_subset(
     return best_weights, receipt
 
 
+# A covariance wants many more days than systems.  Twelve is the floor at
+# which the diagonal is worth trusting at all; below it the scheme declines to
+# have an opinion rather than returning a confident wrong one.
+MINIMUM_VARIANCE_MIN_DAYS = 12
+# Half weight on the measured correlations.  The diagonal of a residual
+# covariance is pinned down by a few dozen days; the off-diagonal is not, and
+# an unshrunk inverse turns that noise into large offsetting weights -- the
+# classic failure of a sample minimum-variance portfolio.  Shrinking toward
+# the diagonal degrades gracefully to inverse-variance weighting, so the
+# shadow can also be run at 1.0 to ask whether the correlations earned
+# anything the variances did not.
+MINIMUM_VARIANCE_SHRINKAGE = 0.5
+
+
+def _solve_symmetric(
+    matrix: list[list[float]],
+    vector: list[float],
+) -> list[float] | None:
+    """Gaussian elimination with partial pivoting; None if near-singular."""
+
+    size = len(vector)
+    augmented = [list(matrix[row]) + [vector[row]] for row in range(size)]
+    for column in range(size):
+        pivot = max(
+            range(column, size),
+            key=lambda row: abs(augmented[row][column]),
+        )
+        if abs(augmented[pivot][column]) < 1e-12:
+            return None
+        augmented[column], augmented[pivot] = (
+            augmented[pivot], augmented[column]
+        )
+        for row in range(size):
+            if row == column:
+                continue
+            factor = augmented[row][column] / augmented[column][column]
+            for term in range(column, size + 1):
+                augmented[row][term] -= factor * augmented[column][term]
+    return [
+        augmented[row][size] / augmented[row][row] for row in range(size)
+    ]
+
+
+def _minimum_variance_weights(
+    *,
+    residuals_by_system: Mapping[str, Mapping[str, float]],
+    family_by_system: Mapping[str, str],
+    family_caps: Mapping[str, float],
+    shrinkage: float = MINIMUM_VARIANCE_SHRINKAGE,
+) -> dict[str, float] | None:
+    """Weights minimising the combined residual variance, not each system's own.
+
+    Inverse RMSE asks only how good each system is alone, so two systems that
+    make the same mistake are paid twice for one piece of information.  The
+    combination that actually minimises error variance is ``inv(S) 1``
+    normalised, and the whole of its advantage lives in the off-diagonal --
+    which is also the part a month of days estimates worst, hence the
+    shrinkage above.
+
+    Negative weights are refused rather than clipped after the fact: a blend
+    is a mixture of distributions and a negative share has no meaning in it.
+    The constrained optimum is found by enumerating which systems sit at
+    zero -- sound because the contract already bounds the cohort at eight
+    systems, so the active set is at most 255 candidates.
+
+    Returns None when the sample cannot support the estimate, which the
+    caller reads as "this scheme has no opinion here" rather than as a
+    failure.
+    """
+
+    systems = sorted(residuals_by_system)
+    if len(systems) < 2:
+        return None
+    days = sorted(set.intersection(*(
+        set(residuals_by_system[system]) for system in systems
+    )))
+    if len(days) < MINIMUM_VARIANCE_MIN_DAYS:
+        return None
+    # Centered: the per-system bias is corrected upstream, so what the blend
+    # still has to fight is the variation around each system's own mean.
+    means = {
+        system: sum(
+            residuals_by_system[system][day] for day in days
+        ) / len(days)
+        for system in systems
+    }
+    centered = {
+        system: [
+            residuals_by_system[system][day] - means[system]
+            for day in days
+        ]
+        for system in systems
+    }
+    size = len(systems)
+    covariance = [[0.0] * size for _ in range(size)]
+    for row, left in enumerate(systems):
+        for column, right in enumerate(systems):
+            covariance[row][column] = sum(
+                centered[left][index] * centered[right][index]
+                for index in range(len(days))
+            ) / float(len(days))
+    if any(covariance[index][index] <= 1e-9 for index in range(size)):
+        return None
+    for row in range(size):
+        for column in range(size):
+            if row != column:
+                covariance[row][column] *= 1.0 - shrinkage
+
+    best: tuple[float, dict[str, float]] | None = None
+    for mask in range(1, 1 << size):
+        active = [index for index in range(size) if mask & (1 << index)]
+        sub = [
+            [covariance[row][column] for column in active]
+            for row in active
+        ]
+        solved = _solve_symmetric(sub, [1.0] * len(active))
+        if solved is None:
+            continue
+        total = sum(solved)
+        if abs(total) < 1e-12:
+            continue
+        shares = [value / total for value in solved]
+        if any(share < -1e-9 for share in shares):
+            continue
+        objective = 0.0
+        for row in range(len(active)):
+            for column in range(len(active)):
+                objective += shares[row] * sub[row][column] * shares[column]
+        if objective <= 0.0:
+            continue
+        if best is None or objective < best[0] - 1e-15:
+            best = (
+                objective,
+                {
+                    systems[active[index]]: max(shares[index], 0.0)
+                    for index in range(len(active))
+                },
+            )
+    if best is None:
+        return None
+    raw = best[1]
+    # The served blend must span two independence families.  Where the
+    # unconstrained-but-non-negative optimum does not, the honest report is
+    # that this scheme wants a blend the serving contract refuses, not a
+    # patched-up version of it: forcing a family back in at some floor would
+    # be inventing a weight no criterion chose.
+    if len({family_by_system[system] for system in raw}) < 2:
+        return None
+    family_totals: dict[str, float] = defaultdict(float)
+    for system, share in raw.items():
+        family_totals[family_by_system[system]] += share
+    capped = _capped_family_weights(
+        dict(family_totals),
+        {
+            family: float(family_caps.get(family, 0.75))
+            for family in family_totals
+        },
+    )
+    weights: dict[str, float] = {}
+    for system, share in raw.items():
+        family = family_by_system[system]
+        if family_totals[family] <= 0.0:
+            continue
+        weights[system] = capped[family] * share / family_totals[family]
+    total = sum(weights.values())
+    if total <= 0.0:
+        return None
+    return {system: value / total for system, value in weights.items()}
+
+
+def _capped_family_weights(
+    family_weights: Mapping[str, float],
+    caps: Mapping[str, float],
+) -> dict[str, float]:
+    """Hold every family under its cap, spilling the excess into the rest.
+
+    Shared by every weighting scheme so a candidate scheme faces exactly the
+    concentration limit the served one does: a comparison where one side may
+    put 90% on a single family and the other may not is a comparison of
+    constraints, not of schemes.
+    """
+
+    families = sorted(family_weights)
+    weights = dict(family_weights)
+    if sum(caps.values()) < 1.0 - EPS:
+        raise ContractError("cross_native_ensemble_family_caps_infeasible")
+    for _iteration in range(len(families) + 2):
+        over = [
+            family
+            for family in families
+            if weights[family] > caps[family] + EPS
+        ]
+        if not over:
+            break
+        excess = 0.0
+        for family in over:
+            excess += weights[family] - caps[family]
+            weights[family] = caps[family]
+        receivers = [
+            family
+            for family in families
+            if family not in over
+            and weights[family] < caps[family] - EPS
+        ]
+        capacity = sum(
+            caps[family] - weights[family] for family in receivers
+        )
+        if not receivers or capacity + EPS < excess:
+            raise ContractError(
+                "cross_native_ensemble_family_caps_infeasible"
+            )
+        for family in receivers:
+            weights[family] += excess * (
+                (caps[family] - weights[family]) / capacity
+            )
+    total = sum(weights.values())
+    if total <= 0.0:
+        raise ContractError("cross_native_ensemble_family_caps_infeasible")
+    return {family: value / total for family, value in weights.items()}
+
+
 def _bounded_family_weights(
     *,
     train_rmse_by_system: Mapping[str, float],
@@ -1419,43 +1657,7 @@ def _bounded_family_weights(
         family: float(family_caps.get(family, 0.75))
         for family in families
     }
-    if sum(caps.values()) < 1.0 - EPS:
-        raise ContractError("cross_native_ensemble_family_caps_infeasible")
-    for _iteration in range(len(families) + 2):
-        over = [
-            family
-            for family in families
-            if family_weights[family] > caps[family] + EPS
-        ]
-        if not over:
-            break
-        excess = 0.0
-        for family in over:
-            excess += family_weights[family] - caps[family]
-            family_weights[family] = caps[family]
-        receivers = [
-            family
-            for family in families
-            if family not in over
-            and family_weights[family] < caps[family] - EPS
-        ]
-        capacity = sum(
-            caps[family] - family_weights[family]
-            for family in receivers
-        )
-        if not receivers or capacity + EPS < excess:
-            raise ContractError(
-                "cross_native_ensemble_family_caps_infeasible"
-            )
-        for family in receivers:
-            family_weights[family] += excess * (
-                (caps[family] - family_weights[family]) / capacity
-            )
-    total = sum(family_weights.values())
-    family_weights = {
-        family: value / total
-        for family, value in family_weights.items()
-    }
+    family_weights = _capped_family_weights(family_weights, caps)
     system_weights: dict[str, float] = {}
     for family in families:
         members = [
@@ -3134,6 +3336,56 @@ def build_native_ensemble_oos(
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
             _cycle_mapping_for_rows(selected_ready_rows)
         )
+        # Train-window residuals, read before the holdout is scored so a
+        # covariance-aware weighting can be derived from them without ever
+        # seeing a holdout day.  The correlation matrix further down reads the
+        # same series; it is computed once here and reused so the evidence a
+        # reader sees and the numbers a candidate scheme is built on cannot
+        # drift apart.
+        certified_train_end = rows[0][1]["train_end_date"]
+        train_residuals: dict[str, dict[str, float]] = {
+            system_id: {
+                case["event_date"]: (
+                    float(case["actual_tmax_c"])
+                    - sum(float(value) for value in case["values"])
+                    / len(case["values"])
+                )
+                for case in cases_by_scope.get(
+                    (
+                        system_id,
+                        season_bin,
+                        lead_bucket,
+                        cycle_by_system[system_id],
+                    ),
+                    (),
+                )
+                if case["event_date"] <= certified_train_end
+            }
+            for system_id in sorted(weights)
+        }
+        # Shadow schemes, scored beside the served one and serving nothing.
+        # Inverse RMSE prices each system on how good it is alone, so two
+        # systems making the same mistake are paid twice for one piece of
+        # information; these ask what weights would fall out of the residual
+        # covariance instead.  The pair is deliberate: the diagonal-only
+        # variant is inverse-variance weighting, so the gap between the two is
+        # what the measured correlations are worth on their own.
+        shadow_weight_schemes: dict[str, dict[str, float]] = {}
+        for label, shrinkage in (
+            ("min_variance", MINIMUM_VARIANCE_SHRINKAGE),
+            ("inverse_variance", 1.0),
+        ):
+            try:
+                candidate_weights = _minimum_variance_weights(
+                    residuals_by_system=train_residuals,
+                    family_by_system=family_by_system,
+                    family_caps=configured_caps,
+                    shrinkage=shrinkage,
+                )
+            except ContractError:
+                candidate_weights = None
+            if candidate_weights:
+                shadow_weight_schemes[label] = candidate_weights
         cross_predictions = []
         climate_train = next(
             iter(rows)
@@ -3265,6 +3517,55 @@ def build_native_ensemble_oos(
                     )
                 return shaped
 
+            def _weighted_blend(
+                system_weights: Mapping[str, float],
+            ) -> dict[str, float]:
+                """One day, one set of weights, everything else held equal.
+
+                Bridge, shape stack and grid are the served ones, so any
+                scheme routed through here differs from the seated blend in
+                its weights and in nothing else.
+                """
+
+                cohort = sorted(system_weights)
+                grid = sorted(
+                    set().union(*(
+                        set(
+                            predictions_by_system[system][day][
+                                "probability"
+                            ]
+                        )
+                        for system in cohort
+                    )),
+                    key=lambda key: int(key),
+                )
+                blended, _receipt = bridged_cross_probability(
+                    system_probabilities={
+                        system: predictions_by_system[system][day][
+                            "probability"
+                        ]
+                        for system in cohort
+                    },
+                    system_weights=dict(system_weights),
+                    system_centers_c={
+                        system: float(
+                            predictions_by_system[system][day][
+                                "calibrated_center_c"
+                            ]
+                        )
+                        for system in cohort
+                    },
+                    ordered_keys=grid,
+                    key_centers_c=[float(int(key)) for key in grid],
+                )
+                return _shaped(
+                    blended,
+                    grid=grid,
+                    grid_ordinals={
+                        str(key): index for index, key in enumerate(grid)
+                    },
+                )
+
             def _equal_blend(cohort: Sequence[str]) -> dict[str, float]:
                 """The same systems, weighted alike.
 
@@ -3348,6 +3649,13 @@ def build_native_ensemble_oos(
                 "climate": _metrics(climate_probability, actual),
                 "equal_weight": _metrics(equal_probability, actual),
                 "learned": _metrics(probability, actual),
+                **{
+                    label: _metrics(
+                        _weighted_blend(scheme_weights), actual
+                    )
+                    for label, scheme_weights
+                    in shadow_weight_schemes.items()
+                },
             })
             for layer, samples in ablation_metrics.items():
                 samples.append(_metrics(_shaped(unshaped, skip=layer), actual))
@@ -3405,6 +3713,14 @@ def build_native_ensemble_oos(
             seated_system_ids=sorted(weights),
             seated_weights=weights,
             daily_scores=scheme_daily_scores,
+            shadow_weight_schemes=shadow_weight_schemes,
+            shadow_metrics={
+                label: _mean_metrics([
+                    row[label] for row in scheme_daily_scores
+                ])
+                for label in shadow_weight_schemes
+                if all(label in row for row in scheme_daily_scores)
+            } if scheme_daily_scores else {},
         )
         # Positive percentages mean the layer earned its place: the stack
         # without it scores worse.  Sign is what a reader wants first, so it
@@ -3442,31 +3758,13 @@ def build_native_ensemble_oos(
             systems_by_id=systems,
             family_weight_caps=family_caps_exact,
         )
-        residuals: dict[str, dict[str, float]] = {}
-        # Over every blended system, not just the certified ones: the
-        # correlation matrix below is keyed on ``selected_system_ids``, and a
-        # provisional seat is in that list.  Its own cases are read the same
-        # way; where it has none inside the certified train window the series
-        # is empty and ``_correlation`` reports 0.0, exactly as it does for any
-        # other pair too short to measure.  This is evidence, not a weight --
-        # nothing here feeds the blend.
-        certified_train_end = rows[0][1]["train_end_date"]
-        for system_id in selected_system_ids:
-            scope = (
-                system_id,
-                season_bin,
-                lead_bucket,
-                cycle_by_system[system_id],
-            )
-            residuals[system_id] = {
-                case["event_date"]: (
-                    float(case["actual_tmax_c"])
-                    - sum(float(value) for value in case["values"])
-                    / len(case["values"])
-                )
-                for case in cases_by_scope.get(scope, ())
-                if case["event_date"] <= certified_train_end
-            }
+        # The same series the shadow weighting above was derived from, read
+        # once before the holdout and reused here.  Where a system has no
+        # cases inside the certified train window the series is empty and
+        # ``_correlation`` reports 0.0, exactly as it does for any other pair
+        # too short to measure.  This is evidence, not a weight -- nothing
+        # here feeds the served blend.
+        residuals = train_residuals
         correlations: dict[str, dict[str, float]] = {}
         for left in selected_system_ids:
             correlations[left] = {}

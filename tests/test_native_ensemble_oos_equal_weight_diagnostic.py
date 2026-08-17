@@ -235,3 +235,190 @@ class DiagnosticStaysOutOfTheSelectionShaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MinimumVarianceWeightTest(unittest.TestCase):
+    """Weights that price redundancy, which inverse RMSE cannot see."""
+
+    @staticmethod
+    def _correlated_pair_plus_independent(
+        seed: int = 11, days: int = 40
+    ) -> dict[str, dict[str, float]]:
+        import random
+
+        rng = random.Random(seed)
+        residuals: dict[str, dict[str, float]] = {"A": {}, "B": {}, "C": {}}
+        for index in range(days):
+            day = f"2026-07-{index + 1:02d}"
+            shared = rng.gauss(0.0, 1.0)
+            residuals["A"][day] = shared + rng.gauss(0.0, 0.3)
+            residuals["B"][day] = shared + rng.gauss(0.0, 0.3)
+            residuals["C"][day] = rng.gauss(0.0, 1.05)
+        return residuals
+
+    def test_redundant_systems_share_one_seat_between_them(self) -> None:
+        """A and B make the same error; C is independent and no better alone.
+
+        Inverse RMSE pays A and B in full for one piece of information.  The
+        covariance solution must hand the redundant pair, together, less than
+        it hands the system that is telling it something new.
+        """
+
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        weights = _minimum_variance_weights(
+            residuals_by_system=self._correlated_pair_plus_independent(),
+            family_by_system={"A": "fa", "B": "fb", "C": "fc"},
+            family_caps={},
+            shrinkage=0.0,
+        )
+        assert weights is not None
+        self.assertLess(weights["A"] + weights["B"], weights["C"])
+        self.assertAlmostEqual(sum(weights.values()), 1.0, places=9)
+
+    def test_shrinking_to_the_diagonal_forgets_the_redundancy(self) -> None:
+        """At full shrinkage it is inverse-variance and must stop correcting."""
+
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        residuals = self._correlated_pair_plus_independent()
+        full = _minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "fa", "B": "fb", "C": "fc"},
+            family_caps={},
+            shrinkage=0.0,
+        )
+        diagonal = _minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "fa", "B": "fb", "C": "fc"},
+            family_caps={},
+            shrinkage=1.0,
+        )
+        assert full is not None and diagonal is not None
+        self.assertGreater(
+            diagonal["A"] + diagonal["B"], full["A"] + full["B"]
+        )
+
+    def test_no_weight_is_ever_negative(self) -> None:
+        """A blend is a mixture; a negative share has no meaning in one.
+
+        Two near-identical systems drive the unconstrained solution to large
+        offsetting weights, which is exactly where an unguarded inverse would
+        return one.
+        """
+
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        import random
+
+        rng = random.Random(5)
+        residuals: dict[str, dict[str, float]] = {"A": {}, "B": {}, "C": {}}
+        for index in range(40):
+            day = f"2026-07-{index + 1:02d}"
+            shared = rng.gauss(0.0, 1.0)
+            residuals["A"][day] = shared + rng.gauss(0.0, 0.02)
+            residuals["B"][day] = shared * 1.02 + rng.gauss(0.0, 0.02)
+            residuals["C"][day] = rng.gauss(0.0, 3.0)
+        weights = _minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "fa", "B": "fb", "C": "fc"},
+            family_caps={},
+            shrinkage=0.0,
+        )
+        assert weights is not None
+        self.assertTrue(all(value >= 0.0 for value in weights.values()))
+        self.assertAlmostEqual(sum(weights.values()), 1.0, places=9)
+
+    def test_a_family_cap_binds_the_candidate_too(self) -> None:
+        """Otherwise the comparison is of constraints, not of schemes."""
+
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        import random
+
+        rng = random.Random(9)
+        residuals: dict[str, dict[str, float]] = {"A": {}, "B": {}, "C": {}}
+        for index in range(40):
+            day = f"2026-07-{index + 1:02d}"
+            residuals["A"][day] = rng.gauss(0.0, 0.2)
+            residuals["B"][day] = rng.gauss(0.0, 0.2)
+            # Worse than the pair but not hopeless: the shared family earns
+            # far past its cap while this one still holds positive weight, so
+            # the cap is what binds rather than the non-negativity.
+            residuals["C"][day] = rng.gauss(0.0, 0.5)
+        weights = _minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "shared", "B": "shared", "C": "other"},
+            family_caps={"shared": 0.6, "other": 0.75},
+            shrinkage=0.0,
+        )
+        assert weights is not None
+        self.assertLessEqual(weights["A"] + weights["B"], 0.6 + 1e-9)
+
+    def test_too_few_days_declines_rather_than_guesses(self) -> None:
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        residuals = {
+            "A": {f"2026-07-0{i}": 0.4 * i for i in range(1, 6)},
+            "B": {f"2026-07-0{i}": 0.3 * i for i in range(1, 6)},
+        }
+        self.assertIsNone(_minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "fa", "B": "fb"},
+            family_caps={},
+        ))
+
+    def test_a_degenerate_system_declines_rather_than_dividing_by_zero(
+        self,
+    ) -> None:
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        residuals = {
+            "A": {f"2026-07-{i:02d}": 0.0 for i in range(1, 21)},
+            "B": {f"2026-07-{i:02d}": float(i % 3) for i in range(1, 21)},
+        }
+        self.assertIsNone(_minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "fa", "B": "fb"},
+            family_caps={},
+        ))
+
+    def test_it_declines_when_the_optimum_wants_a_single_family(self) -> None:
+        """A blend the serving contract refuses is not a result to report.
+
+        Where one family is so much worse that the non-negative optimum puts
+        nothing on it, forcing it back in at some floor would be inventing a
+        weight no criterion chose -- so the scheme reports no opinion instead.
+        """
+
+        from bayes_basket_target.native_ensemble_oos import (
+            _minimum_variance_weights,
+        )
+
+        import random
+
+        rng = random.Random(9)
+        residuals: dict[str, dict[str, float]] = {"A": {}, "B": {}, "C": {}}
+        for index in range(40):
+            day = f"2026-07-{index + 1:02d}"
+            residuals["A"][day] = rng.gauss(0.0, 0.2)
+            residuals["B"][day] = rng.gauss(0.0, 0.2)
+            residuals["C"][day] = rng.gauss(0.0, 4.0)
+        self.assertIsNone(_minimum_variance_weights(
+            residuals_by_system=residuals,
+            family_by_system={"A": "shared", "B": "shared", "C": "other"},
+            family_caps={},
+            shrinkage=0.0,
+        ))
