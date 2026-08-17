@@ -59,6 +59,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    CENTRE_ANCHOR_DISTANCE_DECAY,
+    CENTRE_ANCHOR_EDGE_TILT,
+    CENTRE_ANCHOR_MIN_RUNG_SHARE,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
     _support_windows,
@@ -123,6 +126,17 @@ EXECUTION_MODE = (
     os.environ.get("PAPER_LEDGER_EXECUTION", "taker").strip() or "taker"
 )
 EXECUTION_MODES = ("taker", "maker_bid", "maker_improve", "mid")
+# How the stake is split across the basket's rungs.  ``equal_shares`` is
+# what the ledger has always done -- one share count for the whole basket,
+# which is what atomicity means for a complete basket and is why allocation
+# shape never reached these numbers.  ``centre_tilt`` reproduces
+# production's ``_centre_anchored_candidates``: a base holding on the centre
+# rung, leaned toward positive edge, with the far rungs floored as hedges.
+ALLOCATION_SHAPE = (
+    os.environ.get("PAPER_LEDGER_ALLOCATION", "centre_tilt").strip()
+    or "centre_tilt"
+)
+ALLOCATION_SHAPES = ("equal_shares", "centre_tilt")
 # Every structural rule a recorded seat depends on.  Positions are derived rows,
 # so a change to any of these makes the ones already in the table describe a
 # strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the
@@ -164,7 +178,8 @@ SELECTION_RULE_SHA256 = content_sha256({
     # seated LEMD at 16.88 (2% of 844) beside RKSI at 14.52 (2% of 726) on
     # the same day, because half the day was re-derived and half was not.
     "selection_rule_label": SELECTION_RULE_LABEL,
-    "allocation_shape": "centre_anchored_edge_tilt_v2_absolute_edge",
+    "allocation_shape": ALLOCATION_SHAPE,
+    "allocation_basis": "share_count",
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
@@ -220,6 +235,7 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   refused_window_count INTEGER NOT NULL,
   content_sha256 TEXT NOT NULL,
   selection_rule_label TEXT NOT NULL DEFAULT '',
+  leg_shares_json TEXT NOT NULL DEFAULT '',
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -298,6 +314,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         str(row[1])
         for row in conn.execute("PRAGMA table_info(paper_trade_position)")
     }
+    if "leg_shares_json" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN leg_shares_json TEXT NOT NULL DEFAULT ''"
+        )
     if "selection_rule_label" not in columns:
         conn.execute(
             "ALTER TABLE paper_trade_position"
@@ -899,6 +920,145 @@ def _walk_ask(
     return None
 
 
+
+def _centre_tilt_weights(
+    buckets: Sequence[str],
+    *,
+    centre_bucket: str,
+    probabilities: Mapping[str, float],
+    prices: Sequence[float],
+    ordinals: Mapping[str, int],
+) -> list[float] | None:
+    """Production's rung weights, recomputed here from the same inputs.
+
+    Imported rather than duplicated would be better, but the runtime builds
+    them inside a candidate generator that needs a live snapshot; the shape
+    is three lines and the constants come from the module that owns them, so
+    a drift shows up as an import error rather than as a silent divergence.
+    """
+
+    if centre_bucket not in ordinals:
+        return None
+    centre = ordinals[centre_bucket]
+    edges = [
+        float(probabilities.get(b, 0.0)) - price
+        for b, price in zip(buckets, prices)
+    ]
+    best_edge = max(edges) if edges else 0.0
+    weights = []
+    for bucket, edge in zip(buckets, edges):
+        decay = CENTRE_ANCHOR_DISTANCE_DECAY ** abs(ordinals[bucket] - centre)
+        lean = 1.0 + CENTRE_ANCHOR_EDGE_TILT * (
+            max(edge, 0.0) / best_edge if best_edge > 1e-12 else 0.0
+        )
+        weights.append(max(decay * lean, CENTRE_ANCHOR_MIN_RUNG_SHARE))
+    if centre_bucket in buckets:
+        index = list(buckets).index(centre_bucket)
+        weights[index] = max(weights[index], 1.0)
+    total = sum(weights)
+    return None if total <= 0 else [w / total for w in weights]
+
+
+def _fillable_weighted(
+    *,
+    legs: list[list[dict[str, float]]],
+    weights: Sequence[float],
+    probabilities: Sequence[float],
+    budget: float,
+    fee_rate: float,
+) -> tuple[list[float], float] | None:
+    """Largest weighted clip inside budget whose expected payout beats it.
+
+    The equal-share path bounds itself with "average price under the win
+    probability", which is the right test when every rung pays the same.
+    Once rungs differ, the payout depends on which one lands, so the bound
+    becomes the expectation itself: the basket must expect to return more
+    than it costs, summed over the outcomes it holds.
+    """
+
+    # The weights size the *share count*, not the cash.  Weighting cash puts
+    # the largest share count on the cheapest rung -- shares are cash over
+    # price -- so a basket meant to hold its centre ends up holding its tail:
+    # measured on ZGSZ 2026-08-17, 4.14 USDC on 30C bought 207 shares while
+    # 6.51 on the centre bought 50, and the payout curve peaked two rungs out.
+    # Sizing shares directly makes the centre the position and lets price
+    # decide what that costs.
+    def attempt(scale: float) -> tuple[list[float], float, float] | None:
+        shares: list[float] = []
+        spend = 0.0
+        for leg, weight in zip(legs, weights):
+            want = scale * weight
+            got, paid = _walk_ask_shares(leg, want)
+            if got <= 0.0 or got + 1e-9 < want:
+                return None
+            shares.append(got)
+            spend += paid
+        spend *= 1.0 + fee_rate
+        if spend > budget + 1e-9:
+            return None
+        expected = sum(p * q for p, q in zip(probabilities, shares))
+        return shares, spend, expected
+
+    best: tuple[list[float], float] | None = None
+    # ``scale`` is now a share multiplier, so its ceiling comes from the
+    # thinnest leg rather than from the budget being a fraction of itself.
+    ceiling = min(
+        (sum(float(level["shares"]) for level in leg) / max(weight, 1e-9)
+         for leg, weight in zip(legs, weights)),
+        default=0.0,
+    )
+    if ceiling <= 0.0:
+        return None
+    low, high = 0.0, ceiling
+    probe = attempt(min(ceiling, 1e-3))
+    if probe is None or probe[2] <= probe[1]:
+        return None
+    for _ in range(60):
+        mid = 0.5 * (low + high)
+        got = attempt(mid)
+        if got is not None and got[2] > got[1]:
+            best = (got[0], got[1])
+            low = mid
+        else:
+            high = mid
+    return best
+
+
+def _walk_ask_shares(
+    levels: Sequence[Mapping[str, float]], want: float
+) -> tuple[float, float]:
+    """Shares bought and cash spent walking one leg for a share target."""
+
+    shares = spent = 0.0
+    for level in levels:
+        if shares + 1e-12 >= want:
+            break
+        take = min(float(level["shares"]), want - shares)
+        if take <= 0.0:
+            break
+        shares += take
+        spent += take * float(level["price"])
+    return shares, spent
+
+
+def _walk_ask_cash(
+    levels: Sequence[Mapping[str, float]], cash: float
+) -> tuple[float, float]:
+    """Shares bought and cash spent walking one leg with a cash limit."""
+
+    shares = spent = 0.0
+    for level in levels:
+        price = float(level["price"])
+        if price <= 0.0 or cash - spent <= 1e-12:
+            break
+        take = min(float(level["shares"]), (cash - spent) / price)
+        if take <= 0.0:
+            break
+        shares += take
+        spent += take * price
+    return shares, spent
+
+
 def _fillable_size(
     *,
     legs: list[list[dict[str, float]]],
@@ -1256,20 +1416,84 @@ def backfill(
                         ),
                         default=0.0,
                     )
-                    filled = _fillable_size(
-                        legs=legs,
-                        win_probability=float(seat["win_probability"]),
-                        budget=stake,
-                        fee_rate=FEE_RATE,
-                        capacity=capacity,
-                    )
-                    if filled is None:
-                        refusal = (
-                            "no_depth", "最薄一档 %.0f 份" % capacity,
-                            cycles, payload["decision_at_utc"],
+                    per_leg: dict[str, float] = {}
+                    weights = None
+                    if ALLOCATION_SHAPE == "centre_tilt":
+                        weights = _centre_tilt_weights(
+                            seat["buckets"],
+                            centre_bucket=str(
+                                audit.get("ladder_center_bucket") or center
+                            ),
+                            probabilities=probabilities,
+                            prices=[
+                                float(quotes[b]["best_ask"] or 0.0)
+                                if quotes.get(b, {}).get("best_ask")
+                                is not None
+                                else float(
+                                    (quotes[b]["ask_levels"] or [{}])[0]
+                                    .get("price") or 0.0
+                                )
+                                for b in seat["buckets"]
+                            ],
+                            ordinals={
+                                str(row[0]): int(row[1])
+                                for row in payload["buckets"]
+                            },
                         )
-                        continue
-                    shares, stake = filled
+                    if weights is None:
+                        filled = _fillable_size(
+                            legs=legs,
+                            win_probability=float(
+                                seat["win_probability"]
+                            ),
+                            budget=stake,
+                            fee_rate=FEE_RATE,
+                            capacity=capacity,
+                        )
+                        if filled is None:
+                            refusal = (
+                                "no_depth", "最薄一档 %.0f 份" % capacity,
+                                cycles, payload["decision_at_utc"],
+                            )
+                            continue
+                        shares, stake = filled
+                    else:
+                        weighted = _fillable_weighted(
+                            legs=legs,
+                            weights=weights,
+                            probabilities=[
+                                float(probabilities.get(b, 0.0))
+                                for b in seat["buckets"]
+                            ],
+                            budget=stake,
+                            fee_rate=FEE_RATE,
+                        )
+                        if weighted is None:
+                            refusal = (
+                                "no_depth",
+                                "加权分配无可行规模 · 最薄一档 %.0f 份"
+                                % capacity,
+                                cycles, payload["decision_at_utc"],
+                            )
+                            continue
+                        leg_shares, stake = weighted
+                        # The basket's own payout per unit spent.  Under
+                        # equal shares this was cost over share count;
+                        # weighted, the honest analogue is what the position
+                        # expects to return, so ``shares`` becomes the
+                        # expectation-equivalent count the settlement math
+                        # already assumes.
+                        # Under equal shares every rung pays the same, so a
+                        # single count is the payout.  Weighted, the payout
+                        # is whichever rung lands, so the per-leg counts are
+                        # what settlement has to read -- carrying an
+                        # "expectation-equivalent" count here instead scored
+                        # a basket at a payout no outcome actually produces.
+                        per_leg = {
+                            str(b): float(q)
+                            for b, q in zip(seat["buckets"], leg_shares)
+                        }
+                        shares = min(leg_shares)
                     opened = True
                     # What the basket actually cost per set, which is the
                     # number every downstream P&L and edge reading has to be
@@ -1316,6 +1540,7 @@ def backfill(
                             content_sha256(identity),
                             SELECTION_RULE_SHA256,
                             SELECTION_RULE_LABEL,
+                            json.dumps(per_leg, sort_keys=True),
                         )
                     )
                     counts["positions"] += 1
@@ -1332,7 +1557,16 @@ def backfill(
                         break
                     settled_bucket, settled_ordinal = landed
                     hit = 1 if settled_bucket in set(seat["buckets"]) else 0
-                    payout = shares if hit else 0.0
+                    # The rung that landed is the one that pays.  With one
+                    # share count for the whole basket these are the same
+                    # number; with a weighted basket they are not, and using
+                    # the basket-level count credits a payout no outcome
+                    # produced.
+                    payout = (
+                        per_leg.get(str(settled_bucket), 0.0)
+                        if (hit and per_leg)
+                        else (shares if hit else 0.0)
+                    )
                     pnl = payout - stake
                     settled_ordinals = {
                         str(b): int(o)
@@ -1422,8 +1656,8 @@ def backfill(
             " kelly_fraction, stake_usdc, shares,"
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
-            " selection_rule_label"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " selection_rule_label, leg_shares_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:
