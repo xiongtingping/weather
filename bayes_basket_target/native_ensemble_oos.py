@@ -582,6 +582,8 @@ def _equal_weight_diagnostic(
     available_system_ids: Sequence[str],
     seated_system_ids: Sequence[str],
     seated_weights: Mapping[str, float],
+    equal_cohort_metrics: Mapping[str, float] | None = None,
+    daily_scores: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Three-way skill matrix: climatology, equal weight, learned weights.
 
@@ -590,13 +592,22 @@ def _equal_weight_diagnostic(
     testing either: that the models carry information, and that our weighting
     of them carries information beyond averaging.  Both can be false while the
     gate still passes, and one of them measurably is: as of 2026-08 the seated
-    weights sit at an effective system count of 1.99 out of 2 and the subset
-    contest has never dropped a candidate, so "learned" and "equal" may well
-    be the same forecast wearing different labels.  This records the
+    weights sit at an effective system count of 1.95 out of 2 and the subset
+    contest drops nobody in 82% of scopes, so "learned" and "equal" are
+    largely the same forecast wearing two labels.  This records the
     decomposition so that question stops being unanswerable.
 
+    The candidate set is held fixed across the schemes being compared: equal
+    weight is taken over the seated systems, so comparison B moves only the
+    weights.  Where the contest did drop someone, the full-cohort blend is
+    carried alongside as its own leg rather than folded into B, because
+    "averaging would have been better" and "we should not have dropped that
+    system" are different findings with different fixes.
+
     Recorded, not enforced, exactly as the shape-layer ablation is: one
-    scope's holdout is three or four days and cannot retire a design.
+    scope's holdout is three or four days and cannot retire a design, and no
+    interval is estimable inside it -- ``scheme_daily_scores`` carries the
+    paired samples so a pooled bootstrap over days can be run downstream.
     """
 
     matrix: dict[str, Any] = {
@@ -604,6 +615,10 @@ def _equal_weight_diagnostic(
         "available_system_count": len(available_system_ids),
         "seated_system_ids": list(seated_system_ids),
         "seated_system_count": len(seated_system_ids),
+        # Named so a reader never has to infer which systems the equal-weight
+        # leg averaged: it is this list, the same one the learned weights
+        # were fitted over.
+        "fixed_candidate_system_ids": list(seated_system_ids),
         # Both facts the comparison hinges on, carried beside it so a reader
         # never has to reconstruct them: whether the contest actually dropped
         # anyone, and how far the surviving weights sit from flat.  When the
@@ -643,7 +658,8 @@ def _equal_weight_diagnostic(
         "a_climate_vs_equal_weight": _pairwise_skill(
             climate_metrics, equal_weight_metrics
         ),
-        # B: does learning the weights beat averaging what arrived?
+        # B: on one fixed candidate set, does learning the weights beat
+        # weighting them alike?
         "b_equal_weight_vs_learned": _pairwise_skill(
             equal_weight_metrics, learned_metrics
         ),
@@ -653,6 +669,15 @@ def _equal_weight_diagnostic(
             climate_metrics, learned_metrics
         ),
     }
+    if equal_cohort_metrics is not None:
+        matrix["equal_cohort_metrics"] = dict(equal_cohort_metrics)
+        matrix["comparisons"]["d_equal_cohort_vs_learned"] = _pairwise_skill(
+            equal_cohort_metrics, learned_metrics
+        )
+    if daily_scores:
+        matrix["scheme_daily_scores"] = [
+            dict(row) for row in daily_scores
+        ]
     return matrix
 
 
@@ -3122,6 +3147,8 @@ def build_native_ensemble_oos(
         # other, which cannot separate "the models are worth something" from
         # "our weighting of them is worth something".
         equal_weight_metrics: list[dict[str, float]] = []
+        equal_cohort_metrics: list[dict[str, float]] = []
+        scheme_daily_scores: list[dict[str, Any]] = []
         # Marginal worth of each shape layer, scored on the same holdout the
         # gate uses.  The gate itself asks only whether the assembled
         # distribution beats climatology, which a harmful layer passes as
@@ -3238,51 +3265,65 @@ def build_native_ensemble_oos(
                     )
                 return shaped
 
-            # Every ready candidate, weighted alike -- the counterfactual the
-            # learned blend has to answer for.  Deliberately the full cohort
-            # rather than the seated subset: selection and weighting are one
-            # decision here (the contest below can drop a system as well as
-            # down-weight it), so the honest opposing hypothesis is "take what
-            # arrived and average it".  Everything else -- the bridge, the
-            # shape stack, the scoring -- is held identical, so the difference
-            # is attributable to the weights and nothing else.
-            available_systems = sorted(predictions_by_system)
-            equal_keys = sorted(
-                set().union(*(
-                    set(predictions_by_system[system][day]["probability"])
-                    for system in available_systems
-                )),
-                key=lambda key: int(key),
-            )
-            equal_share = 1.0 / float(len(available_systems))
-            equal_probability, _equal_receipt = bridged_cross_probability(
-                system_probabilities={
-                    system: predictions_by_system[system][day][
-                        "probability"
-                    ]
-                    for system in available_systems
-                },
-                system_weights={
-                    system: equal_share for system in available_systems
-                },
-                system_centers_c={
-                    system: float(
-                        predictions_by_system[system][day][
-                            "calibrated_center_c"
+            def _equal_blend(cohort: Sequence[str]) -> dict[str, float]:
+                """The same systems, weighted alike.
+
+                Holding the candidate set fixed is what makes the contrast
+                attributable: the bridge, the shape stack and the scorer are
+                the ones above, so between this and the learned blend only the
+                weights differ.  Over the seated set that is exactly the
+                weighting question; over the full ready cohort it also carries
+                whatever the subset contest chose to drop.
+                """
+
+                grid = sorted(
+                    set().union(*(
+                        set(
+                            predictions_by_system[system][day][
+                                "probability"
+                            ]
+                        )
+                        for system in cohort
+                    )),
+                    key=lambda key: int(key),
+                )
+                share = 1.0 / float(len(cohort))
+                blended, _receipt = bridged_cross_probability(
+                    system_probabilities={
+                        system: predictions_by_system[system][day][
+                            "probability"
                         ]
-                    )
-                    for system in available_systems
-                },
-                ordered_keys=equal_keys,
-                key_centers_c=[float(int(key)) for key in equal_keys],
-            )
-            equal_probability = _shaped(
-                equal_probability,
-                grid=equal_keys,
-                grid_ordinals={
-                    str(key): index
-                    for index, key in enumerate(equal_keys)
-                },
+                        for system in cohort
+                    },
+                    system_weights={system: share for system in cohort},
+                    system_centers_c={
+                        system: float(
+                            predictions_by_system[system][day][
+                                "calibrated_center_c"
+                            ]
+                        )
+                        for system in cohort
+                    },
+                    ordered_keys=grid,
+                    key_centers_c=[float(int(key)) for key in grid],
+                )
+                return _shaped(
+                    blended,
+                    grid=grid,
+                    grid_ordinals={
+                        str(key): index for index, key in enumerate(grid)
+                    },
+                )
+
+            available_systems = sorted(predictions_by_system)
+            equal_probability = _equal_blend(sorted(weights))
+            # Second leg, and only when the contest actually dropped someone:
+            # otherwise it is the same arithmetic on the same systems and
+            # would read as an independent measurement of nothing.
+            equal_cohort_probability = (
+                _equal_blend(available_systems)
+                if set(available_systems) != set(weights)
+                else None
             )
 
             unshaped = probability
@@ -3293,6 +3334,21 @@ def build_native_ensemble_oos(
                 ][day]["actual_tmax_c"]
             )
             equal_weight_metrics.append(_metrics(equal_probability, actual))
+            if equal_cohort_probability is not None:
+                equal_cohort_metrics.append(
+                    _metrics(equal_cohort_probability, actual)
+                )
+            # The three schemes scored on one day, kept paired.  A scope's
+            # holdout is three or four days, so no interval is estimable
+            # inside it; the unit that can carry one is the day, pooled across
+            # scopes, and a pooled bootstrap needs the samples rather than the
+            # means this row would otherwise reduce them to.
+            scheme_daily_scores.append({
+                "event_date": str(day),
+                "climate": _metrics(climate_probability, actual),
+                "equal_weight": _metrics(equal_probability, actual),
+                "learned": _metrics(probability, actual),
+            })
             for layer, samples in ablation_metrics.items():
                 samples.append(_metrics(_shaped(unshaped, skip=layer), actual))
             decision_at_utc = max(
@@ -3340,10 +3396,15 @@ def build_native_ensemble_oos(
                 _mean_metrics(equal_weight_metrics)
                 if equal_weight_metrics else None
             ),
+            equal_cohort_metrics=(
+                _mean_metrics(equal_cohort_metrics)
+                if equal_cohort_metrics else None
+            ),
             learned_metrics=cross_metrics,
             available_system_ids=sorted(predictions_by_system),
             seated_system_ids=sorted(weights),
             seated_weights=weights,
+            daily_scores=scheme_daily_scores,
         )
         # Positive percentages mean the layer earned its place: the stack
         # without it scores worse.  Sign is what a reader wants first, so it
