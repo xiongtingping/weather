@@ -931,6 +931,7 @@ function basketHit(){
 }
 
 function refusalStats(){
+  const S=D.selection||{};
   const stages=(S.refusal_stats||{}).stages||[];
   if(!stages.length) return "";
   const cards=stages.map(st=>{
@@ -1414,10 +1415,26 @@ function makeSortable(table){
 // for every station and refuses to fit on evidence it does not have.  Show
 // the distance, per station, so the wait is a number instead of a mystery.
 
-document.getElementById("app").innerHTML =
-  head() + members() + chain() + tables() + stages() + gaps() + daily() +
-  coverage() + stationSummary() + roster() + anomalies() +
-  basketHit() + makerProbe() + refusalStats() +
+// One section throwing used to blank the whole page: the assembly is a
+// single expression, so a ReferenceError anywhere in it means nothing is
+// ever assigned to #app and the reader gets a white screen with no clue.
+// A section that cannot render says so, in place, and the other twelve
+// still render.
+function safe(fn, name){
+  try { return fn(); }
+  catch (err) {
+    return `<h2>${name}</h2><div class="card"><span class="dot red"></span>
+      这一节渲染失败：<span class="mono">${String(err)}</span></div>`;
+  }
+}
+
+document.getElementById("app").innerHTML = [
+  [head, "页头"], [members, "成员"], [chain, "链路"], [tables, "表"],
+  [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
+  [coverage, "覆盖"], [stationSummary, "站汇总"], [roster, "站名册"],
+  [anomalies, "异常"], [basketHit, "篮子命中率"],
+  [makerProbe, "挂单影子探针"], [refusalStats, "未建仓原因"],
+].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);
