@@ -54,7 +54,17 @@ MINIMUM_LIMIT_PRICE = 0.01
 # Only write a new intent for a scope this often.  The book updates about
 # 144 times a minute; writing an intent per update would measure the
 # sampler, not the strategy.
+# ...but the opening window is sampled harder.  P0 is the entry stage
+# (charter 46), and its book is the one no replay can reach: settled
+# station-days have their snapshots overwhelmingly on the event day itself,
+# so the >24h band had under 60 fills in the whole stored history while the
+# event day had 4869.  That band is also where posting looks most feasible
+# -- 89% of buckets carry a two-sided quote against 31% on the event day,
+# and the relative spread is 50% against 33%.  It is the least measured and
+# most promising part of the day, so it gets the tighter cadence.
 PLACEMENT_INTERVAL_MINUTES = 15
+OPENING_PLACEMENT_INTERVAL_MINUTES = 5
+OPENING_LEAD_HOURS = 12.0
 
 _ORDER_DDL = """
 CREATE TABLE IF NOT EXISTS maker_shadow_order (
@@ -67,6 +77,7 @@ CREATE TABLE IF NOT EXISTS maker_shadow_order (
   placed_at_utc TEXT NOT NULL,
   book_observed_at_utc TEXT NOT NULL,
   expires_at_utc TEXT NOT NULL,
+  lead_hours REAL NOT NULL,
   limit_price REAL NOT NULL,
   reference_bid REAL NOT NULL,
   reference_ask REAL NOT NULL,
@@ -217,19 +228,33 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
     books = _latest_books(conn)
     if not books:
         return {"scopes_with_fresh_book": 0}
-    cutoff = _stamp(_now() - timedelta(minutes=PLACEMENT_INTERVAL_MINUTES))
-    recent = {
-        (str(station), str(day))
-        for station, day in conn.execute(
-            "SELECT DISTINCT station_id, event_date FROM maker_shadow_order"
-            " WHERE placed_at_utc >= ?",
-            (cutoff,),
-        )
-    }
+    now = _now()
+    widest = _stamp(now - timedelta(minutes=PLACEMENT_INTERVAL_MINUTES))
+    last_placed: dict[tuple[str, str], str] = {}
+    for station, day, when in conn.execute(
+        "SELECT station_id, event_date, MAX(placed_at_utc)"
+        " FROM maker_shadow_order WHERE placed_at_utc >= ?"
+        " GROUP BY station_id, event_date",
+        (widest,),
+    ):
+        last_placed[(str(station), str(day))] = str(when)
     pending: list[tuple] = []
     for (station, day), (moment, book) in books.items():
         counts["scopes_with_fresh_book"] += 1
-        if (station, day) in recent:
+        try:
+            lead_hours = (
+                datetime.fromisoformat(f"{day}T00:00:00+00:00") - now
+            ).total_seconds() / 3600.0
+        except ValueError:
+            continue
+        opening = lead_hours >= OPENING_LEAD_HOURS
+        counts["opening_window" if opening else "late_window"] += 1
+        interval = (
+            OPENING_PLACEMENT_INTERVAL_MINUTES
+            if opening else PLACEMENT_INTERVAL_MINUTES
+        )
+        previous = last_placed.get((station, day))
+        if previous and _parse(previous) > now - timedelta(minutes=interval):
             counts["scope_throttled"] += 1
             continue
         probabilities = _model_probabilities(conn, station, day)
@@ -242,7 +267,7 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
         # the exact failure this probe exists to avoid.  The price still
         # comes from that book, because that is what a trader placing an
         # order at this instant would be looking at.
-        placed_at = _stamp(_now())
+        placed_at = _stamp(now)
         book_at = _stamp(moment)
         for bucket, quote in book.items():
             if bucket not in probabilities:
@@ -267,7 +292,8 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
                     pending.append((
                         "mso-" + digest[:24], station, day, bucket, rule,
                         horizon, placed_at, book_at,
-                        _stamp(_now() + timedelta(minutes=horizon)),
+                        _stamp(now + timedelta(minutes=horizon)),
+                        round(lead_hours, 4),
                         price, quote["bid"], quote["ask"], quote["tick"],
                         (
                             float(quote["queue_ahead"])
@@ -282,11 +308,11 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
             "INSERT OR IGNORE INTO maker_shadow_order ("
             " order_id, station_id, event_date, bucket, price_rule,"
             " horizon_minutes, placed_at_utc, book_observed_at_utc,"
-            " expires_at_utc, limit_price,"
+            " expires_at_utc, lead_hours, limit_price,"
             " reference_bid, reference_ask, reference_tick,"
             " queue_ahead_shares, queue_known, model_probability, state,"
             " filled_at_utc, fill_observed_ask, content_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending,
         )
         conn.commit()
@@ -458,22 +484,32 @@ def settle(conn: sqlite3.Connection) -> dict[str, int]:
 def report(conn: sqlite3.Connection) -> dict[str, Any]:
     ensure_schema(conn)
     cells: list[dict[str, Any]] = []
-    for rule, horizon, placed, filled in conn.execute(
-        "SELECT price_rule, horizon_minutes, COUNT(*),"
+    # Lead band matters more than either knob: the opening book carries a
+    # two-sided quote on 89% of buckets against 31% on the event day, so a
+    # resting order is a different instrument in the two.
+    band = (
+        "CASE WHEN lead_hours >= 24 THEN 'open_gt24h'"
+        " WHEN lead_hours >= 12 THEN 'open_12_24h'"
+        " WHEN lead_hours >= 0 THEN 'pre_event_0_12h'"
+        " ELSE 'event_day' END"
+    )
+    for rule, horizon, lead_band, placed, filled in conn.execute(
+        f"SELECT price_rule, horizon_minutes, {band}, COUNT(*),"
         " SUM(CASE WHEN state='FILLED' THEN 1 ELSE 0 END)"
         " FROM maker_shadow_order"
-        " WHERE state<>'OPEN' GROUP BY price_rule, horizon_minutes"
+        f" WHERE state<>'OPEN' GROUP BY price_rule, horizon_minutes, {band}"
     ):
         scored = conn.execute(
             "SELECT COUNT(*), SUM(s.hit), AVG(s.limit_price),"
             " AVG(s.pnl_per_share), AVG(o.reference_ask)"
             " FROM maker_shadow_settlement s"
             " JOIN maker_shadow_order o USING(order_id)"
-            " WHERE o.price_rule=? AND o.horizon_minutes=?",
-            (rule, horizon),
+            f" WHERE o.price_rule=? AND o.horizon_minutes=? AND {band}=?",
+            (rule, horizon, lead_band),
         ).fetchone()
         count = int(scored[0] or 0)
         cells.append({
+            "lead_band": str(lead_band),
             "price_rule": str(rule),
             "horizon_minutes": int(horizon),
             "placed": int(placed or 0),
@@ -494,7 +530,11 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
         ),
         "cells": sorted(
             cells,
-            key=lambda cell: (cell["horizon_minutes"], cell["price_rule"]),
+            key=lambda cell: (
+                cell["lead_band"],
+                cell["horizon_minutes"],
+                cell["price_rule"],
+            ),
         ),
     }
 
