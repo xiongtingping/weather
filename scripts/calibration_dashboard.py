@@ -930,6 +930,42 @@ function basketHit(){
     <tbody>${rows}</tbody></table>`;
 }
 
+function refusalStats(){
+  const stages=(S.refusal_stats||{}).stages||[];
+  if(!stages.length) return "";
+  const cards=stages.map(st=>{
+    const rows=(st.reasons||[]).map(r=>`<tr>
+      <td>${h(r.label)}</td>
+      <td class="mono">${r.count}</td>
+      <td class="mono">${(r.share*100).toFixed(1)}%</td>
+      <td class="muted">${h(r.note)}${r.example?
+        ` <span class="mono">（例：${h(r.example)}）</span>`:""}</td>
+    </tr>`).join("");
+    return `<div class="card" style="margin-top:12px">
+      <div class="muted">${h(st.stage)} · 扫到 ${st.scope_count} 个站日，
+        建仓 ${st.seated_count}</div>
+      <div class="big ${st.seat_rate>=0.3?"up":"down"}">${
+        (st.seat_rate*100).toFixed(1)}%</div>
+      <div class="muted">其余 ${st.refused_count} 个没建仓，原因如下</div>
+      <table style="margin-top:10px"><thead><tr>
+        <th>原因</th><th>站日数</th><th>占扫到的</th><th>这是什么意思</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }).join("");
+  return `<h2>十三、没建仓是因为什么（逐阶段）</h2>
+  <p class="sub">分母是这一阶段扫到的全部站日，建仓数 + 各项原因 = 分母，
+  所以这是一条漏斗而不是两份互不相干的清单。</p>
+  <div class="why"><b>为什么要分开列：</b>以前页面只能靠"没有这一行"来推断，
+  于是所有情况都被说成"目标函数看过后没坐下"——这对其中一条是对的，
+  对另外七条是错的，而它们有七个不同的负责人和七个不同的修法。
+  <b>「目标函数看过，不下注」是策略在工作，不是故障；
+  「决策时没有盘口」「盘口深度不够」才是采集和市场那边的问题。</b><br>
+  三个阶段不合并：它们面对的是三个不同的书，某个原因在一个阶段占主导，
+  在另一个阶段可能根本不出现。</div>
+  ${cards}`;
+}
+
+
 function makerProbe(){
   const S=D.selection||{};const m=S.maker_probe||{};
   if(!m.available) return "";
@@ -1381,7 +1417,7 @@ function makeSortable(table){
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
   coverage() + stationSummary() + roster() + anomalies() +
-  basketHit() + makerProbe() +
+  basketHit() + makerProbe() + refusalStats() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);

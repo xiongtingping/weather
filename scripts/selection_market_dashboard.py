@@ -355,6 +355,99 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"stages": out}
 
 
+REFUSAL_LABELS = {
+    "no_book_at_decision": (
+        "决策时没有盘口",
+        "那一刻这个站日还没有已提交的市场快照，价格无从谈起。",
+    ),
+    "incomplete_book": (
+        "盘口不完整",
+        "有桶没有报价，篮子的赔付几何算不出来。",
+    ),
+    "selection_failed": (
+        "选桶本身没跑出来",
+        "内核没给出可用的支持窗口，跟市场无关。",
+    ),
+    "no_priced_window": (
+        "没有可定价的窗口",
+        "枚举出的每个窗口都被市场定价定死了——市场比模型贵。",
+    ),
+    "leg_below_floor": (
+        "有腿报价低于下限",
+        "我们自己的门槛：低于两分的报价基本是单边挂的尾部盘，不当价格用。",
+    ),
+    "resting_unfilled": (
+        "挂单一档都没成交",
+        "价格没等到。规模是够的，市场没走到我们这里来。",
+    ),
+    "no_positive_kelly": (
+        "目标函数看过，不下注",
+        "曲线分为负：按这个价买这个篮子会亏对数财富。这是策略在工作，不是故障。",
+    ),
+    "no_depth": (
+        "盘口深度不够",
+        "价格可以，但那一档挂的量撑不起要买的规模。",
+    ),
+}
+
+
+def _refusal_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Why a station-day ended with no position, counted per stage.
+
+    Not pooled across stages, for the same reason the fill rate is not: the
+    three stages meet three different books, and a reason that dominates one
+    can be absent from another.
+
+    The denominator is every scope the sweep reached -- seats plus refusals
+    -- so the two together are a funnel rather than two unrelated tallies.
+    An absent row used to be the only signal here, and it could say nothing
+    beyond "no seat", which is true of one of these reasons and wrong about
+    the seven others.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT stage, reason, COUNT(*), MAX(detail)"
+            " FROM paper_trade_refusal GROUP BY stage, reason"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"stages": []}
+    seated: dict[str, int] = {}
+    for count, stage in conn.execute(
+        "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
+    ):
+        seated[str(stage)] = int(count)
+    by_stage: dict[str, list[dict[str, Any]]] = {}
+    for stage, reason, count, detail in rows:
+        by_stage.setdefault(str(stage), []).append({
+            "reason": str(reason),
+            "label": REFUSAL_LABELS.get(str(reason), (str(reason), ""))[0],
+            "note": REFUSAL_LABELS.get(str(reason), ("", ""))[1],
+            "count": int(count),
+            "example": str(detail or ""),
+        })
+    out = []
+    for stage in ("P0", "P0-M", "P1"):
+        reasons = sorted(
+            by_stage.get(stage, []), key=lambda row: -row["count"]
+        )
+        refused = sum(row["count"] for row in reasons)
+        scopes = refused + seated.get(stage, 0)
+        if not scopes:
+            continue
+        for row in reasons:
+            row["share"] = row["count"] / scopes
+        out.append({
+            "stage": stage,
+            "seated_count": seated.get(stage, 0),
+            "refused_count": refused,
+            "scope_count": scopes,
+            "seat_rate": seated.get(stage, 0) / scopes,
+            "reasons": reasons,
+        })
+    return {"stages": out}
+
+
 def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
     """What the resting-order probe has learned so far.
 
@@ -761,6 +854,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),
+        "refusal_stats": _refusal_stats(conn),
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
         "initial_capital_usdc": INITIAL_CAPITAL_USDC,
