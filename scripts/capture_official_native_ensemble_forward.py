@@ -983,38 +983,62 @@ def main(argv: Sequence[str] | None = None) -> int:
         ]
         database = args.db.expanduser().resolve(strict=True)
         ingress: dict[str, Any] = {}
-        with sqlite3.connect(database, timeout=60.0) as conn:
-            conn.execute("PRAGMA busy_timeout=60000")
-            assert_connection_target_capacity(
-                conn, recover_oversized_wal=True
-            )
-            for path, ingest in ingest_by_path:
-                if path is None:
-                    continue
-                resolved = path.expanduser().resolve()
-                if not resolved.is_file():
-                    continue
-                archive = load_bounded_json(resolved)
-                # A retained file can hold an older event's capture when this
-                # event reused nothing; ingesting it would be harmless replay,
-                # but skipping keeps each receipt about this event only.
-                if archive.get("event_date") != str(args.event_date):
-                    continue
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    outcome = ingest(conn, archive)
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
-                ingress[str(archive.get("ensemble_system_id"))] = {
-                    "state": outcome["state"],
-                    "station_count": outcome["station_count"],
-                    "member_run_wrote_count": outcome[
-                        "member_run_wrote_count"
-                    ],
-                }
-        result = {**result, "historical_ingress": ingress}
+        # Writing the training history is a second act, not part of the
+        # capture.  Left unguarded it decided the exit code for both: on
+        # 2026-08-17 the target SSOT crossed its 12GiB ceiling, every ingest
+        # raised ``target_database_bytes_exceeded``, and the process died with
+        # a bare traceback -- so the caller read a rung that had in fact
+        # downloaded all four families and built its inbox as a total failure,
+        # never merged it, and the served runs froze at the previous day while
+        # fresh ones sat unread on disk.  A database that cannot accept
+        # history must not also stop the forecast that was already captured.
+        ingress_blocked = ""
+        try:
+            with sqlite3.connect(database, timeout=60.0) as conn:
+                conn.execute("PRAGMA busy_timeout=60000")
+                assert_connection_target_capacity(
+                    conn, recover_oversized_wal=True
+                )
+                for path, ingest in ingest_by_path:
+                    if path is None:
+                        continue
+                    resolved = path.expanduser().resolve()
+                    if not resolved.is_file():
+                        continue
+                    archive = load_bounded_json(resolved)
+                    # A retained file can hold an older event's capture when
+                    # this event reused nothing; ingesting it would be harmless
+                    # replay, but skipping keeps each receipt about this event
+                    # only.
+                    if archive.get("event_date") != str(args.event_date):
+                        continue
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        outcome = ingest(conn, archive)
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    ingress[str(archive.get("ensemble_system_id"))] = {
+                        "state": outcome["state"],
+                        "station_count": outcome["station_count"],
+                        "member_run_wrote_count": outcome[
+                            "member_run_wrote_count"
+                        ],
+                    }
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            ingress_blocked = f"{type(exc).__name__}:{exc}"[:200]
+        result = {
+            **result,
+            "historical_ingress": ingress,
+            # Named on every capture, empty when nothing was refused, so a
+            # reader never has to infer the difference between "ingested" and
+            # "could not ingest" from a missing key.
+            "historical_ingress_blocked_reason": ingress_blocked,
+            "historical_ingress_state": (
+                "BLOCKED_FAIL_CLOSED" if ingress_blocked else "COMMITTED"
+            ),
+        }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

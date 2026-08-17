@@ -2764,6 +2764,7 @@ class TargetProductionWorker:
 
         def _run_capture() -> dict[str, Any]:
             captured_run_init: str | None = None
+            ingress_blocked = ""
             try:
                 completed = None
                 for rung_lead, rung_cycle, rung_run_init in run_ladder:
@@ -2805,14 +2806,38 @@ class TargetProductionWorker:
                         captured_run_init = (
                             rung_run_init.isoformat().replace("+00:00", "Z")
                         )
+                        # The capture writes the training history itself and
+                        # says so on its receipt.  A refusal there leaves the
+                        # downloaded runs perfectly servable, so it must not
+                        # look like a clean pass either: carry the reason up.
+                        try:
+                            receipt = json.loads(completed.stdout or "{}")
+                        except (TypeError, ValueError):
+                            receipt = {}
+                        if isinstance(receipt, Mapping):
+                            ingress_blocked = str(
+                                receipt.get(
+                                    "historical_ingress_blocked_reason"
+                                ) or ""
+                            )
                         break
                 if completed is None or completed.returncode != 0:
+                    # The tail, not the head.  A child that dies on an
+                    # exception prints a traceback whose last line is the only
+                    # part that names the cause, and taking the first 200
+                    # characters kept the banner and the frame while cutting
+                    # exactly that -- five hours of "run_ladder_exhausted"
+                    # receipts that could not say the database was full.
+                    stderr_text = (
+                        (completed.stderr if completed is not None else "")
+                        or ""
+                    ).strip()
                     return {
                         "state": "FAILED",
                         "reason": (
                             "run_ladder_exhausted:"
                             f"capture_exit_{completed.returncode if completed is not None else 'none'}:"
-                            f"{((completed.stderr if completed is not None else '') or '').strip()[:200]}"
+                            f"{stderr_text[-200:]}"
                         ),
                     }
             except subprocess.TimeoutExpired:
@@ -2868,6 +2893,9 @@ class TargetProductionWorker:
                 # Which run this scope actually got, so a reader can tell a
                 # fresh rung from a fallback without re-deriving the ladder.
                 "captured_run_init_utc": captured_run_init,
+                # Served, but not archived: the runs above are merged and will
+                # be compiled, while the training history stayed where it was.
+                "historical_ingress_blocked_reason": ingress_blocked,
             }
 
         future = self._official_native_capture_pool.submit(_run_capture)

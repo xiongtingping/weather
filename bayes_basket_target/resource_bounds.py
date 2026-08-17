@@ -56,7 +56,20 @@ MAX_JSON_NODES = 500_000
 # archive doubles in place before its old copy is dropped) cannot trip it
 # mid-migration, which is how the store crossed the old ceiling in the first
 # place.  The guard is not the thing that grew; keep it a real bound.
-MAX_TARGET_DB_BYTES = 12288 * MIB
+#
+# Raised to 16 GiB on 2026-08-17, for headroom rather than for a migration.
+# The store reached 12.006 GiB -- six megabytes past the ceiling -- and every
+# writer fail-closed: native ensemble ingress, resident P0 ingress and the
+# post-cycle guard all stopped at 07:43Z, and the official capture, whose
+# training commit shares this guard, died with it and left the served runs a
+# day behind.  Nothing here was a leak; it is ordinary accumulation at roughly
+# 250 MiB/day across the envelope, bridge-history and preselection tables.
+# Four gigabytes is about a fortnight, which is deliberately short of
+# comfortable: this ceiling exists to force a retention decision, not to be
+# raised each time it is met.  The daemon now publishes remaining headroom as
+# ``target_ssot_capacity`` and warns a gigabyte out, so the next approach is
+# visible while there is still room to prune.
+MAX_TARGET_DB_BYTES = 16384 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.

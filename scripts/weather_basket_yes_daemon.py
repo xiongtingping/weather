@@ -115,6 +115,7 @@ from bayes_basket_target.production_worker import (
     open_target_writer_if_enabled,
 )
 from bayes_basket_target.resource_bounds import (
+    MAX_TARGET_DB_BYTES,
     assert_connection_target_capacity,
     load_bounded_json,
 )
@@ -143,7 +144,22 @@ SQLITE_IO_RECOVERY_BACKOFF_SEC = 5.0
 # writer must not consume a whole production cadence in SQLite's default
 # minute-long busy wait: classify it, retain the last committed SSOT state,
 # and retry on the scheduler's bounded backoff instead.
-TARGET_SQLITE_LOCK_TIMEOUT_MS = 5_000
+#
+# 5s was that bound, and it was written when "a concurrent maintenance
+# writer" was the only thing expected to hold the lock.  It is not: the
+# resident contends with itself, because every lane commits through one
+# ``BEGIN IMMEDIATE`` on one SSOT file.  Measured 2026-08-16, a single
+# ``commit_blocked_scope_decision`` holds it for up to 4,073ms -- and 4,989ms
+# the cycle before -- so the margin before another lane is refused was under
+# a second, and any one slow transaction failed that lane closed for the
+# round.  That is what the four post-restart ``database is locked`` cycles
+# were.  Six times the observed worst hold leaves room for the transaction
+# that is actually running without pretending the contention is external;
+# the cycle it rides inside is ~600s, so waiting 30s is strictly cheaper
+# than losing the round's forward book, which no later cycle can refetch.
+# The right end state is a shorter transaction, and this bound should come
+# back down when it lands.
+TARGET_SQLITE_LOCK_TIMEOUT_MS = 30_000
 TARGET_SQLITE_LOCK_BACKOFF_SEC = 5.0
 TARGET_SQLITE_LOCK_MAX_BACKOFF_SEC = 60.0
 TARGET_WAL_REOPEN_REASONS = (
@@ -222,6 +238,11 @@ MIN_ARCHIVE_FREE_BYTES = 1024 * 1024 * 1024
 # file without stopping a system that is still able to commit.
 WARN_ARCHIVE_FREE_BYTES = 16 * 1024 * 1024 * 1024
 WARN_ARCHIVE_WAL_BYTES = 64 * 1024 * 1024
+# The target SSOT grew roughly 250MiB/day over the fortnight before it hit its
+# ceiling, so a gigabyte of remaining headroom is about four days' notice --
+# enough to prune or raise the limit deliberately rather than discovering it
+# from a pipeline that has already stopped writing.
+TARGET_SSOT_WARN_REMAINING_BYTES = 1024 * 1024 * 1024
 # This archive's WAL stops growing at exactly 128MiB and every write then fails
 # with ``disk I/O error``; the fail-closed ceiling above is never reached
 # because ingest dies first.  Maintenance therefore triggers at half of the
@@ -403,6 +424,51 @@ def archive_storage_guard(db_path: Path) -> dict[str, Any]:
         "free_bytes": free_bytes,
         "min_free_bytes": MIN_ARCHIVE_FREE_BYTES,
         "warn_free_bytes": WARN_ARCHIVE_FREE_BYTES,
+        "violations": violations,
+        "warnings": warnings,
+        "state": state,
+    }
+
+
+def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
+    """Headroom against the target SSOT's own size ceiling.
+
+    ``archive_storage_guard`` watches the archive's WAL and the filesystem,
+    which is a different database and a different limit.  Nothing published
+    the one boundary that actually stops the pipeline: on 2026-08-17 the
+    target SSOT passed ``MAX_TARGET_DB_BYTES`` by six megabytes, every writer
+    fail-closed on ``target_database_bytes_exceeded``, and the status file
+    still said ``storage_guard: ok`` -- because it was reading the archive.
+    A ceiling that gates ingest has to be visible while there is still room
+    to act, so this reports remaining bytes on every probe and warns before
+    the limit rather than after.
+    """
+
+    database = db_path.expanduser().resolve()
+    db_bytes = int(database.stat().st_size) if database.is_file() else 0
+    wal = Path(str(database) + "-wal")
+    wal_bytes = int(wal.stat().st_size) if wal.exists() else 0
+    remaining = MAX_TARGET_DB_BYTES - db_bytes
+    violations: list[str] = []
+    warnings: list[str] = []
+    if remaining <= 0:
+        violations.append("target_database_bytes_exceeded")
+    elif remaining < TARGET_SSOT_WARN_REMAINING_BYTES:
+        warnings.append("target_database_headroom_low")
+    if violations:
+        state = "blocked_fail_closed"
+    elif warnings:
+        state = "within_budget_low_headroom"
+    else:
+        state = "within_budget"
+    return {
+        "ok": not violations,
+        "database": str(database),
+        "database_bytes": db_bytes,
+        "max_database_bytes": MAX_TARGET_DB_BYTES,
+        "remaining_bytes": remaining,
+        "warn_remaining_bytes": TARGET_SSOT_WARN_REMAINING_BYTES,
+        "wal_bytes": wal_bytes,
         "violations": violations,
         "warnings": warnings,
         "state": state,
@@ -2399,6 +2465,20 @@ def main() -> int:
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
                 state["storage_guard"] = storage_guard
+                # Published beside it, never merged into it: the archive guard
+                # gates this daemon's own ingest, while this one is the ceiling
+                # the target writers hit.  Folding them into a single "ok"
+                # would leave the same blind spot in a different shape.
+                try:
+                    state["target_ssot_capacity"] = target_ssot_capacity_guard(
+                        DEFAULT_TARGET_DB
+                    )
+                except Exception as exc:
+                    state["target_ssot_capacity"] = {
+                        "ok": False,
+                        "state": "target_capacity_probe_failed",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    }
                 next_storage_probe = now_mono + 5.0
                 # Trigger on the measured WAL size rather than on the warning
                 # list: warnings are a reporting concern and are suppressed once
