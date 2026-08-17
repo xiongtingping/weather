@@ -544,6 +544,118 @@ def _mean_metrics(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
     }
 
 
+def _pairwise_skill(
+    worse: Mapping[str, float],
+    better: Mapping[str, float],
+) -> dict[str, Any]:
+    """How much ``better`` improves on ``worse``, in the gate's own units.
+
+    Sign convention is fixed by the argument names, not by the metric: every
+    score here is a loss, so a positive number always means the second
+    argument won.  ``bits`` restates the log score as information because it
+    is the one figure that is comparable across scopes with different bucket
+    counts -- a percentage of NLL is not.
+    """
+
+    out: dict[str, Any] = {}
+    for metric in ("brier", "nll", "crps"):
+        base = float(worse[metric])
+        out[metric] = float(better[metric]) - base
+        out[f"{metric}_relative_gain"] = (
+            (base - float(better[metric])) / base if base else 0.0
+        )
+    out["bits"] = (
+        float(worse["nll"]) - float(better["nll"])
+    ) / math.log(2.0)
+    out["verdict"] = (
+        "BETTER" if out["bits"] > 0.0
+        else ("WORSE" if out["bits"] < 0.0 else "TIED")
+    )
+    return out
+
+
+def _equal_weight_diagnostic(
+    *,
+    climate_metrics: Mapping[str, float],
+    equal_weight_metrics: Mapping[str, float] | None,
+    learned_metrics: Mapping[str, float],
+    available_system_ids: Sequence[str],
+    seated_system_ids: Sequence[str],
+    seated_weights: Mapping[str, float],
+) -> dict[str, Any]:
+    """Three-way skill matrix: climatology, equal weight, learned weights.
+
+    The gate asks one question -- does the assembled distribution beat
+    climatology -- and a pass answers two others by implication without ever
+    testing either: that the models carry information, and that our weighting
+    of them carries information beyond averaging.  Both can be false while the
+    gate still passes, and one of them measurably is: as of 2026-08 the seated
+    weights sit at an effective system count of 1.99 out of 2 and the subset
+    contest has never dropped a candidate, so "learned" and "equal" may well
+    be the same forecast wearing different labels.  This records the
+    decomposition so that question stops being unanswerable.
+
+    Recorded, not enforced, exactly as the shape-layer ablation is: one
+    scope's holdout is three or four days and cannot retire a design.
+    """
+
+    matrix: dict[str, Any] = {
+        "available_system_ids": list(available_system_ids),
+        "available_system_count": len(available_system_ids),
+        "seated_system_ids": list(seated_system_ids),
+        "seated_system_count": len(seated_system_ids),
+        # Both facts the comparison hinges on, carried beside it so a reader
+        # never has to reconstruct them: whether the contest actually dropped
+        # anyone, and how far the surviving weights sit from flat.  When the
+        # answer is "nobody, and not far", comparison B is near-tautological
+        # and its own smallness is the finding.
+        "dropped_system_ids": sorted(
+            set(available_system_ids) - set(seated_system_ids)
+        ),
+        "weight_l1_distance_from_equal": (
+            sum(
+                abs(
+                    float(weight)
+                    - 1.0 / float(len(seated_weights))
+                )
+                for weight in seated_weights.values()
+            )
+            if seated_weights else 0.0
+        ),
+        "effective_system_count": (
+            1.0 / sum(
+                float(weight) ** 2 for weight in seated_weights.values()
+            )
+            if seated_weights
+            and any(float(w) for w in seated_weights.values())
+            else 0.0
+        ),
+        "climatology_metrics": dict(climate_metrics),
+        "learned_metrics": dict(learned_metrics),
+    }
+    if equal_weight_metrics is None:
+        matrix["state"] = "EQUAL_WEIGHT_UNAVAILABLE"
+        return matrix
+    matrix["state"] = "MEASURED"
+    matrix["equal_weight_metrics"] = dict(equal_weight_metrics)
+    matrix["comparisons"] = {
+        # A: do the weather models carry anything over climatology at all?
+        "a_climate_vs_equal_weight": _pairwise_skill(
+            climate_metrics, equal_weight_metrics
+        ),
+        # B: does learning the weights beat averaging what arrived?
+        "b_equal_weight_vs_learned": _pairwise_skill(
+            equal_weight_metrics, learned_metrics
+        ),
+        # C: the gate's own question, restated here so all three sit in one
+        # place and A + B is visibly reconcilable with C.
+        "c_climate_vs_learned": _pairwise_skill(
+            climate_metrics, learned_metrics
+        ),
+    }
+    return matrix
+
+
 # Station-local "drift" is often not a function of time but of state: at ZUUU
 # the ECMWF residual moved from -0.25C to -1.92C between July and August, yet
 # regressed against the forecast level the shift mostly disappears -- the
@@ -3005,6 +3117,11 @@ def build_native_ensemble_oos(
             float(value) for value in climate_train
         ])
         baseline_metrics = []
+        # The third leg of the diagnostic triangle assembled after the loop:
+        # climatology and the learned blend were already scored against each
+        # other, which cannot separate "the models are worth something" from
+        # "our weighting of them is worth something".
+        equal_weight_metrics: list[dict[str, float]] = []
         # Marginal worth of each shape layer, scored on the same holdout the
         # gate uses.  The gate itself asks only whether the assembled
         # distribution beats climatology, which a harmful layer passes as
@@ -3067,6 +3184,8 @@ def build_native_ensemble_oos(
                 base: Mapping[str, float],
                 *,
                 skip: str | None = None,
+                grid: Sequence[str] = ordered_keys,
+                grid_ordinals: Mapping[str, int] = ordinal_map,
             ) -> dict[str, float]:
                 """The shape stack, optionally with one layer left out.
 
@@ -3074,25 +3193,31 @@ def build_native_ensemble_oos(
                 arithmetic serving runs rather than a re-derivation of it: a
                 copy would drift from the served order the first time a layer
                 moved, and the ablation would then be measuring the copy.
+
+                The grid is a parameter for the same reason: the equal-weight
+                diagnostic blends a wider cohort than the seated one and so
+                spans its own bucket union, and it has to be shaped by this
+                function rather than a lookalike or the comparison stops being
+                about weights.
                 """
 
                 shaped = {str(k): float(v) for k, v in base.items()}
                 if cooling_shift and skip != "synoptic_cooling":
                     shaped = _shift_bucketed_probability(
                         shaped,
-                        ordered_keys=ordered_keys,
+                        ordered_keys=grid,
                         shift_c=float(cooling_shift),
                     )
                 if skip != "neighbour_direction":
                     shaped, _direction_receipt = (
                         apply_neighbour_direction_tilt(
                             shaped,
-                            ordinals=ordinal_map,
+                            ordinals=grid_ordinals,
                             center_bucket=_nearest_key(
-                                ordered_keys,
+                                grid,
                                 sum(
                                     shaped[str(key)] * float(int(key))
-                                    for key in ordered_keys
+                                    for key in grid
                                 ),
                             ),
                             latitude=station_latitude,
@@ -3101,7 +3226,7 @@ def build_native_ensemble_oos(
                 if skip != "conditional_tail_skew":
                     shaped, _skew_receipt = apply_conditional_tail_skew(
                         shaped,
-                        ordinals=ordinal_map,
+                        ordinals=grid_ordinals,
                         **day_signals,
                     )
                 # Outermost, after every shape layer: the band factors were
@@ -3113,6 +3238,53 @@ def build_native_ensemble_oos(
                     )
                 return shaped
 
+            # Every ready candidate, weighted alike -- the counterfactual the
+            # learned blend has to answer for.  Deliberately the full cohort
+            # rather than the seated subset: selection and weighting are one
+            # decision here (the contest below can drop a system as well as
+            # down-weight it), so the honest opposing hypothesis is "take what
+            # arrived and average it".  Everything else -- the bridge, the
+            # shape stack, the scoring -- is held identical, so the difference
+            # is attributable to the weights and nothing else.
+            available_systems = sorted(predictions_by_system)
+            equal_keys = sorted(
+                set().union(*(
+                    set(predictions_by_system[system][day]["probability"])
+                    for system in available_systems
+                )),
+                key=lambda key: int(key),
+            )
+            equal_share = 1.0 / float(len(available_systems))
+            equal_probability, _equal_receipt = bridged_cross_probability(
+                system_probabilities={
+                    system: predictions_by_system[system][day][
+                        "probability"
+                    ]
+                    for system in available_systems
+                },
+                system_weights={
+                    system: equal_share for system in available_systems
+                },
+                system_centers_c={
+                    system: float(
+                        predictions_by_system[system][day][
+                            "calibrated_center_c"
+                        ]
+                    )
+                    for system in available_systems
+                },
+                ordered_keys=equal_keys,
+                key_centers_c=[float(int(key)) for key in equal_keys],
+            )
+            equal_probability = _shaped(
+                equal_probability,
+                grid=equal_keys,
+                grid_ordinals={
+                    str(key): index
+                    for index, key in enumerate(equal_keys)
+                },
+            )
+
             unshaped = probability
             probability = _shaped(unshaped)
             actual = float(
@@ -3120,6 +3292,7 @@ def build_native_ensemble_oos(
                     next(iter(weights))
                 ][day]["actual_tmax_c"]
             )
+            equal_weight_metrics.append(_metrics(equal_probability, actual))
             for layer, samples in ablation_metrics.items():
                 samples.append(_metrics(_shaped(unshaped, skip=layer), actual))
             decision_at_utc = max(
@@ -3161,6 +3334,17 @@ def build_native_ensemble_oos(
             row["metrics"] for row in cross_predictions
         ])
         climate_metrics = _mean_metrics(baseline_metrics)
+        equal_weight_diagnostic = _equal_weight_diagnostic(
+            climate_metrics=climate_metrics,
+            equal_weight_metrics=(
+                _mean_metrics(equal_weight_metrics)
+                if equal_weight_metrics else None
+            ),
+            learned_metrics=cross_metrics,
+            available_system_ids=sorted(predictions_by_system),
+            seated_system_ids=sorted(weights),
+            seated_weights=weights,
+        )
         # Positive percentages mean the layer earned its place: the stack
         # without it scores worse.  Sign is what a reader wants first, so it
         # is stated in the units the gate argues in rather than as two sets of
@@ -3395,6 +3579,7 @@ def build_native_ensemble_oos(
             "effective_sample_n": float(len(common_holdout)),
             "oos_metrics": cross_metrics,
             "shape_layer_ablation": shape_layer_ablation,
+            "equal_weight_diagnostic": equal_weight_diagnostic,
             "climatology_baseline_metrics": climate_metrics,
             "cross_system_residual_correlation": correlations,
             "predictions": cross_predictions,
@@ -3620,6 +3805,17 @@ def _evaluation_identity(
                 {"shape_layer_ablation": candidate["shape_layer_ablation"]}
                 if isinstance(
                     candidate.get("shape_layer_ablation"), Mapping
+                )
+                else {}
+            ),
+            **(
+                {
+                    "equal_weight_diagnostic": candidate[
+                        "equal_weight_diagnostic"
+                    ]
+                }
+                if isinstance(
+                    candidate.get("equal_weight_diagnostic"), Mapping
                 )
                 else {}
             ),
