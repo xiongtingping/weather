@@ -238,6 +238,54 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
+def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How often a whole basket actually got filled while resting.
+
+    A complete basket is atomic, so this is the rate at which *every* rung
+    filled -- one leg short is not a cheaper entry, it is no entry.  That is
+    why the denominator is seats plus resting refusals rather than legs.
+    """
+
+    seated = conn.execute(
+        "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
+    ).fetchall()
+    try:
+        unfilled = conn.execute(
+            "SELECT COUNT(*), stage FROM paper_trade_refusal"
+            " WHERE reason='resting_unfilled' GROUP BY stage"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        unfilled = []
+    by_stage: dict[str, dict[str, int]] = {}
+    for count, stage in seated:
+        by_stage.setdefault(str(stage), {})["seated"] = int(count)
+    for count, stage in unfilled:
+        by_stage.setdefault(str(stage), {})["unfilled"] = int(count)
+    rows = []
+    total_seated = total_unfilled = 0
+    for stage in ("P0", "P0-M", "P1"):
+        entry = by_stage.get(stage, {})
+        seat = int(entry.get("seated", 0))
+        miss = int(entry.get("unfilled", 0))
+        total_seated += seat
+        total_unfilled += miss
+        if seat + miss == 0:
+            continue
+        rows.append({
+            "stage": stage,
+            "seated_count": seat,
+            "unfilled_count": miss,
+            "fill_rate": seat / (seat + miss),
+        })
+    denominator = total_seated + total_unfilled
+    return {
+        "stages": rows,
+        "seated_count": total_seated,
+        "unfilled_count": total_unfilled,
+        "fill_rate": total_seated / denominator if denominator else None,
+    }
+
+
 def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
     """What the resting-order probe has learned so far.
 
@@ -643,6 +691,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "current_selection_rule_label": SELECTION_RULE_LABEL,
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "maker_probe": _maker_probe(conn),
+        "resting_entry": _resting_entry_stats(conn),
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
         "initial_capital_usdc": INITIAL_CAPITAL_USDC,

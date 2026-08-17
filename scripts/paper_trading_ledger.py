@@ -43,7 +43,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -123,9 +123,24 @@ WINDOW_STRATEGY = (
 # They are worth measuring because the spread is large: 27.3% of ask at the
 # median, and the whole of the book's 8.6% vig.
 EXECUTION_MODE = (
-    os.environ.get("PAPER_LEDGER_EXECUTION", "taker").strip() or "taker"
+    os.environ.get("PAPER_LEDGER_EXECUTION", "maker_resting").strip()
+    or "maker_resting"
 )
-EXECUTION_MODES = ("taker", "maker_bid", "maker_improve", "mid")
+EXECUTION_MODES = (
+    "taker", "maker_bid", "maker_improve", "mid", "maker_resting",
+)
+# How long a resting order is left on the book before the basket gives up
+# on it.  The probe's four horizons top out at an hour because it is
+# measuring how fill rate grows; a basket entering at listing has until the
+# day resolves, and the ruling is to let it wait (user ruling, 2026-08-17).
+MAKER_RESTING_HORIZON_MINUTES = float(
+    os.environ.get("PAPER_LEDGER_MAKER_HORIZON_MIN", "360") or 360.0
+)
+# The price a resting basket posts at.  One tick above the bid is the
+# probe's best measured compromise: 30.4% filled in five minutes with
+# almost no adverse selection (23.1% hit against 24.0% unconditional),
+# against 5.8% for joining the bid.
+MAKER_RESTING_IMPROVE_TICKS = 1
 # How the stake is split across the basket's rungs.  ``equal_shares`` is
 # what the ledger has always done -- one share count for the whole basket,
 # which is what atomicity means for a complete basket and is why allocation
@@ -207,6 +222,9 @@ REFUSAL_REASONS = (
     # quoted under a cent and we declined to price it.  The two have
     # different owners and different fixes, so they are different reasons.
     "leg_below_floor",
+    # A resting basket that never filled whole.  Distinct from "no depth":
+    # the size was there, the price simply never came to us.
+    "resting_unfilled",
     "no_positive_kelly",
     "no_depth",
 )
@@ -714,7 +732,9 @@ def _execution_price(row: Any) -> float | None:
         # already refuses to treat as a price.
         return None
     tick = float(getattr(row, "price_tick_size", 0.001) or 0.001)
-    if EXECUTION_MODE == "maker_bid":
+    if EXECUTION_MODE == "maker_resting":
+        price = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, ask)
+    elif EXECUTION_MODE == "maker_bid":
         price = bid
     elif EXECUTION_MODE == "maker_improve":
         price = min(bid + tick, ask)
@@ -880,6 +900,64 @@ def _strategy_windows(
         chosen, snapshot=snapshot, probabilities=probabilities
     )
     return [] if row is None else [row]
+
+
+
+def _resting_fill(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    buckets: Sequence[str],
+    limits: Sequence[float],
+    placed_at_utc: str,
+) -> tuple[bool, str | None, dict[str, str]]:
+    """Did every leg of this basket get filled while resting?
+
+    A complete basket is atomic: one leg left unfilled is not a cheaper
+    basket, it is a different bet with a hole in it, so the entry either
+    fills whole or does not happen.  Reported per leg anyway, because "which
+    rung failed to fill" is the number the page needs to show a fill rate at
+    all.
+
+    Fill means the book traded at or through the limit inside the horizon.
+    Queue position is ignored, which is the optimistic end -- an order
+    behind size at the same price might not have filled -- and is the same
+    assumption the shadow probe carries and stores queue depth against.
+    """
+
+    deadline = (
+        datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
+        + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
+    ).isoformat().replace("+00:00", "Z")
+    remaining = {str(b): float(px) for b, px in zip(buckets, limits)}
+    filled_at: dict[str, str] = {}
+    for observed, payload in conn.execute(
+        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND observed_at > ? AND observed_at <= ?"
+        " ORDER BY observed_at",
+        (station_id, event_date, placed_at_utc, deadline),
+    ):
+        if not remaining:
+            break
+        quotes = _decode_quotes(payload)
+        for bucket in list(remaining):
+            item = quotes.get(bucket)
+            if not isinstance(item, Mapping):
+                continue
+            ask = item.get("best_ask")
+            levels = item.get("ask_levels") or []
+            if ask is None and levels:
+                ask = levels[0].get("price")
+            if ask is None:
+                continue
+            if float(ask) <= remaining[bucket] + 1e-9:
+                filled_at[bucket] = str(observed)
+                remaining.pop(bucket)
+    if remaining:
+        return False, sorted(remaining)[0], filled_at
+    return True, None, filled_at
 
 
 def _kelly_stake(
@@ -1440,6 +1518,30 @@ def backfill(
                                 for row in payload["buckets"]
                             },
                         )
+                    resting_fills: dict[str, str] = {}
+                    if EXECUTION_MODE == "maker_resting":
+                        limits = _maker_leg_prices(
+                            snapshot, seat["buckets"]
+                        )
+                        ok, missing, resting_fills = _resting_fill(
+                            conn,
+                            station_id=station_id,
+                            event_date=event_date,
+                            buckets=seat["buckets"],
+                            limits=limits,
+                            placed_at_utc=payload["decision_at_utc"],
+                        )
+                        if not ok:
+                            refusal = (
+                                "resting_unfilled",
+                                "挂 %d 腿 · %s 未成交（%.0f 分钟内）" % (
+                                    len(seat["buckets"]),
+                                    missing,
+                                    MAKER_RESTING_HORIZON_MINUTES,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            )
+                            continue
                     if weights is None:
                         filled = _fillable_size(
                             legs=legs,

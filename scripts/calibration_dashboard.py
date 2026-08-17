@@ -959,7 +959,20 @@ function makerProbe(){
          ((st.pnl_per_share_mean>=0?"+":"")+st.pnl_per_share_mean.toFixed(4))}</div></div>`
     : `<div class="card" style="margin-top:12px"><span class="dot amber"></span>
        成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
-  return `<h2>十二、挂单影子探针</h2>
+  const re=S.resting_entry||{};
+  const reRows=(re.stages||[]).map(r=>`<tr><td>${h(r.stage)}</td>
+    <td>${r.seated_count}</td><td>${r.unfilled_count}</td>
+    <td class="${r.fill_rate>=0.8?"up":"down"}">${(r.fill_rate*100).toFixed(1)}%</td></tr>`).join("");
+  const reBlock=reRows?`<div class="card" style="margin-top:12px">
+    <div class="muted">建仓篮子的整体挂单成功率</div>
+    <div class="big ${(re.fill_rate||0)>=0.8?"up":"down"}">${
+      re.fill_rate==null?"—":(re.fill_rate*100).toFixed(1)+"%"}</div>
+    <div class="muted">${re.seated_count} 个篮子全腿成交 · ${re.unfilled_count} 个因有腿未成交而放弃</div>
+    <table style="margin-top:10px"><thead><tr><th>阶段</th><th>建仓成功</th>
+      <th>挂单落空</th><th>成功率</th></tr></thead><tbody>${reRows}</tbody></table>
+    <div class="muted" style="margin-top:8px">完整篮子是原子的：一条腿没成交就不是更便宜的篮子，
+    而是带洞的另一笔赌注，所以整篮放弃。分母是「建仓 + 因挂单落空放弃」。</div></div>`:"";
+  return `<h2>十二、挂单影子探针</h2>${reBlock}
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
   <div class="why"><b>为什么只有成交率没有成交量比例：</b>
