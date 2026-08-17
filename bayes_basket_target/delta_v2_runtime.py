@@ -124,6 +124,23 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # quote is a one-sided tail offer rather than a price: it states no
 # probability, and its payout dominates whatever P&L it lands in.
 MINIMUM_LEG_ALL_IN_ASK = 0.01
+# The shape a basket is asked to take inside itself (user ruling,
+# 2026-08-17): a base holding on the centre rung, tilted toward legs whose
+# own edge is positive, with the far rungs held deliberately small.
+#
+# It sits between the two shapes the objective would otherwise choose from.
+# Equal payout across the window is the flat curve the log score likes best
+# on its own terms, but it spends the same on a rung the model barely
+# believes as on the centre.  All-in on the cheapest positive-edge leg is
+# the lottery, whose payout the tail dominates -- measured earlier, every
+# window whose cheapest leg was under a cent returned +487% while all four
+# dearer strata returned between -12% and -100%.  This shape keeps the
+# centre as the position and lets edge lean it, so the convexity comes from
+# the basket's own geometry rather than from a tail ticket; the far rungs
+# remain as the hedge they are meant to be.
+CENTRE_ANCHOR_EDGE_TILT = 0.6
+CENTRE_ANCHOR_DISTANCE_DECAY = 0.8
+CENTRE_ANCHOR_MIN_RUNG_SHARE = 0.15
 
 
 def _support_windows(
@@ -600,6 +617,9 @@ def _solve_over_support_windows(
                     # must propose against the distribution the ranking on
                     # the next line scores.
                     probabilities_by_bucket=window_probabilities,
+                    centre_bucket=str(
+                        window_audit.get("ladder_center_bucket") or ""
+                    ),
                 ),
                 # The floor guards the whole live set exactly when full
                 # coverage is structurally possible (charter 38, amended
@@ -709,6 +729,7 @@ def _target_candidates(
     minimum_clip_notional_usdc: float,
     bankroll_usdc: float,
     probabilities_by_bucket: Mapping[str, float],
+    centre_bucket: str = "",
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -819,6 +840,19 @@ def _target_candidates(
             ),
             "candidate_origin": "CLIP_GRID_PRODUCT",
         })
+    if centre_bucket:
+        candidates.extend(_centre_anchored_candidates(
+            snapshot=snapshot,
+            ordered=ordered,
+            centre_bucket=centre_bucket,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            pending_shares=pending_shares,
+            pending_cost=pending_cost,
+            capital_available_usdc=capital_available_usdc,
+            minimum_clip_notional_usdc=minimum_clip_notional_usdc,
+            probabilities_by_bucket=probabilities_by_bucket,
+        ))
     candidates.extend(_continuous_optimum_candidates(
         snapshot=snapshot,
         ordered=ordered,
@@ -837,6 +871,124 @@ def _target_candidates(
         candidates, ordered_support=ordered
     )
 
+
+
+def _centre_anchored_candidates(
+    *,
+    snapshot: TargetBasketSnapshot,
+    ordered: Sequence[str],
+    centre_bucket: str,
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    pending_shares: Mapping[str, float],
+    pending_cost: Mapping[str, float],
+    capital_available_usdc: float,
+    minimum_clip_notional_usdc: float,
+    probabilities_by_bucket: Mapping[str, float],
+) -> list[dict[str, Any]]:
+    """Base holding on the centre, leaned toward the legs with edge.
+
+    The weight of a rung is its distance decay from the centre, multiplied
+    by a tilt that only positive edge can raise.  A rung the market prices
+    above our belief keeps the floor share and no more -- it is carried for
+    the hedge, not bought for the return -- so the basket stays complete
+    while its money concentrates where the model and the book disagree in
+    our favour.
+
+    Offered as candidates, not imposed: the curve score still ranks these
+    against the grid and the continuous optimum on the same partition, so
+    the shape wins where it is actually better and the audit can say how
+    often that is.
+    """
+
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    if centre_bucket not in by_bucket or centre_bucket not in ordered:
+        return []
+    ordinals = {
+        bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
+    }
+    centre_ordinal = ordinals[centre_bucket]
+    weights: dict[str, float] = {}
+    for bucket in ordered:
+        row = by_bucket[bucket]
+        if not row.ask_available:
+            return []
+        price = float(row.ask_price)
+        if price <= 0.0:
+            return []
+        edge = float(probabilities_by_bucket.get(bucket, 0.0)) - price
+        distance = abs(ordinals[bucket] - centre_ordinal)
+        decay = CENTRE_ANCHOR_DISTANCE_DECAY ** distance
+        # Only positive edge leans the rung; a negative-edge rung falls back
+        # to the floor share, which is what makes it a hedge rather than a
+        # position.
+        lean = 1.0 + CENTRE_ANCHOR_EDGE_TILT * max(edge, 0.0) / max(
+            price, EPS
+        )
+        weights[bucket] = max(
+            decay * lean,
+            CENTRE_ANCHOR_MIN_RUNG_SHARE,
+        )
+    weights[centre_bucket] = max(weights[centre_bucket], 1.0)
+    total_weight = sum(weights.values())
+    if total_weight <= EPS:
+        return []
+    floor = float(minimum_clip_notional_usdc)
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[float, ...]] = set()
+    for scale in (1.0, 0.6, 0.35):
+        budget = float(capital_available_usdc) * scale
+        if budget <= EPS:
+            continue
+        cash = []
+        for bucket in ordered:
+            raw = budget * weights[bucket] / total_weight
+            # Never below the clip floor: a rung priced under it cannot be
+            # bought at all, and a basket missing a rung is not this basket.
+            cash.append(max(floor, math.floor(raw * 100.0) / 100.0))
+        if sum(cash) > capital_available_usdc + EPS:
+            continue
+        key = tuple(cash)
+        if key in seen:
+            continue
+        seen.add(key)
+        shares = {
+            bucket: current_shares[bucket] + pending_shares[bucket]
+            for bucket in current_shares
+        }
+        costs = {
+            bucket: current_cost[bucket] + pending_cost[bucket]
+            for bucket in current_cost
+        }
+        usable = True
+        for bucket, clip in zip(ordered, cash):
+            acquired, spent = _ask_depth_purchase(
+                levels=by_bucket[bucket].ask_levels,
+                cash_limit=float(clip),
+            )
+            if acquired <= EPS or spent + EPS < float(clip):
+                usable = False
+                break
+            shares[bucket] += acquired
+            costs[bucket] += spent
+        if not usable:
+            continue
+        results.append({
+            "candidate_id": "ca-" + content_sha256({
+                "ordered_support": tuple(ordered),
+                "cash": key,
+                "centre": centre_bucket,
+                "quote_version": snapshot.quote_version,
+            })[:24],
+            # The kind is the closed class the state machine compares
+            # against; provenance goes in ``candidate_origin``.  Naming the
+            # shape here instead would turn every trade it wins into a hold.
+            "candidate_kind": CANDIDATE_KIND_COMPLETE,
+            "candidate_origin": "CENTRE_ANCHORED_EDGE_TILT",
+            "shares_by_bucket": shares,
+            "cost_by_bucket": costs,
+        })
+    return results
 
 def _continuous_optimum_candidates(
     *,

@@ -202,6 +202,115 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
+
+def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Did the truth land inside the basket, by how many rungs it had.
+
+    The stage tables answer "was this seat right"; this answers "does buying
+    a wider window buy a proportionally better chance".  Only credible fills
+    count, for the same reason everything else on the page does.
+    """
+
+    out: list[dict[str, Any]] = []
+    for size, settled, hits, cost, claimed, staked, pnl in conn.execute(
+        "SELECT p.window_size, COUNT(*), SUM(s.hit), AVG(p.all_in_cost),"
+        " AVG(s.claimed_win_probability), SUM(s.stake_usdc),"
+        " SUM(s.pnl_usdc)"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(position_id)"
+        " WHERE p.all_in_cost>=?"
+        " GROUP BY p.window_size ORDER BY p.window_size",
+        (DUST_COST_FLOOR,),
+    ):
+        count = int(settled or 0)
+        if not count:
+            continue
+        out.append({
+            "window_size": int(size),
+            "settled_count": count,
+            "hit_count": int(hits or 0),
+            "hit_rate": (hits or 0) / count,
+            "all_in_cost_mean": float(cost or 0.0),
+            "claimed_win_probability_mean": float(claimed or 0.0),
+            "staked_usdc": float(staked or 0.0),
+            "pnl_usdc": float(pnl or 0.0),
+        })
+    return out
+
+
+def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
+    """What the resting-order probe has learned so far.
+
+    It places nothing -- each row is an intent stamped before the market
+    moved, decided later by whether the live book traded through it.  So
+    "fill rate" here is per order, not per share: the probe carries no size,
+    which is why there is no filled-quantity ratio to report.  Saying that
+    plainly beats printing a number that would have to be invented.
+    """
+
+    try:
+        conn.execute("SELECT 1 FROM maker_shadow_order LIMIT 1")
+    except sqlite3.OperationalError:
+        return {"available": False}
+    cells: list[dict[str, Any]] = []
+    band = (
+        "CASE WHEN lead_hours >= 24 THEN 'open_gt24h'"
+        " WHEN lead_hours >= 12 THEN 'open_12_24h'"
+        " WHEN lead_hours >= 0 THEN 'pre_event_0_12h'"
+        " ELSE 'event_day' END"
+    )
+    for rule, horizon, lead, total, filled, price, ask in conn.execute(
+        f"SELECT price_rule, horizon_minutes, {band}, COUNT(*),"
+        " SUM(CASE WHEN state='FILLED' THEN 1 ELSE 0 END),"
+        " AVG(limit_price), AVG(reference_ask)"
+        " FROM maker_shadow_order WHERE state<>'OPEN'"
+        f" GROUP BY price_rule, horizon_minutes, {band}"
+    ):
+        decided = int(total or 0)
+        if decided < 20:
+            continue
+        cells.append({
+            "price_rule": str(rule),
+            "horizon_minutes": int(horizon),
+            "lead_band": str(lead),
+            "decided_count": decided,
+            "filled_count": int(filled or 0),
+            "fill_rate": (filled or 0) / decided,
+            # An order that never traded is a bucket the basket wanted and
+            # did not get -- the "empty rung" the ruling asks about.
+            "unfilled_rate": 1.0 - (filled or 0) / decided,
+            "limit_price_mean": float(price or 0.0),
+            "reference_ask_mean": float(ask or 0.0),
+            "spread_saved_mean": float(ask or 0.0) - float(price or 0.0),
+        })
+    open_count = conn.execute(
+        "SELECT COUNT(*) FROM maker_shadow_order WHERE state='OPEN'"
+    ).fetchone()[0]
+    settled = conn.execute(
+        "SELECT COUNT(*), SUM(hit), AVG(limit_price), AVG(pnl_per_share)"
+        " FROM maker_shadow_settlement"
+    ).fetchone()
+    return {
+        "available": True,
+        "open_count": int(open_count or 0),
+        "cells": sorted(
+            cells,
+            key=lambda c: (
+                c["lead_band"], c["horizon_minutes"], c["price_rule"]
+            ),
+        ),
+        "settled": {
+            "count": int(settled[0] or 0),
+            "hit_count": int(settled[1] or 0),
+            "hit_rate": (
+                (settled[1] or 0) / settled[0] if settled[0] else None
+            ),
+            "limit_price_mean": settled[2],
+            "pnl_per_share_mean": settled[3],
+        },
+    }
+
+
 def build_payload(db: Path) -> dict[str, Any]:
     conn = _connect(db)
     rows = _rows(conn)
@@ -532,6 +641,8 @@ def build_payload(db: Path) -> dict[str, Any]:
         # Stated once so the page can flag anything compiled under a
         # different rule instead of repeating the same string on every cell.
         "current_selection_rule_label": SELECTION_RULE_LABEL,
+        "basket_hit_by_size": _basket_hit_by_size(conn),
+        "maker_probe": _maker_probe(conn),
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
         "initial_capital_usdc": INITIAL_CAPITAL_USDC,

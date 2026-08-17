@@ -901,6 +901,82 @@ function stages(){
   <div class="grid" style="margin-top:12px">${cards}</div>`;
 }
 
+function basketHit(){
+  const S=D.selection||{};const bs=S.basket_hit_by_size||[];
+  if(!bs.length) return "";
+  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const rows=bs.map(b=>{
+    const ratio=b.claimed_win_probability_mean>0
+      ? b.hit_rate/b.claimed_win_probability_mean : null;
+    const roi=b.staked_usdc>0 ? b.pnl_usdc/b.staked_usdc : null;
+    return `<tr><td><b>${b.window_size} 桶</b></td>
+      <td>${b.settled_count}</td>
+      <td>${b.hit_count}</td>
+      <td class="${b.hit_rate>=0.5?"up":""}">${p(b.hit_rate)}</td>
+      <td>${p(b.claimed_win_probability_mean)}</td>
+      <td class="${ratio==null?"":(ratio>=0.9&&ratio<=1.15?"up":"down")}">${
+        ratio==null?"—":ratio.toFixed(2)+"×"}</td>
+      <td class="mono">${b.all_in_cost_mean.toFixed(3)}</td>
+      <td class="mono ${roi==null?"":(roi>=0?"up":"down")}">${
+        roi==null?"—":((roi>=0?"+":"")+(roi*100).toFixed(1)+"%")}</td></tr>`;
+  }).join("");
+  return `<h2>十一、篮子命中率（按桶数）</h2>
+  <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
+  <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
+  值不值它多花的钱。命中率一定随桶数上升——问题是成本也上升，
+  最右边的每元回报才是净结果。</div>
+  <table><thead><tr><th>篮子宽度</th><th>已结算</th><th>命中</th><th>命中率</th>
+    <th>声称</th><th>实现/声称</th><th>均成本</th><th>每元回报</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function makerProbe(){
+  const S=D.selection||{};const m=S.maker_probe||{};
+  if(!m.available) return "";
+  const cells=m.cells||[];
+  if(!cells.length) return `<h2>十二、挂单影子探针</h2>
+    <div class="card"><span class="dot amber"></span>
+      已写入 ${m.open_count||0} 个未到期意图，还没有到期可判定的。</div>`;
+  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const BAND={open_gt24h:"建仓 >24h",open_12_24h:"12–24h",
+    pre_event_0_12h:"0–12h",event_day:"事件日"};
+  const rows=cells.map(c=>`<tr>
+    <td>${BAND[c.lead_band]||c.lead_band}</td>
+    <td class="mono">${h(c.price_rule)}</td>
+    <td>${c.horizon_minutes}分</td>
+    <td>${c.decided_count}</td>
+    <td class="${c.fill_rate>=0.5?"up":""}">${p(c.fill_rate)}</td>
+    <td class="${c.unfilled_rate>=0.5?"down":"muted"}">${p(c.unfilled_rate)}</td>
+    <td class="mono">${c.limit_price_mean.toFixed(3)}</td>
+    <td class="mono">${c.reference_ask_mean.toFixed(3)}</td>
+    <td class="mono up">+${c.spread_saved_mean.toFixed(3)}</td></tr>`).join("");
+  const st=m.settled||{};
+  const settledLine=st.count
+    ? `<div class="card" style="margin-top:12px"><div class="muted">已结算的成交</div>
+       <div class="big">${st.count} 笔 · 命中 ${p(st.hit_rate)}</div>
+       <div class="muted">均价 ${st.limit_price_mean==null?"—":st.limit_price_mean.toFixed(3)}
+       · 每份盈亏 ${st.pnl_per_share_mean==null?"—":
+         ((st.pnl_per_share_mean>=0?"+":"")+st.pnl_per_share_mean.toFixed(4))}</div></div>`
+    : `<div class="card" style="margin-top:12px"><span class="dot amber"></span>
+       成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
+  return `<h2>十二、挂单影子探针</h2>
+  <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
+  再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
+  <div class="why"><b>为什么只有成交率没有成交量比例：</b>
+  探针记录的是价格和到期，不带下单数量——它不下真单，就没有"挂 100 成交 80"
+  这回事。这里的成交率是<b>订单级</b>的：到期时市场有没有穿过这个价。
+  「空桶率」就是没穿过、这条腿买不到的比例。<br>
+  <b>成交判据偏乐观：</b>只要盘口触及限价就算成交，没有排队位置。
+  每条意图都存了 <span class="mono">queue_ahead_shares</span>，
+  将来可以据此修正，而不是现在假设掉。</div>
+  <div class="scroll"><table><thead><tr>
+    <th>提前期</th><th>挂单价</th><th>有效期</th><th>已判定</th>
+    <th>成交率</th><th>空桶率</th><th>挂单均价</th><th>同刻卖价</th><th>省下价差</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>
+  ${settledLine}`;
+}
+
+
 function gaps(){
   if(!D.gaps.length) return `<h2>五、数据缺口</h2>
     <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
@@ -1260,46 +1336,11 @@ function makeSortable(table){
 // nothing about why.  It is not broken: the training lane runs every cycle
 // for every station and refuses to fit on evidence it does not have.  Show
 // the distance, per station, so the wait is a number instead of a mystery.
-function p0m(){
-  const P=D.p0m||{stations:[],summary:{}}, s=P.summary||{};
-  if(!P.stations.length) return "";
-  const rows=P.stations.map(r=>{
-    const label=r.station_label||"";
-    const pair=(r.pair||[]).map(x=>x.replace(/_(ENS|GLOBAL|EPS|IFS)?.*$/,"")).join(" + ");
-    const dist=r.missing===null?`<span class="pill red">活档无序列</span>`
-      :r.oos_refused?`<span class="pill amber">证据够了 · OOS 未通过</span>`
-      :r.missing===0?`<span class="pill green">证据已够</span>`
-      :`<b>还差 ${r.missing} 天</b>`;
-    return `<tr><td>${h(r.station_id)} <span class="muted">${h(label)}</span></td>
-      <td>${h(r.lead_bucket)}</td><td>${dist}</td>
-      <td>${r.have}/${r.need}</td><td class="muted">${h(pair)}</td>
-      <td>${r.truth_days}</td>
-      <td>${r.truth_short>0?`<span class="pill red">缺 ${r.truth_short} 天</span>`:"—"}</td></tr>`;
-  }).join("");
-  return `<h2>十一、P0-M 为什么还没有产出</h2>
-  <p class="sub">P0-M 是"当天早上机场人工预报对开仓概率的确认"。它自 7 月 30 日起没有
-  任何产出——不是坏了：训练每轮都在跑，但每个站都要先攒够
-  <b>${s.calendar_days ? 36 : 36} 个双方都有预报、且当天真值已结算</b>的日子，
-  才允许拟合；攒够后还要在严格样本外比赛里赢过基线才发布。下面是每站离那条线还有多远。</p>
-  <div class="grid g4" style="margin-bottom:10px">
-    <div class="card"><div class="muted">证据已攒够</div>
-      <div style="font-size:22px"><b>${s.evidence_ready||0}</b> / ${s.station_count||0} 站</div></div>
-    <div class="card"><div class="muted">还差 3 天以内</div>
-      <div style="font-size:22px"><b>${s.within_three_days||0}</b> 站</div></div>
-    <div class="card"><div class="muted">攒够但 OOS 没赢</div>
-      <div style="font-size:22px"><b>${s.oos_refused||0}</b> 站</div></div>
-    <div class="card"><div class="muted">全站累计缺的真值天数</div>
-      <div style="font-size:22px"><b>${s.truth_days_missing_total||0}</b> 天
-      <span class="muted" style="font-size:12px">这是主要卡点</span></div></div>
-  </div>
-  <table><thead><tr><th>站点</th><th>提前量档</th><th>离可拟合还差</th>
-    <th>已有/需要</th><th>最接近的模型组合</th><th>已结算真值天数</th><th>真值缺口</th></tr></thead>
-  <tbody>${rows}</tbody></table>`;
-}
 
 document.getElementById("app").innerHTML =
   head() + members() + chain() + tables() + stages() + gaps() + daily() +
-  coverage() + stationSummary() + roster() + anomalies() + p0m() +
+  coverage() + stationSummary() + roster() + anomalies() +
+  basketHit() + makerProbe() +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);
