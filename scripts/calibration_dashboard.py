@@ -17,13 +17,16 @@ from __future__ import annotations
 
 import argparse
 import json
+from bisect import bisect_left
 from collections import defaultdict
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from statistics import median
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -52,6 +55,25 @@ STAGE_MEANING = {
     "P0-M": "确认：当天早上的机场人工预报（TAF）对 P0 的确认或修正",
     "P1": "盯盘：当天实测气温不断进来后对概率的滚动更新",
 }
+
+# How far back the model-skill sections score.  Bounded rather than
+# open-ended: the member table is append-only and grows by tens of thousands
+# of rows a day, and this is the one read on the page that has to touch all
+# of it -- an unbounded window makes the render slower every day it runs,
+# forever.  Anchored on the newest settled truth rather than on the wall
+# clock, so a stalled truth lane shows a thin window instead of an empty one.
+SKILL_WINDOW_DAYS = 60
+# The lead axis is the hour bucket, derived here from each run's own
+# initialisation against each station's own local day start -- never the
+# stored d0/d1/d2 label.  Those two disagree badly: measured over this same
+# archive, d1 and d2 overlap across 18-31h and d2 alone spans 37 hours, so
+# grouping skill by the calendar label mixes runs issued a day apart.
+LEAD_LABELS = (
+    ("h00_12", "0–12 小时"),
+    ("h12_24", "12–24 小时"),
+    ("h24_48", "24–48 小时"),
+    ("h48_plus", "48 小时以上"),
+)
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -493,6 +515,367 @@ def collect_p0m_progress(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _market_bucket_index(unit: str, celsius: float) -> int | None:
+    """Which rung of the station's own market ladder a temperature sits on.
+
+    The ladder is not the same width everywhere: a Fahrenheit book steps two
+    degrees F per rung (1.11C) and a Celsius book one degree C, so a fixed
+    temperature tolerance would score the two books against different targets.
+    Counting rungs is what makes "off by one bucket" mean the same thing at
+    KLGA and at ZUUU.
+
+    Deliberately unbounded at both ends.  A real book caps its ladder with an
+    "or below"/"or higher" bucket, but clipping the distance there would
+    report a five-rung miss as a one-rung miss purely because the truth
+    landed past the last listed rung.
+    """
+
+    if unit == "F":
+        # Rungs are 80-81F, 82-83F, ...: boundaries fall on the half degree
+        # between an odd and the next even degree.
+        return int((celsius * 9.0 / 5.0 + 32.0 + 0.5) // 2.0)
+    if unit == "C":
+        return int((celsius + 0.5) // 1.0)
+    return None
+
+
+def _correction_in_force(
+    artifacts: dict[tuple[str, str, str, str], tuple[list[str], list[Any]]],
+    system_id: str,
+    station_id: str,
+    lead_labels: set[str],
+    run_cycle: str,
+    event_date: str,
+) -> tuple[dict[str, Any], float] | None:
+    """The bias artifact that was already fitted when this day arrived.
+
+    Strictly before the event date, so this scores the correction the way
+    trading met it -- on a day it had never seen.  Using whatever artifact is
+    active today would let a fit that trained *through* the day being scored
+    mark its own homework, and the whole point of the corrected column is to
+    say whether the correction layer earns its keep out of sample.
+
+    Both lead vocabularies are tried because the archive spans the migration:
+    a July run was stamped d0/d1/d2 and its artifacts are keyed that way,
+    while an August run and its artifacts are keyed by hour bucket.  The run
+    cycle still has to match exactly -- serving refuses a cross-cycle
+    artifact, and a coverage number that quietly borrows one would overstate
+    how much of the fleet is actually corrected.
+    """
+
+    best: tuple[dict[str, Any], float] | None = None
+    best_end = ""
+    for label in lead_labels:
+        entry = artifacts.get((system_id, station_id, label, run_cycle))
+        if entry is None:
+            continue
+        ends, rows = entry
+        position = bisect_left(ends, event_date)
+        if position and ends[position - 1] > best_end:
+            best_end = ends[position - 1]
+            best = rows[position - 1][1]
+    return best
+
+
+def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Per model and lead: member spread, and how often the centre lands.
+
+    Three questions the page could not answer before.  How far apart do a
+    model's own members sit -- its dispersion, which is the only uncertainty
+    it states about itself.  How often does its raw centre land on the
+    market's bucket, one rung out, two rungs out, and does that decay with
+    lead time.  And does the per-station bias correction the fleet serves
+    actually move those numbers.
+
+    Raw and corrected are reported on the *same* station-days.  Only about a
+    quarter of scored runs have an artifact fitted before their event date,
+    and comparing a full-sample raw rate against a quarter-sample corrected
+    one would credit the correction layer for a difference in which days it
+    covers rather than in what it does to them.
+    """
+
+    from bayes_basket_target.native_archive_lead import (  # noqa: PLC0415
+        lead_hour_bucket,
+    )
+
+    zone_names = {
+        str(station): str(zone)
+        for station, zone in conn.execute(
+            "SELECT station_id, settlement_timezone"
+            " FROM calibration_station_market_timezone_binding"
+        )
+    }
+    units: dict[str, str] = {}
+    for station, unit in conn.execute(
+        "SELECT station_id, settlement_unit FROM basket_target_market_registry"
+        " WHERE station_id IS NOT NULL AND settlement_unit IS NOT NULL"
+        " GROUP BY station_id, settlement_unit"
+    ):
+        units.setdefault(str(station), str(unit))
+    truth: dict[tuple[str, str], float] = {}
+    for station, day, tmax in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c"
+        " FROM calibration_station_daily_high_truth"
+        " WHERE qc_status='ACCEPTED' ORDER BY revision_no"
+    ):
+        truth[(str(station), str(day))] = float(tmax)
+    if not truth:
+        return {"rows": [], "totals": [], "summary": {}}
+    newest_truth = max(day for _station, day in truth)
+    window_start = str(
+        (
+            datetime.fromisoformat(newest_truth)
+            - timedelta(days=SKILL_WINDOW_DAYS)
+        ).date()
+    )
+
+    system_ids = tuple(system for system, _l, _t, _b in MEMBER_FAMILIES)
+    grouped: dict[tuple[str, str, str, str], list[Any]] = defaultdict(list)
+    placeholders = ",".join("?" for _ in system_ids)
+    for (
+        system_id, station, lead, cycle, end, bias_json, spread_json
+    ) in conn.execute(
+        "SELECT ensemble_system_id, station_id, lead_bucket, run_cycle,"
+        " train_end_date, bias_parameters_json, spread_parameters_json"
+        " FROM calibration_native_ensemble_system_artifact"
+        f" WHERE ensemble_system_id IN ({placeholders})",
+        system_ids,
+    ):
+        try:
+            bias = json.loads(bias_json)
+            spread = float(json.loads(spread_json)["spread_factor"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        grouped[
+            (str(system_id), str(station), str(lead), str(cycle))
+        ].append((str(end), (bias, spread)))
+    artifacts = {}
+    for key, rows in grouped.items():
+        rows.sort(key=lambda row: row[0])
+        artifacts[key] = ([row[0] for row in rows], rows)
+
+    # One row per model run per station-day: the members collapse to a centre
+    # and a spread here rather than in Python, because the raw member table is
+    # the largest thing on the page by an order of magnitude.
+    conditions = " OR ".join(
+        "(ensemble_system_id=? AND transport_provider_id=?)"
+        for _s, _l, _t, _b in MEMBER_FAMILIES
+    )
+    parameters: list[Any] = [window_start]
+    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
+        parameters.extend((system_id, transport))
+    runs = conn.execute(
+        "SELECT ensemble_system_id, station_id, target_local_date,"
+        " native_run_init_utc, run_cycle, archive_lead_bucket,"
+        " AVG(raw_tmax_c), AVG(raw_tmax_c*raw_tmax_c), COUNT(*)"
+        " FROM calibration_native_ensemble_historical_member_run"
+        " WHERE qc_status='ACCEPTED' AND native_run_init_utc IS NOT NULL"
+        " AND target_local_date >= ?"
+        f" AND ({conditions})"
+        " GROUP BY 1,2,3,4,5,6",
+        parameters,
+    ).fetchall()
+
+    def blank() -> dict[str, Any]:
+        return {
+            "runs": 0, "members": 0, "sigma": [], "scored": 0,
+            "abs_error": 0.0, "signed_error": 0.0, "square_error": 0.0,
+            "raw": [0, 0, 0], "paired": 0, "paired_raw": [0, 0, 0],
+            "paired_cal": [0, 0, 0], "paired_square": 0.0,
+            "paired_abs": 0.0, "factor": [], "uncorrected": 0,
+        }
+
+    cells: dict[tuple[str, str], dict[str, Any]] = defaultdict(blank)
+    zones: dict[str, ZoneInfo] = {}
+    day_starts: dict[tuple[str, str], datetime] = {}
+    unscored: dict[str, int] = defaultdict(int)
+    for (
+        system_id, station, day, run_init, cycle, stored_lead,
+        centre, mean_square, member_count,
+    ) in runs:
+        system_id, station, day = str(system_id), str(station), str(day)
+        zone_name = zone_names.get(station)
+        if zone_name is None:
+            unscored["no_timezone"] += 1
+            continue
+        if station not in zones:
+            try:
+                zones[station] = ZoneInfo(zone_name)
+            except (KeyError, ValueError):
+                unscored["no_timezone"] += 1
+                continue
+        scope = (station, day)
+        if scope not in day_starts:
+            day_starts[scope] = datetime.fromisoformat(day).replace(
+                tzinfo=zones[station]
+            ).astimezone(timezone.utc)
+        try:
+            initialised = datetime.fromisoformat(
+                str(run_init).replace("Z", "+00:00")
+            )
+        except ValueError:
+            unscored["bad_run_init"] += 1
+            continue
+        if initialised.tzinfo is None:
+            initialised = initialised.replace(tzinfo=timezone.utc)
+        lead = lead_hour_bucket(
+            (
+                day_starts[scope] - initialised.astimezone(timezone.utc)
+            ).total_seconds() / 3600.0
+        )
+        centre = float(centre)
+        cell = cells[(system_id, lead)]
+        cell["runs"] += 1
+        cell["members"] += int(member_count)
+        cell["sigma"].append(
+            max(0.0, float(mean_square) - centre ** 2) ** 0.5
+        )
+        observed = truth.get(scope)
+        if observed is None:
+            unscored["no_truth_yet"] += 1
+            continue
+        unit = units.get(station, "")
+        truth_bucket = _market_bucket_index(unit, observed)
+        raw_bucket = _market_bucket_index(unit, centre)
+        if truth_bucket is None or raw_bucket is None:
+            unscored["no_market_ladder"] += 1
+            continue
+        cell["scored"] += 1
+        cell["abs_error"] += abs(centre - observed)
+        cell["signed_error"] += centre - observed
+        cell["square_error"] += (centre - observed) ** 2
+        raw_distance = abs(raw_bucket - truth_bucket)
+        for offset in range(3):
+            if raw_distance <= offset:
+                cell["raw"][offset] += 1
+        correction = _correction_in_force(
+            artifacts, system_id, station,
+            {lead, str(stored_lead)}, str(cycle), day,
+        )
+        if correction is None:
+            cell["uncorrected"] += 1
+            continue
+        bias, factor = correction
+        if str(bias.get("correction_form") or "constant") == "affine":
+            corrected = (
+                float(bias["affine_intercept_c"])
+                + float(bias["affine_slope"]) * centre
+            )
+        else:
+            corrected = centre + float(bias["bias_c"])
+        corrected_bucket = _market_bucket_index(unit, corrected)
+        if corrected_bucket is None:
+            cell["uncorrected"] += 1
+            continue
+        cell["paired"] += 1
+        cell["factor"].append(factor)
+        cell["paired_abs"] += abs(corrected - observed)
+        cell["paired_square"] += (corrected - observed) ** 2
+        corrected_distance = abs(corrected_bucket - truth_bucket)
+        for offset in range(3):
+            if raw_distance <= offset:
+                cell["paired_raw"][offset] += 1
+            if corrected_distance <= offset:
+                cell["paired_cal"][offset] += 1
+
+    def emit(cell: dict[str, Any], label: str, system_id: str,
+             lead: str, lead_label: str) -> dict[str, Any]:
+        scored = cell["scored"]
+        paired = cell["paired"]
+        sigma = median(cell["sigma"]) if cell["sigma"] else None
+        factor = median(cell["factor"]) if cell["factor"] else None
+        width = None if sigma is None or factor is None else sigma * factor
+        corrected_rmse = (
+            (cell["paired_square"] / paired) ** 0.5 if paired else None
+        )
+        return {
+            "label": label,
+            "system_id": system_id,
+            "lead_bucket": lead,
+            "lead_label": lead_label,
+            "runs": cell["runs"],
+            "members_per_run": (
+                cell["members"] / cell["runs"] if cell["runs"] else None
+            ),
+            "member_sigma_c": sigma,
+            "spread_factor": factor,
+            "served_width_c": width,
+            "scored": scored,
+            "raw_rates": [
+                cell["raw"][i] / scored if scored else None
+                for i in range(3)
+            ],
+            "mae_c": cell["abs_error"] / scored if scored else None,
+            "signed_bias_c": (
+                cell["signed_error"] / scored if scored else None
+            ),
+            "rmse_c": (
+                (cell["square_error"] / scored) ** 0.5 if scored else None
+            ),
+            "paired": paired,
+            "paired_raw_rates": [
+                cell["paired_raw"][i] / paired if paired else None
+                for i in range(3)
+            ],
+            "paired_calibrated_rates": [
+                cell["paired_cal"][i] / paired if paired else None
+                for i in range(3)
+            ],
+            "paired_mae_c": (
+                cell["paired_abs"] / paired if paired else None
+            ),
+            "corrected_rmse_c": corrected_rmse,
+            # Above 1 the served cloud is narrower than the errors it has to
+            # cover -- the model claims more certainty than it earns.
+            "width_ratio": (
+                corrected_rmse / width
+                if corrected_rmse and width else None
+            ),
+            "uncorrected": cell["uncorrected"],
+        }
+
+    rows: list[dict[str, Any]] = []
+    totals: list[dict[str, Any]] = []
+    for system_id, label, _transport, _backfillable in MEMBER_FAMILIES:
+        combined = blank()
+        for lead, lead_label in LEAD_LABELS:
+            cell = cells.get((system_id, lead))
+            if cell is None or not cell["runs"]:
+                continue
+            for field in (
+                "runs", "members", "scored", "paired", "uncorrected",
+            ):
+                combined[field] += cell[field]
+            for field in (
+                "abs_error", "signed_error", "square_error",
+                "paired_square", "paired_abs",
+            ):
+                combined[field] += cell[field]
+            for field in ("raw", "paired_raw", "paired_cal"):
+                for offset in range(3):
+                    combined[field][offset] += cell[field][offset]
+            combined["sigma"].extend(cell["sigma"])
+            combined["factor"].extend(cell["factor"])
+            rows.append(emit(cell, label, system_id, lead, lead_label))
+        if combined["runs"]:
+            totals.append(
+                emit(combined, label, system_id, "all", "全部提前量")
+            )
+    return {
+        "rows": rows,
+        "totals": totals,
+        "summary": {
+            "window_days": SKILL_WINDOW_DAYS,
+            "window_start": window_start,
+            "window_end": newest_truth,
+            "run_count": sum(r["runs"] for r in totals),
+            "scored_count": sum(r["scored"] for r in totals),
+            "paired_count": sum(r["paired"] for r in totals),
+            "unscored": dict(unscored),
+        },
+    }
+
+
 def collect_gaps(
     conn: sqlite3.Connection,
     members: list[dict[str, Any]],
@@ -642,6 +1025,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     chain = collect_chain(conn)
     gaps = collect_gaps(conn, members, stages, tables)
     p0m = collect_p0m_progress(conn)
+    skill = collect_model_skill(conn)
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -680,6 +1064,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "chain": chain,
         "gaps": gaps,
         "p0m": p0m,
+        "skill": skill,
         "worker": worker,
     }
 
@@ -1421,6 +1806,142 @@ function anomalies(){
 }
 
 
+const pct1 = (v) => v == null ? "—" : (v * 100).toFixed(1) + "%";
+const deg2 = (v) => v == null ? "—" : v.toFixed(2) + " °C";
+
+function dispersion(){
+  const S = D.skill || {}; const rows = S.rows || [];
+  if(!rows.length) return "";
+  const body = rows.map(r => `<tr>
+    <td><b>${h(r.label)}</b></td>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono">${r.runs.toLocaleString()}</td>
+    <td class="mono">${r.members_per_run == null ? "—" :
+      r.members_per_run.toFixed(0)}</td>
+    <td class="mono">${deg2(r.member_sigma_c)}</td>
+    <td class="mono">${r.paired.toLocaleString()}</td>
+    <td class="mono">${r.spread_factor == null ? "—" :
+      r.spread_factor.toFixed(2) + "×"}</td>
+    <td class="mono">${deg2(r.served_width_c)}</td>
+    <td class="mono">${deg2(r.corrected_rmse_c)}</td>
+    <td class="mono ${r.width_ratio == null ? "" :
+      (r.width_ratio >= 0.85 && r.width_ratio <= 1.15 ? "up" : "down")}">${
+      r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
+  </tr>`).join("");
+  const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
+  return `<h2>十四、四大模型的离散度</h2>
+  <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
+  不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
+  统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
+  （${S.summary.window_days} 天）。</p>
+  <div class="why"><b>怎么看：</b>「成员离散度」是模型原始的成员标准差；系统不直接
+  用它，而是乘一个「服务放大」系数再拿去出概率——因为集合预报普遍过于自信，
+  成员分歧一向小于实际会犯的错。<b>最右边的「宽度校准比」才是结论：</b>
+  它是校正后的实际误差除以服务宽度，1.00× 表示放大得刚好，
+  大于 1 表示放大之后仍然偏窄（还是过于自信），小于 1 表示放过了头。</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>模型</th><th>提前量</th><th>run 数</th><th>成员/run</th>
+    <th>成员离散度 σ</th><th>可比 run</th><th>服务放大</th><th>服务宽度</th>
+    <th>校正后 RMSE</th><th>宽度校准比</th>
+  </tr></thead><tbody>${body}</tbody></table>
+  <div class="muted" style="margin-top:6px">左边三列按全部 run 统计；
+  「服务放大」之后的四列只能在有校正表可用的那部分 run 上测，
+  所以另立「可比 run」一列说明它们的分母。${bare.length ?
+    `<b>${bare.join("、")}</b> 在本窗口内一个可比 run 都没有：
+     它现存的校正表是按旧的 d0/d1/d2 口径、且挂在聚合 cycle 上拟合的，
+     和它今天每一次 native 采集所带的 run cycle 对不上，因此右侧四列为空。`
+    : ""}</div>`;
+}
+
+function hitRate(){
+  const S = D.skill || {};
+  const rows = S.rows || []; const totals = S.totals || [];
+  if(!rows.length) return "";
+  const cards = totals.map(t => {
+    const gain = t.paired ?
+      t.paired_calibrated_rates[1] - t.paired_raw_rates[1] : null;
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px">
+        <b>${h(t.label)}</b><span style="flex:1"></span>
+        <span class="muted">${t.scored.toLocaleString()} 个已结算 run</span>
+      </div>
+      <div class="big" style="margin-top:6px">${pct1(t.raw_rates[1])}</div>
+      <div class="muted">原始预测落在真值 ±1 桶内</div>
+      <div style="margin-top:9px;font-size:13.5px">
+        精准命中 ${pct1(t.raw_rates[0])} · ±2 桶 ${pct1(t.raw_rates[2])}</div>
+      ${t.paired ? `<div class="why" style="margin-top:10px">
+        同样 ${t.paired.toLocaleString()} 个 run 上，校正后 ±1 桶
+        <b class="up">${pct1(t.paired_calibrated_rates[1])}</b>
+        （校正前 ${pct1(t.paired_raw_rates[1])}，
+        ${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(1)} 个百分点）</div>`
+      : `<div class="why" style="margin-top:10px">
+        这个模型在本窗口内没有自己的校正表，无法给出校正后数字</div>`}
+    </div>`;
+  }).join("");
+  const raw = rows.map(r => `<tr>
+    <td><b>${h(r.label)}</b></td>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono">${r.scored.toLocaleString()}</td>
+    <td class="${r.raw_rates[0] >= 0.25 ? "up" : ""}">${
+      pct1(r.raw_rates[0])}</td>
+    <td>${pct1(r.raw_rates[1])}</td>
+    <td>${pct1(r.raw_rates[2])}</td>
+    <td class="mono ${r.signed_bias_c == null ? "" :
+      (Math.abs(r.signed_bias_c) <= 0.5 ? "up" : "down")}">${
+      r.signed_bias_c == null ? "—" :
+      (r.signed_bias_c >= 0 ? "+" : "") + r.signed_bias_c.toFixed(2)}</td>
+    <td class="mono">${deg2(r.mae_c)}</td>
+  </tr>`).join("");
+  const arrow = (before, after) => {
+    if(before == null || after == null) return "—";
+    const better = after > before;
+    return `<span class="muted">${pct1(before)}</span> →
+      <b class="${better ? "up" : (after < before ? "down" : "")}">${
+      pct1(after)}</b>`;
+  };
+  const cal = rows.map(r => r.paired ? `<tr>
+    <td><b>${h(r.label)}</b></td>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono">${r.paired.toLocaleString()}</td>
+    <td>${arrow(r.paired_raw_rates[0], r.paired_calibrated_rates[0])}</td>
+    <td>${arrow(r.paired_raw_rates[1], r.paired_calibrated_rates[1])}</td>
+    <td>${arrow(r.paired_raw_rates[2], r.paired_calibrated_rates[2])}</td>
+    <td class="mono">${deg2(r.paired_mae_c)}</td>
+  </tr>` : `<tr>
+    <td><b>${h(r.label)}</b></td>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono">0</td>
+    <td colspan="4" class="muted">这一格的 ${r.uncorrected.toLocaleString()}
+      个 run 都没有事件日之前就已拟合好的校正表，不参与对比</td>
+  </tr>`).join("");
+  return `<h2>十五、四大模型的命中率：原始 vs 校正后</h2>
+  <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
+  再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
+  其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
+  <div class="grid g4" style="margin-top:12px">${cards}</div>
+  <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
+  全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
+  站点的地形、下垫面、仪器位置带来的系统性偏差要靠每站的偏差订正表补回来，
+  这正是下面第二张表在量的东西。</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>模型</th><th>提前量</th><th>已结算 run</th><th>精准命中</th>
+    <th>±1 桶内</th><th>±2 桶内</th><th>平均偏差</th><th>平均绝对误差</th>
+  </tr></thead><tbody>${raw}</tbody></table>
+  <div class="muted" style="margin-top:6px">「平均偏差」是预报减真值：
+  负数表示这个模型在这一提前量上系统性报冷。</div>
+  <h2 style="margin-top:28px">校正后（同样本对比）</h2>
+  <div class="why"><b>两点必须说明：</b>一是用的校正表必须是<b>事件日之前</b>就已经
+  拟合好的那一版，所以它没见过被打分的这一天；二是左右两列跑在<b>同一批 run</b> 上，
+  只有约三成 run 在当时已经有可用的校正表，拿全样本的原始命中率去比这三成的
+  校正后命中率，比的是覆盖面而不是校正本身。</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>模型</th><th>提前量</th><th>可比 run</th><th>精准命中 原始→校正</th>
+    <th>±1 桶内 原始→校正</th><th>±2 桶内 原始→校正</th>
+    <th>校正后平均绝对误差</th>
+  </tr></thead><tbody>${cal}</tbody></table>`;
+}
+
+
 // Click a header to sort by that column.  Numbers, percentages, prices and
 // odds all read as numbers; anything else falls back to text, and an em dash
 // always sinks so empty cells never crowd the top of either direction.
@@ -1480,6 +2001,7 @@ document.getElementById("app").innerHTML = [
   [coverage, "覆盖"], [stationSummary, "站汇总"], [roster, "站名册"],
   [anomalies, "异常"], [basketHit, "篮子命中率"],
   [makerProbe, "挂单影子探针"], [refusalStats, "未建仓原因"],
+  [dispersion, "模型离散度"], [hitRate, "模型命中率"],
 ].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
