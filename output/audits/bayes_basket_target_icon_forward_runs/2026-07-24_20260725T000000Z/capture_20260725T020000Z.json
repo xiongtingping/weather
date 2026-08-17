@@ -1,9 +1,0 @@
-{
-  "forecast_hour": 2,
-  "reason_codes": [
-    "HTTP Error 404: Not Found"
-  ],
-  "status": "BLOCKED",
-  "transport_receipt_path": null,
-  "valid_time_utc": "2026-07-25T02:00:00Z"
-}

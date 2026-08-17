@@ -1,9 +1,0 @@
-{
-  "forecast_hour": 11,
-  "reason_codes": [
-    "model_arrival_icon_preflight_http_404"
-  ],
-  "status": "BLOCKED",
-  "transport_receipt_path": null,
-  "valid_time_utc": "2026-07-25T23:00:00Z"
-}

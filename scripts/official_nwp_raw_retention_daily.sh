@@ -20,6 +20,40 @@ AUDIT_DIR="$ROOT/output/audits"
 PLAN="$AUDIT_DIR/official_nwp_native_raw_retention_plan_latest.json"
 RESULT="$AUDIT_DIR/official_nwp_native_raw_retention_apply_latest.json"
 MIN_AGE_DAYS="${PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS:-2}"
+AUDITS_RETENTION_DAYS="${PM_OUTPUT_AUDITS_RETENTION_DAYS:-14}"
+
+# Runs first, not after: a raw body only becomes reclaimable below once no
+# packet under output/audits names its hash any more, and a packet that is
+# never pruned keeps it referenced forever.  Pruning stale packets in the
+# same pass lets that day's native sweep see the reference drop immediately
+# instead of waiting a day behind.
+echo "=== output/audits retention ==="
+echo "时间: $(date '+%Y-%m-%d %H:%M:%S')  retention_days=${AUDITS_RETENTION_DAYS}"
+AUDITS_PLAN="$AUDIT_DIR/output_audits_retention_plan_latest.json"
+AUDITS_RESULT="$AUDIT_DIR/output_audits_retention_apply_latest.json"
+AUDITS_APPLY_FLAG=()
+if [ "${PM_OUTPUT_AUDITS_RETENTION_APPLY:-0}" = "1" ]; then
+  AUDITS_APPLY_FLAG=(--apply --result-output "$AUDITS_RESULT")
+fi
+"$PY" "$ROOT/scripts/output_audits_retention.py" \
+  --audits-root "$AUDIT_DIR" \
+  --retention-days "$AUDITS_RETENTION_DAYS" \
+  --plan-output "$AUDITS_PLAN" \
+  "${AUDITS_APPLY_FLAG[@]+"${AUDITS_APPLY_FLAG[@]}"}" >/tmp/output_audits_retention_stdout.json
+"$PY" - /tmp/output_audits_retention_stdout.json <<'PYAUDITS'
+import json, sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+plan = payload["plan"]
+mib = lambda value: f"{int(value) / 1024 / 1024:.1f} MiB"
+print(f"  state={plan['state']} stale={plan.get('stale_count', 0)} ({mib(plan.get('stale_bytes', 0))})")
+apply = payload.get("apply") or {}
+if apply:
+    print(f"  deleted={apply['deleted_count']} ({mib(apply['deleted_bytes'])})")
+PYAUDITS
+rm -f /tmp/output_audits_retention_stdout.json
+if [ "${PM_OUTPUT_AUDITS_RETENTION_APPLY:-0}" != "1" ]; then
+  echo "dry-run：PM_OUTPUT_AUDITS_RETENTION_APPLY!=1，本次只出计划不删除。"
+fi
 
 COMMON=(
   "$ROOT/scripts/official_nwp_raw_retention.py"

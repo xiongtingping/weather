@@ -25,9 +25,14 @@ logs/
 # Secrets / env
 .env
 
-# Canonical contract snapshots.  These are one-off database exports, not source:
-# the 2026-08-04 V11 snapshot alone is 106MiB, over GitHub's 100MiB hard limit,
-# and it blocked every push from commit 86 onward.  The build receipt beside
-# each one carries the content hashes and fact counts, so the audit chain
-# survives without the payload; keep the payload outside the repository.
-output/audits/*snapshot*/canonical_contract.json
+# output/audits: every investigation/backfill/audit script under scripts/
+# writes its one-off packet here, and nothing ever removed one.  Measured
+# 2026-08-17: 3.7GiB across 19,140 files, 96% older than 14 days, none read
+# by any resident path -- and 19,513 historical commits of it had already
+# grown .git itself to 954MiB.  scripts/output_audits_retention.py now prunes
+# the working tree by age, but that only ever reclaims disk, not git history;
+# excluding the directory is what stops the next one-off dump from repeating
+# the same growth in commits.  (Supersedes the older, narrower rule that only
+# ignored canonical_contract.json snapshots under here -- ignoring the whole
+# directory subsumes it.)
+output/audits/

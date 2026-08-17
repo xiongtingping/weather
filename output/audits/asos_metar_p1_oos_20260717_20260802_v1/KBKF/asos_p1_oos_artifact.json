@@ -1,1 +1,0 @@
-{"authority_scope": "PRODUCTION_NO_LIVE_ONLY", "content_sha256": "a71d51214f0816da4dc2c55d9f88a250848d2407171edf67f8dd004122a7efb0", "enters_p1": false, "exact_match_count": 0, "failure_code": "OOS_SAMPLE_SHORT", "holdout_count": 8, "required_exact_match_count": 28, "schema": "asos_metar_exact_match_p1_oos_artifact_v1", "state": "BLOCKED", "station_id": "KBKF", "train_count": 20}

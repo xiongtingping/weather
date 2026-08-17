@@ -1,8 +1,0 @@
-{
-  "calls_order_gateway": false,
-  "reason": "ContractError:canonical_fact_identity_conflict",
-  "schema": "bayes_basket_target_canonical_fact_ingress_v1",
-  "state": "BLOCKED_FAIL_CLOSED",
-  "writes_shared_live_database": false,
-  "writes_target_database": false
-}
