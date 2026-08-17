@@ -129,6 +129,21 @@ EXECUTION_MODES = ("taker", "maker_bid", "maker_improve", "mid")
 # five two-bucket P0 seats written before it stayed on the page for a day,
 # because the pass skips a stage it has already recorded.  Rows stamped with a
 # different rule set are dropped and re-derived instead.
+# The fingerprint identifies a rule set exactly; this names it in a way a
+# reader can hold.  The page shows one per basket, so a day compiled under a
+# retired rule is visibly different from a day compiled under the current
+# one rather than silently comparable to it.  Kept short and mechanical --
+# it is derived from the same constants the fingerprint hashes, so the two
+# cannot drift.
+SELECTION_RULE_LABEL = "·".join(filter(None, (
+    {"probability_mass": "D-质量", "kl": "K-散度"}.get(
+        "probability_mass", "probability_mass"
+    ),
+    "整篮EV",
+    f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}",
+    None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
+    None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
+)))
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v4",
     "compounding": "credible_fills_only_from_settlements",
@@ -142,6 +157,12 @@ SELECTION_RULE_SHA256 = content_sha256({
     # runs.  These two travel with the fingerprint for the same reason the
     # ladder floor does.
     "window_ranking": "probability_mass",
+    # The label rides in the fingerprint after all.  Left out of it, a rule
+    # change that only renames itself leaves old rows in place and the
+    # equity curve compounds two rule sets together -- measured: 2026-08-17
+    # seated LEMD at 16.88 (2% of 844) beside RKSI at 14.52 (2% of 726) on
+    # the same day, because half the day was re-derived and half was not.
+    "selection_rule_label": SELECTION_RULE_LABEL,
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
@@ -196,6 +217,7 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   center_c REAL,
   refused_window_count INTEGER NOT NULL,
   content_sha256 TEXT NOT NULL,
+  selection_rule_label TEXT NOT NULL DEFAULT '',
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -274,6 +296,25 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         str(row[1])
         for row in conn.execute("PRAGMA table_info(paper_trade_position)")
     }
+    if "selection_rule_label" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN selection_rule_label TEXT NOT NULL DEFAULT ''"
+        )
+    # The label is derived from the same constants the fingerprint hashes,
+    # so a row already stamped with the current fingerprint was chosen under
+    # the current label by definition -- backfill it rather than forcing a
+    # re-derivation of every position to carry a descriptive string.  Rows
+    # under any other fingerprint keep whatever they were written with, which
+    # is exactly the distinction the page needs to draw.
+    if "selection_rule_label" in columns:
+        conn.execute(
+            "UPDATE paper_trade_position SET selection_rule_label=?"
+            " WHERE selection_rule_sha256=? AND"
+            " (selection_rule_label IS NULL OR selection_rule_label='')",
+            (SELECTION_RULE_LABEL, SELECTION_RULE_SHA256),
+        )
+        conn.commit()
     if "selection_rule_sha256" not in columns:
         # Rows written before the stamp existed were written under a rule set
         # nothing records, so they carry the empty string and the sweep below
@@ -1272,6 +1313,7 @@ def backfill(
                             int(audit.get("center_refused_window_count") or 0),
                             content_sha256(identity),
                             SELECTION_RULE_SHA256,
+                            SELECTION_RULE_LABEL,
                         )
                     )
                     counts["positions"] += 1
@@ -1377,8 +1419,9 @@ def backfill(
             " win_probability, all_in_cost, edge, curve_rank,"
             " kelly_fraction, stake_usdc, shares,"
             " probabilities_json, prices_json, center_c,"
-            " refused_window_count, content_sha256, selection_rule_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " refused_window_count, content_sha256, selection_rule_sha256,"
+            " selection_rule_label"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:

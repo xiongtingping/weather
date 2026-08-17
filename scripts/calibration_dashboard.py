@@ -1067,6 +1067,10 @@ function roster(){
   // shortlist is the market pricing above the model, a refused Kelly is the
   // basket costing more than it can pay, and no depth is a book too thin to
   // fill at any size.
+  // The rule set the ledger currently compiles under.  Everything stamped
+  // with it is directly comparable; anything else is a leftover from before
+  // a rule change and is flagged per basket.
+  const CURRENT_RULE=(D.selection||{}).current_selection_rule_label||"";
   const REASON={no_probability:["无概率","这一天没有为该站算出概率"],
     no_market_book:["无盘口","有概率但没抓到可定价的市场"],
     no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
@@ -1098,7 +1102,16 @@ function roster(){
     const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
     const rung=s.centre_bucket?
       `<div class="muted">横梁 <span class="mono" style="color:#d2a8ff">${short(s.centre_bucket)}</span></div>`:"";
-    return `<td><div class="mono">${w}</div>${rung}
+    // Which rule chose this basket.  A day compiled under a retired rule set
+    // sits beside one compiled under the current rule and is not comparable
+    // to it; without this the page invites exactly that comparison.  Current
+    // rule is stated once in the section header, so a basket only carries the
+    // tag when it differs from it -- otherwise every cell repeats the same
+    // string and the ones that matter stop standing out.
+    const tag=(s.selection_rule_label && s.selection_rule_label!==CURRENT_RULE)
+      ? `<div><span class="pill amber" title="该篮子按旧规则选出，与当前规则不可直接比较">${h(s.selection_rule_label)}</span></div>`
+      : "";
+    return `<td><div class="mono">${w}</div>${rung}${tag}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
       @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>${extra||""}</td>`;
   };
@@ -1148,9 +1161,20 @@ function roster(){
     // got a basket today" is a question about P0 and the all-stage count
     // answers it only by accident.
     const p0=rows.filter(e=>e.stages.P0).length;
+    // What rules this day's baskets were chosen under.  Usually one; more
+    // than one means the day straddles a rule change and its totals mix two
+    // strategies.
+    const dayRules=[...new Set(rows.flatMap(e=>
+      ["P0","P0-M","P1"].map(k=>e.stages[k]&&e.stages[k].selection_rule_label)
+        .filter(Boolean)))].sort();
+    const ruleNote=dayRules.length
+      ? ` · 规则 ${dayRules.map(r=>r===CURRENT_RULE
+          ? `<span class="pill green">${h(r)}</span>`
+          : `<span class="pill amber">${h(r)}</span>`).join(" ")}`
+      : "";
     return `<details class="card" ${open?"open":""}>
       <summary><b class="mono">${h(day)}</b>
-        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}</span></summary>
+        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}</span></summary>
       <div class="scroll" style="margin-top:10px"><table>
         <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
     </details>`;
@@ -1158,7 +1182,14 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  return `<h2>九、逐站逐日明细</h2>
+  const ruleLine=CURRENT_RULE?`<div class="why"><b>当前选桶规则：</b>
+    <span class="pill green">${h(CURRENT_RULE)}</span>
+    ——「D-质量」指窗口按模型概率质量排序（含中心桶、向概率大的一侧展开），
+    「整篮EV」指整个篮子的概率和必须高于全书成本，
+    「腿≥0.01」指窗口里任何一条腿的报价低于一分就整窗作废。
+    下面凡是标黄色规则名的篮子，是按已退役的规则选出的，
+    不能和绿色的直接比较。</div>`:"";
+  return `<h2>九、逐站逐日明细</h2>${ruleLine}
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
   每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率；空格里写的是账本自己给出的拒绝理由，

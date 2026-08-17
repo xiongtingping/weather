@@ -39,6 +39,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# The ledger owns the rule set; the page only reports it.  Importing the
+# label rather than restating it keeps the two from drifting apart, which
+# is the whole point of naming a rule at all.
+from paper_trading_ledger import SELECTION_RULE_LABEL  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 INITIAL_CAPITAL_USDC = 1000.0
@@ -101,7 +108,7 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         "SELECT p.station_id, p.event_date, p.stage, p.decision_at_utc,"
         " p.window_buckets_json, p.ladder_center_bucket, p.win_probability,"
         " p.all_in_cost, p.edge, p.stake_usdc, p.probabilities_json,"
-        " p.prices_json, p.window_size,"
+        " p.prices_json, p.window_size, p.selection_rule_label,"
         " s.hit, s.settled_tmax_c, s.settled_bucket, s.pnl_usdc,"
         " s.bucket_distance, s.center_error_c"
         " FROM paper_trade_position p"
@@ -169,6 +176,12 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "decision_at_utc": r[3],
             "window": json.loads(r[4]),
             "window_size": int(r[12]),
+            # Which rule set chose this basket.  Two days on the page can be
+            # compiled under different rules -- the ledger re-derives a scope
+            # when the fingerprint moves, but only inside the window it can
+            # reach -- so a basket has to say which one it is rather than
+            # letting the reader assume they are comparable.
+            "selection_rule_label": str(r[13] or ""),
             "centre_bucket": r[5],
             "win_probability": float(r[6]),
             "all_in_cost": cost,
@@ -178,13 +191,13 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "lean_buckets": lean,
             "side": side,
             "dust_offer": cost < DUST_COST_FLOOR,
-            "settled": r[13] is not None,
-            "hit": None if r[13] is None else int(r[13]),
-            "settled_tmax_c": r[14],
-            "settled_bucket": r[15],
-            "pnl_usdc": r[16],
-            "bucket_distance": r[17],
-            "center_error_c": r[18],
+            "settled": r[14] is not None,
+            "hit": None if r[14] is None else int(r[14]),
+            "settled_tmax_c": r[15],
+            "settled_bucket": r[16],
+            "pnl_usdc": r[17],
+            "bucket_distance": r[18],
+            "center_error_c": r[19],
         })
     return out
 
@@ -362,6 +375,9 @@ def build_payload(db: Path) -> dict[str, Any]:
                 else {
                     "window": row["window"],
                     "window_size": row["window_size"],
+                    "selection_rule_label": row.get(
+                        "selection_rule_label", ""
+                    ),
                     "centre_bucket": row["centre_bucket"],
                     "win_probability": row["win_probability"],
                     "all_in_cost": row["all_in_cost"],
@@ -513,6 +529,9 @@ def build_payload(db: Path) -> dict[str, Any]:
     days = sorted({r["event_date"] for r in rows}, reverse=True)
     return {
         "schema": "selection_market_dashboard_v1",
+        # Stated once so the page can flag anything compiled under a
+        # different rule instead of repeating the same string on every cell.
+        "current_selection_rule_label": SELECTION_RULE_LABEL,
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
         "initial_capital_usdc": INITIAL_CAPITAL_USDC,
