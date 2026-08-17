@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 from bisect import bisect_left
-from collections import defaultdict
+from collections import Counter, defaultdict
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -41,6 +41,7 @@ from selection_market_dashboard import (  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
+TRUTH_SWEEP_STATUS = ROOT / "data" / "settlement_truth_sweep_status.json"
 
 # The four native families that can hold a P0 seat, with the archive each
 # one is fed from and whether a missed day can ever be recovered.
@@ -876,6 +877,248 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Whether every settled station-day has been turned into a truth row.
+
+    The distinction this section exists to draw: a missing truth row almost
+    never means a missing observation.  On 2026-08-17 the table held 13 of 45
+    stations for 08-11 while the archive held all 45 that day -- the rows had
+    simply never been asked for, and nothing retries a day once it passes.
+    Everything downstream is gated on settled days, so a hole here does not
+    cost one scope one day, it costs every cohort that would have shared it.
+    """
+
+    coverage = [
+        {
+            "event_date": str(day),
+            "eligible": int(eligible),
+            "materialized": int(materialized or 0),
+            "missing": max(0, int(eligible) - int(materialized or 0)),
+        }
+        for day, eligible, materialized in conn.execute(
+            "SELECT r.event_date, COUNT(DISTINCT r.station_id),"
+            " (SELECT COUNT(DISTINCT t.station_id)"
+            "  FROM calibration_station_daily_high_truth t"
+            "  WHERE t.local_date=r.event_date AND t.qc_status='ACCEPTED')"
+            " FROM basket_target_market_registry r"
+            " WHERE r.source_eligible=1"
+            "  AND r.event_date>=date('now','-21 days')"
+            " GROUP BY r.event_date ORDER BY r.event_date DESC"
+        )
+    ]
+    sweep: dict[str, Any] = {}
+    if TRUTH_SWEEP_STATUS.is_file():
+        try:
+            sweep = json.loads(TRUTH_SWEEP_STATUS.read_text())
+        except (ValueError, OSError):
+            sweep = {}
+    # A day still open somewhere is not a gap.  The fleet spans every
+    # timezone, so an event date stays unsettleable for up to a day and a half
+    # after it begins in UTC, and counting those rows as missing would make a
+    # healthy lane look permanently a day behind.  Which days those are is not
+    # computed from dates here: any rule this page invented would be wrong for
+    # some station at some hour.  The sweep asks the writer itself, scope by
+    # scope, and reports back how many it declined as still open on each day.
+    open_by_day = sweep.get("open_by_day") or {}
+    for row in coverage:
+        row["settling"] = int(open_by_day.get(row["event_date"], 0)) > 0
+    still_open = int(sweep.get("open_day_skipped") or 0)
+    refused = int(sweep.get("refused") or 0)
+    deferred = int(sweep.get("deferred_locked") or 0)
+    outstanding = max(
+        0,
+        int(sweep.get("backlog_after") or 0)
+        - still_open - refused - deferred,
+    )
+    age = _age_hours(sweep.get("swept_at_utc"))
+    if not sweep:
+        health, note = "red", "从未跑过物化清扫"
+    elif age is None or age > 3:
+        health, note = "red", "清扫已停，缺的日子没有任何东西会重试"
+    elif outstanding:
+        health, note = "amber", f"{outstanding} 个已结算站日还没有真值行"
+    elif deferred:
+        health, note = "green", f"{deferred} 个站日让给了常驻写入，下一轮再问"
+    elif refused:
+        health, note = "green", f"已结算的都已物化；{refused} 个站日被证据本身挡住"
+    else:
+        health, note = "green", "已结算的站日全部有真值行"
+    return {
+        "coverage": coverage,
+        "sweep": sweep,
+        "health": health,
+        "note": note,
+        "sweep_age_hours": age,
+        "outstanding": outstanding,
+        "still_open": still_open,
+        "refused": refused,
+        "deferred": deferred,
+        "refusals": sweep.get("refusals") or [],
+    }
+
+
+def collect_oos_scores(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The gate's own scores, against the baseline that makes them readable.
+
+    A CRPS of 0.80 means nothing alone -- it depends on the station, the
+    season and how wide the buckets are.  What makes it a judgement is the
+    same number for climatology on the same days: the gate admits a
+    combination only when it beats that, and the ratio is the one figure that
+    is comparable across scopes.
+    """
+
+    newest: dict[tuple[str, str, str], tuple[str, Any, Any, str, str]] = {}
+    for (
+        station, lead, cycle, evaluated, state, profile, metrics, baseline
+    ) in conn.execute(
+        "SELECT station_id, lead_bucket, run_cycle, evaluated_at_utc,"
+        " oos_state, threshold_profile, oos_metrics_json,"
+        " climatology_baseline_metrics_json"
+        " FROM calibration_cross_native_ensemble_oos_evaluation"
+        " WHERE evaluated_at_utc>=datetime('now','-7 days')"
+        " ORDER BY evaluated_at_utc"
+    ):
+        newest[(str(station), str(lead), str(cycle))] = (
+            str(evaluated), metrics, baseline, str(state), str(profile)
+        )
+    cells: dict[str, dict[str, Any]] = defaultdict(lambda: {
+        "scopes": 0, "passed": 0,
+        "crps": [], "brier": [], "nll": [],
+        "crps_base": [], "brier_base": [], "nll_base": [],
+        "crps_skill": [], "brier_skill": [], "profiles": Counter(),
+    })
+    latest = ""
+    for (_station, lead, _cycle), row in newest.items():
+        evaluated, metrics_json, baseline_json, state, profile = row
+        try:
+            metrics = json.loads(metrics_json)
+            baseline = json.loads(baseline_json)
+        except (ValueError, TypeError):
+            continue
+        cell = cells[lead]
+        cell["scopes"] += 1
+        cell["profiles"][profile] += 1
+        if state == "PRODUCTION_NO_LIVE_OOS_PASS":
+            cell["passed"] += 1
+        latest = max(latest, evaluated)
+        for name in ("crps", "brier", "nll"):
+            value = metrics.get(name)
+            reference = baseline.get(name)
+            if value is None or reference is None:
+                continue
+            cell[name].append(float(value))
+            cell[f"{name}_base"].append(float(reference))
+            if float(reference) > 0 and name in ("crps", "brier"):
+                cell[f"{name}_skill"].append(
+                    1.0 - float(value) / float(reference)
+                )
+    order = {name: index for index, (name, _l) in enumerate(LEAD_LABELS)}
+    rows = []
+    for lead in sorted(cells, key=lambda name: order.get(name, 9)):
+        cell = cells[lead]
+        rows.append({
+            "lead_bucket": lead,
+            "lead_label": dict(LEAD_LABELS).get(lead, lead),
+            "scopes": cell["scopes"],
+            "pass_rate": (
+                cell["passed"] / cell["scopes"] if cell["scopes"] else None
+            ),
+            "profile": (
+                cell["profiles"].most_common(1)[0][0]
+                if cell["profiles"] else ""
+            ),
+            **{
+                key: (median(cell[key]) if cell[key] else None)
+                for key in (
+                    "crps", "brier", "nll", "crps_base", "brier_base",
+                    "nll_base", "crps_skill", "brier_skill",
+                )
+            },
+        })
+    return {
+        "rows": rows,
+        "scope_count": len(newest),
+        "latest_evaluated_at_utc": latest or None,
+        "latest_age_hours": _age_hours(latest or None),
+    }
+
+
+def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """The two scalars that move the served distribution, per stage.
+
+    ``delta_c`` slides the centre, ``width_lambda`` stretches or squeezes it.
+    They are fitted per stage and must stay per stage: P0 sees a model blend,
+    P1 sees that blend after the day's own observations have narrowed it, and
+    one pair of numbers cannot be right for both.
+    """
+
+    if not _table_exists(conn, "calibration_center_width_table"):
+        return []
+    served = {
+        str(stage): rest
+        for stage, *rest in conn.execute(
+            "SELECT stage, delta_c, width_lambda, fitted_at_utc,"
+            " serving_day_count, evidence_json"
+            " FROM calibration_center_width_table WHERE activated=1"
+        )
+    }
+    journal: dict[str, list[Any]] = {}
+    if _table_exists(conn, "calibration_center_width_fit_journal"):
+        for stage, *rest in conn.execute(
+            "SELECT stage, fitted_at_utc, outcome, delta_c, width_lambda,"
+            " serving_day_count, serving_cell_count, forward_nll_gain"
+            " FROM calibration_center_width_fit_journal"
+            " ORDER BY fitted_at_utc DESC"
+        ):
+            journal.setdefault(str(stage), list(rest))
+    rows = []
+    for stage in ("P0", "P0-M", "P1"):
+        active = served.get(stage)
+        last = journal.get(stage)
+        evidence: dict[str, Any] = {}
+        if active:
+            try:
+                evidence = json.loads(active[4])
+            except (ValueError, TypeError):
+                evidence = {}
+        outcome = str(last[1]) if last else ""
+        if active:
+            state, health = "已生效", "green"
+        elif outcome == "NOT_WIRED":
+            state, health = "未接线", "amber"
+        elif outcome == "ACCUMULATING":
+            state, health = "攒证据中", "amber"
+        elif outcome == "REFUSED_FORWARD":
+            state, health = "试算后更差，不采用", "green"
+        else:
+            state, health = "无记录", "amber"
+        rows.append({
+            "stage": stage,
+            "meaning": STAGE_MEANING.get(stage, ""),
+            "state": state,
+            "health": health,
+            "delta_c": active[0] if active else None,
+            "width_lambda": active[1] if active else None,
+            "fitted_at_utc": active[2] if active else (
+                str(last[0]) if last else None
+            ),
+            "fit_age_hours": _age_hours(
+                active[2] if active else (str(last[0]) if last else None)
+            ),
+            "serving_days": (
+                int(active[3]) if active
+                else (int(last[4]) if last else 0)
+            ),
+            "serving_cells": evidence.get("serving_cell_count"),
+            "forward_nll_gain": (
+                float(last[6]) if last else evidence.get("forward_nll_gain")
+            ),
+            "min_forward_nll_gain": evidence.get("min_forward_nll_gain"),
+            "last_outcome": outcome,
+        })
+    return rows
+
+
 def collect_gaps(
     conn: sqlite3.Connection,
     members: list[dict[str, Any]],
@@ -1026,6 +1269,9 @@ def build_payload(db: Path) -> dict[str, Any]:
     gaps = collect_gaps(conn, members, stages, tables)
     p0m = collect_p0m_progress(conn)
     skill = collect_model_skill(conn)
+    truth = collect_truth_materialization(conn)
+    scores = collect_oos_scores(conn)
+    center_width = collect_center_width(conn)
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -1046,6 +1292,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         [m["health"] for m in members]
         + [c["health"] for c in chain]
         + [s["health"] for s in stages]
+        + [truth["health"]]
     )
     overall = (
         "red" if "red" in healths
@@ -1065,6 +1312,9 @@ def build_payload(db: Path) -> dict[str, Any]:
         "gaps": gaps,
         "p0m": p0m,
         "skill": skill,
+        "truth": truth,
+        "scores": scores,
+        "center_width": center_width,
         "worker": worker,
     }
 
@@ -1942,6 +2192,149 @@ function hitRate(){
 }
 
 
+function materialization(){
+  const T = D.truth || {}; const cov = T.coverage || [];
+  if(!cov.length) return "";
+  const s = T.sweep || {};
+  const rows = cov.map(c => `<tr>
+    <td class="mono">${h(c.event_date)}</td>
+    <td class="mono">${c.eligible}</td>
+    <td class="mono">${c.materialized}</td>
+    <td class="mono ${c.missing === 0 ? "up" : (c.settling ? "" : "down")}">${
+      c.missing === 0 ? "—" : c.missing}</td>
+    <td class="muted">${c.settling ? "当天还在结算中" :
+      (c.missing === 0 ? "齐了" : "缺口")}</td>
+  </tr>`).join("");
+  const why = (T.refusals || []).map(r => `<tr>
+    <td>${h(r.label || r.reason)}</td>
+    <td class="mono">${r.count}</td>
+    <td><span class="pill ${r.blocker_class === "AVAILABILITY" ?
+      "amber" : "red"}">${r.blocker_class === "AVAILABILITY" ?
+      "证据不全" : "证据矛盾"}</span></td>
+    <td class="mono muted">${h(r.example)}</td>
+  </tr>`).join("");
+  return `<h2>十六、真值物化健康度</h2>
+  <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
+  一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
+  <div class="why"><b>为什么单独看它：</b>缺一行真值几乎从来不是缺观测——
+  2026-08-17 查到 08-11 只有 13/45 站有真值行，而档案里那天 45 个站全都在，
+  每站上千条报文。<b>只是没人问过它们，而错过的日子没有任何东西会重试。</b>
+  下游每一层拟合都按已结算天数算，所以一个洞不是耽误一个格子一天，
+  是耽误所有本该共用那一天的组合。</div>
+  <div class="grid g4" style="margin-top:12px">
+    <div class="card"><div class="muted">上次清扫</div>
+      <div class="big">${hours(T.sweep_age_hours)}</div>
+      <div class="muted">每 30 分钟自动跑一次 ·
+        本次写入 ${(s.committed || 0).toLocaleString()} 个站日${
+        T.deferred ? " · " + T.deferred + " 个让给了常驻写入" : ""}</div></div>
+    <div class="card"><div class="muted">已结算但还没物化</div>
+      <div class="big ${T.outstanding ? "down" : "up"}">${T.outstanding}</div>
+      <div class="muted">这一格不为零才是真的落后</div></div>
+    <div class="card"><div class="muted">当天还在结算中</div>
+      <div class="big">${T.still_open}</div>
+      <div class="muted">各站按自己的本地日收盘，不是缺口</div></div>
+    <div class="card"><div class="muted">被证据本身挡住</div>
+      <div class="big ${T.refused ? "down" : "up"}">${T.refused}</div>
+      <div class="muted">下表列出分别卡在什么上</div></div>
+  </div>
+  ${why ? `<div class="card" style="margin-top:12px">
+    <div class="muted">这些站日清扫也写不了，原因如下</div>
+    <table style="margin-top:8px"><thead><tr>
+      <th>卡在什么上</th><th>站日数</th><th>类型</th><th>例</th>
+    </tr></thead><tbody>${why}</tbody></table>
+    <div class="muted" style="margin-top:8px">「证据不全」会随补采自愈；
+      「证据矛盾」要人看一眼，不会自己好。</div>
+  </div>` : ""}
+  <table style="margin-top:12px"><thead><tr>
+    <th>事件日</th><th>在册站数</th><th>已物化</th><th>缺口</th><th>状态</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function oosScores(){
+  const S = D.scores || {}; const rows = S.rows || [];
+  if(!rows.length) return "";
+  const n3 = (v) => v == null ? "—" : v.toFixed(3);
+  const body = rows.map(r => `<tr>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono">${r.scopes}</td>
+    <td class="${r.pass_rate == null ? "" :
+      (r.pass_rate >= 0.75 ? "up" : "down")}">${pct1(r.pass_rate)}</td>
+    <td class="mono">${n3(r.crps)}</td>
+    <td class="mono muted">${n3(r.crps_base)}</td>
+    <td class="mono ${r.crps_skill == null ? "" :
+      (r.crps_skill > 0 ? "up" : "down")}">${pct1(r.crps_skill)}</td>
+    <td class="mono">${n3(r.brier)}</td>
+    <td class="mono muted">${n3(r.brier_base)}</td>
+    <td class="mono ${r.brier_skill == null ? "" :
+      (r.brier_skill > 0 ? "up" : "down")}">${pct1(r.brier_skill)}</td>
+    <td class="mono">${n3(r.nll)}</td>
+    <td class="mono muted">${n3(r.nll_base)}</td>
+  </tr>`).join("");
+  return `<h2>十七、OOS 打分：CRPS / Brier / NLL</h2>
+  <p class="sub">这是门自己用的分数，全部在样本外的 holdout 上算。
+  近 7 天共 ${S.scope_count.toLocaleString()} 个站×提前量×cycle 被评过，
+  最近一次 ${hours(S.latest_age_hours)}。</p>
+  <div class="why"><b>三个分数各管一件事：</b>CRPS 管整条分布离真值多远（越小越好，
+  单位是度）；Brier 管每个桶的概率说得准不准；NLL 是门做取舍时真正比的那个数。
+  <b>光看绝对值没有意义</b>——它随站点、季节、桶宽变。所以每个分数旁边都摆着
+  同样日子上的气候基准，右边的「胜出」＝比气候好了百分之多少，
+  这才是可以跨站比较的一个数。</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>提前量</th><th>评过的格子</th><th>通过率</th>
+    <th>CRPS</th><th>气候</th><th>胜出</th>
+    <th>Brier</th><th>气候</th><th>胜出</th>
+    <th>NLL</th><th>气候</th>
+  </tr></thead><tbody>${body}</tbody></table>
+  <div class="muted" style="margin-top:6px">窗口口径
+    ${h((rows[0] || {}).profile || "")}：5 个训练日 + 3 天共享 holdout。
+    没通过的格子不是坏事，是门在挡——它们不会被拿去服务。</div>`;
+}
+
+function centerWidth(){
+  const rows = D.center_width || [];
+  if(!rows.length) return "";
+  const cards = rows.map(r => `<div class="card">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="dot ${r.health}"></span><b>${h(r.stage)}</b>
+      <span style="flex:1"></span>
+      <span class="pill ${r.health}">${h(r.state)}</span>
+    </div>
+    <div class="muted" style="margin-top:6px">${h(r.meaning)}</div>
+    <div style="display:flex;gap:22px;margin-top:12px">
+      <div><div class="muted">中心 δ</div>
+        <div class="big ${r.delta_c == null ? "" :
+          (Math.abs(r.delta_c) < 1e-9 ? "flat" :
+           (r.delta_c > 0 ? "up" : "down"))}">${
+          r.delta_c == null ? "—" :
+          (r.delta_c > 0 ? "+" : "") + r.delta_c.toFixed(2)}</div>
+        <div class="muted">°C，整条分布平移</div></div>
+      <div><div class="muted">宽度 λ</div>
+        <div class="big ${r.width_lambda == null ? "" :
+          (Math.abs(r.width_lambda - 1) < 1e-9 ? "flat" :
+           (r.width_lambda < 1 ? "up" : "down"))}">${
+          r.width_lambda == null ? "—" : r.width_lambda.toFixed(3)}</div>
+        <div class="muted">×，小于 1 是收窄</div></div>
+    </div>
+    <div class="muted" style="margin-top:10px">
+      证据 ${r.serving_days} 天${r.serving_cells ?
+        " · " + r.serving_cells.toLocaleString() + " 个格子" : ""} ·
+      上次拟合 ${hours(r.fit_age_hours)}</div>
+    ${r.forward_nll_gain == null ? "" : `<div class="muted">
+      前瞻 NLL 收益 ${r.forward_nll_gain.toFixed(4)}${
+      r.min_forward_nll_gain == null ? "" :
+      "，门槛 " + r.min_forward_nll_gain}</div>`}
+  </div>`).join("");
+  return `<h2>十八、中心/宽度两标量</h2>
+  <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
+  再横向拉宽或收窄多少倍（宽度 λ）。δ=0、λ=1 就是原样不动。</p>
+  <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
+  分布，P1 面对的是当天实测已经把它收窄之后的分布——同一对数字不可能对两者都成立。
+  一个阶段还没接线或还在攒证据，是按原样服务，不是出错。
+  <b>只有前瞻试算确实变好（NLL 收益超过门槛）才会换上去</b>，试算变差就退回原样。</div>
+  <div class="grid g3" style="margin-top:12px">${cards}</div>`;
+}
+
+
 // Click a header to sort by that column.  Numbers, percentages, prices and
 // odds all read as numbers; anything else falls back to text, and an em dash
 // always sinks so empty cells never crowd the top of either direction.
@@ -2002,6 +2395,8 @@ document.getElementById("app").innerHTML = [
   [anomalies, "异常"], [basketHit, "篮子命中率"],
   [makerProbe, "挂单影子探针"], [refusalStats, "未建仓原因"],
   [dispersion, "模型离散度"], [hitRate, "模型命中率"],
+  [materialization, "真值物化"], [oosScores, "OOS 打分"],
+  [centerWidth, "中心/宽度"],
 ].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
