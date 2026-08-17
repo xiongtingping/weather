@@ -186,7 +186,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
     None
     if EXECUTION_MODE != "maker_resting"
-    else f"阶梯{MAKER_RESTING_LADDER_STEPS}档",
+    else f"阶梯{MAKER_RESTING_LADDER_STEPS}档·逐步建仓",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v4",
@@ -219,6 +219,9 @@ SELECTION_RULE_SHA256 = content_sha256({
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "maker_ladder_steps": MAKER_RESTING_LADDER_STEPS,
+    # Whether a partly-filled resting basket is a position or a refusal.
+    # It changes what every resting row *is*, not merely its price.
+    "resting_entry": "progressive_per_leg",
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
@@ -277,6 +280,7 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   selection_rule_label TEXT NOT NULL DEFAULT '',
   leg_shares_json TEXT NOT NULL DEFAULT '',
   resting_fill_json TEXT NOT NULL DEFAULT '',
+  posted_buckets_json TEXT NOT NULL DEFAULT '',
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -359,6 +363,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN leg_shares_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "posted_buckets_json" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN posted_buckets_json TEXT NOT NULL DEFAULT ''"
         )
     if "resting_fill_json" not in columns:
         conn.execute(
@@ -1035,6 +1044,54 @@ def _resting_ladder_fill(
     return filled, missing
 
 
+def _progressive_entry(
+    *,
+    buckets: Sequence[str],
+    leg_shares: Sequence[float],
+    filled_fraction: Mapping[str, float],
+    prices: Mapping[str, float],
+    probabilities: Mapping[str, float],
+) -> tuple[list[str], list[float], float, float] | None:
+    """Keep the part of each leg that filled, and only that part.
+
+    A resting basket is built up, not switched on (user ruling,
+    2026-08-17).  Each rung of each leg is its own order and is decided on
+    its own, so the position that exists at the end of the horizon is
+    whatever the book came down to -- a leg that filled four rungs of five
+    is four fifths of a leg, and a leg that filled none is simply absent.
+
+    The earlier rule sized the whole basket down to its least-filled leg to
+    keep the shape intact.  That is a defensible *bet*, but it is not what
+    resting orders do, and it threw away fills that had already happened.
+
+    What this costs is honesty about the result: the basket that settles can
+    be smaller than the one that was chosen, can be missing a rung in the
+    middle, and its win probability is the sum over what was actually
+    bought.  All three are recorded rather than assumed away.
+
+    Returns ``None`` when nothing filled anywhere -- there is no position to
+    record, which is the one case that is still a refusal.
+    """
+
+    kept_buckets: list[str] = []
+    kept_shares: list[float] = []
+    stake = 0.0
+    for bucket, target in zip(buckets, leg_shares):
+        quantity = float(target) * float(filled_fraction.get(str(bucket), 0.0))
+        price = float(prices.get(str(bucket), 0.0))
+        if quantity <= 0.0 or price <= 0.0:
+            continue
+        kept_buckets.append(str(bucket))
+        kept_shares.append(quantity)
+        stake += quantity * price
+    if not kept_buckets:
+        return None
+    win_probability = sum(
+        float(probabilities.get(bucket, 0.0)) for bucket in kept_buckets
+    )
+    return kept_buckets, kept_shares, stake, win_probability
+
+
 def _kelly_stake(
     *, win_probability: float, cost: float, equity: float
 ) -> tuple[float, float]:
@@ -1609,57 +1666,66 @@ def backfill(
                             ladders=ladders,
                             placed_at_utc=payload["decision_at_utc"],
                         )
-                        if missing is not None:
+                        if not any(got.values()):
                             refusal = (
                                 "resting_unfilled",
-                                "挂 %d 腿 · %s 全档未成交（%.0f 分钟内）" % (
+                                "挂 %d 腿 · 一腿未成交（%.0f 分钟内）" % (
                                     len(seat["buckets"]),
-                                    missing,
                                     MAKER_RESTING_HORIZON_MINUTES,
                                 ),
                                 cycles, payload["decision_at_utc"],
                             )
                             continue
-                        # The basket keeps its shape, so it is only as large
-                        # as its least-filled leg -- a ladder that filled
-                        # three rungs on one leg and one on another bought a
-                        # third of the intended basket, not a lopsided whole
-                        # one.  Each leg pays the average of what it actually
-                        # got, which is the point of resting across a band:
-                        # the cheap rungs pull that average below the single
-                        # price a point order would have had to pick.
-                        resting_fraction = min(
-                            (
-                                len(got[str(b)]) / len(ladder)
-                                for b, ladder in zip(seat["buckets"], ladders)
-                                if ladder
-                            ),
-                            default=1.0,
-                        )
+                        # Each leg pays the average of the rungs it got.
+                        # That average is the point of resting across a band
+                        # rather than at a price: the cheap rungs pull it
+                        # below the single price a point order would have
+                        # had to pick, and no quote in the book equals it.
                         resting_prices = {
                             str(b): sum(got[str(b)]) / len(got[str(b)])
                             * (1.0 + FEE_RATE)
                             for b in seat["buckets"]
                             if got.get(str(b))
                         }
-                        stake *= resting_fraction
-                        resting_fills = {
-                            str(b): "%d/%d@%.4f" % (
-                                len(got[str(b)]), len(ladder),
-                                sum(got[str(b)]) / len(got[str(b)]),
+                        resting_fraction = {
+                            str(b): (
+                                len(got[str(b)]) / len(ladder)
+                                if ladder else 0.0
                             )
                             for b, ladder in zip(seat["buckets"], ladders)
-                            if ladder and got.get(str(b))
                         }
+                        # Every intended leg is recorded, including the ones
+                        # that bought nothing -- "which rung never filled" is
+                        # the number the page needs, and it is invisible if
+                        # the empty legs are dropped here.
+                        resting_fills = {
+                            str(b): "%d/%d@%.4f" % (
+                                len(got.get(str(b)) or []), len(ladder),
+                                (
+                                    sum(got[str(b)]) / len(got[str(b)])
+                                    if got.get(str(b)) else 0.0
+                                ),
+                            )
+                            for b, ladder in zip(seat["buckets"], ladders)
+                            if ladder
+                        }
+                        # Sizing is done on the order that was *posted*, so
+                        # a leg that filled nothing is still priced at its
+                        # ladder's mean here -- what it would have paid.  The
+                        # realised price only replaces it for the legs that
+                        # bought something, and the rest drop out below.
+                        posted = _maker_leg_prices(snapshot, seat["buckets"])
                         legs = [
                             [{
-                                "price": resting_prices[str(bucket)],
+                                "price": resting_prices.get(
+                                    str(bucket), float(price)
+                                ),
                                 "shares": sum(
                                     level["shares"]
                                     for level in (depth.get(bucket) or [])
                                 ),
                             }]
-                            for bucket in seat["buckets"]
+                            for bucket, price in zip(seat["buckets"], posted)
                         ]
                         capacity = min(
                             (
@@ -1685,6 +1751,7 @@ def backfill(
                             )
                             continue
                         shares, stake = filled
+                        leg_shares = [shares] * len(seat["buckets"])
                     else:
                         weighted = _fillable_weighted(
                             legs=legs,
@@ -1705,40 +1772,77 @@ def backfill(
                             )
                             continue
                         leg_shares, stake = weighted
-                        # The basket's own payout per unit spent.  Under
-                        # equal shares this was cost over share count;
-                        # weighted, the honest analogue is what the position
-                        # expects to return, so ``shares`` becomes the
-                        # expectation-equivalent count the settlement math
-                        # already assumes.
-                        # Two different questions, two different numbers.
-                        #
-                        # Settlement pays the rung that landed, so it reads
-                        # the per-leg counts -- a single basket-level count
-                        # would credit a payout no outcome produces.
-                        #
-                        # ``shares`` is the divisor of ``all_in_cost``, which
-                        # the positive-EV gate, the dust floor and the whole
-                        # page are built on, and it has to mean "cost per
-                        # unit of payout".  Taking the thinnest leg made that
-                        # a number no outcome produces either, in the other
-                        # direction: FACT 2026-07-31 recorded 0.3400 against
-                        # a 0.2800 top-of-book total -- a resting basket
-                        # costing *more* than crossing, which cannot happen.
-                        # The payout-weighted count is the honest analogue
-                        # and degenerates to the equal-share case exactly:
-                        # with q_i all equal, sum(p_i q_i)/p_win = q.
-                        per_leg = {
-                            str(b): float(q)
-                            for b, q in zip(seat["buckets"], leg_shares)
-                        }
-                        expected_payout = sum(
-                            float(probabilities.get(b, 0.0)) * q
-                            for b, q in zip(seat["buckets"], leg_shares)
+                    # What was chosen and posted, before the book had a say.
+                    # The charter's minimum support is a rule about
+                    # selection, so it has to stay auditable even though the
+                    # recorded window is now whatever actually filled.
+                    posted_buckets = list(seat["buckets"])
+                    if EXECUTION_MODE == "maker_resting":
+                        # The sizing above is the order that was posted.
+                        # This is the position that came back.
+                        entered = _progressive_entry(
+                            buckets=seat["buckets"],
+                            leg_shares=leg_shares,
+                            filled_fraction=resting_fraction,
+                            prices=resting_prices,
+                            probabilities=probabilities,
                         )
-                        shares = expected_payout / max(
-                            float(seat["win_probability"]), 1e-9
-                        )
+                        if entered is None:
+                            refusal = (
+                                "resting_unfilled",
+                                "挂 %d 腿 · 成交量为零" % len(seat["buckets"]),
+                                cycles, payload["decision_at_utc"],
+                            )
+                            continue
+                        kept, leg_shares, stake, win_probability = entered
+                        if len(kept) < len(seat["buckets"]):
+                            counts["resting_partial_basket"] += 1
+                            ordinals = {
+                                str(row[0]): int(row[1])
+                                for row in payload["buckets"]
+                            }
+                            span = (
+                                ordinals.get(kept[-1], 0)
+                                - ordinals.get(kept[0], 0)
+                            )
+                            if span != len(kept) - 1:
+                                counts["resting_gapped_basket"] += 1
+                        seat = dict(seat)
+                        seat["buckets"] = kept
+                        seat["win_probability"] = win_probability
+                    # The basket's own payout per unit spent.  Under equal
+                    # shares this was cost over share count; weighted, the
+                    # honest analogue is what the position expects to
+                    # return, so ``shares`` becomes the expectation-
+                    # equivalent count the settlement math already assumes.
+                    # Two different questions, two different numbers.
+                    #
+                    # Settlement pays the rung that landed, so it reads the
+                    # per-leg counts -- a single basket-level count would
+                    # credit a payout no outcome produces.
+                    #
+                    # ``shares`` is the divisor of ``all_in_cost``, which the
+                    # positive-EV gate, the dust floor and the whole page are
+                    # built on, and it has to mean "cost per unit of payout".
+                    # Taking the thinnest leg made that a number no outcome
+                    # produces either, in the other direction: FACT
+                    # 2026-07-31 recorded 0.3400 against a 0.2800
+                    # top-of-book total -- a resting basket costing *more*
+                    # than crossing, which cannot happen.  The
+                    # payout-weighted count is the honest analogue and
+                    # degenerates to the equal-share case exactly: with q_i
+                    # all equal, sum(p_i q_i)/p_win = q.
+                    per_leg = {
+                        str(b): float(q)
+                        for b, q in zip(seat["buckets"], leg_shares)
+                    }
+                    expected_payout = sum(
+                        float(probabilities.get(b, 0.0)) * q
+                        for b, q in zip(seat["buckets"], leg_shares)
+                    )
+                    shares = expected_payout / max(
+                        float(seat["win_probability"]), 1e-9
+                    )
                     opened = True
                     # What the basket actually cost per set, which is the
                     # number every downstream P&L and edge reading has to be
@@ -1787,6 +1891,7 @@ def backfill(
                             SELECTION_RULE_LABEL,
                             json.dumps(per_leg, sort_keys=True),
                             json.dumps(resting_fills, sort_keys=True),
+                            json.dumps(posted_buckets, ensure_ascii=False),
                         )
                     )
                     counts["positions"] += 1
@@ -1902,8 +2007,9 @@ def backfill(
             " kelly_fraction, stake_usdc, shares,"
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
-            " selection_rule_label, leg_shares_json, resting_fill_json"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " selection_rule_label, leg_shares_json, resting_fill_json,"
+            " posted_buckets_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:

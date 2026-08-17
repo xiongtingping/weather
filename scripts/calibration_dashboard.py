@@ -960,43 +960,46 @@ function makerProbe(){
     : `<div class="card" style="margin-top:12px"><span class="dot amber"></span>
        成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
   const re=S.resting_entry||{};
-  const lad=re.ladder||{};
-  const ladRows=(lad.by_posted_rungs||[]).map(r=>`<tr>
-    <td class="mono">${r.posted_rungs}</td><td>${r.leg_count}</td>
-    <td class="mono">${r.mean_filled_rungs.toFixed(2)}</td>
-    <td class="mono">${(r.mean_filled_rungs/r.posted_rungs*100).toFixed(0)}%</td>
-    <td class="mono">${r.mean_price.toFixed(4)}</td></tr>`).join("");
-  const ladBlock=ladRows?`<div style="margin-top:14px">
-    <div class="muted">阶梯挂单的完成比例（挂 100 买到多少）</div>
-    <div class="big">${(lad.rung_completion_rate*100).toFixed(1)}%</div>
-    <div class="muted">${lad.leg_count} 条腿 · 整条阶梯全档成交
-      ${(lad.full_ladder_rate*100).toFixed(1)}% · 实际成交均价
-      <span class="mono">${lad.mean_filled_price.toFixed(4)}</span></div>
-    <table style="margin-top:10px"><thead><tr><th>该腿挂几档</th><th>腿数</th>
-      <th>平均成交档</th><th>完成比例</th><th>成交均价</th></tr></thead>
-      <tbody>${ladRows}</tbody></table>
-    <div class="why" style="margin-top:8px"><b>为什么挂区间而不是单点：</b>
-    探针实测同一时刻两端差 9 倍——贴买价挂 5 分钟只成交 2.5%，
-    卖价下一跳挂成交 22.5%。单点必须二选一；区间两头都要：
-    便宜档在市场真跌下来时省下价差，贵档保证这条腿至少买得到。
-    区间是<b>买价上一跳 到 卖价下一跳</b>，永不触及卖价（触及就是吃单，
-    等于把价差付出去）。价差只有一跳时区间退化成买价一档。<br>
-    <b>档数是量出来的</b>（7/31–8/16 全账本按档数各重跑一次）：
-    1 档 −51.3%、2 档 −37.7%、5 档 −34.6%、12 档 −33.4%——5 档之后曲线在 1 个点内走平，
-    而每一档都是一张真实挂单。<b>篮子按最弱那条腿的完成比例整体缩量</b>，
-    保持形状，而不是买成歪的。</div></div>`:"";
-  const reRows=(re.stages||[]).map(r=>`<tr><td>${h(r.stage)}</td>
-    <td>${r.seated_count}</td><td>${r.unfilled_count}</td>
-    <td class="${r.fill_rate>=0.8?"up":"down"}">${(r.fill_rate*100).toFixed(1)}%</td></tr>`).join("");
-  const reBlock=reRows?`<div class="card" style="margin-top:12px">
-    <div class="muted">建仓篮子的整体挂单成功率</div>
-    <div class="big ${(re.fill_rate||0)>=0.8?"up":"down"}">${
-      re.fill_rate==null?"—":(re.fill_rate*100).toFixed(1)+"%"}</div>
-    <div class="muted">${re.seated_count} 个篮子全腿成交 · ${re.unfilled_count} 个因有腿未成交而放弃</div>
-    <table style="margin-top:10px"><thead><tr><th>阶段</th><th>建仓成功</th>
-      <th>挂单落空</th><th>成功率</th></tr></thead><tbody>${reRows}</tbody></table>
-    <div class="muted" style="margin-top:8px">完整篮子是原子的：一条腿没成交就不是更便宜的篮子，
-    而是带洞的另一笔赌注，所以整篮放弃。分母是「建仓 + 因挂单落空放弃」。</div>${ladBlock}</div>`:"";
+  const pct=(v)=>v==null?"—":(v*100).toFixed(1)+"%";
+  const reCards=(re.stages||[]).map(r=>{
+    const depth=(r.by_posted_rungs||[]).map(d=>
+      `${d.posted_rungs}档×${d.leg_count}腿 平均成交${d.mean_filled_rungs.toFixed(2)}`
+    ).join(" · ");
+    return `<div class="card" style="margin-top:12px">
+      <div class="muted">${h(r.stage)} · 挂单实际买到多少</div>
+      <div class="big ${(r.rung_completion_rate||0)>=0.8?"up":"down"}">${
+        pct(r.rung_completion_rate)}</div>
+      <div class="muted">挂出 ${r.leg_count} 条腿的阶梯，成交这个比例的档
+        （挂 100 买到 ${r.rung_completion_rate==null?"—":
+          Math.round(r.rung_completion_rate*100)}）</div>
+      <table style="margin-top:10px"><tbody>
+        <tr><td>建仓篮子</td><td class="mono">${r.seated_count}</td></tr>
+        <tr><td>缺腿建仓（有腿一档没成交，照样建）</td>
+            <td class="mono">${r.partial_basket_count}</td></tr>
+        <tr><td>全篮落空（一腿都没成交，放弃）</td>
+            <td class="mono">${r.nothing_filled_count}</td></tr>
+        <tr><td>空桶率（该腿一档都没买到）</td>
+            <td class="mono">${pct(r.empty_leg_rate)}</td></tr>
+        <tr><td>整条阶梯全档成交</td>
+            <td class="mono">${pct(r.full_ladder_rate)}</td></tr>
+        <tr><td>实际成交均价</td><td class="mono">${
+          r.mean_filled_price==null?"—":r.mean_filled_price.toFixed(4)}</td></tr>
+      </tbody></table>
+      ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
+    </div>`;
+  }).join("");
+  const reBlock=reCards?`${reCards}
+    <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
+    P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
+    P0-M 只挂一次，赶上什么行情算什么。合并成一个成交率是三个不同市场的平均数，
+    哪个都不描述。<br>
+    <b>逐步建仓，不是全腿成交才建仓：</b>每条腿的每一档都是独立的一张单，
+    各自成交。一条腿只成交四档就是四档，一条腿一档没成交就是缺这条腿——
+    篮子照样建，中奖概率按<b>实际买到的桶</b>重算，缺的桶不算数。
+    只有一条腿都没成交才放弃。<br>
+    <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
+    之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
+    价差只有一跳时区间退化成买价一档。</div>`:"";
   return `<h2>十二、挂单影子探针</h2>${reBlock}
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>

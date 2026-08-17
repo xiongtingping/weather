@@ -35,7 +35,14 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
 
 
 def test_recorded_seats_obey_the_ladder_bounds() -> None:
-    """Whatever is in the book now must satisfy the rules now."""
+    """Whatever is in the book now must satisfy the rules now.
+
+    On the *posted* window, not the filled one.  Entry is progressive, so a
+    recorded position is whatever the book came down to and can legitimately
+    be a single rung of a basket that was chosen with three.  The minimum
+    support is a rule about what may be chosen, so that is where it is
+    checked -- which is why the posted window is recorded separately at all.
+    """
 
     import sqlite3
     from pathlib import Path
@@ -50,11 +57,15 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = conn.execute(
-            "SELECT stage, window_size, COUNT(*) FROM paper_trade_position"
+            "SELECT stage,"
+            " json_array_length("
+            "  CASE WHEN posted_buckets_json IN ('', NULL)"
+            "   THEN window_buckets_json ELSE posted_buckets_json END),"
+            " COUNT(*) FROM paper_trade_position"
             " WHERE selection_rule_sha256 = ("
             "  SELECT selection_rule_sha256 FROM paper_trade_position"
             "  ORDER BY decision_at_utc DESC LIMIT 1)"
-            " GROUP BY stage, window_size"
+            " GROUP BY 1, 2"
         ).fetchall()
     except sqlite3.DatabaseError:
         return

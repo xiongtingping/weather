@@ -9,6 +9,8 @@ actually came down to.
 
 import sqlite3
 
+import pytest
+
 from scripts.paper_trading_ledger import (
     MAKER_RESTING_LADDER_STEPS,
     _resting_ladder,
@@ -99,13 +101,8 @@ def test_only_the_rungs_the_book_traded_through_are_filled() -> None:
     assert missing is None
 
 
-def test_a_leg_with_no_rung_filled_is_still_a_missing_leg() -> None:
-    """The basket stays atomic: a ladder changes how much, not whether.
-
-    Partial fills are now the normal case, so the refusal has to key on a
-    leg that got nothing at all rather than on a leg that got less than it
-    asked for -- otherwise the ladder's whole benefit is refused away.
-    """
+def test_a_leg_with_no_rung_filled_is_reported_as_such() -> None:
+    """Reported, not refused: the basket is built up, not switched on."""
 
     conn = _book((
         ("2026-08-17T01:00:00Z", "32C", 0.25),
@@ -142,3 +139,43 @@ def test_the_ladder_average_beats_the_dearest_rung_it_needed() -> None:
     average = sum(got["32C"]) / len(got["32C"])
     assert average == 0.27
     assert average < 0.29
+
+
+def test_a_leg_that_filled_nothing_leaves_the_basket_it_was_chosen_for(
+) -> None:
+    """Progressive entry keeps what filled and drops what did not.
+
+    The earlier rule sized the whole basket down to its least-filled leg to
+    preserve the shape.  That is a bet, not a description of what resting
+    orders do -- each rung is its own order, decided on its own.
+    """
+
+    from scripts.paper_trading_ledger import _progressive_entry
+
+    entered = _progressive_entry(
+        buckets=("31C", "32C", "33C"),
+        leg_shares=(100.0, 100.0, 100.0),
+        filled_fraction={"31C": 1.0, "32C": 0.0, "33C": 0.4},
+        prices={"31C": 0.20, "33C": 0.10},
+        probabilities={"31C": 0.30, "32C": 0.25, "33C": 0.15},
+    )
+    assert entered is not None
+    buckets, shares, stake, win = entered
+    assert buckets == ["31C", "33C"]
+    assert shares == [100.0, 40.0]
+    assert stake == pytest.approx(100.0 * 0.20 + 40.0 * 0.10)
+    # The claim shrinks with the position: 32C was never bought, so its
+    # probability is not part of what this basket can win.
+    assert win == pytest.approx(0.45)
+
+
+def test_nothing_filled_anywhere_is_still_the_one_refusal() -> None:
+    from scripts.paper_trading_ledger import _progressive_entry
+
+    assert _progressive_entry(
+        buckets=("31C", "32C"),
+        leg_shares=(100.0, 100.0),
+        filled_fraction={"31C": 0.0, "32C": 0.0},
+        prices={},
+        probabilities={"31C": 0.3, "32C": 0.25},
+    ) is None

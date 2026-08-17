@@ -239,117 +239,120 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
-    """How often a whole basket actually got filled while resting.
+    """Per stage, how much of what was posted actually got bought.
 
-    A complete basket is atomic, so this is the rate at which *every* rung
-    filled -- one leg short is not a cheaper entry, it is no entry.  That is
-    why the denominator is seats plus resting refusals rather than legs.
+    Never summed across stages (user ruling, 2026-08-17).  P0 rests twelve
+    hours before the event on a book that barely trades, P1 rests inside the
+    session on the busiest book of the day, and P0-M rests once, on whatever
+    the market happens to be doing when the TAF lands.  A pooled fill rate
+    is an average over three different markets and describes none of them.
+
+    Entry is progressive: each rung of each leg is its own order, so a
+    basket can be bought in part.  "Fill" therefore has two meanings and
+    both are reported -- what fraction of the posted rungs bought anything,
+    and how often a leg bought nothing at all.
     """
 
-    seated = conn.execute(
+    stages: dict[str, dict[str, Any]] = {}
+    for count, stage in conn.execute(
         "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
-    ).fetchall()
+    ):
+        stages.setdefault(str(stage), {})["seated_count"] = int(count)
     try:
-        unfilled = conn.execute(
+        rows = conn.execute(
             "SELECT COUNT(*), stage FROM paper_trade_refusal"
             " WHERE reason='resting_unfilled' GROUP BY stage"
         ).fetchall()
     except sqlite3.OperationalError:
-        unfilled = []
-    by_stage: dict[str, dict[str, int]] = {}
-    for count, stage in seated:
-        by_stage.setdefault(str(stage), {})["seated"] = int(count)
-    for count, stage in unfilled:
-        by_stage.setdefault(str(stage), {})["unfilled"] = int(count)
-    rows = []
-    total_seated = total_unfilled = 0
-    for stage in ("P0", "P0-M", "P1"):
-        entry = by_stage.get(stage, {})
-        seat = int(entry.get("seated", 0))
-        miss = int(entry.get("unfilled", 0))
-        total_seated += seat
-        total_unfilled += miss
-        if seat + miss == 0:
-            continue
-        rows.append({
-            "stage": stage,
-            "seated_count": seat,
-            "unfilled_count": miss,
-            "fill_rate": seat / (seat + miss),
-        })
-    denominator = total_seated + total_unfilled
-    return {
-        "stages": rows,
-        "seated_count": total_seated,
-        "unfilled_count": total_unfilled,
-        "fill_rate": total_seated / denominator if denominator else None,
-        "ladder": _resting_ladder_stats(conn),
-    }
-
-
-def _resting_ladder_stats(conn: sqlite3.Connection) -> dict[str, Any]:
-    """How much of each leg's posted band the book actually came down to.
-
-    A leg rests across a price range rather than at a point, so "filled" is
-    a fraction, not a yes.  This is the completion ratio the page needs --
-    posted a hundred, bought eighty -- and it is also the only place the
-    realised price of a resting entry is visible, because the ladder's
-    average is what the position paid and no single quote equals it.
-    """
-
+        rows = []
+    for count, stage in rows:
+        stages.setdefault(str(stage), {})["nothing_filled_count"] = int(count)
     try:
-        rows = conn.execute(
-            "SELECT resting_fill_json FROM paper_trade_position"
+        ladders = conn.execute(
+            "SELECT stage, window_size, resting_fill_json"
+            " FROM paper_trade_position"
             " WHERE resting_fill_json NOT IN ('', '{}')"
         ).fetchall()
     except sqlite3.OperationalError:
-        return {}
-    legs = complete = 0
-    filled_rungs = posted_rungs = 0
-    prices: list[float] = []
-    by_depth: dict[int, dict[str, float]] = {}
-    for (payload,) in rows:
+        ladders = []
+    for stage, entered_legs, payload in ladders:
         try:
             record = json.loads(payload)
         except (TypeError, ValueError):
             continue
-        for detail in record.values():
+        slot = stages.setdefault(str(stage), {})
+        detail = slot.setdefault("ladder", {
+            "posted_legs": 0, "empty_legs": 0, "full_legs": 0,
+            "posted_rungs": 0, "filled_rungs": 0,
+            "price_sum": 0.0, "price_legs": 0,
+            "partial_baskets": 0, "baskets": 0,
+            "by_posted_rungs": {},
+        })
+        detail["baskets"] += 1
+        detail["partial_baskets"] += int(len(record) > int(entered_legs))
+        for value in record.values():
             try:
-                fraction, price = str(detail).split("@")
+                fraction, price = str(value).split("@")
                 got, posted = (int(part) for part in fraction.split("/"))
             except ValueError:
                 continue
-            legs += 1
-            complete += int(got == posted)
-            filled_rungs += got
-            posted_rungs += posted
-            prices.append(float(price))
-            slot = by_depth.setdefault(
-                posted, {"legs": 0.0, "filled": 0.0, "price": 0.0}
+            detail["posted_legs"] += 1
+            detail["posted_rungs"] += posted
+            detail["filled_rungs"] += got
+            detail["empty_legs"] += int(got == 0)
+            detail["full_legs"] += int(got == posted)
+            if got:
+                detail["price_sum"] += float(price)
+                detail["price_legs"] += 1
+            depth = detail["by_posted_rungs"].setdefault(
+                posted, {"legs": 0, "filled": 0}
             )
-            slot["legs"] += 1
-            slot["filled"] += got
-            slot["price"] += float(price)
-    if not legs:
-        return {}
-    return {
-        "position_count": len(rows),
-        "leg_count": legs,
-        "full_ladder_rate": complete / legs,
-        "rung_completion_rate": (
-            filled_rungs / posted_rungs if posted_rungs else None
-        ),
-        "mean_filled_price": sum(prices) / len(prices),
-        "by_posted_rungs": [
-            {
-                "posted_rungs": depth,
-                "leg_count": int(slot["legs"]),
-                "mean_filled_rungs": slot["filled"] / slot["legs"],
-                "mean_price": slot["price"] / slot["legs"],
-            }
-            for depth, slot in sorted(by_depth.items())
-        ],
-    }
+            depth["legs"] += 1
+            depth["filled"] += got
+    out = []
+    for stage in ("P0", "P0-M", "P1"):
+        entry = stages.get(stage)
+        if not entry:
+            continue
+        detail = entry.get("ladder") or {}
+        posted_rungs = int(detail.get("posted_rungs") or 0)
+        posted_legs = int(detail.get("posted_legs") or 0)
+        price_legs = int(detail.get("price_legs") or 0)
+        out.append({
+            "stage": stage,
+            "seated_count": int(entry.get("seated_count") or 0),
+            "nothing_filled_count": int(entry.get("nothing_filled_count") or 0),
+            "partial_basket_count": int(detail.get("partial_baskets") or 0),
+            "basket_count": int(detail.get("baskets") or 0),
+            "leg_count": posted_legs,
+            "empty_leg_rate": (
+                detail.get("empty_legs", 0) / posted_legs
+                if posted_legs else None
+            ),
+            "full_ladder_rate": (
+                detail.get("full_legs", 0) / posted_legs
+                if posted_legs else None
+            ),
+            "rung_completion_rate": (
+                detail.get("filled_rungs", 0) / posted_rungs
+                if posted_rungs else None
+            ),
+            "mean_filled_price": (
+                detail.get("price_sum", 0.0) / price_legs
+                if price_legs else None
+            ),
+            "by_posted_rungs": [
+                {
+                    "posted_rungs": depth,
+                    "leg_count": slot["legs"],
+                    "mean_filled_rungs": slot["filled"] / slot["legs"],
+                }
+                for depth, slot in sorted(
+                    (detail.get("by_posted_rungs") or {}).items()
+                )
+            ],
+        })
+    return {"stages": out}
 
 
 def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
