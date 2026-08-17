@@ -9123,16 +9123,40 @@ class TargetProductionWorker:
                     event_date=day,
                     evaluation_at_utc=as_of_utc,
                 )
+                # As-of the forecast, not as-of now.  The three stages run
+                # at wildly different cadences -- P0 recompiles on every
+                # model update (78-106 times a station-day), the TAF is
+                # issued once or twice, P1 follows each observation -- so
+                # "the newest P0" is almost always stamped after the TAF
+                # that is being applied, and a stage whose decision must
+                # follow its predecessor can then never be seated.  P1
+                # already resolves this the right way and says so: its base
+                # is "durable history, not necessarily a currently
+                # consumable probability", chosen by decision time and
+                # explicitly allowed to be stale.  P0-M now follows the same
+                # contract, which is also what it is *for*: laying new
+                # evidence on the model that was current when the evidence
+                # arrived.  Freshness is re-established by P0-M's own
+                # decision time, not inherited from the root.
+                earliest_taf = min(
+                    str(
+                        (capture.get("forecast_revision") or {}).get(
+                            "received_at_utc"
+                        ) or ""
+                    )
+                    for capture in captures
+                ) or as_of_utc
                 roots = [
                     item for item in envelopes
-                    if item.stage == "P0" and item.is_fresh(as_of_utc)
+                    if item.stage == "P0"
+                    and item.decision_at_utc <= earliest_taf
                 ]
                 if not roots:
                     ignored_inactive_scope_count += 1
                     receipts.append({
                         "station_id": station,
                         "event_date": day,
-                        "state": "IGNORED_STALE_P0_SCOPE",
+                        "state": "IGNORED_NO_P0_BEFORE_FORECAST",
                         "write_count": 0,
                         "writes": [],
                     })
@@ -9155,7 +9179,8 @@ class TargetProductionWorker:
                 )
                 roots = [
                     item for item in envelopes
-                    if item.stage == "P0" and item.is_fresh(as_of_utc)
+                    if item.stage == "P0"
+                    and item.decision_at_utc <= earliest_taf
                 ]
                 if not roots:
                     raise ContractError("resident_p0_scope_changed_during_lane_gate")
@@ -9266,13 +9291,14 @@ class TargetProductionWorker:
                                     self.commit_conn, stage="P0-M"
                                 ),
                             )
-                        except ContractError as exc:
+                        except Exception as exc:  # noqa: BLE001
                             # This path is additive: it seats a stage that had
                             # none.  A scope it cannot serve must fall back to
                             # the old silence, not fail-close the stage for
                             # every other scope -- which is what it did on
                             # first run, taking P0-M down on one station's
-                            # run-cycle conflict.
+                            # run-cycle conflict, and again on a TypeError
+                            # that a ContractError-only catch let escape.
                             observed_error = f"ContractError:{exc}"[:200]
                             break
                         observed_pending.append((observed, decision_at))

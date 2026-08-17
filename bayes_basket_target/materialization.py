@@ -778,7 +778,7 @@ def materialize_p0m_observed(
         raise ContractError("p0m_root_stage_invalid")
     values = _lineage(
         "P0-M",
-        values={
+        {
             **_native_forward_lineage("P0-M", root=root, predecessor=previous),
             "forecast_revision_id": _text(
                 "forecast_revision_id", forecast_revision_id
