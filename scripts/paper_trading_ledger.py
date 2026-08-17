@@ -164,7 +164,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # seated LEMD at 16.88 (2% of 844) beside RKSI at 14.52 (2% of 726) on
     # the same day, because half the day was re-derived and half was not.
     "selection_rule_label": SELECTION_RULE_LABEL,
-    "allocation_shape": "centre_anchored_edge_tilt",
+    "allocation_shape": "centre_anchored_edge_tilt_v2_absolute_edge",
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,

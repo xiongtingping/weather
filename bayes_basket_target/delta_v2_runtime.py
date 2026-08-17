@@ -908,6 +908,15 @@ def _centre_anchored_candidates(
         bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
     }
     centre_ordinal = ordinals[centre_bucket]
+    best_edge = 0.0
+    for bucket in ordered:
+        row = by_bucket[bucket]
+        if row.ask_available:
+            best_edge = max(
+                best_edge,
+                float(probabilities_by_bucket.get(bucket, 0.0))
+                - float(row.ask_price),
+            )
     weights: dict[str, float] = {}
     for bucket in ordered:
         row = by_bucket[bucket]
@@ -919,11 +928,16 @@ def _centre_anchored_candidates(
         edge = float(probabilities_by_bucket.get(bucket, 0.0)) - price
         distance = abs(ordinals[bucket] - centre_ordinal)
         decay = CENTRE_ANCHOR_DISTANCE_DECAY ** distance
-        # Only positive edge leans the rung; a negative-edge rung falls back
-        # to the floor share, which is what makes it a hedge rather than a
-        # position.
-        lean = 1.0 + CENTRE_ANCHOR_EDGE_TILT * max(edge, 0.0) / max(
-            price, EPS
+        # Only positive edge leans the rung, and it leans on the edge
+        # itself -- not on edge over price.  The ratio explodes on a cheap
+        # rung: measured on ZGSZ 2026-08-17, 30C at 0.020 with edge 0.082
+        # scored 4.1 against the centre's 0.65 and took the largest clip in
+        # the basket, two rungs out from the centre.  That is the lottery
+        # this shape exists to avoid, rebuilt one layer down.  Normalising
+        # by the window's best edge keeps the lean bounded by the tilt and
+        # leaves the distance decay in charge of the far rungs.
+        lean = 1.0 + CENTRE_ANCHOR_EDGE_TILT * (
+            max(edge, 0.0) / best_edge if best_edge > EPS else 0.0
         )
         weights[bucket] = max(
             decay * lean,
