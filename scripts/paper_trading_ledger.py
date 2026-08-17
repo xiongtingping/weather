@@ -131,7 +131,7 @@ EXECUTION_MODES = ("taker", "maker_bid", "maker_improve", "mid")
 # different rule set are dropped and re-derived instead.
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v4",
-    "compounding": "credible_fills_only",
+    "compounding": "credible_fills_only_from_settlements",
     "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
     "pre_listing_decision": "first_book_after_listing",
@@ -1330,8 +1330,37 @@ def backfill(
                     )
         # The day is over: realise it, then let the next day size off the
         # book it actually leaves behind.
+        #
+        # Read the day's realised P&L back out of the settlements rather than
+        # accumulating what this pass happened to write.  A scope already
+        # recorded is skipped above and contributes nothing to ``day_pnl``,
+        # so on any incremental sweep the equity curve saw only the seats
+        # this run created -- which on a steady-state pass is none at all,
+        # leaving equity pinned at the opening capital.  That is how a P1
+        # seat came to be staked at exactly 20.00 (2% of 1000) on a day the
+        # book had drawn down to 726.  Same filter as the report: only fills
+        # at or above the dust floor compound.
+        realised = {
+            str(row[0]): float(row[1] or 0.0)
+            for row in conn.execute(
+                "SELECT s.stage, SUM(s.pnl_usdc)"
+                " FROM paper_trade_settlement s"
+                " JOIN paper_trade_position p USING(position_id)"
+                " WHERE s.event_date=? AND p.all_in_cost>=?"
+                " GROUP BY s.stage",
+                (event_date, DUST_COST_FLOOR),
+            )
+        }
+        # Settlements this pass created are still buffered for the final
+        # write burst, so they are absent from the query above and are added
+        # on top rather than replacing it.  The two sets are disjoint by
+        # construction: a scope is either already recorded (in the table) or
+        # newly seated (in ``day_pnl``), never both.
         for stage in STAGES:
-            equity[stage] = max(0.0, equity[stage] + day_pnl[stage])
+            equity[stage] = max(
+                0.0,
+                equity[stage] + realised.get(stage, 0.0) + day_pnl[stage],
+            )
     # Every write in one short burst at the end.  The scan above reads most of
     # a ten-gigabyte database and takes about half a minute; holding the write
     # lock across it is what cost the resident whole cycles to
