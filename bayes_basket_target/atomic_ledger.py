@@ -1173,6 +1173,80 @@ def _note_writer_lock_sample(
             row["hold_ms_max"] = hold_ms
 
 
+# The lock profile says which operation held the writer and for how long.
+# It cannot say which statement inside that operation was slow, and for
+# ``commit_blocked_scope_decision`` -- 43 calls holding 352s, one of them for
+# 45s -- that is the only remaining question.  Same shape as the worker's
+# span store, kept here because these are module functions with no worker to
+# hang state on; the worker merges both into one report.
+_LEDGER_SPAN_LOCK = threading.Lock()
+_LEDGER_SPANS: dict[str, dict[str, float]] = {}
+
+
+def note_ledger_span(name: str, elapsed_ms: float) -> None:
+    """Record one already-measured span, for spans not shaped as a block."""
+
+    with _LEDGER_SPAN_LOCK:
+        row = _LEDGER_SPANS.setdefault(
+            name, {"count": 0.0, "total_ms": 0.0, "max_ms": 0.0}
+        )
+        row["count"] += 1.0
+        row["total_ms"] += elapsed_ms
+        if elapsed_ms > row["max_ms"]:
+            row["max_ms"] = elapsed_ms
+
+
+@contextmanager
+def ledger_span(name: str) -> Iterator[None]:
+    """Accumulate one repeated ledger phase into the cycle's span report."""
+
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        note_ledger_span(name, (time.perf_counter() - started) * 1000.0)
+
+
+def ledger_span_profile() -> dict[str, dict[str, Any]]:
+    with _LEDGER_SPAN_LOCK:
+        snapshot = {name: dict(row) for name, row in _LEDGER_SPANS.items()}
+    return {
+        name: {
+            "count": int(row["count"]),
+            "total_ms": round(row["total_ms"], 1),
+            "max_ms": round(row["max_ms"], 1),
+            "mean_ms": round(row["total_ms"] / max(1.0, row["count"]), 1),
+            "slowest": "",
+        }
+        for name, row in sorted(
+            snapshot.items(), key=lambda item: -item[1]["total_ms"]
+        )
+    }
+
+
+def reset_ledger_spans() -> None:
+    with _LEDGER_SPAN_LOCK:
+        _LEDGER_SPANS.clear()
+
+
+def note_writer_lock_sample(
+    operation: str,
+    *,
+    wait_ms: float,
+    hold_ms: float,
+) -> None:
+    """Record a write-lock acquisition taken outside this module.
+
+    ``production_worker._writer_transaction`` opens its own
+    ``BEGIN IMMEDIATE`` against the same single-writer file and was invisible
+    here, so the profile named only the ledger's own transactions and made
+    the resident's largest lock holder -- the P1 scope write -- look like it
+    did not exist.  One lock, one profile.
+    """
+
+    _note_writer_lock_sample(operation, wait_ms=wait_ms, hold_ms=hold_ms)
+
+
 def writer_lock_profile(*, top: int = 8) -> dict[str, Any]:
     """Report the busiest write-lock operations since the last reset."""
 
@@ -1631,6 +1705,16 @@ def _insert_training_fact(conn: sqlite3.Connection, fact: Mapping[str, Any]) -> 
     if state not in {"committed", "already_committed"}:
         raise AtomicLedgerError("training_fact_commit_state_invalid")
     return state
+
+
+def _assert_existing_cycle_training_fact_binding_timed(
+    conn: sqlite3.Connection,
+    **kwargs: Any,
+) -> None:
+    """Timed passthrough, so the replay path's cost is attributable."""
+
+    with ledger_span("blocked_txn_fact_binding"):
+        _assert_existing_cycle_training_fact_binding(conn, **kwargs)
 
 
 def _assert_existing_cycle_training_fact_binding(
@@ -2369,7 +2453,8 @@ def commit_blocked_scope_decision(
     blocker change can be represented by a new immutable decision.
     """
 
-    status = target_ledger_schema_status(conn)
+    with ledger_span("blocked_schema_status"):
+        status = target_ledger_schema_status(conn)
     if not status["ok"]:
         raise AtomicLedgerError("target_ledger_schema_incomplete")
     station = _text("blocked_station_id", station_id)
@@ -2401,13 +2486,14 @@ def commit_blocked_scope_decision(
             raise AtomicLedgerError(
                 "preliminary_decision_reason_invalid"
             )
-        preselection = conn.execute(
-            "SELECT station_id,event_date,checkpoint_id,probability_stage,"
-            "quote_manifest_sha256,plan_sha256,state,final_authority,"
-            "live_submit_authorized,calls_order_gateway,orders_submitted "
-            "FROM basket_p0_preselection_plan WHERE preselection_id=?",
-            (preselection_id,),
-        ).fetchone()
+        with ledger_span("blocked_preselection_lookup"):
+            preselection = conn.execute(
+                "SELECT station_id,event_date,checkpoint_id,probability_stage,"
+                "quote_manifest_sha256,plan_sha256,state,final_authority,"
+                "live_submit_authorized,calls_order_gateway,orders_submitted "
+                "FROM basket_p0_preselection_plan WHERE preselection_id=?",
+                (preselection_id,),
+            ).fetchone()
         if preselection is None:
             raise AtomicLedgerError(
                 "preliminary_decision_preselection_missing"
@@ -2502,16 +2588,18 @@ def commit_blocked_scope_decision(
 
     with _atomic_transaction(conn, operation="commit_blocked_scope_decision"):
         if stage_zero_anchor is not None:
-            _assert_stage_zero_execution_anchor_current(
-                conn,
-                anchor=stage_zero_anchor,
-                created_at_utc=created_at,
-            )
-        existing_cycle = conn.execute(
-            "SELECT plan_id,plan_sha256,requested_reserve_usdc,state,settlement_timezone "
-            "FROM basket_target_execution_cycles WHERE cycle_id=?",
-            (cycle_id,),
-        ).fetchone()
+            with ledger_span("blocked_txn_anchor_current"):
+                _assert_stage_zero_execution_anchor_current(
+                    conn,
+                    anchor=stage_zero_anchor,
+                    created_at_utc=created_at,
+                )
+        with ledger_span("blocked_txn_existing_cycle"):
+            existing_cycle = conn.execute(
+                "SELECT plan_id,plan_sha256,requested_reserve_usdc,state,settlement_timezone "
+                "FROM basket_target_execution_cycles WHERE cycle_id=?",
+                (cycle_id,),
+            ).fetchone()
         if existing_cycle is not None:
             if (
                 str(existing_cycle[0]) != plan_id
@@ -2520,11 +2608,12 @@ def commit_blocked_scope_decision(
                 or str(existing_cycle[4] or "") != timezone_name
             ):
                 raise AtomicLedgerError("blocked_cycle_content_address_drift")
-            existing_decision = conn.execute(
-                "SELECT decision_id,decision_sha256,decided_state,will_order,settlement_timezone,target_execution_hard_deadline_at "
-                "FROM auto_trade_decisions WHERE cycle_id=?",
-                (cycle_id,),
-            ).fetchone()
+            with ledger_span("blocked_txn_existing_decision"):
+                existing_decision = conn.execute(
+                    "SELECT decision_id,decision_sha256,decided_state,will_order,settlement_timezone,target_execution_hard_deadline_at "
+                    "FROM auto_trade_decisions WHERE cycle_id=?",
+                    (cycle_id,),
+                ).fetchone()
             if existing_decision is None:
                 raise AtomicLedgerError("blocked_cycle_decision_missing")
             if (
@@ -2536,11 +2625,12 @@ def commit_blocked_scope_decision(
                 or existing_decision[5] is not None
             ):
                 raise AtomicLedgerError("blocked_cycle_decision_content_address_drift")
-            existing_training_fact = conn.execute(
-                "SELECT training_fact_id FROM basket_target_execution_version_vectors "
-                "WHERE cycle_id=?",
-                (cycle_id,),
-            ).fetchone()
+            with ledger_span("blocked_txn_existing_training_fact"):
+                existing_training_fact = conn.execute(
+                    "SELECT training_fact_id FROM basket_target_execution_version_vectors "
+                    "WHERE cycle_id=?",
+                    (cycle_id,),
+                ).fetchone()
             if stage_zero_training_authorized and (
                 existing_training_fact is None
                 or existing_training_fact[0] is None
@@ -2571,32 +2661,34 @@ def commit_blocked_scope_decision(
                 }
             training_fact = None
             if stage_zero_training_authorized:
-                training_fact = _build_stage_zero_training_fact(
+                with ledger_span("blocked_txn_training_fact_replay"):
+                    training_fact = _build_stage_zero_training_fact(
+                        conn,
+                        anchor=stage_zero_anchor,
+                        cycle_id=cycle_id,
+                        plan_id=plan_id,
+                        plan_sha256=plan_sha,
+                        decision_id=decision_id,
+                        decision_sha256=decision_sha,
+                        station_id=station,
+                        event_date=day,
+                        settlement_timezone=timezone_name,
+                        no_execution_policy=no_execution_policy,
+                        created_at_utc=created_at,
+                    )
+            with ledger_span("blocked_txn_vector_assert"):
+                _assert_existing_blocked_no_execution_vector(
                     conn,
-                    anchor=stage_zero_anchor,
                     cycle_id=cycle_id,
-                    plan_id=plan_id,
-                    plan_sha256=plan_sha,
                     decision_id=decision_id,
-                    decision_sha256=decision_sha,
-                    station_id=station,
-                    event_date=day,
-                    settlement_timezone=timezone_name,
-                    no_execution_policy=no_execution_policy,
-                    created_at_utc=created_at,
+                    expected_policy=no_execution_policy,
+                    expected_training_fact_id=(
+                        str(training_fact.get("fact_id") or "")
+                        if training_fact is not None
+                        else None
+                    ),
                 )
-            _assert_existing_blocked_no_execution_vector(
-                conn,
-                cycle_id=cycle_id,
-                decision_id=decision_id,
-                expected_policy=no_execution_policy,
-                expected_training_fact_id=(
-                    str(training_fact.get("fact_id") or "")
-                    if training_fact is not None
-                    else None
-                ),
-            )
-            _assert_existing_cycle_training_fact_binding(
+            _assert_existing_cycle_training_fact_binding_timed(
                 conn,
                 cycle_id=cycle_id,
                 decision_id=decision_id,
@@ -2663,20 +2755,21 @@ def commit_blocked_scope_decision(
             # intentionally excludes WS transport refreshes, so a new quote
             # keepalive with the same economic decision must not become a
             # second immutable d2 fact (nor a new no-execution tick row).
-            training_fact = _build_stage_zero_training_fact(
-                conn,
-                anchor=stage_zero_anchor,
-                cycle_id=cycle_id,
-                plan_id=plan_id,
-                plan_sha256=plan_sha,
-                decision_id=decision_id,
-                decision_sha256=decision_sha,
-                station_id=station,
-                event_date=day,
-                settlement_timezone=timezone_name,
-                no_execution_policy=no_execution_policy,
-                created_at_utc=created_at,
-            )
+            with ledger_span("blocked_txn_training_fact_build"):
+                training_fact = _build_stage_zero_training_fact(
+                    conn,
+                    anchor=stage_zero_anchor,
+                    cycle_id=cycle_id,
+                    plan_id=plan_id,
+                    plan_sha256=plan_sha,
+                    decision_id=decision_id,
+                    decision_sha256=decision_sha,
+                    station_id=station,
+                    event_date=day,
+                    settlement_timezone=timezone_name,
+                    no_execution_policy=no_execution_policy,
+                    created_at_utc=created_at,
+                )
             existing_scope = conn.execute(
                 "SELECT fact_id,content_sha256,cycle_id,decision_id "
                 "FROM basket_policy_training_fact WHERE decision_scope_key=?",
@@ -2705,6 +2798,10 @@ def commit_blocked_scope_decision(
                         "training_fact_state": "already_committed_decision_scope",
                         "training_fact_id": str(existing_scope[0] or ""),
                     }
+        # Everything above this point is lookups and derivation; from here it
+        # is the three-row write the transaction exists for.  Timed as one
+        # span because the rows are written together or not at all.
+        blocked_write_started = time.perf_counter()
         conn.execute(
             "INSERT INTO basket_target_execution_cycles("
             "cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,"
@@ -2747,6 +2844,10 @@ def commit_blocked_scope_decision(
         training_state = None
         if training_fact is not None:
             training_state = _insert_training_fact(conn, training_fact)
+        note_ledger_span(
+            "blocked_txn_write_rows",
+            (time.perf_counter() - blocked_write_started) * 1000.0,
+        )
     return {
         "schema": SCHEMA,
         "state": "committed",
@@ -3744,7 +3845,12 @@ __all__ = [
     "commit_stage_zero_execution_scope_decision",
     "commit_target_atomic_bundle",
     "initialize_capital_pool",
+    "ledger_span",
+    "ledger_span_profile",
+    "note_ledger_span",
+    "note_writer_lock_sample",
     "record_writer_lock_wait",
+    "reset_ledger_spans",
     "reset_writer_lock_profile",
     "writer_lock_profile",
     "target_ledger_schema_status",

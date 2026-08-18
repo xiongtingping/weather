@@ -39,9 +39,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from .atomic_ledger import ledger_span
 from .contracts import ContractError, content_sha256
 from .metar_path_state import compile_conditional_metar_path_state
 from .metar_physical_tmax import (
@@ -153,13 +154,13 @@ def _seed_system_registry(conn: sqlite3.Connection) -> None:
     )
 
 
-def project_metar_physical_member_runs(
+def plan_metar_physical_member_runs(
     conn: sqlite3.Connection,
     *,
     archive_conn: sqlite3.Connection,
     as_of_utc: str | None = None,
     earliest_event_date: str = EARLIEST_EVENT_DATE,
-) -> dict[str, Any]:
+) -> tuple[list[tuple[tuple[Any, ...], str, str]], dict[str, Any]]:
     """Project noon-anchored physical tmax points into the member archive.
 
     Idempotent: one content-addressed row per (station, day) at d0, OR IGNORE
@@ -236,7 +237,7 @@ def project_metar_physical_member_runs(
         "state_incomplete": 0,
         "timezone_invalid": 0,
     }
-    wrote = 0
+    pending: list[tuple[tuple[Any, ...], str, str]] = []
     candidates = 0
     for station_id, (timezone_name, settlement_definition) in sorted(
         stations.items()
@@ -268,36 +269,38 @@ def project_metar_physical_member_runs(
                 skipped["no_artifact"] += 1
                 continue
             day_start = anchor - timedelta(hours=D0_ANCHOR_LOCAL_HOUR)
-            rows = [
-                {
-                    "observation_id": str(row[0]),
-                    "observed_at_utc": str(row[1]),
-                    "temperature_c": row[2],
-                    "raw_text": row[3],
-                }
-                for row in archive_conn.execute(
-                    "SELECT observation_id,valid_at,"
-                    "reported_temperature_c,raw_text "
-                    "FROM reported_trajectory_observations "
-                    "WHERE station_id=? AND valid_at>=? AND valid_at<=? "
-                    "ORDER BY valid_at",
-                    (station_id, _iso(day_start), _iso(anchor)),
-                )
-                if row[2] is not None
-            ]
+            with ledger_span("metar_proj_archive_read"):
+                rows = [
+                    {
+                        "observation_id": str(row[0]),
+                        "observed_at_utc": str(row[1]),
+                        "temperature_c": row[2],
+                        "raw_text": row[3],
+                    }
+                    for row in archive_conn.execute(
+                        "SELECT observation_id,valid_at,"
+                        "reported_temperature_c,raw_text "
+                        "FROM reported_trajectory_observations "
+                        "WHERE station_id=? AND valid_at>=? AND valid_at<=? "
+                        "ORDER BY valid_at",
+                        (station_id, _iso(day_start), _iso(anchor)),
+                    )
+                    if row[2] is not None
+                ]
             if len(rows) < MIN_PREFIX_OBSERVATIONS:
                 skipped["insufficient_prefix"] += 1
                 continue
             try:
-                state = compile_conditional_metar_path_state(
-                    rows,
-                    as_of_utc=_iso(anchor),
-                    settlement_timezone=timezone_name,
-                    root_probabilities=_NULL_ROOT_PROBABILITIES,
-                    bucket_centers_c=_NULL_BUCKET_CENTERS,
-                    station_id=station_id,
-                    event_date=event_date,
-                )
+                with ledger_span("metar_proj_compile_state"):
+                    state = compile_conditional_metar_path_state(
+                        rows,
+                        as_of_utc=_iso(anchor),
+                        settlement_timezone=timezone_name,
+                        root_probabilities=_NULL_ROOT_PROBABILITIES,
+                        bucket_centers_c=_NULL_BUCKET_CENTERS,
+                        station_id=station_id,
+                        event_date=event_date,
+                    )
                 body = build_physical_tmax_members(
                     state,
                     station_id=station_id,
@@ -336,18 +339,14 @@ def project_metar_physical_member_runs(
                 "extraction_version": METHOD_VERSION,
             }
             sha = content_sha256(identity)
-            conn.execute(
-                "INSERT OR IGNORE INTO "
-                "calibration_native_ensemble_historical_member_run("
-                "historical_member_run_id,ensemble_system_id,station_id,"
-                "target_local_date,archive_lead_bucket,run_cycle,member_id,"
-                "member_role,raw_tmax_c,settlement_definition,"
-                "extraction_version,provider_id,transport_provider_id,"
-                "native_run_init_utc,offline_oos_eligible,"
-                "archive_query_at_utc,source_url,raw_object_ref,"
-                "source_object_sha256,qc_status,authority_scope,"
-                "holdout_eligible,content_sha256) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            # Collected, not written.  The pass above is entirely reads --
+            # of the archive and of this database -- and it used to run
+            # inside ``BEGIN IMMEDIATE``, holding the one writer lock for
+            # 12-19s a cycle while committing nothing at all (measured
+            # 2026-08-17: wrote_count 0, 647 station-days already projected).
+            # The caller now opens a transaction only when this list is
+            # non-empty, so the common no-op cycle never takes the lock.
+            pending.append((
                 (
                     "mphys-" + sha[:32], SYSTEM_ID, station_id, event_date,
                     "d0", label, POINT_MEMBER_ID, "CONTROL", point,
@@ -357,24 +356,13 @@ def project_metar_physical_member_runs(
                     str(body["content_sha256"]),
                     "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0, sha,
                 ),
-            )
-            changed = int(conn.execute("SELECT changes()").fetchone()[0])
-            wrote += changed
-            if not changed:
-                # This identity was pre-checked as absent, so zero changes
-                # means OR IGNORE swallowed a constraint -- the exact failure
-                # mode that let this system ship registered, contracted and
-                # producing nothing while every insert died on a transport
-                # CHECK.  It stays a hard error so it can never be quiet
-                # again.
-                raise ContractError(
-                    "metar_physical_member_insert_silently_rejected:"
-                    f"{station_id}:{event_date}"
-                )
-    return {
+                station_id,
+                event_date,
+            ))
+    return pending, {
         "schema": SCHEMA,
         "candidate_count": candidates,
-        "wrote_count": wrote,
+        "wrote_count": 0,
         "station_count": len(stations),
         "stations_with_artifact": len(artifacts),
         "skipped": skipped,
@@ -384,4 +372,67 @@ def project_metar_physical_member_runs(
     }
 
 
-__all__ = ["SCHEMA", "project_metar_physical_member_runs"]
+def apply_metar_physical_member_runs(
+    conn: sqlite3.Connection,
+    pending: Sequence[tuple[tuple[Any, ...], str, str]],
+) -> int:
+    """Write the planned member rows.  Caller owns the transaction."""
+
+    wrote = 0
+    for params, station_id, event_date in pending:
+        conn.execute(
+            "INSERT OR IGNORE INTO "
+            "calibration_native_ensemble_historical_member_run("
+            "historical_member_run_id,ensemble_system_id,station_id,"
+            "target_local_date,archive_lead_bucket,run_cycle,member_id,"
+            "member_role,raw_tmax_c,settlement_definition,"
+            "extraction_version,provider_id,transport_provider_id,"
+            "native_run_init_utc,offline_oos_eligible,"
+            "archive_query_at_utc,source_url,raw_object_ref,"
+            "source_object_sha256,qc_status,authority_scope,"
+            "holdout_eligible,content_sha256) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            params,
+        )
+        changed = int(conn.execute("SELECT changes()").fetchone()[0])
+        wrote += changed
+        if not changed:
+            # This identity was pre-checked as absent, so zero changes means
+            # OR IGNORE swallowed a constraint -- the exact failure mode that
+            # let this system ship registered, contracted and producing
+            # nothing while every insert died on a transport CHECK.  It stays
+            # a hard error so it can never be quiet again.
+            raise ContractError(
+                "metar_physical_member_insert_silently_rejected:"
+                f"{station_id}:{event_date}"
+            )
+    return wrote
+
+
+def project_metar_physical_member_runs(
+    conn: sqlite3.Connection,
+    *,
+    archive_conn: sqlite3.Connection,
+    as_of_utc: str | None = None,
+    earliest_event_date: str = EARLIEST_EVENT_DATE,
+) -> dict[str, Any]:
+    """Plan and apply in one call, for callers that own no lock discipline."""
+
+    pending, receipt = plan_metar_physical_member_runs(
+        conn,
+        archive_conn=archive_conn,
+        as_of_utc=as_of_utc,
+        earliest_event_date=earliest_event_date,
+    )
+    return {
+        **receipt,
+        "wrote_count": apply_metar_physical_member_runs(conn, pending),
+    }
+
+
+__all__ = [
+    "SCHEMA",
+    "apply_metar_physical_member_runs",
+    "plan_metar_physical_member_runs",
+    "project_metar_physical_member_runs",
+]

@@ -842,6 +842,20 @@ ON basket_policy_training_fact(
   station_id,event_date,stage,decision_at_utc,partition_key
 );
 
+-- Every blocked-scope decision re-reads its own cycle's fact binding, and
+-- (cycle_id,decision_id) led no index -- so each of the 45 scopes in a cycle
+-- scanned the whole table, whose rows carry policy_version_vector_json and
+-- feature_json in overflow pages.  It runs inside ``BEGIN IMMEDIATE``, which
+-- made it the single largest holder of the one writer lock in the system:
+-- measured 2026-08-17, 45 calls x 2,295ms = 103s of held lock per cycle,
+-- 61% of all lock time and 99.7% of the transaction it sits in.  Carrying
+-- the three selected columns makes it covering, and leading fact_id after
+-- the scope pair also serves the query's ORDER BY.
+CREATE INDEX IF NOT EXISTS basket_policy_training_fact_cycle_idx
+ON basket_policy_training_fact(
+  cycle_id,decision_id,fact_id,content_sha256,decision_scope_key
+);
+
 CREATE TABLE IF NOT EXISTS basket_policy_training_label (
   label_id TEXT PRIMARY KEY,
   fact_id TEXT NOT NULL,
@@ -2188,6 +2202,17 @@ ON auto_trade_decisions(decided_state,will_order,created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS basket_target_no_execution_vector_cycle_idx
 ON basket_target_execution_version_vectors(cycle_id)
 WHERE vector_policy='NO_EXECUTION';
+
+-- The index above is partial, so it serves only queries that themselves
+-- promise vector_policy='NO_EXECUTION'.  The blocked-decision path does not
+-- make that promise -- it reads the row by cycle_id precisely in order to
+-- check the policy -- so both of its lookups fell back to scanning all
+-- 41,841 rows, and the rows carry vector_json.  Both run inside
+-- ``BEGIN IMMEDIATE``, 45 blocked scopes a cycle, which is how a decision
+-- write came to hold the single writer lock for seconds at a time.
+-- Measured 2026-08-16: 408-553ms cold per lookup, 6ms warm.
+CREATE INDEX IF NOT EXISTS basket_target_execution_version_vector_cycle_idx
+ON basket_target_execution_version_vectors(cycle_id);
 CREATE INDEX IF NOT EXISTS basket_target_order_intent_decision_idx
 ON basket_target_order_intents(decision_id,cycle_id,created_at);
 CREATE INDEX IF NOT EXISTS basket_target_reservation_state_idx
