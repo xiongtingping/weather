@@ -95,7 +95,7 @@ fi
 #    之后，无界拟合与 21 天滚动窗都原样复现了旧的 λ=0.825，也就是那个缺陷
 #    的补偿值。滚动窗解决不了这个问题——它要等窗口自然走过变更日才干净。
 #    锚定到变更日则当天就干净：证据不足时这一层自己回落到恒等并攒够再上。
-CW_SINCE="2026-08-18"
+CW_SINCE="2026-08-19"
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据自 $CW_SINCE 起)..." | tee -a "$LOG_DIR/calibration_training.log"
 CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary --since "$CW_SINCE" 2>&1)" || true
