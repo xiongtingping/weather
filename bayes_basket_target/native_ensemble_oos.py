@@ -698,43 +698,32 @@ def _equal_weight_diagnostic(
     return matrix
 
 
-# Station-local "drift" is often not a function of time but of state: at ZUUU
-# the ECMWF residual moved from -0.25C to -1.92C between July and August, yet
-# regressed against the forecast level the shift mostly disappears -- the
-# model is wrong by an amount that tracks how hot it says the day will be.
-# Time-weighted fixes were tried and rejected by the chronological holdout
-# (they amplified late-window noise); a level-dependent correction is stable
-# across the episode and does not overcorrect once it ends.
+# The bias correction is a single constant per scope.  A level-dependent
+# (affine) alternative was fitted here and chosen per scope on a six-day
+# validation tail; it was removed on 2026-08-18 after it was measured, not
+# because of the plumbing bug that kept it from ever reaching production.
 #
-# Both correction forms are fitted and the winner is chosen per scope on a
-# time-ordered validation tail inside the train window, so a station whose
-# bias really is constant keeps the constant form.  The holdout never takes
-# part in the choice; it stays the untouched judge.
-AFFINE_SLOPE_MIN = 0.3
-AFFINE_SLOPE_MAX = 1.7
-FIT_VALIDATION_TAIL_DAYS = 6
-
-
-def _affine_coefficients(
-    pairs: Sequence[tuple[float, float]],
-) -> tuple[float, float] | None:
-    """OLS of truth on forecast center, or None when it is not estimable."""
-
-    if len(pairs) < 8:
-        return None
-    mean_x = sum(x for x, _y in pairs) / len(pairs)
-    mean_y = sum(y for _x, y in pairs) / len(pairs)
-    var_x = sum((x - mean_x) ** 2 for x, _y in pairs)
-    if var_x <= 1e-9:
-        return None
-    slope = sum(
-        (x - mean_x) * (y - mean_y) for x, y in pairs
-    ) / var_x
-    if not AFFINE_SLOPE_MIN <= slope <= AFFINE_SLOPE_MAX:
-        # A slope outside physical plausibility is a small-sample artefact;
-        # serving it would swing corrections violently at the range edges.
-        return None
-    return mean_y - slope * mean_x, slope
+# Measured on a 60% chronological split over 479 scopes (all 45 stations),
+# scoring the holdout with this module's own metrics:
+#   * on the scopes the tail test picked, affine lost in the gate's currency
+#     -- CRPS +4.3%, NLL +4.6%, both bootstrap intervals clear of zero.
+#   * with the selector removed entirely, always-affine still lost across all
+#     444 estimable scopes (CRPS +2.7%, NLL +2.0%), so the form was the
+#     problem, not the six-day tail.  Per scope it won 187 of 444.
+#   * a selector sweep over tail lengths 6-20 and margins 0.5-0.8 found one
+#     favourable cell (tail 14, margin 0.6) carried by a single scope; drop
+#     that scope and it reverses.
+#   * centre MSE alone could not see this -- its sign flipped with the split
+#     point (+12%, +2%, -7% at 50/60/70%) while CRPS stayed negative
+#     throughout.  That is why the form survived earlier MSE-only looks.
+#
+# It also distorted the cross-ensemble weights, which are 1/train_rmse_c.
+# Refitting under the affine form overwrote train_rmse_c with a two-parameter
+# in-sample residual and compared it against one-parameter residuals from
+# every other system: it came out lower in 89 of 89 affine scopes, a median
+# 1.44x weight-score advantage, while delivering 1.05x on unseen days.
+# Any future level-dependent form has to be judged out of sample and has to
+# report a weight metric that is comparable across forms.
 
 
 def _fit_parameters(
@@ -773,76 +762,35 @@ def _fit_parameters(
         max(0.5, rmse / max(mean_spread, 0.1)),
     )
     reliability_weight = len(cases) / (len(cases) + 10.0)
-    parameters = {
+    # Every key returned here has to reach an artifact column, or serving
+    # silently runs a different fit from the one the OOS gate scored.  That is
+    # not hypothetical: the removed affine form was fitted, gated and folded
+    # into the cross weights while never being persisted, so production served
+    # the constant form for months against a certificate earned by another.
+    # ``test_fit_parameter_keys_are_all_persisted`` freezes this set against
+    # the three parameter columns; adding a key means deciding where it lands.
+    return {
         "bias_c": bias,
         "spread_factor": spread_factor,
         "reliability_weight": reliability_weight,
         "climate_samples_c": climate_samples[-180:],
         "train_rmse_c": rmse,
         "train_mean_spread_c": mean_spread,
-        "correction_form": "constant",
     }
-    # Cases arrive chronological; the last few train days validate the form
-    # choice.  Both forms are fitted on the earlier part only, judged on the
-    # tail, and the winner is refitted on the full train window.
-    tail = FIT_VALIDATION_TAIL_DAYS
-    if len(cases) >= tail + 10:
-        fit_pairs = list(zip(centers[:-tail], actuals[:-tail]))
-        affine = _affine_coefficients(fit_pairs)
-        if affine is not None:
-            head_bias = (
-                sum(a - c for c, a in fit_pairs) / len(fit_pairs)
-            )
-            intercept, slope = affine
-            constant_err = sum(
-                (a - (c + head_bias)) ** 2
-                for c, a in zip(centers[-tail:], actuals[-tail:])
-            )
-            affine_err = sum(
-                (a - (intercept + slope * c)) ** 2
-                for c, a in zip(centers[-tail:], actuals[-tail:])
-            )
-            # A six-day tail is small enough to prefer the wrong form by
-            # luck, and the cost is asymmetric: the constant form is the
-            # simpler prior, so leaving it needs decisive evidence.  The
-            # margin keeps a genuine regime response (ZUUU's tail error
-            # roughly halves) while ignoring coin-flip differences.
-            if affine_err < 0.8 * constant_err:
-                refit = _affine_coefficients(list(zip(centers, actuals)))
-                if refit is not None:
-                    parameters["correction_form"] = "affine"
-                    parameters["affine_intercept_c"] = refit[0]
-                    parameters["affine_slope"] = refit[1]
-                    affine_errors = [
-                        a - (refit[0] + refit[1] * c)
-                        for c, a in zip(centers, actuals)
-                    ]
-                    # The RMSE that feeds cross weights describes the form
-                    # actually served, not the runner-up.
-                    parameters["train_rmse_c"] = math.sqrt(
-                        sum(e * e for e in affine_errors)
-                        / len(affine_errors)
-                    )
-    return parameters
 
 
 def _corrected_center(
     mean: float,
     parameters: Mapping[str, Any],
 ) -> float:
-    """Where the calibrated distribution centers, under either form.
+    """Where the calibrated distribution centers.
 
-    The affine form corrects by an amount that tracks the forecast level --
-    what a station-local regime shift usually is -- and the constant form is
-    the level-independent special case.  Which one runs is the artifact's
-    recorded choice, so evaluation and serving cannot disagree about it.
+    One form, one field: the shift is level-independent, so this is the same
+    arithmetic ``native_ensemble_p0._calibrated_system_probability`` runs at
+    serving time.  Keep the two together -- an evaluator that centers
+    differently from the server hands out certificates it did not earn.
     """
 
-    if str(parameters.get("correction_form") or "constant") == "affine":
-        return (
-            float(parameters["affine_intercept_c"])
-            + float(parameters["affine_slope"]) * mean
-        )
     return mean + float(parameters["bias_c"])
 
 

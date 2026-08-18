@@ -387,23 +387,20 @@ def _calibrated_system_probability(
         raise ContractError(
             "native_ensemble_p0_calibration_parameters_invalid"
         )
-    # The correction form is the artifact's recorded choice, made on a
-    # validation tail at fit time.  The affine form corrects by an amount
-    # that tracks the forecast level -- what a station-local regime shift
-    # usually is -- while an artifact without the field keeps the constant
-    # path byte-identical.  Serving a form the artifact does not record
-    # would split evaluation from serving, so the parameters are the only
-    # authority here.
-    if str(bias_parameters.get("correction_form") or "constant") == "affine":
-        slope = float(bias_parameters["affine_slope"])
-        intercept = float(bias_parameters["affine_intercept_c"])
-        if not 0.3 <= slope <= 1.7 or not -40.0 <= intercept <= 40.0:
-            raise ContractError(
-                "native_ensemble_p0_calibration_parameters_invalid"
-            )
-        center = intercept + slope * mean
-    else:
-        center = mean + bias
+    # The trainer fits exactly one correction form, a constant shift, so an
+    # artifact that names any other form was fitted by a build this server
+    # cannot reproduce -- refuse it rather than quietly serving the constant
+    # form in its place.  That silent fallback is the bug this guard replaces:
+    # a level-dependent form was fitted and gated but never persisted, so
+    # every affected scope served a centre the OOS gate never scored.  Absent
+    # field is the norm and stays byte-identical (no artifact has ever carried
+    # this key).  See ``native_ensemble_oos._fit_parameters``.
+    correction_form = bias_parameters.get("correction_form")
+    if correction_form is not None and str(correction_form) != "constant":
+        raise ContractError(
+            "native_ensemble_p0_calibration_correction_form_unsupported"
+        )
+    center = mean + bias
     corrected = [
         center + spread * (value - mean)
         for value in current
@@ -2140,18 +2137,11 @@ def compile_native_ensemble_p0(
             sum(float(member["raw_tmax_c"]) for member in members)
             / len(members)
         )
-        if (
-            str(bias_parameters.get("correction_form") or "constant")
-            == "affine"
-        ):
-            calibrated_system_centers_c[system_id] = (
-                float(bias_parameters["affine_intercept_c"])
-                + float(bias_parameters["affine_slope"]) * raw_center
-            )
-        else:
-            calibrated_system_centers_c[system_id] = (
-                raw_center + float(bias_parameters["bias_c"])
-            )
+        # Same single form as the histogram above, which has already refused
+        # any artifact naming another one.
+        calibrated_system_centers_c[system_id] = (
+            raw_center + float(bias_parameters["bias_c"])
+        )
         system_bias_c[system_id] = float(bias_parameters["bias_c"])
         system_spread_factor[system_id] = float(
             json.loads(str(system_artifact[1]))["spread_factor"]

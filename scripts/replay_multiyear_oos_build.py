@@ -3,7 +3,7 @@
 
 Research-only.  Walks each accepted station's history in strict date order
 and, for every day with truth and members, serves the day from parameters
-fitted only on earlier days -- the same affine-bias/spread mechanism,
+fitted only on earlier days -- the same constant-bias/spread mechanism,
 variance-preserving kernel, climate blend and inverse-RMSE family weights
 the production trainer uses (imported from ``native_ensemble_oos``, not
 reimplemented).  The day's distribution is projected onto a market-shaped

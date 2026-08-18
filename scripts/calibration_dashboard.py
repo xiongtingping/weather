@@ -757,13 +757,8 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
             cell["uncorrected"] += 1
             continue
         bias, factor = correction
-        if str(bias.get("correction_form") or "constant") == "affine":
-            corrected = (
-                float(bias["affine_intercept_c"])
-                + float(bias["affine_slope"]) * centre
-            )
-        else:
-            corrected = centre + float(bias["bias_c"])
+        # One correction form; the board reports what P0 actually serves.
+        corrected = centre + float(bias["bias_c"])
         corrected_bucket = _market_bucket_index(unit, corrected)
         if corrected_bucket is None:
             cell["uncorrected"] += 1
