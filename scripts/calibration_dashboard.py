@@ -2168,12 +2168,12 @@ body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 72px}
 h1{font-size:23px;margin:0 0 4px}
-h2{font-size:17px;margin:34px 0 6px;display:flex;align-items:center;gap:9px}
+h2{font-size:16px;margin:22px 0 4px;display:flex;align-items:center;gap:8px}
 .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);
-border-radius:11px;padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
-.grid{display:grid;gap:12px}
-.g4{grid-template-columns:repeat(auto-fit,minmax(232px,1fr))}
+border-radius:9px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:8px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 .green{background:var(--green)}.amber{background:var(--amber)}
@@ -2202,16 +2202,16 @@ border-radius:99px;padding:1px 10px;margin:2px 0 6px;user-select:none}
 details.note>summary::-webkit-details-marker{display:none}
 details.note>summary:hover{color:var(--text)}
 details.note[open]>summary{margin-bottom:8px}
-.big{font-size:26px;font-weight:650;letter-spacing:-.4px}
+.big{font-size:19px;font-weight:650;letter-spacing:-.3px}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;
-padding:7px 10px;border-bottom:1px solid var(--line);user-select:none}
+padding:4px 8px;border-bottom:1px solid var(--line);user-select:none}
 th:hover{color:var(--text)}
 th[data-sorted="1"]{color:var(--accent)}
 th[data-sort-dir="asc"]::after{content:" ↑"}
 th[data-sort-dir="desc"]::after{content:" ↓"}
-td{padding:9px 10px;border-bottom:1px solid var(--soft);
+td{padding:5px 8px;border-bottom:1px solid var(--soft);
 vertical-align:top}
 tr:last-child td{border-bottom:none}
 .scroll{max-height:520px;overflow:auto}
@@ -2220,7 +2220,7 @@ tr:last-child td{border-bottom:none}
 margin-top:6px}
 .bar>i{display:block;height:100%;background:var(--accent)}
 .chain{display:flex;flex-direction:column;gap:0}
-.link{display:flex;gap:13px;align-items:flex-start;padding:12px 0;
+.link{display:flex;gap:10px;align-items:flex-start;padding:6px 0;
 border-bottom:1px solid var(--soft)}
 .link:last-child{border-bottom:none}
 .link .body{flex:1;min-width:0}
@@ -2228,7 +2228,7 @@ border-bottom:1px solid var(--soft)}
 .why{background:var(--why-bg);border-left:2px solid var(--accent);
 padding:9px 13px;border-radius:0 7px 7px 0;color:var(--why-fg);font-size:13.4px;
 margin:9px 0 0}
-.gap{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid
+.gap{display:flex;gap:9px;padding:6px 0;border-bottom:1px solid
 var(--soft);align-items:flex-start}
 .gap:last-child{border-bottom:none}
 .factor{font-weight:650}
@@ -2286,42 +2286,45 @@ function head(){
 }
 
 function members(){
-  const rows = D.members.map(m => `<div class="card">
-    <div style="display:flex;align-items:center;gap:8px">
+  // Four across, two lines each.  A table was tried and is taller: four
+  // rows stack where four cards sit side by side, and the row that carries
+  // a model's name, note and four numbers wraps.  The note and the
+  // no-archive warning move into tooltips, which is where a sentence read
+  // once belongs.
+  const rows = D.members.map(m => `<div class="card" title="${h(m.note)}">
+    <div style="display:flex;align-items:center;gap:7px">
       <span class="dot ${m.health}"></span><b>${h(m.label)}</b>
       <span style="flex:1"></span>
+      ${m.backfillable ? "" :
+        `<span class="pill amber" title="此来源不留历史档案，当天没抓到就永久缺失">不可回填</span>`}
       <span class="pill ${m.health}">${m.seats_won} 次入选</span>
     </div>
-    <div class="muted" style="margin-top:7px">${h(m.note)}</div>
-    <div style="margin-top:9px;font-size:13.5px">
-      训练历史 <b>${m.training_days}</b> 天 · ${m.stations} 个站 ·
-      ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
-    ${m.backfillable ? "" :
-      `<div class="muted" style="margin-top:6px;color:var(--down)">
-        ⚠ 此来源不留历史档案，当天没抓到就永久缺失</div>`}
+    <div class="muted" style="margin-top:5px">${m.training_days} 天 ·
+      ${m.stations} 站 · ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
   </div>`).join("");
   return `<h2>一、四家模型的数据在不在进来</h2>
   <p class="sub">我们同时听四家气象机构的集合预报。"入选次数"是这个模型在
-  历史比赛里被选进最终融合的次数——没入选不代表坏，只代表那天它不是最优组合的一员。</p>
+  历史比赛里被选进最终融合的次数——没入选不代表坏，只代表那天它不是最优组合的一员。
+  悬停卡片看这家机构是谁。</p>
   <div class="grid g4">${rows}</div>`;
 }
 
 function chain(){
-  const rows = D.chain.map(c => `<div class="link">
-    <span class="dot ${c.health}" style="margin-top:8px"></span>
-    <div class="body">
-      <div class="name">${h(c.name)}</div>
-      <div class="muted">${h(c.plain)}</div>
-    </div>
-    <div style="text-align:right;flex:none">
-      <div>${h(c.volume)}</div>
-      <div class="muted">${h(c.note)}</div>
-    </div>
-  </div>`).join("");
+  // A table, not a stack of two-line blocks.  The links are read down the
+  // column -- "which one stopped" -- and stacked blocks put four times the
+  // vertical space between the answers.
+  const rows = D.chain.map(c => `<tr>
+    <td><span class="dot ${c.health}"></span> <b>${h(c.name)}</b></td>
+    <td class="muted">${h(c.plain)}</td>
+    <td class="mono">${h(c.volume)}</td>
+    <td class="muted">${h(c.note)}</td>
+  </tr>`).join("");
   return `<h2>二、整条链路每一环是否在动</h2>
   <p class="sub">数据从上到下流：模型下载 → 真值结算 → 算校正 → 算概率修正 →
   出概率 → 盘中更新。任何一环停了，它下面的环节迟早会跟着停。</p>
-  <div class="card chain">${rows}</div>`;
+  <div class="card"><div class="scroll"><table><thead><tr>
+    <th>环节</th><th>在做什么</th><th>量</th><th>状态</th>
+  </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 function tables(){
@@ -2399,10 +2402,11 @@ function stages(){
       <table style="margin-top:12px"><thead><tr>
         <th>概率档</th><th>实际兑现</th><th>修正系数</th><th>为什么</th>
       </tr></thead><tbody>${bands}</tbody></table>
-      ${journal ? `<div class="muted" style="margin-top:14px">最近几次自动拟合</div>
+      ${journal ? `<details style="margin-top:8px">
+      <summary class="muted" style="cursor:pointer">最近几次自动拟合</summary>
       <table><thead><tr><th>时间</th><th>结果</th><th>样本</th>
       <th>生效档数</th><th>版本</th></tr></thead>
-      <tbody>${journal}</tbody></table>` : ""}
+      <tbody>${journal}</tbody></table></details>` : ""}
     </div>`;
   }).join("");
   return `<h2>四、概率分档校准：三个阶段各自的账</h2>
@@ -2412,7 +2416,7 @@ function stages(){
   1.00× 表示说得准，0.69× 表示说大话（只兑现了 69%），1.23× 表示说小话。
   「修正系数」是实际乘上去的那个数，只有证据足够扎实的档才会不等于 1.000，
   而且取的是保守值——宁可少改，不可改过头。</div>
-  <div class="grid" style="margin-top:12px">${cards}</div>`;
+  <div class="grid g3" style="margin-top:8px">${cards}</div>`;
 }
 
 function basketHit(){
@@ -2516,7 +2520,7 @@ function makerProbe(){
     const depth=(r.by_posted_rungs||[]).map(d=>
       `${d.posted_rungs}档×${d.leg_count}腿 平均成交${d.mean_filled_rungs.toFixed(2)}`
     ).join(" · ");
-    return `<div class="card" style="margin-top:12px">
+    return `<div class="card">
       <div class="muted">${h(r.stage)} · 挂单实际买到多少</div>
       <div class="big ${(r.rung_completion_rate||0)>=0.8?"up":"down"}">${
         pct(r.rung_completion_rate)}</div>
@@ -2539,7 +2543,7 @@ function makerProbe(){
       ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
     </div>`;
   }).join("");
-  const reBlock=reCards?`${reCards}
+  const reBlock=reCards?`<div class="grid g3">${reCards}</div>
     <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
     P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
     P0-M 只挂一次，赶上什么行情算什么。合并成一个成交率是三个不同市场的平均数，
@@ -2624,18 +2628,19 @@ function gaps(){
   const sev = {high:["red","要处理"],medium:["amber","留意"],low:["amber","正常等待"]};
   const rows = D.gaps.map(g => {
     const [cls, label] = sev[g.severity] || sev.low;
-    return `<div class="gap"><span class="dot ${cls}" style="margin-top:8px"></span>
-      <div style="flex:1">
-        <div><b>${h(g.what)}</b> <span class="pill ${cls}">${label}</span></div>
-        <div class="muted">影响：${h(g.cost)}</div>
-      </div>
-      <div class="muted" style="flex:none;text-align:right">
-        ${g.self_heals ? "会自行恢复" : "需要人工介入"}</div></div>`;
+    return `<tr>
+      <td><span class="pill ${cls}">${label}</span></td>
+      <td><b>${h(g.what)}</b></td>
+      <td class="muted">${h(g.cost)}</td>
+      <td class="muted">${g.self_heals ? "会自行恢复" : "需要人工介入"}</td>
+    </tr>`;
   }).join("");
   return `<h2>五、数据缺口与健康检查</h2>
   <p class="sub">每一条都写清楚"缺了什么、会造成什么、会不会自己好"。
   标"正常等待"的不是故障，是样本还在积累。</p>
-  <div class="card">${rows}</div>`;
+  <div class="card"><div class="scroll"><table><thead><tr>
+    <th>级别</th><th>缺什么</th><th>影响</th><th>会不会自己好</th>
+  </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 function daily(){
