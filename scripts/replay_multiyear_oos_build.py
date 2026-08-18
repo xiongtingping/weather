@@ -188,7 +188,12 @@ def _build_station(
             family_probability[family] = _apply_parameters(
                 values, parameters
             )
-            train_rmse[family] = float(parameters["train_rmse_c"])
+            # The scale a served distribution has to cover is the error left
+            # after the centre shift, not the error about zero.
+            train_rmse[family] = float(
+                parameters.get("train_residual_sigma_c")
+                or parameters["train_rmse_c"]
+            )
             train_n[family] = len(cases)
             parameters_receipt[family] = {
                 key: value
@@ -203,7 +208,7 @@ def _build_station(
             weights = {family: 1.0}
         else:
             system_weights = _bounded_family_weights(
-                train_rmse_by_system={
+                train_error_scale_by_system={
                     FAMILY_SYSTEM_IDS[family]: rmse
                     for family, rmse in train_rmse.items()
                 },

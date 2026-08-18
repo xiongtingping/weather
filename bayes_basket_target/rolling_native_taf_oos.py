@@ -34,7 +34,7 @@ from .native_ensemble_oos import (
     DEFAULT_MIN_HOLDOUT_DAYS,
     DEFAULT_MIN_TRAIN_DAYS,
     FORMAL_PROMOTION_THRESHOLD_PROFILE,
-    _bounded_family_weights,
+    _seat_weights,
     _correlation,
     _cycle_mapping_for_rows,
     _fit_parameters,
@@ -369,9 +369,36 @@ def _build_cross_candidate(
     }
     if len(set(family_by_system.values())) < 2:
         raise ContractError("rolling_native_taf_two_families_required")
-    train_rmse = {system_id: float(evaluations[system_id]["parameters"]["train_rmse_c"]) for system_id in selected}
-    weights = _bounded_family_weights(
-        train_rmse_by_system=train_rmse,
+    # The same seat rule P0 serves: minimise the combined residual variance
+    # where the train window supports a covariance, and fall back on the
+    # inverse error scale where it does not.  This lane has the most to gain
+    # from it -- the forecaster's TX and the METAR physical path correlate
+    # with each other at 0.08 against the 0.63 the numerical families share,
+    # so it is the one blend where redundancy genuinely differs between
+    # members and inverse weighting was pricing them as if it did not.
+    train_error_scale = {
+        system_id: float(
+            evaluations[system_id]["parameters"].get(
+                "train_residual_sigma_c"
+            )
+            or evaluations[system_id]["parameters"]["train_rmse_c"]
+        )
+        for system_id in selected
+    }
+    train_residuals = {
+        system_id: {
+            str(case["event_date"]): (
+                float(case["actual_tmax_c"])
+                - sum(float(value) for value in case["values"])
+                / len(case["values"])
+            )
+            for case in evaluations[system_id]["train_cases"]
+        }
+        for system_id in selected
+    }
+    weights, weight_rule = _seat_weights(
+        residuals_by_system=train_residuals,
+        train_error_scale_by_system=train_error_scale,
         family_by_system=family_by_system,
         family_caps=family_weight_caps,
     )
@@ -457,6 +484,10 @@ def _build_cross_candidate(
         "independence_family_ids": sorted(set(family_by_system.values())),
         "system_family_ids": dict(sorted(family_by_system.items())),
         "system_weights": weights,
+        # Which rule divided the seat.  A scope that fell back looks identical
+        # in the weights alone, and the reason -- too few shared days for a
+        # covariance -- is what a reader chasing an odd blend needs.
+        "weight_rule": weight_rule,
         "family_weights": receipt["family_weights"],
         "family_weight_caps": {family: float(family_weight_caps.get(family, 0.75)) for family in sorted(set(family_by_system.values()))},
         "system_transport_provider_ids": {system_id: str(evaluations[system_id]["transport_provider_id"]) for system_id in selected_ids},

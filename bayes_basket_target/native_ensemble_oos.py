@@ -1213,7 +1213,7 @@ def _select_minimum_crps_subset(
     common_holdout: Sequence[str],
     family_by_system: Mapping[str, str],
     configured_caps: Mapping[str, float],
-    train_rmse: Mapping[str, float],
+    train_error_scale: Mapping[str, float],
     train_n_by_system: Mapping[str, int],
     residuals_by_system: Mapping[str, Mapping[str, float]] = {},
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
@@ -1262,7 +1262,9 @@ def _select_minimum_crps_subset(
                 residuals_by_system={
                     s: residuals_by_system.get(s, {}) for s in subset
                 },
-                train_rmse_by_system={s: train_rmse[s] for s in subset},
+                train_error_scale_by_system={
+                    s: train_error_scale[s] for s in subset
+                },
                 family_by_system={
                     s: family_by_system[s] for s in subset
                 },
@@ -1604,7 +1606,7 @@ SEAT_WEIGHT_RULE_INVERSE_RMSE = "INVERSE_TRAIN_RMSE_MATURITY_RAMP_V1"
 def _seat_weights(
     *,
     residuals_by_system: Mapping[str, Mapping[str, float]],
-    train_rmse_by_system: Mapping[str, float],
+    train_error_scale_by_system: Mapping[str, float],
     family_by_system: Mapping[str, str],
     family_caps: Mapping[str, float],
     train_n_by_system: Mapping[str, int] | None = None,
@@ -1640,7 +1642,7 @@ def _seat_weights(
         return covariance_weights, SEAT_WEIGHT_RULE_COVARIANCE
     return (
         _bounded_family_weights(
-            train_rmse_by_system=train_rmse_by_system,
+            train_error_scale_by_system=train_error_scale_by_system,
             family_by_system=family_by_system,
             family_caps=family_caps,
             train_n_by_system=train_n_by_system,
@@ -1651,14 +1653,25 @@ def _seat_weights(
 
 def _bounded_family_weights(
     *,
-    train_rmse_by_system: Mapping[str, float],
+    train_error_scale_by_system: Mapping[str, float],
     family_by_system: Mapping[str, str],
     family_caps: Mapping[str, float],
     train_n_by_system: Mapping[str, int] | None = None,
 ) -> dict[str, float]:
+    """Weight inversely to each system's error scale, capped by family.
+
+    The scale is the caller's to choose because two callers legitimately want
+    different ones: the residual sigma about the corrected centre is what a
+    served distribution actually has to cover, while the shadow that watches
+    the rule this replaced must keep passing train RMSE or it stops being
+    that rule.  Naming the argument for one of them, as ``train_rmse_by_system``
+    did, is how a caller ends up passing a sigma to something that documents
+    itself as an RMSE.
+    """
+
     family_scores: dict[str, float] = defaultdict(float)
     system_scores: dict[str, float] = {}
-    for system_id, rmse in train_rmse_by_system.items():
+    for system_id, rmse in train_error_scale_by_system.items():
         # Inverse RMSE is only as trustworthy as the RMSE behind it.  A system
         # admitted on a handful of days can post a flattering error by luck and
         # would then walk straight into a large share of the blend, which is
@@ -3298,6 +3311,18 @@ def build_native_ensemble_oos(
             system_id: float(evaluation["parameters"]["train_rmse_c"])
             for system_id, evaluation in rows
         }
+        # What a served distribution has to cover is the error left after the
+        # centre shift, not the error about zero.  Falling back on train RMSE
+        # would charge a system for a bias the serving path already removed --
+        # sigma/rmse runs as low as 0.68 on the METAR path, so the penalty is
+        # far from uniform across systems and would tilt the blend.
+        train_error_scale = {
+            system_id: float(
+                evaluation["parameters"].get("train_residual_sigma_c")
+                or evaluation["parameters"]["train_rmse_c"]
+            )
+            for system_id, evaluation in rows
+        }
         # Train-window residuals for every ready system, read before the
         # contest so a covariance-aware weighting can be derived without ever
         # seeing a holdout day.  Each candidate subset is weighted the way it
@@ -3330,7 +3355,7 @@ def build_native_ensemble_oos(
         }
         weights, _cohort_weight_rule = _seat_weights(
             residuals_by_system=train_residuals,
-            train_rmse_by_system=train_rmse,
+            train_error_scale_by_system=train_error_scale,
             family_by_system=family_by_system,
             family_caps=configured_caps,
             train_n_by_system={
@@ -3369,7 +3394,7 @@ def build_native_ensemble_oos(
             family_by_system=family_by_system,
             configured_caps=configured_caps,
             band_factors=band_factors,
-            train_rmse=train_rmse,
+            train_error_scale=train_error_scale,
             train_n_by_system={
                 system_id: int(evaluation.get("train_n") or 0)
                 for system_id, evaluation in rows
@@ -3413,7 +3438,10 @@ def build_native_ensemble_oos(
         shadow_weight_schemes: dict[str, dict[str, float]] = {}
         try:
             previous_rule_weights = _bounded_family_weights(
-                train_rmse_by_system={
+                # Train RMSE on purpose: this leg *is* the retired rule, and
+                # a shadow that quietly adopts the new scale stops being a
+                # comparison against what was replaced.
+                train_error_scale_by_system={
                     system_id: train_rmse[system_id] for system_id in weights
                 },
                 family_by_system=family_by_system,
