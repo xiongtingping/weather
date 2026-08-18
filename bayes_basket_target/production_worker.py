@@ -538,7 +538,15 @@ METAR_TRAJECTORY_TRAINING_DEADLINE_SEC = 600.0
 # NIGHT is deliberately absent: a fold anchored at the bucket start would
 # require a report that cannot exist before local midnight, and the
 # anchor-to-first-report variant is a separate decision.
-METAR_TRAJECTORY_TRAINING_BUCKETS = ("MORNING", "AFTERNOON", "EVENING")
+# NIGHT joins the three daytime buckets (user ruling, 2026-08-18): a scope
+# that is never trained has no artifact to promote or to fall back to, so the
+# gate was not what kept it out -- nothing was ever fitted for it.  P1 seats
+# taken in local night are not rare, and they were the ones with no evidence
+# at all: ZUCK 2026-08-17 entered at 01:41 local, where this lane had never
+# produced a single artifact for any station.
+METAR_TRAJECTORY_TRAINING_BUCKETS = (
+    "NIGHT", "MORNING", "AFTERNOON", "EVENING",
+)
 METAR_TRAJECTORY_ARTIFACT_VALID_DAYS = 14
 # TAF revision training is the same shape as the trajectory pass -- one due
 # station per cycle, offline scripts, a gate this worker does not get to
@@ -8641,6 +8649,44 @@ class TargetProductionWorker:
                         required_authority_scope="FORMAL_PROMOTED",
                     )
                 )
+                if trajectory_row is None:
+                    # Fall back to the candidate the gate refused (user
+                    # ruling, 2026-08-18).  The gate is a label now, not the
+                    # switch on the layer: refusing to resolve a candidate is
+                    # what left 301 of 350 P1 station-days with no trajectory
+                    # evidence, and P1 without it finds the settled bucket
+                    # 45.7% of the time against 75.8% with it.  Strength
+                    # still rides on the artifact's own sample size.
+                    trajectory_row = (
+                        resolve_active_probability_evidence_artifact(
+                            self.commit_conn,
+                            artifact_kind=(
+                                "METAR_TRAJECTORY_LIKELIHOOD"
+                            ),
+                            station_id=station,
+                            scope_key=metar_trajectory_scope_key(
+                                source_lane=next(iter(source_lanes)),
+                                season_bin=str(
+                                    prediction_root.lineage.get(
+                                        "season_bin"
+                                    )
+                                    or ""
+                                ),
+                                local_time_bucket=local_time_bucket,
+                                maturity_bin=maturity_bin,
+                                settlement_definition=str(
+                                    prediction_root.lineage.get(
+                                        "settlement_definition"
+                                    )
+                                    or ""
+                                ),
+                            ),
+                            as_of_utc=as_of_utc,
+                            required_authority_scope=(
+                                "PRODUCTION_NO_LIVE_CANDIDATE"
+                            ),
+                        )
+                    )
                 trajectory_artifact = (
                     None
                     if trajectory_row is None

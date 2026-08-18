@@ -1079,8 +1079,18 @@ def build_training_packet(
             minimum_effective_sample_n
         ),
         "artifact_parameters": {
+            # One id per fitted artifact, not one per scope.  The activation
+            # table keys on this, so a fixed per-scope id can be inserted
+            # exactly once: the second artifact for the same station and
+            # bucket collides, the store raises, and the whole commit rolls
+            # back -- taking the artifact and its promotion receipt with it.
+            # That is how 2707 artifacts produced 76 activations, and why a
+            # scope that ever activated could never be re-fitted.  The
+            # evidence date makes it unique per training run and keeps it
+            # readable.
             "activation_id": (
-                f"metar-trajectory-{station}-{bucket.lower()}-v1"
+                f"metar-trajectory-{station}-{bucket.lower()}"
+                f"-{_iso_utc(trained_through)[:10].replace('-', '')}"
             ),
             "station_id": station,
             "source_lane": "awc",

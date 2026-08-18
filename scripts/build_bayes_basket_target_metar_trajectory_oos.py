@@ -126,24 +126,29 @@ def build_ingress_packet(
         **promotion_identity,
         "content_sha256": content_sha256(promotion_identity),
     }
-    activations: list[dict[str, Any]] = []
-    if gate_passed:
-        activation_identity = {
-            "activation_id": artifact.activation_id,
-            "artifact_kind": "METAR_TRAJECTORY_LIKELIHOOD",
-            "artifact_id": artifact.artifact_id,
-            "station_id": artifact.station_id,
-            "scope_key": scope_key,
-            "generation": generation,
-            "valid_from_utc": artifact.valid_from_utc,
-            "valid_until_utc": artifact.valid_until_utc,
-            "activated_at_utc": decided_at_utc,
-            "authority_scope": lifecycle_scope,
-        }
-        activations.append({
-            **activation_identity,
-            "content_sha256": content_sha256(activation_identity),
-        })
+    # An activation is written whichever way the gate went (user ruling,
+    # 2026-08-18).  Writing one only for a winner made the gate the switch on
+    # the whole layer rather than a label on it: a rejected artifact had no
+    # activation row, so P1 could not resolve it at any authority and ran with
+    # no trajectory evidence at all -- 301 of 350 station-days, applied
+    # strength zero.  The rejection is still recorded as a rejection, and the
+    # candidate's authority scope says exactly what it is.
+    activation_identity = {
+        "activation_id": artifact.activation_id,
+        "artifact_kind": "METAR_TRAJECTORY_LIKELIHOOD",
+        "artifact_id": artifact.artifact_id,
+        "station_id": artifact.station_id,
+        "scope_key": scope_key,
+        "generation": generation,
+        "valid_from_utc": artifact.valid_from_utc,
+        "valid_until_utc": artifact.valid_until_utc,
+        "activated_at_utc": decided_at_utc,
+        "authority_scope": lifecycle_scope,
+    }
+    activations: list[dict[str, Any]] = [{
+        **activation_identity,
+        "content_sha256": content_sha256(activation_identity),
+    }]
     identity = {
         "schema": INGRESS_SCHEMA,
         "artifacts": [artifact_row],
@@ -377,6 +382,18 @@ def main() -> int:
                 insert_probability_evidence_promotion(conn, dict(row))
                 wrote_promotions += 1
             for row in ingress_packet.get("activations") or []:
+                exists = conn.execute(
+                    "SELECT 1 FROM "
+                    "basket_probability_evidence_activation "
+                    "WHERE activation_id=?",
+                    (str(row.get("activation_id") or ""),),
+                ).fetchone()
+                if exists:
+                    # Same shape as the two loops above: a re-run of the same
+                    # training day is idempotent rather than fatal.  The store
+                    # would raise on an identical id whose content differs,
+                    # and a rollback here discards the artifact too.
+                    continue
                 insert_probability_evidence_activation(conn, dict(row))
                 wrote_activations += 1
             conn.commit()

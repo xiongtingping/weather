@@ -90,6 +90,7 @@ def _artifact(
     station: str = "RKPK",
     local_time_bucket: str = "AFTERNOON",
     max_missing_intervals: int = 4,
+    base_strength: float = 0.8,
 ) -> MetarTrajectoryLikelihoodArtifact:
     return build_metar_trajectory_likelihood_artifact({
         "activation_id": "metar-trajectory-activation-rkpk-v1",
@@ -123,7 +124,7 @@ def _artifact(
             "2": 0.25,
             "3": 0.25,
         },
-        "base_strength": 0.8,
+        "base_strength": base_strength,
         "maturity_strength": 0.75,
         "likelihood_ratio_floor": 0.25,
         "likelihood_ratio_ceiling": 4.0,
@@ -438,13 +439,53 @@ def test_compile_applies_soft_lr_but_hard_exclusion_never_revives() -> None:
     assert proof.positive_core_buckets == ("35C", "36C", "37C")
 
 
-def test_unpromoted_artifact_degrades_to_lr_one_and_hard_bound_only() -> None:
+def test_a_candidate_artifact_governs_at_its_own_sample_strength() -> None:
+    """Losing the OOS gate labels an artifact; it does not switch it off.
+
+    The gate used to decide whether the layer ran at all, and it answered no
+    almost always -- 2385 rejections against 76 promotions, leaving 301 of
+    350 P1 station-days with applied strength pinned at zero.  Contributing
+    nothing is not neutral: it leaves P1 as the model's own tail
+    renormalised, which is the shape that fails on the days the model got
+    the day wrong.  Measured, the layer is worth 30 points of bucket
+    accuracy (75.8% against 45.7%), so a candidate governs at whatever
+    ``maturity_strength`` its sample size entitles it to (user ruling,
+    2026-08-18).
+    """
+
+    observation = [_observation(
+        "a", sequence=1, observed="2026-07-29T06:00:00Z",
+        temperature_c=34.6,
+    )]
+    candidate = _compile(observation, artifact=_artifact(promoted=False))
+    promoted = _compile(observation, artifact=_artifact(promoted=True))
+    assert candidate.applied_strength == pytest.approx(0.8 * 0.75)
+    assert candidate.applied_strength == promoted.applied_strength
+    assert set(candidate.likelihood_ratio_by_bucket.values()) != {1.0}
+    assert candidate.degradation_reasons == ("ARTIFACT_CANDIDATE_AUTHORITY",)
+    # It is the same update a promoted artifact would have applied -- the
+    # label is the only difference, and it is recorded.
+    assert candidate.posterior_probabilities == promoted.posterior_probabilities
+    # The hard bound is unaffected either way: it is physical, not fitted.
+    assert candidate.posterior_probabilities["33C"] == 0.0
+    assert candidate.posterior_probabilities["34C"] == 0.0
+
+
+def test_an_artifactless_placeholder_still_reads_as_unpromoted() -> None:
+    """No artifact at all is not a candidate, and must not act like one.
+
+    P1 compiles an identity placeholder when the scope has nothing fitted.
+    It is built at zero base strength so it cannot move anything, and it
+    carries the same ``CANDIDATE_ONLY`` label -- so the label alone cannot be
+    the test.
+    """
+
     proof = _compile(
         [_observation(
             "a", sequence=1, observed="2026-07-29T06:00:00Z",
             temperature_c=34.6,
         )],
-        artifact=_artifact(promoted=False),
+        artifact=_artifact(promoted=False, base_strength=0.0),
     )
     assert proof.applied_strength == 0.0
     assert set(proof.likelihood_ratio_by_bucket.values()) == {1.0}

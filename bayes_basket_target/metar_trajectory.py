@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import MappingProxyType
@@ -78,6 +79,42 @@ MINIMUM_EFFECTIVE_SAMPLE_N = 5.0
 # Where the ramp reaches the artifact's full configured strength.
 MATURITY_FULL_SAMPLE_N = 30.0
 _PROMOTED_STATES = {"FORMAL_PROMOTED", "PRODUCTION_NO_LIVE_PROMOTED"}
+# An artifact that has been fitted but has not won its OOS gate.
+_CANDIDATE_STATES = {"CANDIDATE_ONLY", "PRODUCTION_NO_LIVE_CANDIDATE"}
+# Whether a candidate artifact may govern P1 (user ruling, 2026-08-18).
+#
+# The gate used to decide *whether the layer runs at all*, and it answered no
+# almost always: 2385 rejections against 76 promotions, so 301 of 350 P1
+# station-days ran with no trajectory evidence and applied strength pinned at
+# zero.  Measured on the days it did run, the layer is worth 30 points of
+# bucket accuracy -- P1's argmax found the settled bucket 75.8% of the time
+# with it and 45.7% without, against P0's 27.5% -- so leaving it off by
+# default is not the conservative choice, it is the expensive one.
+#
+# Contributing nothing is not neutral.  It leaves P1 as the model's own tail
+# renormalised, which is exactly the shape that fails on the days the model
+# got the day wrong: ZUCK 2026-08-17 held its argmax at 38C through all 168
+# cycles of the day and still priced the settled 36C at 0.043 after its own
+# hard bound had ruled out everything below it.
+#
+# So the gate becomes a label rather than a switch.  A candidate governs, and
+# what protects the book is the evidence ramp that was already there:
+# ``maturity_strength_for_sample_n`` scales strength by sqrt(n/n_full), so a
+# five-fold artifact tilts at 0.41 of configured strength and only a seasoned
+# one moves the posterior.  The promotion record keeps being written either
+# way -- the samples keep accumulating, and the strength that rides on them
+# is what gets revisited later.
+CANDIDATE_EVIDENCE_ENABLED = (
+    os.environ.get("PM_METAR_TRAJECTORY_CANDIDATE_EVIDENCE", "1").strip()
+    not in {"0", "false", "FALSE", "no"}
+)
+# A knob for that revisit, not a second gate: 1.0 is "a candidate is worth
+# what its sample size says it is", which is the ruling.
+CANDIDATE_STRENGTH_FACTOR = float(
+    os.environ.get(
+        "PM_METAR_TRAJECTORY_CANDIDATE_STRENGTH_FACTOR", "1.0"
+    ) or 1.0
+)
 
 
 def maturity_strength_for_sample_n(
@@ -1510,10 +1547,29 @@ def compile_metar_trajectory_update_proof(
         governed.activated
         and governed.promotion_state in _PROMOTED_STATES
     )
+    # A candidate is an artifact that was fitted and did not win its gate,
+    # not an artifact with nothing behind it.  It governs at whatever its
+    # sample size entitles it to; ``activated`` is not required, because that
+    # flag *is* the gate's answer and the gate no longer decides this.
+    # ``base_strength`` separates the two things that both carry the
+    # candidate label: an artifact that was fitted and lost its gate, and the
+    # identity placeholder P1 compiles when there is no artifact at all.  The
+    # placeholder is built at zero strength precisely so it cannot move
+    # anything, and it must keep reading as "not promoted" -- there is
+    # nothing behind it to promote.
+    candidate = (
+        CANDIDATE_EVIDENCE_ENABLED
+        and governed.promotion_state in _CANDIDATE_STATES
+        and governed.base_strength > 0.0
+    )
     strength = governed.base_strength * governed.maturity_strength
     if not promoted:
-        strength = 0.0
-        reasons.append("ARTIFACT_NOT_PROMOTED")
+        if candidate:
+            strength *= CANDIDATE_STRENGTH_FACTOR
+            reasons.append("ARTIFACT_CANDIDATE_AUTHORITY")
+        else:
+            strength = 0.0
+            reasons.append("ARTIFACT_NOT_PROMOTED")
     if missing:
         strength *= governed.missing_interval_strength_factor ** missing
         reasons.append("MISSING_INTERVALS")

@@ -375,7 +375,17 @@ def test_formal_training_packet_ingress_is_atomic_and_idempotent() -> None:
         assert replay["activation_receipts"][0]["wrote"] is False
 
 
-def test_gate_failure_never_emits_activation() -> None:
+def test_gate_failure_activates_as_a_candidate_not_as_a_promotion() -> None:
+    """A refused artifact is still resolvable, at candidate authority.
+
+    Emitting no activation for a loser made the gate the switch on the whole
+    layer: with no activation row, P1 could not resolve the artifact at any
+    authority, so it ran with no trajectory evidence at all -- 301 of 350
+    station-days at zero applied strength.  The refusal is still recorded as
+    a refusal; what changes is that the candidate can be found (user ruling,
+    2026-08-18).
+    """
+
     parameters = deepcopy(_parameters())
     result = train_metar_trajectory_artifact(
         folds=[_fold(year) for year in range(2021, 2023)],
@@ -390,8 +400,19 @@ def test_gate_failure_never_emits_activation() -> None:
         decided_at_utc="2026-01-01T00:00:00Z",
     )
     assert result["training_evidence"]["oos_gate_passed"] is False
-    assert packet["activations"] == []
     assert packet["promotions"][0]["decision"] == "REJECTED"
+    assert len(packet["activations"]) == 1
+    assert (
+        packet["activations"][0]["authority_scope"]
+        == "PRODUCTION_NO_LIVE_CANDIDATE"
+    )
+    # And the artifact row says the same thing, so nothing downstream has to
+    # infer the authority from the promotion table.
+    assert (
+        packet["artifacts"][0]["authority_scope"]
+        == "PRODUCTION_NO_LIVE_CANDIDATE"
+    )
+    assert packet["artifacts"][0]["oos_gate_passed"] is False
 
 
 def test_increment_only_oos_can_never_formally_activate() -> None:
