@@ -1583,7 +1583,11 @@ def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
             "health": stability_health,
             "verdict": _stability_verdict(ci_relative, len(everything)),
             "detail": (
-                f"{len(everything):,} 个站日 · 平均误差 95% 区间 ±{mae_ci:.3f}°C"
+                # mae_ci bootstraps `abs_error`, which is rung-denominated so
+                # a Celsius and a Fahrenheit book average together honestly.
+                # Labelling it °C read one rung as one degree, which is only
+                # true on the 34 Celsius stations.
+                f"{len(everything):,} 个站日 · 平均误差 95% 区间 ±{mae_ci:.3f} 档"
                 f" · CRPS ±{crps_ci:.3f}"
             ) if mae_ci is not None and crps_ci is not None else "证据不足",
         },
