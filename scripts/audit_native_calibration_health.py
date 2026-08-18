@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import re
 import sqlite3
 import statistics
 import sys
@@ -62,6 +63,13 @@ GATE_BRIER_ONLY_ALARM_SHARE = 0.50
 # How far back the rates look.  Long enough to be a property of the gate,
 # short enough to notice a change in it.
 GATE_RATE_LOOKBACK_DAYS = 14
+# Murphy decomposition of the served Brier.
+MURPHY_BIN_COUNT = 12
+MURPHY_MIN_PAIRS = 1000
+# Measured 2026-08-18: reliability is 0.6% of uncertainty, so the calibration
+# layers are close to exhausted and anything approaching this share means one
+# of them has come undone rather than that there is work left to do.
+MURPHY_RELIABILITY_ALARM_SHARE = 0.03
 
 
 def _utc_now() -> str:
@@ -365,6 +373,146 @@ def gate_condition_rates(
     }
 
 
+def murphy_decomposition(
+    conn: sqlite3.Connection, *, since: str, stage: str = "P0"
+) -> dict:
+    """Split served Brier into calibration, discrimination and the irreducible.
+
+    ``BS = REL - RES + UNC``.  Reliability is what the calibration layers can
+    still win; resolution is whether the model can tell days apart at all;
+    uncertainty is a property of the market's bucket ladder and nothing any
+    layer can move.  The split matters because the two fixable terms need
+    opposite work -- a bad REL is a calibration bug, a low RES is a shortage
+    of information no amount of calibration reaches.
+
+    Climatology has no resolution and is calibrated by construction, so its
+    Brier *is* UNC; the gate's Brier comparison therefore reduces to asking
+    whether RES exceeds REL.  Measured 2026-08-18: REL is 0.6% of UNC and RES
+    is 9.1%, which is why that comparison is decided almost entirely by
+    information and hardly at all by calibration.
+    """
+
+    rows = conn.execute(
+        "SELECT e.bucket_ordinals_json, e.probabilities_json,"
+        " t.official_tmax_c"
+        " FROM basket_probability_envelope e"
+        " JOIN calibration_station_daily_high_truth t"
+        "  ON t.station_id=e.station_id AND t.local_date=e.event_date"
+        "  AND t.qc_status='ACCEPTED'"
+        " WHERE e.stage=? AND e.state='COMMITTED' AND e.event_date>=?"
+        " GROUP BY e.station_id, e.event_date",
+        (stage, since[:10]),
+    ).fetchall()
+    pairs: list[tuple[float, float]] = []
+    bucket_counts: set[int] = set()
+    for ordinals_json, probabilities_json, actual in rows:
+        try:
+            ordinals = json.loads(str(ordinals_json))
+            probabilities = json.loads(str(probabilities_json))
+        except (TypeError, ValueError):
+            continue
+        keys = sorted(ordinals, key=lambda key: ordinals[key])
+        fahrenheit = any("\u00b0F" in key for key in keys)
+        uppers = []
+        for key in keys[:-1]:
+            digits = [float(v) for v in re.findall(r"-?\d+", key)]
+            if not digits:
+                uppers = []
+                break
+            top = max(digits) + 0.5
+            uppers.append((top - 32.0) * 5.0 / 9.0 if fahrenheit else top)
+        if len(uppers) != len(keys) - 1:
+            continue
+        total = sum(float(probabilities.get(key, 0.0)) for key in keys)
+        if total <= 0.0:
+            continue
+        landed = len(uppers)
+        for index, upper in enumerate(uppers):
+            if float(actual) <= upper:
+                landed = index
+                break
+        bucket_counts.add(len(keys))
+        for index, key in enumerate(keys):
+            pairs.append((
+                float(probabilities.get(key, 0.0)) / total,
+                1.0 if index == landed else 0.0,
+            ))
+    if len(pairs) < MURPHY_MIN_PAIRS or len(bucket_counts) != 1:
+        return {"pair_count": len(pairs), "estimable": False}
+    buckets = next(iter(bucket_counts))
+    count = len(pairs)
+    base_rate = sum(outcome for _p, outcome in pairs) / count
+    binned: dict[int, list[tuple[float, float]]] = collections.defaultdict(
+        list
+    )
+    for probability, outcome in pairs:
+        binned[
+            min(MURPHY_BIN_COUNT - 1, int(probability * MURPHY_BIN_COUNT))
+        ].append((probability, outcome))
+    reliability = resolution = 0.0
+    for group in binned.values():
+        size = len(group)
+        mean_p = sum(p for p, _o in group) / size
+        mean_o = sum(o for _p, o in group) / size
+        reliability += size / count * (mean_p - mean_o) ** 2
+        resolution += size / count * (mean_o - base_rate) ** 2
+    uncertainty = base_rate * (1.0 - base_rate)
+    brier = sum((p - o) ** 2 for p, o in pairs) / count
+    return {
+        "estimable": True,
+        "stage": stage,
+        "station_day_count": count // buckets,
+        "bucket_count": buckets,
+        "pair_count": count,
+        # Scaled to the whole ladder so these read in the same units as the
+        # Brier the gate compares.
+        "brier": brier * buckets,
+        "reliability": reliability * buckets,
+        "resolution": resolution * buckets,
+        "uncertainty": uncertainty * buckets,
+        "reliability_share_of_uncertainty": reliability / uncertainty,
+        "resolution_share_of_uncertainty": resolution / uncertainty,
+        "brier_skill_score": (resolution - reliability) / uncertainty,
+        # The split is exact only for forecasts binned by identical value;
+        # with twelve bins the probabilities inside one still vary, and that
+        # within-bin spread is the difference between the two sides.  Report
+        # it rather than round it away -- a residual that grows means the
+        # bins have stopped describing the forecast distribution.
+        "reconstruction_residual": abs(
+            brier - (reliability - resolution + uncertainty)
+        ) * buckets,
+        "bin_count": MURPHY_BIN_COUNT,
+    }
+
+
+def check_calibration_regression(murphy: dict) -> list[dict]:
+    """Reliability climbing is a calibration layer coming undone.
+
+    Resolution is bounded by the information upstream and is not this
+    check's business; reliability is entirely the calibration layers' doing,
+    so a rise in it is the one part of Brier they are answerable for.
+    """
+
+    if not murphy.get("estimable"):
+        return []
+    share = float(murphy.get("reliability_share_of_uncertainty") or 0.0)
+    if share <= MURPHY_RELIABILITY_ALARM_SHARE:
+        return []
+    return [{
+        "check": "served_reliability_degraded",
+        "stage": murphy.get("stage"),
+        "reliability_share_of_uncertainty": round(share, 5),
+        "resolution_share_of_uncertainty": round(
+            float(murphy.get("resolution_share_of_uncertainty") or 0.0), 5
+        ),
+        "brier_skill_score": round(
+            float(murphy.get("brier_skill_score") or 0.0), 5
+        ),
+        "station_day_count": murphy.get("station_day_count"),
+        "alarm_share": MURPHY_RELIABILITY_ALARM_SHARE,
+    }]
+
+
 def check_gate_binding_condition(rates: dict) -> list[dict]:
     """Brier having become the sole blocker is the trigger to revisit it."""
 
@@ -410,11 +558,13 @@ def main(argv: list[str] | None = None) -> int:
         - timedelta(days=GATE_RATE_LOOKBACK_DAYS)
     ).isoformat().replace("+00:00", "Z")
     gate_rates = gate_condition_rates(conn, since=since)
+    murphy = murphy_decomposition(conn, since=since)
     findings = (
         check_spread_bound(live)
         + check_table_freshness(conn, live)
         + check_bias_stability(conn, live)
         + check_gate_binding_condition(gate_rates)
+        + check_calibration_regression(murphy)
     )
     conn.close()
 
@@ -428,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
         "finding_count": len(findings),
         "by_check": dict(by_check),
         "gate_condition_rates": gate_rates,
+        "served_brier_decomposition": murphy,
         "findings": findings,
         "writes_target_database": False,
         "calls_order_gateway": False,
@@ -436,6 +587,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=1))
         return 1 if findings else 0
     print(f"活 scope {payload['live_scope_count']}  发现 {len(findings)} 项")
+    if murphy.get("estimable"):
+        print(
+            f"  服务 Brier 分解（近 {GATE_RATE_LOOKBACK_DAYS} 天"
+            f" {murphy['station_day_count']} 站日 ×"
+            f" {murphy['bucket_count']} 桶）:"
+            f" BS {murphy['brier']:.4f} = REL {murphy['reliability']:.4f}"
+            f" − RES {murphy['resolution']:.4f}"
+            f" + UNC {murphy['uncertainty']:.4f}"
+        )
+        print(
+            f"    校准还欠 {murphy['reliability_share_of_uncertainty']:.1%}"
+            f" · 模型能解释 {murphy['resolution_share_of_uncertainty']:.1%}"
+            f" · BSS {murphy['brier_skill_score']:+.4f}"
+            f"（校准欠超 {MURPHY_RELIABILITY_ALARM_SHARE:.0%} 才告警）"
+        )
     if gate_rates.get("contested_count"):
         print(
             f"  容差通道（近 {GATE_RATE_LOOKBACK_DAYS} 天"

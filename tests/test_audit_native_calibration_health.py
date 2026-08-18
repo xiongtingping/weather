@@ -22,10 +22,12 @@ from audit_native_calibration_health import (  # noqa: E402
     BRIER_TOLERANCE_MAX_LOSS,
     BRIER_TOLERANCE_MIN_GAIN,
     POINT_FORECAST_SYSTEM_IDS,
+    check_calibration_regression,
     check_gate_binding_condition,
     check_spread_bound,
     check_table_freshness,
     gate_condition_rates,
+    murphy_decomposition,
 )
 
 
@@ -320,6 +322,128 @@ class GateConditionRatesTest(unittest.TestCase):
         self.assertEqual(
             BRIER_TOLERANCE_MIN_GAIN,
             oos.BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
+        )
+
+
+class MurphyDecompositionTest(unittest.TestCase):
+    """BS = REL - RES + UNC, and which of the three anyone can act on."""
+
+    @staticmethod
+    def _conn(days):
+        import json as _json
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            "CREATE TABLE basket_probability_envelope ("
+            " stage TEXT, state TEXT, station_id TEXT, event_date TEXT,"
+            " bucket_ordinals_json TEXT, probabilities_json TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE calibration_station_daily_high_truth ("
+            " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
+            " qc_status TEXT)"
+        )
+        keys = [f"{20 + i}°C" for i in range(11)]
+        ordinals = {key: index for index, key in enumerate(keys)}
+        for index, (probabilities, truth) in enumerate(days):
+            day = f"2026-08-{index % 28 + 1:02d}"
+            station = f"S{index // 28:03d}"
+            conn.execute(
+                "INSERT INTO basket_probability_envelope VALUES"
+                " (?,?,?,?,?,?)",
+                (
+                    "P0", "COMMITTED", station, day,
+                    _json.dumps(ordinals),
+                    _json.dumps(dict(zip(keys, probabilities))),
+                ),
+            )
+            conn.execute(
+                "INSERT INTO calibration_station_daily_high_truth VALUES"
+                " (?,?,?,?)",
+                (station, day, truth, "ACCEPTED"),
+            )
+        return conn
+
+    def test_the_three_terms_reconstruct_the_brier(self) -> None:
+        """Any gap means the split is not of the score it claims to split."""
+
+        import random
+
+        rng = random.Random(3)
+        days = []
+        for _index in range(400):
+            weights = [rng.random() for _ in range(11)]
+            total = sum(weights)
+            probabilities = [w / total for w in weights]
+            landed = rng.randrange(11)
+            days.append((probabilities, 20.0 + landed))
+        murphy = murphy_decomposition(
+            self._conn(days), since="2026-01-01T00:00:00Z"
+        )
+        self.assertTrue(murphy["estimable"])
+        # Binned reliability is exact only when every forecast in a bin
+        # carries the same probability, so the reported residual is the
+        # within-bin spread.  What must hold is that it stays negligible
+        # against the score being split.
+        self.assertAlmostEqual(
+            murphy["brier"],
+            murphy["reliability"]
+            - murphy["resolution"]
+            + murphy["uncertainty"]
+            + murphy["reconstruction_residual"],
+            places=6,
+        )
+        self.assertLess(
+            murphy["reconstruction_residual"] / murphy["brier"], 0.02
+        )
+
+    def test_a_forecast_that_never_varies_has_no_resolution(self) -> None:
+        """Climatology's shape: perfectly calibrated, tells no days apart,
+        and so its Brier is the uncertainty term alone."""
+
+        flat = [1.0 / 11] * 11
+        days = [(flat, 20.0 + index % 11) for index in range(400)]
+        murphy = murphy_decomposition(
+            self._conn(days), since="2026-01-01T00:00:00Z"
+        )
+        self.assertLess(murphy["resolution_share_of_uncertainty"], 0.01)
+        self.assertAlmostEqual(
+            murphy["brier"], murphy["uncertainty"], places=2
+        )
+
+    def test_a_sample_too_thin_declines(self) -> None:
+        murphy = murphy_decomposition(
+            self._conn([([1.0 / 11] * 11, 20.0)]),
+            since="2026-01-01T00:00:00Z",
+        )
+        self.assertFalse(murphy["estimable"])
+
+    def test_only_reliability_raises_an_alarm(self) -> None:
+        """Resolution is bounded by upstream information and is nobody's bug;
+        reliability is entirely the calibration layers' doing."""
+
+        self.assertEqual(
+            check_calibration_regression({
+                "estimable": True,
+                "reliability_share_of_uncertainty": 0.006,
+                "resolution_share_of_uncertainty": 0.02,
+            }),
+            [],
+        )
+        raised = check_calibration_regression({
+            "estimable": True,
+            "stage": "P0",
+            "reliability_share_of_uncertainty": 0.20,
+            "resolution_share_of_uncertainty": 0.09,
+            "brier_skill_score": -0.11,
+            "station_day_count": 400,
+        })
+        self.assertEqual(len(raised), 1)
+        self.assertEqual(raised[0]["check"], "served_reliability_degraded")
+
+    def test_an_unestimable_split_raises_nothing(self) -> None:
+        self.assertEqual(
+            check_calibration_regression({"estimable": False}), []
         )
 
 if __name__ == "__main__":
