@@ -2167,6 +2167,14 @@ border-color:transparent}
 border-color:transparent}
 .pill.red{background:var(--pill-red-bg);color:var(--pill-red-fg);
 border-color:transparent}
+/* The station-day's outcome, on the cell that names the station: hit,
+   miss, still open, never opened.  Four states that a reader otherwise has
+   to reconstruct by reading three stage cells and a P&L column. */
+td.st{border-left:3px solid transparent}
+td.st-hit{background:var(--pill-green-bg);border-left-color:var(--green)}
+td.st-miss{background:var(--pill-red-bg);border-left-color:var(--red)}
+td.st-open{background:var(--pill-amber-bg);border-left-color:var(--amber)}
+td.st-flat{background:var(--why-bg);border-left-color:var(--accent)}
 .big{font-size:26px;font-weight:650;letter-spacing:-.4px}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -2801,6 +2809,26 @@ function roster(){
       @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>
       ${entryCell(s.entry,stage)}${extra||""}</td>`;
   };
+  // Every temperature on this row is in the market's own unit except the
+  // settled truth, which is Celsius everywhere.  For the eleven Fahrenheit
+  // stations that put "96-97" beside "36.0" in the same row, which is a
+  // 60-degree disagreement that is really no disagreement at all.  So the
+  // truth is shown in the unit the row's buckets are named in, and the unit
+  // is stated on the station rather than repeated in every cell.
+  const asUnit=(celsius,unit)=>unit==="F"?celsius*9/5+32:celsius;
+  // What the station-day did, as one of four states.  Reconstructing it
+  // meant reading three stage cells and a P&L column.
+  const STATE={
+    hit:["st-hit","命中"],miss:["st-miss","未命中"],
+    open:["st-open","未结算"],flat:["st-flat","未建仓"],
+  };
+  const stateOf=(e)=>{
+    if(!e.seated_stage_count) return "flat";
+    const settled=["P0","P0-M","P1"].map(k=>e.stages[k])
+      .find(v=>v&&v.chain_tail&&v.hit!=null);
+    if(!settled) return "open";
+    return settled.hit?"hit":"miss";
+  };
   const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
     const side=any?`<span class="pill ${any.side==="below"?"amber":any.side==="aligned"?"green":""}"
@@ -2808,7 +2836,9 @@ function roster(){
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
     const taf=e.taf_tx_c==null?`<div class="muted">TAF 无温度组</div>`:
-      `<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${e.taf_tx_c.toFixed(1)}°C</span></div>`;
+      `<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${
+        asUnit(e.taf_tx_c,e.settlement_unit||"C").toFixed(1)
+      }°${h(e.settlement_unit||"C")}</span></div>`;
     // Recomputations and rung moves are different counts; conflating them
     // reads as a rung that thrashed when it never budged.
     const hist=e.p1_history||[];
@@ -2831,14 +2861,20 @@ function roster(){
     // same six numbers repeated on every date and read as the day's own
     // account: ZUUU showed an ask total of 0.514 on 2026-08-17, a day whose
     // book never reached the table.  They now live in section eight.
+    const state=stateOf(e);
+    const unit=e.settlement_unit||"C";
     return `<tr>
-      <td><div class="mono">${h(e.station_id)}</div>
-        <div class="muted">${h(e.station_label)}</div></td>
+      <td class="st ${STATE[state][0]}" title="${STATE[state][1]}">
+        <div class="mono">${h(e.station_id)}</div>
+        <div class="muted">${h(e.station_label)}</div>
+        <div class="muted" style="font-size:11px">${STATE[state][1]} ·
+          盘口 °${h(unit)}</div></td>
       ${cell(e.stages.P0,"",(e.refusals||{}).P0,"P0")}
       ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"],"P0-M")}
       ${cell(e.stages.P1,drift,(e.refusals||{}).P1,"P1")}
       <td>${side}${note}</td>
-      <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
+      <td class="mono">${e.settled_tmax_c==null?"—"
+        :asUnit(e.settled_tmax_c,unit).toFixed(1)+"°"+h(unit)}</td>
       <td class="mono">${pnl}</td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
@@ -2897,6 +2933,14 @@ function roster(){
   展开「逐腿」是每条腿的目标份数 / 成交份数 / 成交档位 / 均价。
   空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
   每行只讲这一天：跨日均值在上一节。最新一天默认展开，更早的日期折叠在下方。</p>
+  <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
+  <span class="pill green">命中</span>真值落在最终持仓里 ·
+  <span class="pill red">未命中</span>落在持仓外 ·
+  <span class="pill amber">未结算</span>建了仓但当天真值还没到 ·
+  <span class="pill" style="background:var(--why-bg);color:var(--accent)">未建仓</span>
+  P0 没入座，原因写在格子里。
+  <b>温度单位随盘口</b>：11 个美国站的桶名是华氏，其余是摄氏，站点格里注明了是哪一种；
+  「实测」与 TAF 都换算成该站盘口的单位显示，所以一行之内不会出现摄氏和华氏并排。</div>
   <div class="why"><b>三个阶段是一个仓位、一本账。</b>P0 建仓，P0-M 与 P1 在同一个仓位上
   <b>加仓</b>（只加不减：可以加宽梯子、也可以把已有的一级买厚，但不卖回），
   一个站日只结算一次，命中按<b>最终持仓</b>判。所以「实得」是整条链的一个数，

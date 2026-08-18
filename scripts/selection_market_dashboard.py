@@ -753,6 +753,18 @@ def build_payload(db: Path) -> dict[str, Any]:
             " ORDER BY station_id"
         )
     ]
+    # The unit its market settles in.  Buckets are named in it ("96-97°F")
+    # while every truth on the page is Celsius, so a row that shows both
+    # without saying which is which reads as a 60-degree error.  One value
+    # per station -- checked: no station's markets disagree.
+    settlement_units = {
+        str(station): str(unit or "C")
+        for station, unit in conn.execute(
+            "SELECT station_id, settlement_unit"
+            " FROM basket_target_market_registry"
+            " GROUP BY station_id"
+        )
+    }
     seated = {
         (r["station_id"], r["event_date"], r["stage"]): r for r in rows
     }
@@ -833,6 +845,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "station_id": station,
             "station_label": STATION_LABELS.get(station, ""),
+            "settlement_unit": settlement_units.get(station, "C"),
             "event_date": day,
             "taf_tx_c": taf_tx.get((station, day)),
             "p1_history": p1_history.get((station, day), [])[-12:],
