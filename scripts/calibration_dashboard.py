@@ -19,6 +19,7 @@ import argparse
 import json
 from bisect import bisect_left
 from collections import Counter, defaultdict
+import random
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -1114,6 +1115,802 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return rows
 
 
+# Thresholds for the six-layer scorecard.  Every one of them is anchored to
+# something the system already means, not to a number from a textbook:
+#
+# * temperature errors are counted in RUNGS, never in degrees.  The ladder is
+#   not one width: a Fahrenheit book steps two degrees F per rung (1.11C) and
+#   a Celsius book one degree C, and 35 of the 46 stations are Celsius.  A
+#   fixed degree tolerance would hold the two books to different standards,
+#   and a rung is also the thing being traded -- picking the bucket is the
+#   decision, so "off by one rung" is the error that costs money.  Half a
+#   rung of bias is where the centre starts landing on the wrong rung
+#   systematically; a full rung is where it usually does.
+# * probability scores are judged against the same climatology baseline the
+#   OOS gate uses, because a raw CRPS is not comparable across stations.
+# * spread is judged against realised error: a calibrated ensemble states an
+#   uncertainty that matches the error it actually makes (spread-skill ~ 1).
+#   Too narrow is overconfidence, too wide is an ensemble saying nothing.
+# * ECE is in probability units, where 5% is the usual "well calibrated" bar.
+# * bootstrap width is relative, because it answers only "do we have enough
+#   days to trust the number above", not "is the number good".
+SCORECARD_THRESHOLDS = {
+    "bias_rungs": (0.3, 0.8),        # |bias| in market rungs, either book
+    "mae_rungs": (1.0, 1.5),         # one rung / one and a half rungs
+    "crps_skill": (0.10, 0.0),       # share better than climatology, higher better
+    "brier_skill": (0.10, 0.0),      # ditto
+    "pit_deviation": (0.04, 0.08),   # max |empirical - uniform| over PIT bins
+    "ece": (0.05, 0.10),             # expected calibration error
+    "conditional_gap": (0.05, 0.10),  # worst well-populated reliability bin
+    "residual_correlation": (0.5, 0.75),   # max off-diagonal
+    "weight_distance": (0.10, 0.25),       # L1 gap, served vs minimum variance
+    "spread_skill": (0.20, 0.45),    # |ratio - 1|, ensemble spread vs realised error
+    "ci_relative": (0.15, 0.30),     # bootstrap half-width / value
+}
+
+
+def _grade(value: float | None, key: str, *, higher_better: bool = False) -> str:
+    """Green / amber / red for one metric, or grey when it is not measurable."""
+
+    if value is None:
+        return "muted"
+    good, warn = SCORECARD_THRESHOLDS[key]
+    if higher_better:
+        return "green" if value >= good else ("amber" if value >= warn else "red")
+    return "green" if value <= good else ("amber" if value <= warn else "red")
+
+
+def _worst(healths: list[str]) -> str:
+    for level in ("red", "amber", "green"):
+        if level in healths:
+            return level
+    return "muted"
+
+
+def _bucket_order(centers: dict[str, float]) -> list[str]:
+    return sorted(centers, key=lambda key: centers[key])
+
+
+def _truth_bucket(centers: dict[str, float], order: list[str], truth: float) -> str:
+    """Which market rung the settled high actually landed on.
+
+    The end rungs are open ("20C or below"), so the nearest centre is the
+    right answer there too -- clamping falls out of the same comparison.
+    """
+
+    return min(order, key=lambda key: abs(centers[key] - truth))
+
+
+def _prediction_scores(
+    probability: dict[str, float],
+    centers: dict[str, float],
+    truth: float,
+) -> dict[str, float] | None:
+    """Every per-day quantity the six layers are built from."""
+
+    order = _bucket_order(centers)
+    if not order:
+        return None
+    total = sum(probability.get(key, 0.0) for key in order)
+    if total <= 0:
+        return None
+    probabilities = [probability.get(key, 0.0) / total for key in order]
+    values = [centers[key] for key in order]
+    actual_key = _truth_bucket(centers, order, truth)
+    actual_index = order.index(actual_key)
+
+    # Rung width read off the station's own ladder rather than from the unit
+    # column: 1.0C on a Celsius book, 1.11C on a Fahrenheit one, and correct
+    # by construction for any ladder either book grows later.
+    steps = sorted(
+        values[index + 1] - values[index] for index in range(len(values) - 1)
+    )
+    rung_c = steps[len(steps) // 2] if steps else 1.0
+    if rung_c <= 0:
+        return None
+
+    mean = sum(p * v for p, v in zip(probabilities, values))
+    variance = sum(p * (v - mean) ** 2 for p, v in zip(probabilities, values))
+    error = mean - truth
+
+    # CRPS over the bucket ladder, and the Brier score across all rungs.
+    crps = 0.0
+    cumulative = 0.0
+    for index, p in enumerate(probabilities):
+        cumulative += p
+        crps += (cumulative - (1.0 if index >= actual_index else 0.0)) ** 2
+    brier = sum(
+        (p - (1.0 if index == actual_index else 0.0)) ** 2
+        for index, p in enumerate(probabilities)
+    )
+    # Randomised PIT, the standard fix for a discrete forecast: without the
+    # within-bucket term every PIT would pile up on the bucket edges and a
+    # perfectly calibrated forecast would look badly non-uniform.
+    below = sum(probabilities[:actual_index])
+    pit = below + 0.5 * probabilities[actual_index]
+    # The reliability diagram is built from EVERY rung, not just the settled
+    # one: each (promised probability, did it happen) pair is one observation.
+    # Scoring only the settled rung would take a biased sample of high
+    # probabilities and report a base rate of 1 instead of 1/rungs.
+    reliability_pairs = [
+        (p, 1.0 if index == actual_index else 0.0)
+        for index, p in enumerate(probabilities)
+    ]
+    return {
+        # Rung-denominated, so a Celsius and a Fahrenheit book average
+        # together honestly.  The degree figures ride along for display only.
+        "error": error / rung_c,
+        "abs_error": abs(error) / rung_c,
+        "square_error": (error / rung_c) ** 2,
+        "error_c": error,
+        "abs_error_c": abs(error),
+        "square_error_c": error * error,
+        "rung_c": rung_c,
+        "crps": crps,
+        "brier": brier,
+        "pit": pit,
+        "truth_probability": probabilities[actual_index],
+        "peak_probability": max(probabilities),
+        "spread_rungs": variance ** 0.5 / rung_c,
+        "spread_c": variance ** 0.5,
+        "reliability_pairs": reliability_pairs,
+    }
+
+
+def _bootstrap_half_width(
+    values: list[float], draws: int = 600, seed: int = 7
+) -> float | None:
+    """Half-width of a 95% interval on the mean, for the stability layer."""
+
+    if len(values) < 8:
+        return None
+    rng = random.Random(seed)
+    count = len(values)
+    means = []
+    for _ in range(draws):
+        means.append(
+            sum(values[rng.randrange(count)] for _ in range(count)) / count
+        )
+    means.sort()
+    low = means[int(0.025 * draws)]
+    high = means[int(0.975 * draws)]
+    return (high - low) / 2.0
+
+
+def _reliability_decomposition(
+    pairs: list[tuple[float, float]], bins: int = 10
+) -> dict[str, float | list[dict[str, Any]]]:
+    """Murphy's decomposition, on the probability given to the settled rung.
+
+    Reliability is the gap between what was promised and what happened,
+    resolution is how far the forecasts move away from the base rate, and the
+    two only mean something together: a forecast that always says the base
+    rate is perfectly reliable and completely useless.
+    """
+
+    if not pairs:
+        return {"ece": None, "reliability": None, "resolution": None,
+                "uncertainty": None, "bins": []}
+    buckets: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    for promised, happened in pairs:
+        index = min(bins - 1, max(0, int(promised * bins)))
+        buckets[index].append((promised, happened))
+    base_rate = sum(happened for _p, happened in pairs) / len(pairs)
+    total = len(pairs)
+    ece = reliability = resolution = 0.0
+    rows = []
+    for index in sorted(buckets):
+        group = buckets[index]
+        weight = len(group) / total
+        mean_promised = sum(p for p, _o in group) / len(group)
+        mean_happened = sum(o for _p, o in group) / len(group)
+        ece += weight * abs(mean_promised - mean_happened)
+        reliability += weight * (mean_promised - mean_happened) ** 2
+        resolution += weight * (mean_happened - base_rate) ** 2
+        rows.append({
+            "bin": f"{index * 100 // bins}-{(index + 1) * 100 // bins}%",
+            "n": len(group),
+            "promised": mean_promised,
+            "happened": mean_happened,
+        })
+    return {
+        "ece": ece,
+        "reliability": reliability,
+        "resolution": resolution,
+        "uncertainty": base_rate * (1.0 - base_rate),
+        "bins": rows,
+    }
+
+
+def collect_calibration_scorecard(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Six layers of calibration quality, each reduced to one verdict.
+
+    The scores already existed in pieces across the page; what was missing
+    was a judgement.  Every layer here answers "is this good" with a colour
+    and a sentence, and keeps the number beside it as the evidence rather
+    than the headline.
+    """
+
+    if not _table_exists(
+        conn, "calibration_cross_native_ensemble_oos_prediction"
+    ):
+        return {"available": False}
+    truth: dict[tuple[str, str], float] = {}
+    for station, day, tmax in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c"
+        " FROM calibration_station_daily_high_truth"
+        " WHERE qc_status='ACCEPTED' ORDER BY revision_no"
+    ):
+        truth[(str(station), str(day))] = float(tmax)
+    if not truth:
+        return {"available": False}
+
+    per_lead: dict[str, list[dict[str, float]]] = defaultdict(list)
+    climate: dict[str, list[dict[str, float]]] = defaultdict(list)
+    stations: set[str] = set()
+    latest = ""
+    for (
+        station, day, lead, probabilities_json, centers_json, decided
+    ) in conn.execute(
+        "SELECT station_id, event_date, lead_bucket, probabilities_json,"
+        " bucket_centers_c_json, decision_at_utc"
+        " FROM calibration_cross_native_ensemble_oos_prediction"
+        " WHERE event_date>=date('now','-45 days')"
+        " ORDER BY decision_at_utc"
+    ):
+        actual = truth.get((str(station), str(day)))
+        if actual is None:
+            continue
+        # Calendar leads (d0/d1/d2) were retired for hour buckets; rows under
+        # the old vocabulary stop in mid-August and would drag stale scopes
+        # into a board that is meant to read as current.
+        if not str(lead).startswith("h"):
+            continue
+        try:
+            probability = json.loads(probabilities_json)
+            centers = {
+                str(key): float(value)
+                for key, value in json.loads(centers_json).items()
+            }
+        except (ValueError, TypeError, AttributeError):
+            continue
+        scores = _prediction_scores(probability, centers, actual)
+        if scores is None:
+            continue
+        per_lead[str(lead)].append(scores)
+        stations.add(str(station))
+        latest = max(latest, str(decided))
+        # The climatology comparison the gate uses, rebuilt on the same day:
+        # a flat forecast over the same ladder is the "no skill" reference.
+        order = _bucket_order(centers)
+        flat = {key: 1.0 / len(order) for key in order}
+        flat_scores = _prediction_scores(flat, centers, actual)
+        if flat_scores is not None:
+            climate[str(lead)].append(flat_scores)
+
+    everything = [row for rows in per_lead.values() for row in rows]
+    if not everything:
+        return {"available": False}
+    everything_climate = [row for rows in climate.values() for row in rows]
+
+    def _mean(rows: list[dict[str, float]], key: str) -> float | None:
+        values = [row[key] for row in rows]
+        return sum(values) / len(values) if values else None
+
+    def _skill(rows, base, key) -> float | None:
+        ours, theirs = _mean(rows, key), _mean(base, key)
+        if ours is None or theirs is None or theirs <= 0:
+            return None
+        return 1.0 - ours / theirs
+
+    # ---- layer 1: point forecast --------------------------------------
+    bias = _mean(everything, "error")
+    mae = _mean(everything, "abs_error")
+    rmse = (_mean(everything, "square_error") or 0.0) ** 0.5
+    bias_c = _mean(everything, "error_c")
+    mae_c = _mean(everything, "abs_error_c")
+    rmse_c = (_mean(everything, "square_error_c") or 0.0) ** 0.5
+    point_health = _worst([
+        _grade(abs(bias) if bias is not None else None, "bias_rungs"),
+        _grade(mae, "mae_rungs"),
+    ])
+
+    # ---- layer 2: probability -----------------------------------------
+    crps_skill = _skill(everything, everything_climate, "crps")
+    brier_skill = _skill(everything, everything_climate, "brier")
+    pit_values = [row["pit"] for row in everything]
+    pit_bins = [0] * 10
+    for value in pit_values:
+        pit_bins[min(9, max(0, int(value * 10)))] += 1
+    pit_deviation = max(
+        abs(count / len(pit_values) - 0.1) for count in pit_bins
+    )
+    probability_health = _worst([
+        _grade(crps_skill, "crps_skill", higher_better=True),
+        _grade(brier_skill, "brier_skill", higher_better=True),
+        _grade(pit_deviation, "pit_deviation"),
+    ])
+
+    # ---- layer 3: calibration -----------------------------------------
+    decomposition = _reliability_decomposition([
+        pair for row in everything for pair in row["reliability_pairs"]
+    ])
+    ece = decomposition["ece"]
+    # ECE alone hides the shape.  Four fifths of all (rung, day) pairs sit in
+    # the 0-10% bin, where the gap is tiny, so a weighted average stays small
+    # even when every confident forecast is off by ten points.  The worst
+    # well-populated bin is what says whether a number can be acted on.
+    populated = [
+        row for row in decomposition["bins"] if int(row["n"]) >= 100
+    ]
+    conditional_gap = max(
+        (abs(row["promised"] - row["happened"]) for row in populated),
+        default=None,
+    )
+    conditional_signed = None
+    if populated:
+        worst = max(
+            populated, key=lambda row: abs(row["promised"] - row["happened"])
+        )
+        conditional_signed = worst["happened"] - worst["promised"]
+    calibration_health = _worst([
+        _grade(ece, "ece"),
+        _grade(conditional_gap, "conditional_gap"),
+    ])
+
+    # ---- layer 5: sharpness (read against realised error) --------------
+    mean_spread = _mean(everything, "spread_rungs")
+    mean_spread_c = _mean(everything, "spread_c")
+    spread_skill = (
+        mean_spread / rmse if mean_spread is not None and rmse > 0 else None
+    )
+    sharpness_health = _grade(
+        abs(spread_skill - 1.0) if spread_skill is not None else None,
+        "spread_skill",
+    )
+
+    # ---- layer 6: stability --------------------------------------------
+    mae_ci = _bootstrap_half_width([row["abs_error"] for row in everything])
+    crps_ci = _bootstrap_half_width([row["crps"] for row in everything])
+    ci_relative = None
+    if mae_ci is not None and mae:
+        ci_relative = mae_ci / mae
+    stability_health = _grade(ci_relative, "ci_relative")
+
+    rows = []
+    order = {name: index for index, (name, _label) in enumerate(LEAD_LABELS)}
+    for lead in sorted(per_lead, key=lambda name: order.get(name, 9)):
+        group = per_lead[lead]
+        base = climate[lead]
+        group_bias = _mean(group, "error")
+        group_mae = _mean(group, "abs_error")
+        group_rmse = (_mean(group, "square_error") or 0.0) ** 0.5
+        group_spread = _mean(group, "spread_rungs")
+        group_ratio = (
+            group_spread / group_rmse
+            if group_spread is not None and group_rmse > 0 else None
+        )
+        rows.append({
+            "lead_bucket": lead,
+            "lead_label": dict(LEAD_LABELS).get(lead, lead),
+            "days": len(group),
+            "bias_rungs": group_bias,
+            "mae_rungs": group_mae,
+            "rmse_rungs": group_rmse,
+            "bias_c": _mean(group, "error_c"),
+            "mae_c": _mean(group, "abs_error_c"),
+            "crps_skill": _skill(group, base, "crps"),
+            "brier_skill": _skill(group, base, "brier"),
+            "spread_skill": group_ratio,
+            "bias_health": _grade(
+                abs(group_bias) if group_bias is not None else None,
+                "bias_rungs",
+            ),
+            "mae_health": _grade(group_mae, "mae_rungs"),
+            "crps_health": _grade(
+                _skill(group, base, "crps"), "crps_skill", higher_better=True
+            ),
+            "spread_health": _grade(
+                abs(group_ratio - 1.0) if group_ratio is not None else None,
+                "spread_skill",
+            ),
+        })
+
+    fusion = _collect_fusion_layer(conn)
+    layers = [
+        {
+            "key": "point",
+            "name": "点预测",
+            "question": "中心到底准不准",
+            "health": point_health,
+            "verdict": _point_verdict(bias, mae),
+            "detail": (
+                f"偏差 {bias:+.2f} 档（{bias_c:+.2f}°C） · "
+                f"平均误差 {mae:.2f} 档（{mae_c:.2f}°C） · "
+                f"均方根 {rmse:.2f} 档（{rmse_c:.2f}°C）"
+            ) if bias is not None and mae is not None else "证据不足",
+        },
+        {
+            "key": "probability",
+            "name": "概率预测",
+            "question": "概率说得准不准",
+            "health": probability_health,
+            "verdict": _probability_verdict(crps_skill, pit_deviation),
+            "detail": (
+                f"CRPS 比气候好 {crps_skill:.0%} · "
+                f"Brier 好 {brier_skill:.0%} · "
+                f"PIT 最大偏离 {pit_deviation:.1%}"
+            ) if crps_skill is not None and brier_skill is not None
+            else "证据不足",
+        },
+        {
+            "key": "calibration",
+            "name": "校准",
+            "question": "说 70% 是不是真的 70%",
+            "health": calibration_health,
+            "verdict": _calibration_verdict(
+                decomposition, conditional_gap, conditional_signed
+            ),
+            "detail": (
+                f"整体 ECE {ece:.1%} · 最差分箱偏离 {conditional_gap:.1%} · "
+                f"分辨力 {decomposition['resolution']:.4f}"
+            ) if ece is not None and conditional_gap is not None
+            else "证据不足",
+        },
+        {
+            "key": "fusion",
+            "name": "模型融合",
+            "question": "几家模型的权重分对了吗",
+            "health": fusion["health"],
+            "verdict": fusion["verdict"],
+            "detail": fusion["detail"],
+        },
+        {
+            "key": "sharpness",
+            "name": "分布锐度",
+            "question": "分布宽窄配不配它的准度",
+            "health": sharpness_health,
+            "verdict": _sharpness_verdict(spread_skill),
+            "detail": (
+                f"平均宽度 {mean_spread:.2f} 档（{mean_spread_c:.2f}°C） · "
+                f"实际误差 {rmse:.2f} 档 · 宽度/误差 {spread_skill:.2f}"
+            ) if spread_skill is not None else "证据不足",
+        },
+        {
+            "key": "stability",
+            "name": "稳定性",
+            "question": "上面这些数字靠不靠得住",
+            "health": stability_health,
+            "verdict": _stability_verdict(ci_relative, len(everything)),
+            "detail": (
+                f"{len(everything):,} 个站日 · 平均误差 95% 区间 ±{mae_ci:.3f}°C"
+                f" · CRPS ±{crps_ci:.3f}"
+            ) if mae_ci is not None and crps_ci is not None else "证据不足",
+        },
+    ]
+    return {
+        "available": True,
+        "overall": _worst([layer["health"] for layer in layers]),
+        "layers": layers,
+        "rows": rows,
+        "pit_bins": [count / len(pit_values) for count in pit_bins],
+        "reliability_bins": decomposition["bins"],
+        "fusion_pairs": fusion["pairs"],
+        "sample_days": len(everything),
+        "station_count": len(stations),
+        "latest_decision_at_utc": latest or None,
+        "latest_age_hours": _age_hours(latest or None),
+    }
+
+
+def _point_verdict(bias: float | None, mae: float | None) -> str:
+    """All figures in rungs, so Celsius and Fahrenheit books read alike."""
+
+    if bias is None or mae is None:
+        return "还没有足够的已结算日可以判断"
+    side = "偏热" if bias > 0 else "偏冷"
+    if abs(bias) <= 0.3 and mae <= 1.0:
+        return f"中心站得住：系统性{side}不到 {abs(bias):.2f} 档，平均误差在一档内"
+    if abs(bias) > 0.8:
+        return f"中心系统性{side} {abs(bias):.2f} 档，接近整整一档，会持续押错桶"
+    if mae > 1.5:
+        return f"单日平均差 {mae:.2f} 档，超过一档半，选桶方向常常不对"
+    return f"中心略{side} {abs(bias):.2f} 档，平均误差 {mae:.2f} 档，尚在容忍范围"
+
+
+def _probability_verdict(skill: float | None, pit: float | None) -> str:
+    if skill is None or pit is None:
+        return "还没有足够的已结算日可以判断"
+    if skill < 0:
+        return f"概率比直接用气候还差 {abs(skill):.0%}，这一层目前是负价值"
+    head = f"比气候基准好 {skill:.0%}"
+    if pit > 0.08:
+        return f"{head}，但概率分布形状明显歪（PIT 偏离 {pit:.1%}），尾部不可信"
+    if skill < 0.10:
+        return f"{head}，优势很薄，接近没有信息"
+    return f"{head}，且分布形状匀称，概率可以直接用"
+
+
+def _calibration_verdict(
+    decomposition: dict[str, Any],
+    conditional_gap: float | None,
+    conditional_signed: float | None,
+) -> str:
+    """Judged on the worst usable bin, not on the flattering average."""
+
+    ece = decomposition["ece"]
+    if ece is None or conditional_gap is None:
+        return "还没有足够的已结算日可以判断"
+    resolution = decomposition["resolution"] or 0.0
+    reliability = decomposition["reliability"] or 0.0
+    direction = (
+        "说少了" if (conditional_signed or 0.0) > 0 else "说多了"
+    )
+    points = abs(conditional_signed or 0.0)
+    if conditional_gap > 0.10:
+        return (
+            f"能下注的那一段不可信：概率高的时候{direction} "
+            f"{points:.0%} 个百分点，整体 ECE {ece:.1%} 是被低概率段拉平的"
+        )
+    if conditional_gap > 0.05:
+        return (
+            f"低概率段准，但概率一上来就{direction} {points:.0%} 个百分点"
+            f"——真要下注的那一段有系统性偏差"
+        )
+    if resolution <= reliability:
+        return f"偏差小（{ece:.1%}），但分辨力不足——概率总在基准率附近晃"
+    return f"说 70% 就真是 70%（各段偏离都在 {conditional_gap:.1%} 内），可以直接用"
+
+
+def _sharpness_verdict(ratio: float | None) -> str:
+    if ratio is None:
+        return "还没有足够的已结算日可以判断"
+    if abs(ratio - 1.0) <= 0.20:
+        return f"宽度配得上准度（宽度/误差 {ratio:.2f}），既不吹牛也不含糊"
+    if ratio < 0.55:
+        return f"分布太窄（只有实际误差的 {ratio:.2f} 倍）——过度自信，尾部会被打脸"
+    if ratio > 1.45:
+        return f"分布太宽（实际误差的 {ratio:.2f} 倍）——过于保守，等于没给信息"
+    if ratio < 1.0:
+        return f"分布偏窄（{ratio:.2f} 倍），可以用但别压满"
+    return f"分布偏宽（{ratio:.2f} 倍），信息量打了折扣"
+
+
+def _stability_verdict(relative: float | None, days: int) -> str:
+    if relative is None:
+        return f"只有 {days} 个站日，还不足以给出置信区间"
+    if relative <= 0.15:
+        return f"{days:,} 个站日，上面的结论稳，重采样不会翻号"
+    if relative <= 0.30:
+        return f"{days:,} 个站日，结论大方向可信，但小差距（几个百分点）别当真"
+    return f"只有 {days:,} 个站日，区间比数值本身还宽——上面每个判断都是暂定的"
+
+
+def _solve(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
+    """Gaussian elimination with partial pivoting, for an 8x8 at most."""
+
+    size = len(vector)
+    augmented = [list(matrix[row]) + [vector[row]] for row in range(size)]
+    for column in range(size):
+        pivot = max(
+            range(column, size), key=lambda row: abs(augmented[row][column])
+        )
+        if abs(augmented[pivot][column]) < 1e-12:
+            return None
+        augmented[column], augmented[pivot] = (
+            augmented[pivot], augmented[column]
+        )
+        for row in range(size):
+            if row == column:
+                continue
+            factor = augmented[row][column] / augmented[column][column]
+            for term in range(column, size + 1):
+                augmented[row][term] -= factor * augmented[column][term]
+    return [augmented[row][size] / augmented[row][row] for row in range(size)]
+
+
+def _minimum_variance_from_correlation(
+    systems: list[str],
+    correlation: dict[str, dict[str, float]],
+    sigmas: list[float],
+    shrinkage: float,
+) -> dict[str, float] | None:
+    """Minimum-variance shares from a stored correlation and per-system RMSE.
+
+    Negative shares are refused rather than clipped, because a blend is a
+    mixture of distributions and a negative share has no meaning in one.  The
+    constrained optimum is found by enumerating which systems sit at zero,
+    which is cheap at this cohort size.
+    """
+
+    size = len(systems)
+    if size < 2 or size > 8:
+        return None
+    covariance = [[0.0] * size for _ in range(size)]
+    for row, a in enumerate(systems):
+        for column, b in enumerate(systems):
+            try:
+                value = float(correlation[a][b])
+            except (KeyError, TypeError, ValueError):
+                return None
+            if row != column:
+                value *= 1.0 - shrinkage
+            covariance[row][column] = value * sigmas[row] * sigmas[column]
+
+    best: tuple[float, dict[str, float]] | None = None
+    for mask in range(1, 1 << size):
+        active = [index for index in range(size) if mask & (1 << index)]
+        if len(active) < 2:
+            continue
+        block = [[covariance[r][c] for c in active] for r in active]
+        solution = _solve(block, [1.0] * len(active))
+        if solution is None or any(value <= 0 for value in solution):
+            continue
+        total = sum(solution)
+        if total <= 0:
+            continue
+        shares = [value / total for value in solution]
+        variance = sum(
+            shares[i] * shares[j] * block[i][j]
+            for i in range(len(active))
+            for j in range(len(active))
+        )
+        if best is None or variance < best[0]:
+            best = (
+                variance,
+                {
+                    systems[index]: shares[position]
+                    for position, index in enumerate(active)
+                },
+            )
+    if best is None:
+        return None
+    return {system: best[1].get(system, 0.0) for system in systems}
+
+
+def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How much the served weights differ from the covariance-aware optimum.
+
+    Inverse-RMSE pays each system for being good alone, so two systems making
+    the same mistake get paid twice for one piece of information.  The
+    minimum-variance solution prices that overlap.  The gap between the two
+    is what the measured correlations are worth -- and a high correlation
+    with a small gap means the fleet is redundant but the weights already
+    know it.
+    """
+
+    # The production solver takes per-day residuals, which this page does not
+    # hold; what the SSOT stores is the finished correlation matrix.  The
+    # covariance is recoverable from it -- S = D R D, with D the per-system
+    # training RMSE -- so the optimum is solved here from the stored pieces
+    # rather than re-deriving residuals.  Same shrinkage as production, and
+    # the same refusal to clip negative shares.
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        MINIMUM_VARIANCE_SHRINKAGE,
+    )
+
+    deviation: dict[tuple[str, str, str], float] = {}
+    for station, lead, cycle, system, spread_json in conn.execute(
+        "SELECT station_id, lead_bucket, run_cycle, ensemble_system_id,"
+        " spread_parameters_json"
+        " FROM calibration_native_ensemble_system_artifact"
+    ):
+        try:
+            value = float(json.loads(spread_json)["train_rmse_c"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if value > 0:
+            deviation[(str(station), str(lead), str(system))] = value
+
+    pairs: list[dict[str, Any]] = []
+    correlations: list[float] = []
+    distances: list[float] = []
+    for station, lead, correlation_json, weights_json in conn.execute(
+        "SELECT station_id, lead_bucket,"
+        " cross_system_residual_correlation_json, selected_weights_json"
+        " FROM calibration_cross_native_ensemble_selection_evidence"
+        " WHERE selected_system_count>1 AND lead_bucket LIKE 'h%'"
+        " ORDER BY rowid DESC LIMIT 400"
+    ):
+        try:
+            correlation = json.loads(correlation_json)
+            served = json.loads(weights_json)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(correlation, dict) or len(correlation) < 2:
+            continue
+        systems = sorted(served)
+        off_diagonal = [
+            float(correlation[a][b])
+            for a in systems for b in systems
+            if a != b and a in correlation and b in correlation.get(a, {})
+        ]
+        if not off_diagonal:
+            continue
+        peak = max(off_diagonal)
+        correlations.append(peak)
+        sigmas = [
+            deviation.get((str(station), str(lead), system))
+            for system in systems
+        ]
+        optimum = None
+        if all(sigma is not None for sigma in sigmas):
+            optimum = _minimum_variance_from_correlation(
+                systems, correlation, sigmas, MINIMUM_VARIANCE_SHRINKAGE
+            )
+        distance = None
+        if optimum:
+            distance = 0.5 * sum(
+                abs(float(served.get(system, 0.0))
+                    - float(optimum.get(system, 0.0)))
+                for system in systems
+            )
+            distances.append(distance)
+        pairs.append({
+            "station_id": str(station),
+            "lead_bucket": str(lead),
+            "max_correlation": peak,
+            "distance": distance,
+            "served": served,
+            "optimum": optimum,
+        })
+
+    if not correlations:
+        return {
+            "health": "muted",
+            "verdict": "还没有两家以上模型同时在座的组合",
+            "detail": "证据不足",
+            "pairs": [],
+        }
+    mean_correlation = sum(correlations) / len(correlations)
+    mean_distance = (
+        sum(distances) / len(distances) if distances else None
+    )
+    health = _worst([
+        _grade(mean_correlation, "residual_correlation"),
+        _grade(mean_distance, "weight_distance"),
+    ])
+    if mean_distance is None:
+        verdict = (
+            f"模型之间残差相关 {mean_correlation:.2f}，"
+            "但最优权重解不出来（多为单族占满）"
+        )
+    elif mean_correlation >= 0.75 and mean_distance > 0.25:
+        verdict = (
+            f"几家模型在犯同一个错（相关 {mean_correlation:.2f}），"
+            f"而权重没有反映这件事（离最优 {mean_distance:.0%}）——重复计票"
+        )
+    elif mean_correlation >= 0.75:
+        verdict = (
+            f"模型高度重复（相关 {mean_correlation:.2f}），"
+            f"但权重已经知道（离最优 {mean_distance:.0%}），暂时不亏"
+        )
+    elif mean_distance > 0.25:
+        verdict = (
+            f"模型互补性尚可（相关 {mean_correlation:.2f}），"
+            f"但权重偏离协方差最优 {mean_distance:.0%}，有改进空间"
+        )
+    else:
+        verdict = (
+            f"几家模型互相独立（相关 {mean_correlation:.2f}），"
+            f"权重也接近最优（差 {mean_distance:.0%}）"
+        )
+    return {
+        "health": health,
+        "verdict": verdict,
+        "detail": (
+            f"{len(correlations)} 个组合 · 平均最大相关 {mean_correlation:.2f}"
+            + (f" · 离最小方差最优 {mean_distance:.0%}"
+               if mean_distance is not None else "")
+        ),
+        "pairs": sorted(
+            pairs,
+            key=lambda row: (row["distance"] or 0.0),
+            reverse=True,
+        )[:12],
+    }
+
+
 def collect_gaps(
     conn: sqlite3.Connection,
     members: list[dict[str, Any]],
@@ -1267,6 +2064,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     truth = collect_truth_materialization(conn)
     scores = collect_oos_scores(conn)
     center_width = collect_center_width(conn)
+    scorecard = collect_calibration_scorecard(conn)
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -1310,6 +2108,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "truth": truth,
         "scores": scores,
         "center_width": center_width,
+        "scorecard": scorecard,
         "worker": worker,
     }
 
@@ -2383,6 +3182,139 @@ function safe(fn, name){
   }
 }
 
+// Six layers, six lights.  The colour and the sentence are the answer; the
+// numbers underneath are only there for someone who wants to check it.
+const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"证据不足"};
+
+function scorecard(){
+  const S = D.scorecard || {};
+  if(!S.available) return `<h2>十九、模型校准总检</h2>
+    <p class="sub">还没有已结算的预测可以评分。</p>`;
+  const cards = (S.layers||[]).map(L => `<div class="card">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="dot ${L.health}"></span><b>${h(L.name)}</b>
+      <span style="flex:1"></span>
+      <span class="pill ${L.health}">${VERDICT_WORD[L.health]||""}</span>
+    </div>
+    <div class="muted" style="margin-top:2px">${h(L.question)}</div>
+    <div style="margin-top:10px;font-size:14.5px;line-height:1.5">
+      ${h(L.verdict)}</div>
+    <div class="muted" style="margin-top:8px">${h(L.detail)}</div>
+  </div>`).join("");
+
+  const leadRows = (S.rows||[]).map(r => `<tr>
+    <td>${h(r.lead_label)}</td>
+    <td class="mono muted">${r.days.toLocaleString()}</td>
+    <td class="mono"><span class="dot ${r.bias_health}"></span>
+      ${r.bias_rungs == null ? "—" :
+        (r.bias_rungs>0?"+":"")+r.bias_rungs.toFixed(2)} 档</td>
+    <td class="mono"><span class="dot ${r.mae_health}"></span>
+      ${r.mae_rungs == null ? "—" : r.mae_rungs.toFixed(2)} 档</td>
+    <td class="mono"><span class="dot ${r.crps_health}"></span>
+      ${pct1(r.crps_skill)}</td>
+    <td class="mono muted">${pct1(r.brier_skill)}</td>
+    <td class="mono"><span class="dot ${r.spread_health}"></span>
+      ${r.spread_skill == null ? "—" : r.spread_skill.toFixed(2)}×</td>
+  </tr>`).join("");
+
+  // Reliability curve: promised against what actually happened.  A bin that
+  // sits above the diagonal was under-promised, below it was over-promised.
+  const relRows = (S.reliability_bins||[])
+    .filter(b => b.n >= 100)
+    .map(b => {
+      const gap = b.happened - b.promised;
+      const tone = Math.abs(gap) <= 0.05 ? "green"
+                 : (Math.abs(gap) <= 0.10 ? "amber" : "red");
+      return `<tr>
+        <td class="mono">${h(b.bin)}</td>
+        <td class="mono muted">${b.n.toLocaleString()}</td>
+        <td class="mono">${(b.promised*100).toFixed(1)}%</td>
+        <td class="mono">${(b.happened*100).toFixed(1)}%</td>
+        <td class="mono ${gap>0?"up":"down"}">
+          <span class="dot ${tone}"></span>
+          ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
+      </tr>`;
+    }).join("");
+
+  const pit = (S.pit_bins||[]);
+  const pitMax = Math.max(0.1, ...pit);
+  const pitBars = pit.map((v,i) => `<div style="flex:1;text-align:center">
+    <div style="height:52px;display:flex;align-items:flex-end">
+      <div style="width:100%;height:${(v/pitMax*100).toFixed(0)}%;
+        background:var(--${Math.abs(v-0.1)<=0.04?"green":
+          (Math.abs(v-0.1)<=0.08?"amber":"red")});border-radius:3px 3px 0 0">
+      </div></div>
+    <div class="muted" style="font-size:10px">${(i*10)}</div>
+  </div>`).join("");
+
+  const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
+    .slice(0,8).map(p => {
+      const names = Object.keys(p.served||{}).sort();
+      const tone = p.distance <= 0.10 ? "green"
+                 : (p.distance <= 0.25 ? "amber" : "red");
+      return `<tr>
+        <td class="mono">${h(p.station_id)}</td>
+        <td class="mono muted">${h(p.lead_bucket)}</td>
+        <td class="mono">${p.max_correlation.toFixed(2)}</td>
+        <td class="mono"><span class="dot ${tone}"></span>
+          ${(p.distance*100).toFixed(0)}%</td>
+        <td class="muted" style="font-size:12px">${names.map(n =>
+          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}→${
+           ((p.optimum||{})[n]*100||0).toFixed(0)}%`).join(" · ")}</td>
+      </tr>`;
+    }).join("");
+
+  return `<h2>十九、模型校准总检：六层各自及格没有</h2>
+  <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
+  ${S.station_count} 个站，全部在样本外。总体
+  <span class="pill ${S.overall}">${VERDICT_WORD[S.overall]||""}</span>，
+  最近一次预测 ${hours(S.latest_age_hours)}。</p>
+  <div class="why"><b>怎么看：</b>先看六个灯，绿＝这一层能用，黄＝能用但别压满，
+  红＝这一层的数字现在不能直接拿来下注。每个灯下面那句话就是结论，再下面的数字
+  只是给你复核用的。<br>
+  <b>为什么用「档」不用「度」：</b>盘口有摄氏和华氏两种，华氏每档 2°F（1.11°C）、
+  摄氏每档 1°C，用度会把两种盘口按不同标准打分。而且真正要押的就是档位，
+  所以「差几档」才是会亏钱的那个误差。<br>
+  <b>红黄绿的线划在哪：</b>偏差 0.3/0.8 档、平均误差 1.0/1.5 档（半档起就会系统性押错）；
+  概率分要赢气候基准 10% 以上；ECE 与最差分箱偏离 5%/10%；
+  宽度/误差偏离 1.0 超过 0.20/0.45；自举区间超过数值本身 15%/30% 就说明天数还不够。</div>
+  <div class="grid g3" style="margin-top:12px">${cards}</div>
+
+  <h2 style="margin-top:26px">按提前量拆开</h2>
+  <p class="sub">越往后越难，这张表看的是哪一档提前量开始撑不住。</p>
+  <table><thead><tr>
+    <th>提前量</th><th>站日</th><th>偏差</th><th>平均误差</th>
+    <th>CRPS 胜气候</th><th>Brier 胜气候</th><th>宽度/误差</th>
+  </tr></thead><tbody>${leadRows}</tbody></table>
+
+  <h2 style="margin-top:26px">说了多少 vs 真发生了多少</h2>
+  <p class="sub">这是校准的原始证据：把所有「给某个档位打了 X% 概率」的情况归堆，
+  看那一堆里实际发生了百分之几。两个数越接近越好。</p>
+  <table><thead><tr>
+    <th>承诺区间</th><th>样本</th><th>平均承诺</th><th>实际发生</th><th>差</th>
+  </tr></thead><tbody>${relRows}</tbody></table>
+  <div class="muted" style="margin-top:6px">
+    「差」为正＝实际比承诺更常发生，即概率说保守了；为负＝吹过头了。
+    只显示样本 ≥100 的区间。</div>
+
+  <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
+  <p class="sub">如果分布形状是对的，真值落在分布各个位置的次数应该一样多，
+  下面十根柱子应该一样高（每根 10%）。中间鼓＝分布太宽，两头翘＝分布太窄。</p>
+  <div style="display:flex;gap:4px;align-items:flex-end;margin-top:10px">
+    ${pitBars}</div>
+  <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>
+
+  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 协方差最优</h2>
+  <p class="sub">现在按各家单独的准度分权重；如果两家老是一起犯错，
+  这份信息就被算了两遍。右边是按残差协方差解出的最优权重，差得越多说明越该改。</p>
+  <table><thead><tr>
+    <th>站</th><th>提前量</th><th>最大相关</th><th>离最优</th>
+    <th>现在 → 最优</th>
+  </tr></thead><tbody>${fusion}</tbody></table>
+  <div class="muted" style="margin-top:6px">
+    只列偏离最大的几个。相关高但偏离小＝模型重复但权重已经知道，不亏。</div>` : ""}`;
+}
+
 document.getElementById("app").innerHTML = [
   [head, "页头"], [members, "成员"], [chain, "链路"], [tables, "表"],
   [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
@@ -2391,7 +3323,7 @@ document.getElementById("app").innerHTML = [
   [makerProbe, "挂单影子探针"], [refusalStats, "未建仓原因"],
   [dispersion, "模型离散度"], [hitRate, "模型命中率"],
   [materialization, "真值物化"], [oosScores, "OOS 打分"],
-  [centerWidth, "中心/宽度"],
+  [centerWidth, "中心/宽度"], [scorecard, "模型校准总检"],
 ].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
