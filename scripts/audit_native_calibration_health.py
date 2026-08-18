@@ -32,6 +32,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 LIVE_LEAD_BUCKETS = ("h00_12", "h12_24", "h24_48")
+# The forecaster's TX and the METAR physical path keep their own per-system
+# lanes but never contest a P0 seat, so they are not part of what the cross
+# weights weigh.
+POINT_FORECAST_SYSTEM_IDS = (
+    "OFFICIAL_AIRPORT_TAF_TX",
+    "METAR_PHYSICAL_PATH_TMAX",
+)
 SPREAD_BOUND = 5.0
 # A split-half bias that moves by more than this is not one number any more.
 # Scaled to the station's own residual spread rather than a fixed degree so a
@@ -111,44 +118,96 @@ def check_spread_bound(live: dict) -> list[dict]:
 
 
 def check_table_freshness(conn: sqlite3.Connection, live: dict) -> list[dict]:
-    """The weight row aging while the correction rows beside it advance."""
+    """The weight row aging while the correction rows beside it advance.
+
+    Three things this must not mistake for staleness, each of which it did:
+
+    Point forecasts advance on their own cadence and, by the 2026-08-15 stage
+    ruling, never contest a P0 seat.  Taking them into the correction-side
+    maximum compared the blend against systems that are not in it -- 17 of 32
+    findings.
+
+    A cohort that seats members from different run cycles is labelled
+    ``MIXED_NATIVE_CYCLES``, while the per-system activations underneath it
+    keep their own concrete cycles.  Keying the comparison on cycle therefore
+    matches a live correction against a *retired* cycle label's last evidence
+    and reports a scope that is being evaluated hourly as six days idle.  The
+    weight side is read across every label at the lead for that reason.
+
+    A scope whose latest evaluation was rejected is frozen by design -- the
+    weights only turn over when a candidate passes the gate.  That is worth
+    reporting and is not the same finding, so it is reported as its own.
+    """
 
     correction_end: dict[tuple, str] = {}
     for key, row in live.items():
-        station, _system, season, lead, cycle = key
+        station, system, season, lead, _cycle = key
         if lead not in LIVE_LEAD_BUCKETS:
             continue
-        scope = (station, season, lead, cycle)
+        if system in POINT_FORECAST_SYSTEM_IDS:
+            continue
+        scope = (station, season, lead)
         end = str(row[8] or "")
         if end > correction_end.get(scope, ""):
             correction_end[scope] = end
     weight_end: dict[tuple, str] = {}
-    for station, season, lead, cycle, end in conn.execute(
-        "SELECT station_id,season_bin,lead_bucket,run_cycle,"
-        "MAX(train_end_date) FROM "
+    for station, season, lead, end in conn.execute(
+        "SELECT station_id,season_bin,lead_bucket,MAX(train_end_date) FROM "
         "calibration_cross_native_ensemble_selection_evidence "
-        "GROUP BY station_id,season_bin,lead_bucket,run_cycle"
+        "GROUP BY station_id,season_bin,lead_bucket"
     ):
-        weight_end[(str(station), str(season), str(lead), str(cycle))] = str(end or "")
+        weight_end[(str(station), str(season), str(lead))] = str(end or "")
+    evaluated_end: dict[tuple, str] = {}
+    latest_state: dict[tuple, tuple[str, str]] = {}
+    for station, season, lead, end in conn.execute(
+        "SELECT station_id,season_bin,lead_bucket,MAX(train_end_date) FROM "
+        "calibration_cross_native_ensemble_oos_evaluation "
+        "GROUP BY station_id,season_bin,lead_bucket"
+    ):
+        evaluated_end[(str(station), str(season), str(lead))] = str(end or "")
+    for station, season, lead, state, at in conn.execute(
+        "SELECT station_id,season_bin,lead_bucket,oos_state,"
+        "MAX(evaluated_at_utc) FROM "
+        "calibration_cross_native_ensemble_oos_evaluation "
+        "GROUP BY station_id,season_bin,lead_bucket"
+    ):
+        latest_state[(str(station), str(season), str(lead))] = (
+            str(state or ""), str(at or "")
+        )
     findings = []
     for scope, corrected in sorted(correction_end.items()):
         weighted = weight_end.get(scope)
-        if not weighted or not corrected:
+        evaluated = evaluated_end.get(scope)
+        if not weighted or not evaluated:
             continue
+        # Like for like.  A cross evaluation reserves a holdout shared
+        # exactly across its seated members, so its train necessarily ends
+        # earlier than any single member's -- comparing the two measured that
+        # offset and called it staleness on every healthy scope.  What the
+        # check is actually for is weights failing to turn over while
+        # evaluations keep arriving, and that is evidence against evaluation.
         gap = (
-            datetime.fromisoformat(corrected)
+            datetime.fromisoformat(evaluated)
             - datetime.fromisoformat(weighted)
         ).days
-        if gap >= STALE_TABLE_GAP_DAYS:
-            findings.append({
-                "check": "weight_table_behind_correction_table",
-                "station_id": scope[0],
-                "lead_bucket": scope[2],
-                "run_cycle": scope[3],
-                "correction_train_end": corrected,
-                "weight_train_end": weighted,
-                "gap_days": gap,
-            })
+        if gap < STALE_TABLE_GAP_DAYS:
+            continue
+        state, evaluated_at = latest_state.get(scope, ("", ""))
+        findings.append({
+            "check": (
+                "weight_table_frozen_by_rejection"
+                if state == "OOS_REJECTED"
+                else "weight_table_behind_correction_table"
+            ),
+            "station_id": scope[0],
+            "lead_bucket": scope[2],
+            "correction_train_end": corrected,
+            "evaluated_train_end": evaluated,
+            "weight_train_end": weighted,
+            "gap_days": gap,
+            "latest_cross_oos_state": state or None,
+            "latest_cross_evaluated_at_utc": evaluated_at or None,
+        })
     return findings
 
 
