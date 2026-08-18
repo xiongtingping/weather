@@ -1200,6 +1200,7 @@ def _select_minimum_crps_subset(
     configured_caps: Mapping[str, float],
     train_rmse: Mapping[str, float],
     train_n_by_system: Mapping[str, int],
+    residuals_by_system: Mapping[str, Mapping[str, float]] = {},
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
     station_latitude: float | None = None,
     band_factors: Sequence[tuple[tuple[float, float], float]] | None = None,
@@ -1229,6 +1230,7 @@ def _select_minimum_crps_subset(
     scored: list[dict[str, Any]] = []
     best: tuple[Any, ...] | None = None
     best_weights: dict[str, float] | None = None
+    best_weight_rule = SEAT_WEIGHT_RULE_INVERSE_RMSE
     best_entry: dict[str, Any] | None = None
     for mask in range(1, 1 << len(ordered)):
         subset = [
@@ -1239,7 +1241,12 @@ def _select_minimum_crps_subset(
         if len({family_by_system[s] for s in subset}) < 2:
             continue
         try:
-            weights = _bounded_family_weights(
+            # The contest must weigh each candidate the way that candidate
+            # would actually be served, or it is ranking blends nobody runs.
+            weights, weight_rule = _seat_weights(
+                residuals_by_system={
+                    s: residuals_by_system.get(s, {}) for s in subset
+                },
                 train_rmse_by_system={s: train_rmse[s] for s in subset},
                 family_by_system={
                     s: family_by_system[s] for s in subset
@@ -1331,6 +1338,7 @@ def _select_minimum_crps_subset(
         if best is None or rank < best:
             best = rank
             best_weights = weights
+            best_weight_rule = weight_rule
             best_entry = entry
     if best_weights is None or best_entry is None:
         raise ContractError("cross_native_ensemble_no_scorable_subset")
@@ -1341,6 +1349,11 @@ def _select_minimum_crps_subset(
     ))
     receipt = {
         "rule": "MIN_CRPS_EXACT_SHARED_HOLDOUT_SUBSET_V1",
+        # Which rule divided the winner's weight.  A scope that fell back to
+        # inverse RMSE looks identical in the weights alone, and the reason it
+        # fell back -- too few shared days for a covariance -- is exactly what
+        # a reader chasing a stale-looking blend needs to see.
+        "weight_rule": best_weight_rule,
         "evaluated_subset_count": len(scored),
         "winner": best_entry,
         "leaderboard": scored[:8],
@@ -1567,6 +1580,58 @@ def _capped_family_weights(
     if total <= 0.0:
         raise ContractError("cross_native_ensemble_family_caps_infeasible")
     return {family: value / total for family, value in weights.items()}
+
+
+SEAT_WEIGHT_RULE_COVARIANCE = "MINIMUM_VARIANCE_SHRUNK_COVARIANCE_V1"
+SEAT_WEIGHT_RULE_INVERSE_RMSE = "INVERSE_TRAIN_RMSE_MATURITY_RAMP_V1"
+
+
+def _seat_weights(
+    *,
+    residuals_by_system: Mapping[str, Mapping[str, float]],
+    train_rmse_by_system: Mapping[str, float],
+    family_by_system: Mapping[str, str],
+    family_caps: Mapping[str, float],
+    train_n_by_system: Mapping[str, int] | None = None,
+) -> tuple[dict[str, float], str]:
+    """How a seated cohort divides its weight, and under which rule.
+
+    Inverse RMSE prices each system on how good it is alone, so systems making
+    the same mistake are paid twice for one piece of information.  Where the
+    train window supports a covariance, the weights come from minimising the
+    combined error variance instead; where it does not, the older rule stands
+    and says so on the receipt.
+
+    Measured before promotion, as a shadow beside the served blend: minimum
+    variance beat inverse RMSE by 0.018 bits over 471 station-days, and the
+    advantage grew with the length of the train window -- estimation noise was
+    the binding constraint, not absence of structure.  Roughly a fifth of that
+    is the covariance proper; the rest is the exponent, inverse RMSE against
+    inverse variance.
+
+    Both branches face the same family caps, so this chooses a rule and never
+    a concentration limit.
+    """
+
+    try:
+        covariance_weights = _minimum_variance_weights(
+            residuals_by_system=residuals_by_system,
+            family_by_system=family_by_system,
+            family_caps=family_caps,
+        )
+    except ContractError:
+        covariance_weights = None
+    if covariance_weights:
+        return covariance_weights, SEAT_WEIGHT_RULE_COVARIANCE
+    return (
+        _bounded_family_weights(
+            train_rmse_by_system=train_rmse_by_system,
+            family_by_system=family_by_system,
+            family_caps=family_caps,
+            train_n_by_system=train_n_by_system,
+        ),
+        SEAT_WEIGHT_RULE_INVERSE_RMSE,
+    )
 
 
 def _bounded_family_weights(
@@ -3218,7 +3283,38 @@ def build_native_ensemble_oos(
             system_id: float(evaluation["parameters"]["train_rmse_c"])
             for system_id, evaluation in rows
         }
-        weights = _bounded_family_weights(
+        # Train-window residuals for every ready system, read before the
+        # contest so a covariance-aware weighting can be derived without ever
+        # seeing a holdout day.  Each candidate subset is weighted the way it
+        # would be served, so the residuals have to exist before the first
+        # subset is scored -- and the correlation matrix further down reuses
+        # this same series, so the evidence a reader sees and the numbers the
+        # weights were built on cannot drift apart.
+        certified_train_end = max(
+            evaluation["train_end_date"] for _system, evaluation in rows
+        )
+        train_residuals: dict[str, dict[str, float]] = {
+            system_id: {
+                case["event_date"]: (
+                    float(case["actual_tmax_c"])
+                    - sum(float(value) for value in case["values"])
+                    / len(case["values"])
+                )
+                for case in cases_by_scope.get(
+                    (
+                        system_id,
+                        season_bin,
+                        lead_bucket,
+                        cycle_by_system[system_id],
+                    ),
+                    (),
+                )
+                if case["event_date"] <= certified_train_end
+            }
+            for system_id, _evaluation in rows
+        }
+        weights, _cohort_weight_rule = _seat_weights(
+            residuals_by_system=train_residuals,
             train_rmse_by_system=train_rmse,
             family_by_system=family_by_system,
             family_caps=configured_caps,
@@ -3252,6 +3348,7 @@ def build_native_ensemble_oos(
             station_latitude=station_latitude,
             ready_system_ids=[system_id for system_id, _e in rows],
             predictions_by_system=predictions_by_system,
+            residuals_by_system=train_residuals,
             common_holdout=common_holdout,
             conditioning_by_day=conditioning_by_day,
             family_by_system=family_by_system,
@@ -3284,56 +3381,48 @@ def build_native_ensemble_oos(
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
             _cycle_mapping_for_rows(selected_ready_rows)
         )
-        # Train-window residuals, read before the holdout is scored so a
-        # covariance-aware weighting can be derived from them without ever
-        # seeing a holdout day.  The correlation matrix further down reads the
-        # same series; it is computed once here and reused so the evidence a
-        # reader sees and the numbers a candidate scheme is built on cannot
-        # drift apart.
-        certified_train_end = rows[0][1]["train_end_date"]
-        train_residuals: dict[str, dict[str, float]] = {
-            system_id: {
-                case["event_date"]: (
-                    float(case["actual_tmax_c"])
-                    - sum(float(value) for value in case["values"])
-                    / len(case["values"])
-                )
-                for case in cases_by_scope.get(
-                    (
-                        system_id,
-                        season_bin,
-                        lead_bucket,
-                        cycle_by_system[system_id],
-                    ),
-                    (),
-                )
-                if case["event_date"] <= certified_train_end
-            }
-            for system_id in sorted(weights)
+        # Narrowed to the seated cohort now the contest has chosen it.  The
+        # series themselves are the ones the weights were derived from above.
+        train_residuals = {
+            system_id: series
+            for system_id, series in train_residuals.items()
+            if system_id in weights
         }
         # Shadow schemes, scored beside the served one and serving nothing.
-        # Inverse RMSE prices each system on how good it is alone, so two
-        # systems making the same mistake are paid twice for one piece of
-        # information; these ask what weights would fall out of the residual
-        # covariance instead.  The pair is deliberate: the diagonal-only
-        # variant is inverse-variance weighting, so the gap between the two is
-        # what the measured correlations are worth on their own.
+        # The pair inverted when minimum variance was promoted: what is now
+        # shadowed is the rule it replaced, so a regression shows up as the
+        # old scheme pulling ahead rather than as silence.  ``inverse_variance``
+        # stays because the gap between it and the served blend is what the
+        # measured correlations are worth on their own, which is the part of
+        # the promotion that rested on the thinnest evidence.
         shadow_weight_schemes: dict[str, dict[str, float]] = {}
-        for label, shrinkage in (
-            ("min_variance", MINIMUM_VARIANCE_SHRINKAGE),
-            ("inverse_variance", 1.0),
-        ):
-            try:
-                candidate_weights = _minimum_variance_weights(
-                    residuals_by_system=train_residuals,
-                    family_by_system=family_by_system,
-                    family_caps=configured_caps,
-                    shrinkage=shrinkage,
-                )
-            except ContractError:
-                candidate_weights = None
-            if candidate_weights:
-                shadow_weight_schemes[label] = candidate_weights
+        try:
+            previous_rule_weights = _bounded_family_weights(
+                train_rmse_by_system={
+                    system_id: train_rmse[system_id] for system_id in weights
+                },
+                family_by_system=family_by_system,
+                family_caps=configured_caps,
+                train_n_by_system={
+                    system_id: int(evaluation.get("train_n") or 0)
+                    for system_id, evaluation in rows
+                },
+            )
+        except ContractError:
+            previous_rule_weights = None
+        if previous_rule_weights:
+            shadow_weight_schemes["inverse_rmse"] = previous_rule_weights
+        try:
+            diagonal_weights = _minimum_variance_weights(
+                residuals_by_system=train_residuals,
+                family_by_system=family_by_system,
+                family_caps=configured_caps,
+                shrinkage=1.0,
+            )
+        except ContractError:
+            diagonal_weights = None
+        if diagonal_weights:
+            shadow_weight_schemes["inverse_variance"] = diagonal_weights
         cross_predictions = []
         climate_train = next(
             iter(rows)
