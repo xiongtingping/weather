@@ -26,7 +26,7 @@ import json
 import sqlite3
 import statistics
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +47,21 @@ BIAS_DRIFT_SIGMA = 1.0
 MIN_SPLIT_SAMPLES = 16
 # Two tables, two refresh paths.  A gap this wide means one of them stopped.
 STALE_TABLE_GAP_DAYS = 3
+# Mirrors native_ensemble_oos; duplicated rather than imported so a read-only
+# audit never pulls the serving module's import graph into a cron shell.  If
+# they drift, the rates below describe a gate nobody runs -- pinned by test.
+BRIER_TOLERANCE_MAX_LOSS = 0.02
+BRIER_TOLERANCE_MIN_GAIN = 0.05
+# Below this the rates are a fortnight of weather, not a property of the gate.
+GATE_RATE_MIN_SAMPLE = 100
+# Measured 2026-08-18: NLL is the binding condition and only 6.7% of
+# contested candidates are admitted, so Brier alone blocks a small minority.
+# Should that minority become the majority, Brier is deciding this path by
+# itself and its thresholds are worth revisiting.
+GATE_BRIER_ONLY_ALARM_SHARE = 0.50
+# How far back the rates look.  Long enough to be a property of the gate,
+# short enough to notice a change in it.
+GATE_RATE_LOOKBACK_DAYS = 14
 
 
 def _utc_now() -> str:
@@ -270,6 +285,112 @@ def check_bias_stability(conn: sqlite3.Connection, live: dict) -> list[dict]:
     return findings
 
 
+def gate_condition_rates(
+    conn: sqlite3.Connection, *, since: str
+) -> dict:
+    """Which of the tolerance channel's three conditions is doing the work.
+
+    A candidate that loses Brier to climatology may still pass if its Brier
+    loss is small and CRPS *and* NLL both win by a margin.  Reading only
+    Brier and CRPS makes that channel look punitive -- it rejects candidates
+    whose CRPS beats climatology by 9% over a 3% Brier loss -- and reading
+    NLL too shows why most of those rejections are right: half the rejected
+    candidates lose NLL to climatology outright, which is a distribution
+    confidently wrong where it matters, not a scoring quirk.
+
+    So this is a diagnostic, not an alarm, with one exception.  NLL is the
+    binding condition today.  If it stops being one -- if the share blocked
+    by Brier *alone* grows -- then Brier has become the gate's sole
+    gatekeeper on this path, and that is the moment the tolerance thresholds
+    are worth revisiting.  That, and only that, is reported as a finding.
+    """
+
+    rows = conn.execute(
+        "SELECT oos_metrics_json, climatology_baseline_metrics_json"
+        " FROM calibration_cross_native_ensemble_oos_evaluation"
+        " WHERE evaluated_at_utc>=?",
+        (since,),
+    ).fetchall()
+    contested = []
+    for metrics_json, baseline_json in rows:
+        try:
+            model = json.loads(str(metrics_json))
+            climate = json.loads(str(baseline_json))
+        except (TypeError, ValueError):
+            continue
+        if not model.get("crps") or not climate.get("brier"):
+            continue
+        if model["crps"] > climate["crps"] or model["brier"] <= climate["brier"]:
+            continue
+        contested.append((
+            (model["brier"] - climate["brier"]) / climate["brier"],
+            (climate["crps"] - model["crps"]) / climate["crps"],
+            (
+                (climate["nll"] - model["nll"]) / climate["nll"]
+                if climate.get("nll") else 0.0
+            ),
+        ))
+    total = len(contested)
+    if not total:
+        return {"contested_count": 0}
+    within_brier = [c for c in contested if c[0] <= BRIER_TOLERANCE_MAX_LOSS]
+    passes_crps = [c for c in contested if c[1] >= BRIER_TOLERANCE_MIN_GAIN]
+    passes_nll = [c for c in contested if c[2] >= BRIER_TOLERANCE_MIN_GAIN]
+    admitted = [
+        c for c in contested
+        if c[0] <= BRIER_TOLERANCE_MAX_LOSS
+        and c[1] >= BRIER_TOLERANCE_MIN_GAIN
+        and c[2] >= BRIER_TOLERANCE_MIN_GAIN
+    ]
+    # Blocked by Brier and nothing else: the other two conditions are met and
+    # only the Brier loss keeps it out.
+    brier_only = [
+        c for c in contested
+        if c[0] > BRIER_TOLERANCE_MAX_LOSS
+        and c[1] >= BRIER_TOLERANCE_MIN_GAIN
+        and c[2] >= BRIER_TOLERANCE_MIN_GAIN
+    ]
+    return {
+        "contested_count": total,
+        "brier_loss_within_tolerance_share": len(within_brier) / total,
+        "crps_gain_sufficient_share": len(passes_crps) / total,
+        "nll_gain_sufficient_share": len(passes_nll) / total,
+        "admitted_share": len(admitted) / total,
+        "blocked_by_brier_alone_share": len(brier_only) / total,
+        "median_brier_loss": statistics.median(c[0] for c in contested),
+        "median_crps_gain": statistics.median(c[1] for c in contested),
+        "median_nll_gain": statistics.median(c[2] for c in contested),
+        "brier_tolerance_max_loss": BRIER_TOLERANCE_MAX_LOSS,
+        "brier_tolerance_min_gain": BRIER_TOLERANCE_MIN_GAIN,
+    }
+
+
+def check_gate_binding_condition(rates: dict) -> list[dict]:
+    """Brier having become the sole blocker is the trigger to revisit it."""
+
+    total = int(rates.get("contested_count") or 0)
+    if total < GATE_RATE_MIN_SAMPLE:
+        return []
+    share = float(rates.get("blocked_by_brier_alone_share") or 0.0)
+    if share < GATE_BRIER_ONLY_ALARM_SHARE:
+        return []
+    return [{
+        "check": "tolerance_channel_now_gated_by_brier_alone",
+        "contested_count": total,
+        "blocked_by_brier_alone_share": round(share, 4),
+        "nll_gain_sufficient_share": round(
+            float(rates.get("nll_gain_sufficient_share") or 0.0), 4
+        ),
+        "median_brier_loss": round(
+            float(rates.get("median_brier_loss") or 0.0), 4
+        ),
+        "median_crps_gain": round(
+            float(rates.get("median_crps_gain") or 0.0), 4
+        ),
+        "alarm_share": GATE_BRIER_ONLY_ALARM_SHARE,
+    }]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -284,10 +405,16 @@ def main(argv: list[str] | None = None) -> int:
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     now = _utc_now()
     live = _live_activations(conn, now)
+    since = (
+        datetime.now(timezone.utc)
+        - timedelta(days=GATE_RATE_LOOKBACK_DAYS)
+    ).isoformat().replace("+00:00", "Z")
+    gate_rates = gate_condition_rates(conn, since=since)
     findings = (
         check_spread_bound(live)
         + check_table_freshness(conn, live)
         + check_bias_stability(conn, live)
+        + check_gate_binding_condition(gate_rates)
     )
     conn.close()
 
@@ -300,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "finding_count": len(findings),
         "by_check": dict(by_check),
+        "gate_condition_rates": gate_rates,
         "findings": findings,
         "writes_target_database": False,
         "calls_order_gateway": False,
@@ -308,6 +436,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=1))
         return 1 if findings else 0
     print(f"活 scope {payload['live_scope_count']}  发现 {len(findings)} 项")
+    if gate_rates.get("contested_count"):
+        print(
+            f"  容差通道（近 {GATE_RATE_LOOKBACK_DAYS} 天"
+            f" {gate_rates['contested_count']} 个 CRPS赢/Brier输 候选）:"
+        )
+        print(
+            f"    Brier 劣势在容差内 {gate_rates['brier_loss_within_tolerance_share']:.1%}"
+            f" · CRPS 增益够 {gate_rates['crps_gain_sufficient_share']:.1%}"
+            f" · NLL 增益够 {gate_rates['nll_gain_sufficient_share']:.1%}"
+            f" ⇒ 放行 {gate_rates['admitted_share']:.1%}"
+        )
+        print(
+            f"    仅被 Brier 挡住 {gate_rates['blocked_by_brier_alone_share']:.1%}"
+            f"（超 {GATE_BRIER_ONLY_ALARM_SHARE:.0%} 才告警）"
+        )
     for check, count in by_check.most_common():
         print(f"  {check}: {count}")
     for row in findings[:20]:
