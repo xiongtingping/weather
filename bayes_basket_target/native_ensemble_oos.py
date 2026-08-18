@@ -1309,10 +1309,20 @@ def _select_minimum_crps_subset(
                 ordered_keys=ordered_keys,
                 key_centers_c=[float(int(key)) for key in ordered_keys],
             )
-            day_signals = dict(conditioning_by_day.get(str(day)) or {})
-            cooling_shift = day_signals.pop(
-                "synoptic_cooling_shift_c", None
-            )
+            # Only the radiation shift reads these now.  The conditional tail
+            # skew was withdrawn 2026-08-18: measured against its own absence
+            # over 1712 evaluations it cost 3.0% CRPS, won on 17% of scopes,
+            # and was net negative at every lead and at 36 of 45 stations --
+            # no pocket of the network it was helping.  The mechanism was not
+            # the problem; overlapping with the band table was.  It lifted
+            # buckets below 5% into the 2-12% band the band table then
+            # multiplies by 0.84, so two thirds of every lift was undone, and
+            # each layer had been fitted with the other held still as
+            # background.  Artifacts already gated with the tag keep applying
+            # it -- their holdout scored it -- so the serving branch stays.
+            cooling_shift = (
+                conditioning_by_day.get(str(day)) or {}
+            ).get("synoptic_cooling_shift_c")
             if cooling_shift:
                 probability = _shift_bucketed_probability(
                     probability,
@@ -1336,11 +1346,6 @@ def _select_minimum_crps_subset(
                     ),
                     latitude=station_latitude,
                 )
-            )
-            probability, _skew_receipt = apply_conditional_tail_skew(
-                probability,
-                ordinals=ordinal_map,
-                **day_signals,
             )
             probability, _band_receipt = apply_band_reliability(
                 probability, factors=band_factors
@@ -3523,7 +3528,6 @@ def build_native_ensemble_oos(
             for layer in (
                 "synoptic_cooling",
                 "neighbour_direction",
-                "conditional_tail_skew",
                 "band_reliability",
             )
         }
@@ -3560,10 +3564,20 @@ def build_native_ensemble_oos(
             # Serving applies the conditional tail skew under the same tag
             # with the same per-day signals, so the gate scores exactly what
             # will be served.
-            day_signals = dict(conditioning_by_day.get(str(day)) or {})
-            cooling_shift = day_signals.pop(
-                "synoptic_cooling_shift_c", None
-            )
+            # Only the radiation shift reads these now.  The conditional tail
+            # skew was withdrawn 2026-08-18: measured against its own absence
+            # over 1712 evaluations it cost 3.0% CRPS, won on 17% of scopes,
+            # and was net negative at every lead and at 36 of 45 stations --
+            # no pocket of the network it was helping.  The mechanism was not
+            # the problem; overlapping with the band table was.  It lifted
+            # buckets below 5% into the 2-12% band the band table then
+            # multiplies by 0.84, so two thirds of every lift was undone, and
+            # each layer had been fitted with the other held still as
+            # background.  Artifacts already gated with the tag keep applying
+            # it -- their holdout scored it -- so the serving branch stays.
+            cooling_shift = (
+                conditioning_by_day.get(str(day)) or {}
+            ).get("synoptic_cooling_shift_c")
             ordinal_map = {
                 str(key): index
                 for index, key in enumerate(ordered_keys)
@@ -3611,12 +3625,6 @@ def build_native_ensemble_oos(
                             ),
                             latitude=station_latitude,
                         )
-                    )
-                if skip != "conditional_tail_skew":
-                    shaped, _skew_receipt = apply_conditional_tail_skew(
-                        shaped,
-                        ordinals=grid_ordinals,
-                        **day_signals,
                     )
                 # Outermost, after every shape layer: the band factors were
                 # measured on final served claims, so they must see the claim
@@ -5093,7 +5101,6 @@ def persist_native_ensemble_oos(
                     # served the legacy value and so keep their own math.
                     + "::radiation_shift_sigma="
                     + f"{float(candidate['radiation_shift_sigma']):g}"
-                    + "::" + CONDITIONAL_SKEW_METHOD_TAG
                     + "::" + BAND_RELIABILITY_METHOD_TAG
                     # Pin the DB table version the holdout above was scored
                     # against; a bare tag means the static bootstrap
