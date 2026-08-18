@@ -456,7 +456,7 @@ class ResolvedStationBasketPolicy:
             "peripheral_min_coverage_value",
             "max_disagreement_expansion_layers",
             "maximum_support_buckets",
-            "dispersion_c_per_expansion_layer", "clip_min_notional_usdc",
+            "dispersion_rungs_per_expansion_layer", "clip_min_notional_usdc",
             "clip_max_notional_usdc", "price_tick_size", "maximum_limit_price",
             "minimum_expected_edge_per_share", "minimum_expected_pnl_after_usdc", "fee_rate",
             "maker_queue_cost_per_share", "taker_slippage_buffer_per_share", "protected_floor_usdc",

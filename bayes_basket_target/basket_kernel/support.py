@@ -338,6 +338,47 @@ def _direction(
     )
 
 
+def _disagreement_expansion_layers(
+    snapshot: TargetBasketSnapshot,
+    policy: TargetBasketPolicy,
+) -> int:
+    """How many rungs of candidate window the model disagreement pays for.
+
+    The evidence side is a physical Celsius span (max minus min of the
+    calibrated model centres), the answer is a count of market rungs, and the
+    exchange rate between them is a station property, not a constant: one rung
+    is 1.0C on a Celsius book and 2F = 10/9 C on a Fahrenheit one.  Dividing by
+    a fixed 1.0 until 2026-08-18 read the Fahrenheit ladder at the Celsius rate,
+    so the same physical disagreement bought a wider window on the eleven
+    Fahrenheit stations -- charter clause 53 boundary (a): a Celsius quantity
+    compared across stations must first be put in the station's own terms.
+    Boundary (b) still governs the cap: ``max_disagreement_expansion_layers``
+    counts rungs and is cross-unit synonymous by design.
+    """
+
+    dispersion_c = snapshot.evidence.forecast_dispersion_c
+    if dispersion_c <= 0.0:
+        return 0
+    rung_width_c = snapshot.evidence.bucket_rung_width_c
+    if rung_width_c is None:
+        # Reachable only from a snapshot that declares a dispersion without
+        # declaring the ladder it is measured against.  Falling back to 1.0
+        # would silently reinstate the defect on exactly the stations it hurt.
+        raise ContractError(
+            "bucket_rung_width_required_for_disagreement_expansion"
+        )
+    return min(
+        policy.max_disagreement_expansion_layers,
+        int(
+            math.ceil(
+                dispersion_c
+                / rung_width_c
+                / policy.dispersion_rungs_per_expansion_layer
+            )
+        ),
+    )
+
+
 def _derive_dual_risk_scope(
     snapshot: TargetBasketSnapshot,
     center: BucketObservation,
@@ -446,15 +487,7 @@ def _choose_support(
             json.JSONDecodeError,
         ) as exc:
             raise ContractError("formal_model_members_invalid") from exc
-        expansion_layers = min(
-            policy.max_disagreement_expansion_layers,
-            int(
-                math.ceil(
-                    snapshot.evidence.forecast_dispersion_c
-                    / policy.dispersion_c_per_expansion_layer
-                )
-            ),
-        )
+        expansion_layers = _disagreement_expansion_layers(snapshot, policy)
         _center_bucket, _runner, _lead, center_stable = (
             probability_center_diagnostics(
                 {item.bucket: item.probability for item in buckets},
@@ -732,15 +765,7 @@ def _choose_support(
     ordinal_by_bucket = {item.bucket: item.ordinal for item in buckets}
     core_lower = min(ordinal_by_bucket[bucket] for bucket in base)
     core_upper = max(ordinal_by_bucket[bucket] for bucket in base)
-    expansion_layers = min(
-        policy.max_disagreement_expansion_layers,
-        int(
-            math.ceil(
-                snapshot.evidence.forecast_dispersion_c
-                / policy.dispersion_c_per_expansion_layer
-            )
-        ),
-    )
+    expansion_layers = _disagreement_expansion_layers(snapshot, policy)
     support_lower = min(item.ordinal for item in buckets)
     support_upper = max(item.ordinal for item in buckets)
     anchor_lower = (

@@ -38,6 +38,12 @@ def _envelope(stage: str, checkpoint: str) -> ProbabilityEnvelope:
         "model_envelope_lower_bucket": "37",
         "model_envelope_upper_bucket": "39",
         "model_envelope_span_c": "2",
+        # ZUUU settles in Celsius, so its ladder steps 1C.  A dispersion is
+        # only spendable against the ladder it was measured on, and every
+        # produced envelope carries this geometry.
+        "bucket_intervals_c_json": (
+            '{"37":[36.5,37.5],"38":[37.5,38.5],"39":[38.5,39.5]}'
+        ),
     }
     if stage == "P1":
         lineage.update({

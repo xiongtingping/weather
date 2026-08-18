@@ -1944,3 +1944,162 @@ def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:
     signature = inspect.signature(compile_delta_v2_runtime_plan)
     assert "previous_probabilities" in signature.parameters
     assert signature.parameters["previous_probabilities"].default is None
+
+
+def _rung_snapshot(
+    rung_width_c: float | None,
+    *,
+    dispersion_c: float = 1.0502,
+) -> "TargetBasketSnapshot":
+    """A six-rung book whose core is one bucket and whose envelope is wide.
+
+    Everything except the ladder's Celsius width is held fixed, so any
+    difference in the candidate window is attributable to the conversion.
+    """
+
+    from bayes_basket_target.basket_kernel.contracts import (
+        TargetBasketSnapshot,
+    )
+
+    evidence = {
+        "probability_stage": "P0",
+        "posterior_version": "p0-v1",
+        "posterior_sha256": "a" * 64,
+        # Defaults to KLGA 2026-08-13's measured model envelope span, which
+        # sits inside the band (1.0, 1.111] where the two readings disagree.
+        "forecast_dispersion_c": dispersion_c,
+        "model_envelope_lower_ordinal": 35,
+        "model_envelope_upper_ordinal": 40,
+    }
+    if rung_width_c is not None:
+        evidence["bucket_rung_width_c"] = rung_width_c
+    return TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6",
+        "snapshot_id": "doctrine-rung-width",
+        "sequence": 1,
+        "observed_at": "2026-08-13T03:00:00Z",
+        "market_id": "doctrine-market",
+        "station_id": "KLGA",
+        "event_date": "2026-08-13",
+        "quote_version": "quote-v1",
+        "quote_observed_at": "2026-08-13T03:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "inventory-v1",
+        "order_state_version": "order-v1",
+        "evidence": evidence,
+        "buckets": [
+            {
+                "bucket": str(35 + index),
+                "ordinal": 35 + index,
+                "probability": probability,
+                "bid_price": 0.02,
+                "bid_levels": [{"price": 0.02, "shares": 10.0}],
+                "ask_levels": [{"price": 0.03, "shares": 100.0}],
+                "price_tick_size": 0.01,
+                "maker_queue_ahead_shares": 2.0,
+                "maker_queue_known": True,
+            }
+            for index, probability in enumerate(
+                (0.02, 0.03, 0.80, 0.10, 0.03, 0.02)
+            )
+        ],
+        "checkpoint_changed": True,
+        "quote_changed": True,
+        "fill_changed": True,
+        "time_gate_changed": True,
+        "evidence_fresh": True,
+        "contract_matches": True,
+        "order_state_known": True,
+        "risk_inputs_complete": True,
+        "time_left_minutes": 1440.0,
+    })
+
+
+def test_clause_53_expansion_layers_convert_at_the_station_rung_width() -> None:
+    """A Celsius dispersion must be spent at the station's own exchange rate.
+
+    Clause 53 splits the two kinds of quantity: boundary (a) puts every
+    Celsius number in the Celsius domain before it is compared across
+    stations, boundary (b) leaves rung counts alone because a rung is market
+    structure.  The disagreement expansion straddles them -- it reads a
+    Celsius span and answers in rungs -- so it is boundary (a) that governs
+    the division, and the divisor is the ladder's own width.
+
+    Dividing by a fixed 1.0 read the Fahrenheit ladder at the Celsius rate.
+    Measured 2026-08-18 over ``basket_probability_envelope`` from 2026-08-01:
+    25,033 Fahrenheit envelopes, of which 1,453 (5.8%) bought two layers where
+    the station's own 10/9 C rung buys one; 63,998 Celsius envelopes, none
+    divergent.  Only two rung widths exist in production -- 1.0 and 1.111111 --
+    so the divergent band is exactly span in (1.0, 1.111] and the cap of two
+    bounds it.  Charter clause 53 named the Celsius-hardcoded divisor shape as
+    the defect it exists to prevent; this is the second case found.
+    """
+
+    clause = _clause(53)
+    assert "桶宽禁止按单位硬编码" in clause
+    assert "1.111" in clause
+
+    from bayes_basket_target.basket_kernel.contracts import (
+        ContractError as KernelContractError,
+        TargetBasketPolicy,
+    )
+    from bayes_basket_target.basket_kernel.support import (
+        _choose_support,
+        _disagreement_expansion_layers,
+    )
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "base_coverage": 0.6,
+        "maximum_coverage": 0.8,
+        "entropy_coverage_gain": 0.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+
+    celsius = _rung_snapshot(1.0)
+    fahrenheit = _rung_snapshot(10.0 / 9.0)
+
+    # The same physical disagreement, read on each book's own ladder.
+    assert _disagreement_expansion_layers(celsius, policy) == 2
+    assert _disagreement_expansion_layers(fahrenheit, policy) == 1
+
+    # And it reaches the candidate window, not just the counter: slot 9 is the
+    # layer budget, slots 7 and 8 the window it opens around the one-bucket
+    # core at ordinal 37.
+    celsius_support = _choose_support(celsius, policy)
+    fahrenheit_support = _choose_support(fahrenheit, policy)
+    assert (celsius_support[7], celsius_support[8]) == (35, 39)
+    assert (fahrenheit_support[7], fahrenheit_support[8]) == (36, 38)
+    assert celsius_support[9] == 2
+    assert fahrenheit_support[9] == 1
+
+    # Boundary (b) is untouched: the cap is a rung count and stays synonymous
+    # across units.  A Fahrenheit book still reaches two layers -- it just has
+    # to disagree by 10/9 C per rung to get there, which is the point.
+    assert _disagreement_expansion_layers(fahrenheit, policy) == 1
+    assert _disagreement_expansion_layers(
+        _rung_snapshot(10.0 / 9.0, dispersion_c=2.3), policy
+    ) == 2
+
+    # A dispersion with no ladder to spend it on is refused, not silently
+    # converted at 1.0 -- that fallback is the defect wearing a default.
+    with pytest.raises(
+        KernelContractError,
+        match="bucket_rung_width_required_for_disagreement_expansion",
+    ):
+        _disagreement_expansion_layers(_rung_snapshot(None), policy)
+
+    # The knob is denominated in rungs now.  The Celsius name is refused
+    # rather than aliased: the same number means different things under the
+    # two readings, so accepting it would carry the confusion forward.
+    with pytest.raises(
+        KernelContractError,
+        match="legacy_dispersion_celsius_per_expansion_layer_forbidden",
+    ):
+        TargetBasketPolicy.from_mapping({
+            "clip_max_notional_usdc": 30.0,
+            "dispersion_c_per_expansion_layer": 1.0,
+        })
