@@ -2790,8 +2790,11 @@ function roster(){
     // rule is stated once in the section header, so a basket only carries the
     // tag when it differs from it -- otherwise every cell repeats the same
     // string and the ones that matter stop standing out.
+    // The full rule string is a fingerprint; a cell only needs to warn that
+    // this basket is not comparable to the others, and the name belongs in
+    // the tooltip where it does not crowd the numbers out.
     const tag=(s.selection_rule_label && s.selection_rule_label!==CURRENT_RULE)
-      ? `<div><span class="pill amber" title="该篮子按旧规则选出，与当前规则不可直接比较">${h(s.selection_rule_label)}</span></div>`
+      ? `<div><span class="pill amber" title="按已退役规则选出，与当前规则不可直接比较：${h(s.selection_rule_label)}">旧规则</span></div>`
       : "";
     return `<td><div class="mono">${w}</div>${rung}${tag}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
@@ -2848,16 +2851,18 @@ function roster(){
     // got a basket today" is a question about P0 and the all-stage count
     // answers it only by accident.
     const p0=rows.filter(e=>e.stages.P0).length;
-    // What rules this day's baskets were chosen under.  Usually one; more
-    // than one means the day straddles a rule change and its totals mix two
-    // strategies.
+    // The rule name is a fingerprint, not prose, and printing it in full on
+    // every day pushed the numbers off the line.  What a reader needs from
+    // it is the exception: a day compiled under more than one rule set mixes
+    // two strategies and its totals are not one account.  Say that, and put
+    // the names in the tooltip.
     const dayRules=[...new Set(rows.flatMap(e=>
       ["P0","P0-M","P1"].map(k=>e.stages[k]&&e.stages[k].selection_rule_label)
         .filter(Boolean)))].sort();
-    const ruleNote=dayRules.length
-      ? ` · 规则 ${dayRules.map(r=>r===CURRENT_RULE
-          ? `<span class="pill green">${h(r)}</span>`
-          : `<span class="pill amber">${h(r)}</span>`).join(" ")}`
+    const stale=dayRules.filter(r=>r!==CURRENT_RULE);
+    const ruleNote=(dayRules.length>1||stale.length)
+      ? ` <span class="pill amber" title="${h(dayRules.join(" / "))}">${
+          dayRules.length>1?"混用两套选桶规则":"按已退役规则选出"}</span>`
       : "";
     // The day's entry account, summed over every seat it took.  A seat is a
     // posted order first and a position second, and the gap between the two
@@ -2884,14 +2889,7 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  const ruleLine=CURRENT_RULE?`<div class="why"><b>当前选桶规则：</b>
-    <span class="pill green">${h(CURRENT_RULE)}</span>
-    ——「D-质量」指窗口按模型概率质量排序（含中心桶、向概率大的一侧展开），
-    「整篮EV」指整个篮子的概率和必须高于全书成本，
-    「腿≥0.01」指窗口里任何一条腿的报价低于一分就整窗作废。
-    下面凡是标黄色规则名的篮子，是按已退役的规则选出的，
-    不能和绿色的直接比较。</div>`:"";
-  return `<h2>九、逐站逐日明细：选了什么、挂了什么、买到了什么</h2>${ruleLine}
+  return `<h2>九、逐站逐日明细：选了什么、挂了什么、买到了什么</h2>
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
   每格上行是<b>成交后</b>的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的
