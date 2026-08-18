@@ -190,6 +190,9 @@ def _entry_fill(
             got_rungs / posted_rungs if posted_rungs else None
         ),
         "intended_stake_usdc": want_stake,
+        # What the position cost, carried beside what it was meant to cost so
+        # a reader never has to reconstruct one from the other.
+        "filled_stake_usdc": stake,
         "stake_shortfall_usdc": (
             None if want_stake is None else want_stake - stake
         ),
@@ -832,6 +835,12 @@ def build_payload(db: Path) -> dict[str, Any]:
                     "pnl_usdc": row["pnl_usdc"],
                     "dust_offer": row["dust_offer"],
                     "settled_tmax_c": row["settled_tmax_c"],
+                    # The order as posted beside the position that came
+                    # back.  It belongs in the cell the seat is drawn in:
+                    # read apart from the window it fills, "posted three,
+                    # bought one" is a fact about a different table than the
+                    # one showing the single bucket.
+                    "entry": row["entry"],
                 }
             )
         entry["seated_stage_count"] = sum(

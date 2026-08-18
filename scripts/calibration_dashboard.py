@@ -2726,6 +2726,44 @@ function roster(){
     return `<div class="muted" title="${h(lab[1])}">${h(lab[0])}</div>`+
       (r.detail?`<div class="muted mono" style="font-size:11px">${h(r.detail)}</div>`:"");
   };
+  const pctS=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const usd2=v=>v==null?"—":v.toFixed(2);
+  // The order as posted, drawn through the window it filled.  A bucket that
+  // bought nothing is struck through rather than dropped: the charter's
+  // three-rung floor is a rule about what was posted, so a cell that shows
+  // only the fill cannot be read against it -- which is how one filled rung
+  // came to look like a one-rung basket that should never have been chosen.
+  const entryCell=(e)=>{
+    if(!e||!e.posted_leg_count) return "";
+    const legs=e.legs.map(l=>l.empty
+      ? `<span class="muted" style="text-decoration:line-through">${short(l.bucket)}</span>`
+      : `<span>${short(l.bucket)}</span>`).join("+");
+    const floorBad=e.posted_leg_count<3;
+    const full=e.filled_leg_count===e.posted_leg_count;
+    const legLine=`<div class="mono" style="font-size:11px">${legs}
+      <span class="muted">${e.posted_leg_count}腿→${e.filled_leg_count}腿</span>
+      ${floorBad?`<span class="pill red" title="宪章 50/50a：挂单必须≥3桶">挂单不足三桶</span>`:""}
+      ${e.gapped?`<span class="pill amber" title="选桶层强制连续，出洞必是成交造成的">缺腿</span>`:""}</div>`;
+    // Share completion and stake completion disagree whenever the legs that
+    // missed were not the ones carrying the money, so both are shown; the
+    // rung count is what the market actually came down to.
+    const money=`<div class="muted" style="font-size:11px">
+      ${usd2(e.intended_stake_usdc)}→${usd2(e.filled_stake_usdc)}
+      <span title="金额完成">(${pctS(e.stake_completion)})</span> ·
+      <span title="份数完成 / 档位完成">份${pctS(e.share_completion)} ·
+      档${pctS(e.rung_completion)}</span>${full?
+        ` <span class="pill green">整篮</span>`:""}</div>`;
+    const rows=e.legs.map(l=>`<tr${l.empty?' class="muted"':''}>
+      <td>${h(l.bucket)}</td><td>${l.intended_shares.toFixed(1)}</td>
+      <td>${l.empty?"<b>0</b>":l.filled_shares.toFixed(1)}</td>
+      <td>${l.posted_rungs==null?"—":l.filled_rungs+"/"+l.posted_rungs}</td>
+      <td>${l.empty||l.fill_price==null?"—":l.fill_price.toFixed(4)}</td></tr>`).join("");
+    return legLine+money+`<details style="font-size:11px">
+      <summary class="muted">逐腿</summary>
+      <table class="mono" style="font-size:11px"><thead><tr>
+        <th>腿</th><th>目标份</th><th>成交份</th><th>档</th><th>均价</th>
+      </tr></thead><tbody>${rows}</tbody></table></details>`;
+  };
   const cell=(s,extra,refusal)=>{
     if(!s) return `<td class="muted">—${why(refusal)}${extra||""}</td>`;
     const w=s.window.map(short).join("+");
@@ -2746,7 +2784,8 @@ function roster(){
       : "";
     return `<td><div class="mono">${w}</div>${rung}${tag}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
-      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>${extra||""}</td>`;
+      @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>
+      ${entryCell(s.entry)}${extra||""}</td>`;
   };
   const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
@@ -2805,9 +2844,22 @@ function roster(){
           ? `<span class="pill green">${h(r)}</span>`
           : `<span class="pill amber">${h(r)}</span>`).join(" ")}`
       : "";
+    // The day's entry account, summed over every seat it took.  A seat is a
+    // posted order first and a position second, and the gap between the two
+    // is the day's own number -- not a per-station curiosity.
+    const seats=rows.flatMap(e=>["P0","P0-M","P1"]
+      .map(k=>e.stages[k]).filter(v=>v&&v.entry&&v.entry.posted_leg_count));
+    const short3=seats.filter(v=>v.entry.posted_leg_count<3).length;
+    const partial=seats.filter(v=>
+      v.entry.filled_leg_count<v.entry.posted_leg_count).length;
+    const want=seats.reduce((s,v)=>s+(v.entry.intended_stake_usdc||0),0);
+    const got=seats.reduce((s,v)=>s+v.stake_usdc,0);
+    const fill=seats.length?` · 部分成交 ${partial}/${seats.length} ·
+      计划 ${usd2(want)}→实投 ${usd2(got)}（${pctS(want>0?got/want:null)}）${
+        short3?`<span class="pill red">挂单不足三桶 ${short3}</span>`:""}`:"";
     return `<details class="card" ${open?"open":""}>
       <summary><b class="mono">${h(day)}</b>
-        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}</span></summary>
+        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}${fill}</span></summary>
       <div class="scroll" style="margin-top:10px"><table>
         <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
     </details>`;
@@ -2822,12 +2874,21 @@ function roster(){
     「腿≥0.01」指窗口里任何一条腿的报价低于一分就整窗作废。
     下面凡是标黄色规则名的篮子，是按已退役的规则选出的，
     不能和绿色的直接比较。</div>`:"";
-  return `<h2>九、逐站逐日明细</h2>${ruleLine}
+  return `<h2>九、逐站逐日明细：选了什么、挂了什么、买到了什么</h2>${ruleLine}
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
-  每格上行是桶，下方是横梁与胜率 @ 成本 · 赔率；空格里写的是账本自己给出的拒绝理由，
-  不再统一算作「未入座」。每行只讲这一天：跨日均值在上一节。最新一天默认展开，
-  更早的日期折叠在下方。</p>
+  每格上行是<b>成交后</b>的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的
+  <b>挂单账</b>：挂出去的每一桶都在，一档没买到的划掉，后面跟腿数、金额与三个完成率，
+  展开「逐腿」是每条腿的目标份数 / 成交份数 / 成交档位 / 均价。
+  空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
+  每行只讲这一天：跨日均值在上一节。最新一天默认展开，更早的日期折叠在下方。</p>
+  <div class="why"><b>桶数下界管的是挂单那一栏。</b>宪章 50/50a 要求席位≥3 桶，
+  那是选桶层的规则——划掉的桶照样算数，所以「挂 3 腿成 1 腿」不违宪，标黄；
+  只有<b>挂单</b>本身低于 3 桶才标红。建仓是渐进的：每条腿在买卖价之间挂 5 档，
+  6 小时内盘口穿到哪档成交哪档，一档没穿到的腿就此不存在，因此持仓可以比选中的篮子窄、
+  甚至中间缺一腿（选桶层强制连续，出洞必是成交造成的）。
+  <b>三个完成率不是一回事：</b>「档」是市场把价压下来多少档，「份」是这买到了计划仓位的
+  多少份，「金额」又与份数不同——便宜的腿没成交时，金额完成率会显著高于份数完成率。</div>
   <div class="why">${legend}</div>
   ${dates.map((day,index)=>block(day,index===0)).join("")}`;
 }
@@ -3319,102 +3380,6 @@ function scorecard(){
     只列偏离最大的几个。相关高但偏离小＝模型重复但权重已经知道，不亏。</div>` : ""}`;
 }
 
-
-// What was posted against what came back.  Every other section reads the
-// recorded window, which is the filled part of the basket -- so a seat that
-// posted four legs and bought one is indistinguishable there from a seat
-// that only ever wanted one, and the charter's three-rung floor looks
-// violated when it was not.  This is the one section that separates them.
-function entryFill(){
-  const S=D.selection||{};
-  const rs=(S.rows||[]).filter(r=>r.entry&&r.entry.posted_leg_count);
-  if(!rs.length) return "";
-  const dates=[...new Set(rs.map(r=>r.event_date))].sort().reverse();
-  const usd=v=>v==null?"—":v.toFixed(2);
-  const shares=v=>v==null?"—":v.toFixed(1);
-  const legTable=e=>`<table class="mono" style="font-size:12px">
-    <thead><tr><th>腿</th><th>目标份数</th><th>成交份数</th>
-      <th>档位</th><th>成交均价</th></tr></thead>
-    <tbody>${e.legs.map(l=>`<tr${l.empty?' class="muted"':''}>
-      <td>${h(l.bucket)}</td>
-      <td>${shares(l.intended_shares)}</td>
-      <td>${l.empty?"<b>0</b>":shares(l.filled_shares)}</td>
-      <td>${l.posted_rungs==null?"—"
-        :`${l.filled_rungs}/${l.posted_rungs}`}</td>
-      <td>${l.empty?"—":(l.fill_price==null?"—":l.fill_price.toFixed(4))}</td>
-    </tr>`).join("")}</tbody></table>`;
-  const row=r=>{
-    const e=r.entry;
-    // The floor is a rule about what was posted, so that is the number that
-    // gets the verdict.  Two rungs is a violation whatever the book did.
-    const floorOK=e.posted_leg_count>=3;
-    const flags=[
-      floorOK?"":`<span class="pill red">挂单不足三桶</span>`,
-      e.filled_leg_count<e.posted_leg_count
-        ?`<span class="pill amber">部分成交</span>`:"",
-      e.gapped?`<span class="pill amber">中间缺腿</span>`:"",
-      e.filled_leg_count===e.posted_leg_count
-        ?`<span class="pill green">整篮成交</span>`:"",
-    ].filter(Boolean).join(" ");
-    return `<tr>
-      <td class="mono">${h(r.station_id)}</td>
-      <td>${h(r.stage)}</td>
-      <td class="mono">${e.posted_buckets.join(" + ")}
-        <span class="muted">（${e.posted_leg_count} 腿）</span></td>
-      <td class="mono">${r.window.join(" + ")||"—"}
-        <span class="muted">（${e.filled_leg_count} 腿）</span></td>
-      <td class="mono">${shares(e.intended_shares)} →
-        ${shares(e.filled_shares)}</td>
-      <td class="mono">${pct1(e.share_completion)}</td>
-      <td class="mono">${pct1(e.rung_completion)}</td>
-      <td class="mono">${usd(e.intended_stake_usdc)} →
-        ${usd(r.stake_usdc)}</td>
-      <td class="mono ${e.stake_shortfall_usdc>0?"down":""}">
-        ${e.stake_shortfall_usdc==null?"—":"−"+usd(e.stake_shortfall_usdc)}</td>
-      <td class="mono">${pct1(e.stake_completion)}</td>
-      <td>${flags}</td>
-    </tr>`;
-  };
-  const block=(day,open)=>{
-    const rows=rs.filter(r=>r.event_date===day)
-      .sort((a,b)=>(a.stake_completion||0)-(b.stake_completion||0));
-    const short=rows.filter(r=>r.entry.posted_leg_count<3).length;
-    const partial=rows.filter(r=>
-      r.entry.filled_leg_count<r.entry.posted_leg_count).length;
-    const want=rows.reduce((s,r)=>s+(r.entry.intended_stake_usdc||0),0);
-    const got=rows.reduce((s,r)=>s+r.stake_usdc,0);
-    return `<details class="card" ${open?"open":""}>
-      <summary><b class="mono">${h(day)}</b>
-        <span class="muted">${rows.length} 笔 · 部分成交 ${partial} ·
-        挂单不足三桶 ${short} · 计划 ${usd(want)} → 实投 ${usd(got)}
-        （${pct1(want>0?got/want:null)}）</span></summary>
-      <div class="scroll" style="margin-top:10px"><table>
-        <thead><tr>
-          <th>站点</th><th>阶段</th><th>目标桶（挂单）</th><th>成交桶（持仓）</th>
-          <th>份数<br><span class="muted">目标→成交</span></th>
-          <th>份数完成</th><th>档位完成</th>
-          <th>金额<br><span class="muted">计划→实投</span></th>
-          <th>缺口</th><th>金额完成</th><th></th>
-        </tr></thead><tbody>${rows.map(row).join("")}</tbody></table></div>
-      <details style="margin-top:8px"><summary class="muted">逐腿明细</summary>
-        <div class="scroll">${rows.map(r=>
-          `<div style="margin:8px 0"><b class="mono">${h(r.station_id)}
-            ${h(r.stage)}</b>${legTable(r.entry)}</div>`).join("")}</div>
-      </details>
-    </details>`;
-  };
-  return `<h2>二十、挂单 vs 成交：每一腿的账</h2>
-  <p class="sub">别处显示的桶数是<b>成交后</b>的持仓，这一节把它拆回<b>挂单</b>与
-  <b>成交</b>两栏。宪章 50/50a 的三桶下界管的是挂单那一栏——那栏低于 3 才是违宪，
-  标红；成交栏塌到 1 桶是市场没卖，标黄。建仓是渐进的：每条腿在买卖价之间挂 5 档，
-  6 小时内盘口穿到哪档就成交哪档，一档没穿到的腿就此不存在，所以持仓可以比选中的篮子
-  更窄、甚至中间缺一腿（选桶层强制连续，出洞必是成交造成的）。</p>
-  <div class="why"><b>两个完成率不是一回事：</b>「档位完成」是市场把价格压下来多少档，
-  「份数完成」是这买到了计划仓位的多少——后者更低，说明没成交的正是权重大的腿。
-  「金额完成」又与份数不同：便宜的腿没成交时，金额完成率会显著高于份数完成率。</div>
-  ${dates.map((day,index)=>block(day,index===0)).join("")}`;
-}
-
 document.getElementById("app").innerHTML = [
   [head, "页头"], [members, "成员"], [chain, "链路"], [tables, "表"],
   [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
@@ -3424,7 +3389,6 @@ document.getElementById("app").innerHTML = [
   [dispersion, "模型离散度"], [hitRate, "模型命中率"],
   [materialization, "真值物化"], [oosScores, "OOS 打分"],
   [centerWidth, "中心/宽度"], [scorecard, "模型校准总检"],
-  [entryFill, "挂单 vs 成交"],
 ].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
