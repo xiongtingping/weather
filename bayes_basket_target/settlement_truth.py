@@ -10,6 +10,7 @@ probability, TAF, prices, orders, or a gateway.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import math
 import sqlite3
@@ -32,6 +33,10 @@ from .canonical_ingress import (
     ingest_canonical_contract,
 )
 from .correction_review import assert_station_day_corrections_resolved
+from .metar_precision import (
+    WHOLE_DEGREE_RESOLUTION_C,
+    official_temperature_c,
+)
 from .resource_bounds import assert_process_memory_budget
 from .settlement_time import settlement_day_window
 from .source_policy import (
@@ -257,7 +262,7 @@ def materialize_settled_station_truth(
     rows = canonical_conn.execute(
         "SELECT observation_id,report_type,valid_at,"
         "reported_temperature_c,raw_sha256,canonical_committed_at,"
-        "correction_suspected "
+        "correction_suspected,raw_text "
         "FROM reported_trajectory_observations "
         "WHERE station_id=? AND source_lane=? "
         "AND julianday(valid_at)>=julianday(?) "
@@ -326,14 +331,46 @@ def materialize_settled_station_truth(
             or any(char not in "0123456789abcdef" for char in raw_sha)
         ):
             raise ContractError("settlement_truth_raw_sha256_invalid")
+        # Re-read the temperature from the report's own bytes rather than
+        # trusting the parsed column alone.  The column was written at capture
+        # time by whatever parser was current then, and for every report
+        # captured before the remark group was parsed it holds whole degrees
+        # -- a resolution that cannot decide a 2F bucket.  The bytes have
+        # always carried the tenth, so the precision is recoverable here for
+        # the whole history without rewriting a single archived row.
+        raw_text = str(row[7] or "")
+        if hashlib.sha256(raw_text.encode("utf-8")).hexdigest() != raw_sha:
+            raise ContractError("settlement_truth_raw_text_sha256_mismatch")
+        # A remark group that contradicts the body group by more than the
+        # rounding between them is not believed, and this returns the coarse
+        # value instead -- which is exactly what this lane settled on before,
+        # so a contradiction degrades the day's resolution rather than
+        # stranding the station-day.  It shows up as a resolution of 1.0
+        # below rather than as an exception.
+        precise_c, resolution_c = official_temperature_c(
+            raw_text, whole_degree_c=temperature_c
+        )
         item = {
             "observation_id": str(row[0] or "").strip(),
             "report_type": report_type,
             "valid_at_utc": _stamp(valid_at),
             "canonical_committed_at_utc": _stamp(committed_at),
-            "reported_temperature_c": temperature_c,
+            "reported_temperature_c": precise_c,
             "raw_sha256": raw_sha,
         }
+        if resolution_c != WHOLE_DEGREE_RESOLUTION_C:
+            # Recorded only where a finer reading actually exists.  A payload
+            # is content-addressed and its hash decides whether this scope
+            # earns a new truth revision, so stating "resolution 1.0" on the
+            # thirty-four stations that never had anything finer would append
+            # a revision to every one of them to say nothing had changed.
+            #
+            # The coarse reading is deliberately not copied in beside it: the
+            # column it would come from holds whole degrees for reports
+            # captured before this parser and tenths for reports captured
+            # after, so one field name would mean two different things.  The
+            # report's bytes are pinned by ``raw_sha256`` and state both.
+            item["temperature_resolution_c"] = resolution_c
         previous = hourly_by_valid_at.get(item["valid_at_utc"])
         if previous is not None:
             # The settled fact is the temperature: `official_tmax_c` below is

@@ -31,6 +31,7 @@ from .awc_observation_contract import (
 )
 from .canonical_observation_export import _source_poll_receipt
 from .contracts import ContractError, content_sha256
+from .metar_precision import official_temperature_c
 from .resource_bounds import assert_process_memory_budget
 from .pr12_authority_scope_projection import (
     validate_pr12_authority_scope_projection,
@@ -338,6 +339,16 @@ def export_awc_ingress_evidence_v4(
             report_type = str(raw.get("report_type") or "").upper()
             if report_type not in {"METAR", "SPECI"}:
                 raise ContractError("pr12_report_type_invalid")
+            # The raw body was hash-verified above, so the report's own
+            # ``Tsnnnsnnn`` remark group can be read here.  Reports captured
+            # before that group was parsed carry only whole degrees in the
+            # column; the bytes carry the tenth either way.  A remark group
+            # that contradicts the body group falls back to the body group,
+            # which is what this builder read before.
+            temperature_c, temperature_resolution_c = official_temperature_c(
+                raw_text,
+                whole_degree_c=float(raw.get("reported_temperature_c")),
+            )
             policy_excluded = report_type == "METAR" and valid_at.minute != 0
             correction = _CORRECTION_TOKEN.search(raw_text)
             evidence_rows.append(
@@ -355,7 +366,8 @@ def export_awc_ingress_evidence_v4(
                     "fetch_started_at_utc": _stamp(fetch_started),
                     "fetch_completed_at_utc": _stamp(fetch_completed),
                     "canonical_committed_at_utc": _stamp(committed_at),
-                    "reported_temperature_c": float(raw.get("reported_temperature_c")),
+                    "reported_temperature_c": temperature_c,
+                    "temperature_resolution_c": temperature_resolution_c,
                     "raw_text": raw_text,
                     "raw_object_kind": RAW_OBJECT_KIND,
                     "raw_object_sha256": raw_body_sha,

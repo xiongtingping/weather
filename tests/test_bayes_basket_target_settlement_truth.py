@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 
@@ -365,9 +366,41 @@ def _canonical() -> sqlite3.Connection:
         "observation_id TEXT,source_lane TEXT,station_id TEXT,"
         "report_type TEXT,valid_at TEXT,reported_temperature_c REAL,"
         "raw_sha256 TEXT,canonical_committed_at TEXT,"
-        "correction_suspected INTEGER)"
+        "correction_suspected INTEGER,raw_text TEXT)"
     )
     return conn
+
+
+def _raw_report(
+    *,
+    station_id: str,
+    report_type: str,
+    valid_at: str,
+    temperature_c: float,
+) -> str:
+    """A report whose own bytes state the temperature this fixture claims.
+
+    The settled-truth writer re-reads the temperature from the report body and
+    its ``Tsnnnsnnn`` remark group, so a fixture that carries only a parsed
+    column no longer models the lane.  A whole-degree fixture value produces a
+    report with no remark group -- the resolution most of the network
+    publishes -- and a fractional one produces the remark group that states
+    it.
+    """
+
+    value = float(temperature_c)
+    whole = int(round(value))
+    body = ("M%02d" % abs(whole)) if whole < 0 else ("%02d" % whole)
+    stamp = valid_at[8:10] + valid_at[11:13] + valid_at[14:16] + "Z"
+    text = (
+        f"{report_type} {station_id} {stamp} 00000KT CAVOK {body}/10 Q1013"
+    )
+    if abs(value - whole) > 1e-9:
+        text += " RMK T%s%03d0100" % (
+            "1" if value < 0 else "0",
+            round(abs(value) * 10),
+        )
+    return text
 
 
 def _observation(
@@ -381,8 +414,14 @@ def _observation(
     report_type: str = "METAR",
     station_id: str = "RKPK",
 ) -> None:
+    raw_text = _raw_report(
+        station_id=station_id,
+        report_type=report_type,
+        valid_at=valid_at,
+        temperature_c=temperature_c,
+    )
     conn.execute(
-        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
             observation_id,
             "awc",
@@ -390,9 +429,10 @@ def _observation(
             report_type,
             valid_at,
             temperature_c,
-            observation_id[0].lower() * 64,
+            hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
             committed_at or valid_at,
             correction,
+            raw_text,
         ),
     )
 
@@ -504,6 +544,112 @@ def test_closed_day_uses_registry_timezone_and_admits_every_routine_minute() -> 
     assert "b-half" in row[1]
     assert '"settlement_timezone":"Asia/Seoul"' in row[1]
     assert f'"registry_snapshot_sha256":"{"f" * 64}"' in row[1]
+
+
+def test_closed_day_settles_to_the_tenth_the_remark_group_states() -> None:
+    """The settled truth is the finest resolution the reports actually state.
+
+    Whole degrees settle a 1C book and cannot settle a 2F one: a 2F bucket is
+    1.111C, so the half-degree either side of a whole Celsius reading reaches
+    across a bucket edge four times in five.  The reports have always carried
+    the tenth in their remark group; this is the lane reading it.
+    """
+
+    target = _target()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "RKPK", "2026-07-28", "America/New_York", "awc", 1,
+            "e" * 64, "2026-07-29T00:00:00Z",
+        ),
+    )
+    source = _canonical()
+    for observation_id, valid_at, temperature in (
+        ("warm-1", "2026-07-28T15:00:00Z", 32.8),
+        ("warm-2", "2026-07-28T16:00:00Z", 34.4),
+        ("warm-3", "2026-07-28T17:00:00Z", 33.3),
+    ):
+        _observation(
+            source,
+            observation_id=observation_id,
+            valid_at=valid_at,
+            temperature_c=temperature,
+            committed_at=valid_at.replace(":00:00Z", ":02:00Z"),
+        )
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-29T06:00:00Z",
+    )
+
+    assert result["official_tmax_c"] == pytest.approx(34.4)
+    row = target.execute(
+        "SELECT official_tmax_c,observation_ids_json "
+        "FROM calibration_station_daily_high_truth"
+    ).fetchone()
+    assert row[0] == pytest.approx(34.4)
+    # The payload names the resolution it settled at, so a station that stops
+    # publishing the remark group shows up as a change rather than as silence.
+    evidence = json.loads(row[1])
+    warmest = max(
+        evidence["observations"],
+        key=lambda item: item["reported_temperature_c"],
+    )
+    assert warmest["reported_temperature_c"] == pytest.approx(34.4)
+    assert warmest["temperature_resolution_c"] == pytest.approx(0.1)
+
+
+def test_whole_degree_only_station_day_keeps_its_payload_identity() -> None:
+    """A day with no remark group must not acquire a revision saying so.
+
+    Thirty-four of the forty-five stations never publish the remark group.
+    Stamping "resolution 1.0" on their payloads would change every content
+    hash and append a truth revision to each of them to record that nothing
+    about the day had changed.
+    """
+
+    target = _target()
+    target.execute(
+        "INSERT INTO basket_target_market_registry VALUES(?,?,?,?,?,?,?)",
+        (
+            "RKPK", "2026-07-28", "America/New_York", "awc", 1,
+            "e" * 64, "2026-07-29T00:00:00Z",
+        ),
+    )
+    source = _canonical()
+    for observation_id, valid_at, temperature in (
+        ("warm-1", "2026-07-28T15:00:00Z", 30),
+        ("warm-2", "2026-07-28T16:00:00Z", 31),
+        ("warm-3", "2026-07-28T17:00:00Z", 29),
+    ):
+        _observation(
+            source,
+            observation_id=observation_id,
+            valid_at=valid_at,
+            temperature_c=temperature,
+            committed_at=valid_at.replace(":00:00Z", ":02:00Z"),
+        )
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-29T06:00:00Z",
+    )
+
+    assert result["official_tmax_c"] == 31
+    evidence = json.loads(
+        target.execute(
+            "SELECT observation_ids_json "
+            "FROM calibration_station_daily_high_truth"
+        ).fetchone()[0]
+    )
+    for observation in evidence["observations"]:
+        assert "temperature_resolution_c" not in observation
 
 
 def test_closed_day_yields_truth_for_a_cadence_that_never_lands_on_the_hour() -> None:
@@ -996,19 +1142,14 @@ def test_truth_batch_commits_unrelated_scope_when_one_station_is_halted() -> Non
         valid_at="2026-07-28T07:00:00Z",
         temperature_c=10,
     )
-    source.execute(
-        "INSERT INTO reported_trajectory_observations VALUES(?,?,?,?,?,?,?,?,?)",
-        (
-            "halted-hourly",
-            "awc",
-            "VILK",
-            "METAR",
-            "2026-07-28T00:00:00Z",
-            32,
-            "d" * 64,
-            "2026-07-28T00:00:10Z",
-            1,
-        ),
+    _observation(
+        source,
+        observation_id="halted-hourly",
+        station_id="VILK",
+        valid_at="2026-07-28T00:00:00Z",
+        temperature_c=32,
+        committed_at="2026-07-28T00:00:10Z",
+        correction=1,
     )
 
     result = materialize_settled_training_truths(
@@ -1142,24 +1283,19 @@ def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage()
         ),
     )
     for values in (
-        (
-            "hourly-35", "METAR", "2026-07-28T03:00:00Z",
-            35, "a" * 64, "METAR RKPK", 0,
-        ),
-        (
-            "warmfill-0130", "METAR", "2026-07-28T01:30:00Z",
-            10, "c" * 64, "METAR RKPK WF0", 0,
-        ),
-        (
-            "warmfill-0230", "METAR", "2026-07-28T02:30:00Z",
-            10, "d" * 64, "METAR RKPK WF1", 0,
-        ),
-        (
-            "cor-0315", "SPECI", "2026-07-28T03:15:00Z",
-            34, "b" * 64, "SPECI RKPK COR", 1,
-        ),
+        ("hourly-35", "METAR", "2026-07-28T03:00:00Z", 35, 0),
+        ("warmfill-0130", "METAR", "2026-07-28T01:30:00Z", 10, 0),
+        ("warmfill-0230", "METAR", "2026-07-28T02:30:00Z", 10, 0),
+        ("cor-0315", "SPECI", "2026-07-28T03:15:00Z", 34, 1),
     ):
-        observation_id, report_type, valid_at, temperature, raw_sha, raw, correction = values
+        observation_id, report_type, valid_at, temperature, correction = values
+        raw = _raw_report(
+            station_id="RKPK",
+            report_type=report_type,
+            valid_at=valid_at,
+            temperature_c=temperature,
+        )
+        raw_sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
         source.execute(
             """
             INSERT INTO reported_trajectory_observations(

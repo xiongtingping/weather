@@ -14,6 +14,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from bayes_basket_target.metar_precision import official_temperature_c
+
 
 SCHEMA_VERSION = "weather_basket_yes_runtime_v1"
 REPORT_RE = re.compile(
@@ -43,7 +45,16 @@ class ParsedReport:
     day: int
     hour: int
     minute: int
-    reported_temperature_c: int
+    # The official temperature at the finest resolution this report states:
+    # tenths when it carries the ``Tsnnnsnnn`` remark group, whole degrees
+    # otherwise.  ``whole_degree_temperature_c`` keeps the body group on its
+    # own so a consumer that is contracted to whole degrees -- the P1 running
+    # maximum, which reads the reported value as an exact integer with a
+    # half-degree conservative margin around it -- is not silently handed a
+    # different number.
+    reported_temperature_c: float
+    whole_degree_temperature_c: int
+    temperature_resolution_c: float
     raw_text: str
     raw_sha256: str
 
@@ -81,13 +92,22 @@ def parse_metar_temperature(raw_text: str, *, expected_station: str = "") -> Par
     if match is None:
         raise ValueError("metar_temperature_group_missing")
     temperature = _signed_integer(match.group("temp"))
+    # The body group is the reading rounded to a whole degree.  Where the
+    # station also publishes the remark group it states the same reading in
+    # tenths, and a market that settles in 2F buckets needs that tenth: one
+    # whole Celsius degree spans nearly two of those buckets.
+    precise, resolution = official_temperature_c(
+        raw, whole_degree_c=float(temperature)
+    )
     return ParsedReport(
         report_type=header.group("kind").upper(),
         station_id=station,
         day=int(header.group("day")),
         hour=int(header.group("hour")),
         minute=int(header.group("minute")),
-        reported_temperature_c=temperature,
+        reported_temperature_c=precise,
+        whole_degree_temperature_c=temperature,
+        temperature_resolution_c=resolution,
         raw_text=raw,
         raw_sha256=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
     )

@@ -190,6 +190,11 @@ class ReportedTrajectoryAwcIngress:
             "report_type": parsed.report_type,
             "valid_at": valid_at,
             "reported_temperature_c": parsed.reported_temperature_c,
+            # Carried separately because the station-day running maximum below
+            # is contracted to the whole-degree body group.  See
+            # ``_advance_station_day_fact``.
+            "whole_degree_temperature_c": parsed.whole_degree_temperature_c,
+            "temperature_resolution_c": parsed.temperature_resolution_c,
             "correction_suspected": correction,
             "fetch_completed_at": fetch_completed_at,
         }
@@ -370,7 +375,15 @@ class ReportedTrajectoryAwcIngress:
                    WHERE source_lane=? AND station_id=? AND event_date=?""",
                 (source_lane, station_id, event_date),
             ).fetchone()
-            temperature_c = int(observation["reported_temperature_c"])
+            # Deliberately the whole-degree body group, not the tenths.  This
+            # bound feeds P1's conservative hard lower bound, which reads the
+            # value as the METAR's rounded integer and allows half a degree
+            # either side of it.  Handing it tenths would not be more precise
+            # there, it would be a different contract -- and truncating the
+            # tenths instead would move the bound by a degree for every report
+            # whose remark group rounds up.  The settled-truth lane reads the
+            # precise column directly and is where the tenths are needed.
+            temperature_c = int(observation["whole_degree_temperature_c"])
             if existing is not None and temperature_c <= int(existing[0]):
                 results.append({
                     "event_date": event_date,
@@ -500,7 +513,7 @@ class ReportedTrajectoryAwcIngress:
         try:
             for raw, _preview in sorted(
                 previews,
-                key=lambda item: int(item[1]["reported_temperature_c"]),
+                key=lambda item: float(item[1]["reported_temperature_c"]),
                 reverse=True,
             ):
                 observation, inserted = self._insert_observation(
