@@ -102,6 +102,119 @@ def _centre_of_mass(
     ) / total
 
 
+def _entry_fill(
+    *,
+    posted_json: str,
+    intended_json: str,
+    kept_json: str,
+    rungs_json: str,
+    intended_stake: float | None,
+    stake: float,
+    window: list[str],
+) -> dict[str, Any]:
+    """The order as posted against the position that came back, leg by leg.
+
+    Entry is progressive: every rung of every leg rests as its own order, so
+    the recorded window is the part of the basket the book chose to sell.
+    Read from ``window_buckets_json`` alone that difference is invisible --
+    a seat that posted four legs and bought one looks identical to a seat
+    that only ever wanted one, and the charter's three-rung floor is a rule
+    about the first number.
+
+    Two completion rates, because they answer different questions.  Rungs
+    say how much of the ladder the market came down to; shares and stake say
+    how much of the intended position that bought, which is smaller whenever
+    the legs that missed were the ones carrying weight.
+    """
+
+    def _load(payload: str, default: Any) -> Any:
+        try:
+            value = json.loads(payload) if payload else default
+        except (TypeError, ValueError):
+            return default
+        return value if isinstance(value, type(default)) else default
+
+    posted: list[str] = _load(posted_json, []) or list(window)
+    intended: dict[str, float] = _load(intended_json, {})
+    kept: dict[str, float] = _load(kept_json, {})
+    rungs: dict[str, str] = _load(rungs_json, {})
+    legs: list[dict[str, Any]] = []
+    got_rungs = 0
+    posted_rungs = 0
+    for bucket in posted:
+        want = float(intended.get(bucket, 0.0) or 0.0)
+        have = float(kept.get(bucket, 0.0) or 0.0)
+        filled_rungs: int | None = None
+        leg_rungs: int | None = None
+        price: float | None = None
+        record = str(rungs.get(bucket, "") or "")
+        if "@" in record and "/" in record:
+            fraction, _, tail = record.partition("@")
+            head, _, total = fraction.partition("/")
+            try:
+                filled_rungs, leg_rungs = int(head), int(total)
+                price = float(tail)
+            except ValueError:
+                filled_rungs = leg_rungs = None
+                price = None
+        if filled_rungs is not None and leg_rungs:
+            got_rungs += filled_rungs
+            posted_rungs += leg_rungs
+        legs.append({
+            "bucket": bucket,
+            "intended_shares": want,
+            "filled_shares": have,
+            "share_fill": (have / want) if want > 0 else None,
+            "filled_rungs": filled_rungs,
+            "posted_rungs": leg_rungs,
+            "fill_price": price,
+            "empty": have <= 0.0,
+        })
+    want_shares = sum(leg["intended_shares"] for leg in legs)
+    have_shares = sum(leg["filled_shares"] for leg in legs)
+    want_stake = (
+        float(intended_stake) if intended_stake is not None else None
+    )
+    return {
+        "posted_buckets": posted,
+        "posted_leg_count": len(posted),
+        "filled_leg_count": sum(1 for leg in legs if not leg["empty"]),
+        "empty_leg_count": sum(1 for leg in legs if leg["empty"]),
+        "legs": legs,
+        "intended_shares": want_shares,
+        "filled_shares": have_shares,
+        "share_completion": (
+            have_shares / want_shares if want_shares > 0 else None
+        ),
+        "rung_completion": (
+            got_rungs / posted_rungs if posted_rungs else None
+        ),
+        "intended_stake_usdc": want_stake,
+        "stake_shortfall_usdc": (
+            None if want_stake is None else want_stake - stake
+        ),
+        "stake_completion": (
+            None
+            if want_stake is None or want_stake <= 0
+            else stake / want_stake
+        ),
+        # A leg missing from the middle of the ladder, which selection
+        # cannot produce -- the support is contiguous by construction, so a
+        # gap is always the book's doing.
+        "gapped": bool(
+            len(window) > 1
+            and any(
+                bucket not in window
+                for bucket in posted[
+                    posted.index(window[0]):posted.index(window[-1]) + 1
+                ]
+            )
+            if window and window[0] in posted and window[-1] in posted
+            else False
+        ),
+    }
+
+
 def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     query = conn.execute(
@@ -110,7 +223,9 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " p.all_in_cost, p.edge, p.stake_usdc, p.probabilities_json,"
         " p.prices_json, p.window_size, p.selection_rule_label,"
         " s.hit, s.settled_tmax_c, s.settled_bucket, s.pnl_usdc,"
-        " s.bucket_distance, s.center_error_c"
+        " s.bucket_distance, s.center_error_c,"
+        " p.posted_buckets_json, p.intended_legs_json, p.leg_shares_json,"
+        " p.resting_fill_json, p.intended_stake_usdc"
         " FROM paper_trade_position p"
         " LEFT JOIN paper_trade_settlement s"
         " ON s.position_id = p.position_id"
@@ -198,6 +313,15 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "pnl_usdc": r[17],
             "bucket_distance": r[18],
             "center_error_c": r[19],
+            "entry": _entry_fill(
+                posted_json=str(r[20] or ""),
+                intended_json=str(r[21] or ""),
+                kept_json=str(r[22] or ""),
+                rungs_json=str(r[23] or ""),
+                intended_stake=r[24],
+                stake=stake,
+                window=json.loads(r[4]),
+            ),
         })
     return out
 

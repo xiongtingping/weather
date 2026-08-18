@@ -281,6 +281,8 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   leg_shares_json TEXT NOT NULL DEFAULT '',
   resting_fill_json TEXT NOT NULL DEFAULT '',
   posted_buckets_json TEXT NOT NULL DEFAULT '',
+  intended_legs_json TEXT NOT NULL DEFAULT '',
+  intended_stake_usdc REAL,
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -386,6 +388,21 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN resting_fill_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "intended_legs_json" not in columns:
+        # The order as it was posted, per leg, before the book answered.
+        # ``leg_shares_json`` holds what came back, so without this the
+        # shortfall on a leg that filled nothing is unrecoverable -- its
+        # kept share is zero and the weighted allocation that sized it
+        # cannot be inverted from the survivors.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN intended_legs_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "intended_stake_usdc" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN intended_stake_usdc REAL"
         )
     if "selection_rule_label" not in columns:
         conn.execute(
@@ -2114,6 +2131,27 @@ def backfill(
                     # selection, so it has to stay auditable even though the
                     # recorded window is now whatever actually filled.
                     posted_buckets = list(seat["buckets"])
+                    # The order as posted, leg by leg, kept beside the one
+                    # that came back.  Progressive entry overwrites
+                    # ``leg_shares`` and ``stake`` with the filled part a
+                    # few lines below, and the shortfall on a leg that
+                    # bought nothing cannot be recovered afterwards: its
+                    # kept share is zero, and the centre-tilt weights that
+                    # sized it are not invertible from the legs that
+                    # survived.  Recorded here so "posted 4 legs, got 1" is
+                    # a readable number rather than an inference.
+                    #
+                    # The stake is priced at the ladder means the sizing
+                    # itself used, so it answers "what the basket would have
+                    # cost had every rung filled" -- the denominator the
+                    # completion rate needs.
+                    intended_legs = {
+                        str(bucket): float(quantity)
+                        for bucket, quantity in zip(
+                            seat["buckets"], leg_shares
+                        )
+                    }
+                    intended_stake = float(stake)
                     if EXECUTION_MODE == "maker_resting":
                         # The sizing above is the order that was posted.
                         # This is the position that came back.
@@ -2229,6 +2267,8 @@ def backfill(
                             json.dumps(per_leg, sort_keys=True),
                             json.dumps(resting_fills, sort_keys=True),
                             json.dumps(posted_buckets, ensure_ascii=False),
+                            json.dumps(intended_legs, sort_keys=True),
+                            intended_stake,
                         )
                     )
                     counts["positions"] += 1
@@ -2336,8 +2376,9 @@ def backfill(
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
-            " posted_buckets_json"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " posted_buckets_json, intended_legs_json, intended_stake_usdc"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+            "?,?)",
             pending_positions,
         )
     if pending_settlements:
