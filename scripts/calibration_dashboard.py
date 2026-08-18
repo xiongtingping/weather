@@ -2202,6 +2202,24 @@ border-radius:99px;padding:1px 10px;margin:2px 0 6px;user-select:none}
 details.note>summary::-webkit-details-marker{display:none}
 details.note>summary:hover{color:var(--text)}
 details.note[open]>summary{margin-bottom:8px}
+/* The strip at the top.  Eight numbers, each one a question the rest of
+   the page answers at length, coloured so a bad one is found without
+   reading any of them. */
+/* Four across, two rows.  Eight in a row does not fit the content width
+   and lands as seven plus a widow. */
+.kpi{display:grid;gap:7px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.kpi .k{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+background:var(--card);border-left-width:3px;border-left-style:solid}
+.kpi .k.green{border-left-color:var(--green)}
+.kpi .k.amber{border-left-color:var(--amber)}
+.kpi .k.red{border-left-color:var(--red)}
+.kpi .k.muted{border-left-color:var(--line)}
+.kpi .k .lab{color:var(--muted);font-size:11.5px}
+.kpi .k .val{font-size:20px;font-weight:650;letter-spacing:-.3px;
+line-height:1.25;margin-top:1px}
+.kpi .k .sub2{color:var(--muted);font-size:11.5px;margin-top:1px}
+.kpi .k.red .val{color:var(--red)}
+.kpi .k.amber .val{color:var(--amber)}
 .big{font-size:19px;font-weight:650;letter-spacing:-.3px}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -2284,6 +2302,101 @@ function head(){
       ${w.pid ? "· pid " + w.pid : ""}</span>
   </div></div>`;
 }
+
+// The top strip: one number per question the page spends a section
+// answering.  Ordered the way a reader triages -- is the data coming in, is
+// it being turned into positions, are the positions any good -- and
+// coloured so a bad one is found without reading the others.
+//
+// Every number here is read from the same payload the sections below use.
+// Restating a figure would let the strip and the section it summarises
+// disagree, which is worse than not having the strip.
+function overview(){
+  const S=D.selection||{};
+  const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
+  const band=(v,good,ok)=>v==null?"muted"
+    :(v>=good?"green":v>=ok?"amber":"red");
+  const cards=[];
+  const push=(cls,lab,val,sub2,title)=>cards.push(
+    `<div class="k ${cls}" title="${h(title||"")}">
+      <div class="lab">${lab}</div><div class="val">${val}</div>
+      <div class="sub2">${sub2}</div></div>`);
+
+  // 1. Are the four model families still arriving.
+  const fresh=(D.members||[]).filter(m=>m.health==="green").length;
+  const total=(D.members||[]).length;
+  push(fresh>=total?"green":fresh>=total-1?"amber":"red",
+    "模型在进来", `${fresh}/${total}`,
+    fresh>=total?"四家都新鲜":"有家没在更新",
+    "第一节：四家集合预报的到货情况");
+
+  // 2. Is anything blocking the chain right now.
+  const blocking=(D.gaps||[]).filter(g=>g.severity==="high").length;
+  const waiting=(D.gaps||[]).filter(g=>g.severity!=="high").length;
+  // Only a blocking gap is a problem.  Colouring the strip amber because
+  // some scope is still accumulating samples makes the strip amber almost
+  // always, and a light that is always on is not a light.
+  push(blocking?"red":"green",
+    "要处理的缺口", String(blocking),
+    waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
+    "第五节：数据缺口与健康检查");
+
+  // 3. Did the truth for settled days actually land.
+  const outstanding=(D.truth||{}).outstanding;
+  push(outstanding==null?"muted":outstanding===0?"green"
+      :outstanding<=5?"amber":"red",
+    "真值待物化", outstanding==null?"—":String(outstanding),
+    "结算真值还没落库的站日", "第十六节：真值物化健康度");
+
+  // 4. How much of the fleet actually opened a position on the newest day.
+  const day=S.latest_day||(S.roster_event_dates||[])[0];
+  const roster=(S.station_roster||[]).filter(e=>e.event_date===day);
+  const opened=roster.filter(e=>e.stages&&e.stages.P0).length;
+  const rate=roster.length?opened/roster.length:null;
+  push(band(rate,0.5,0.25), "建仓率",
+    `${opened}/${roster.length||"—"}`,
+    `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
+    "第九节：没建仓的站，格子里写着原因");
+
+  // 5. Of what was posted, how much the book actually sold us.
+  const p0=(S.resting_entry||{}).stages||[];
+  const post=p0.find(s=>s.stage==="P0")||p0[0];
+  const fill=post?post.rung_completion_rate:null;
+  push(band(fill,0.8,0.5), "挂单成交率", pct0(fill),
+    post?`P0 · 挂出的阶梯买到几档`:"—",
+    "第十二节：三阶段各自的成交率与趋势");
+
+  // 6. Does the model's stated probability survive contact with the truth.
+  const cs=S.coverage_stats||{};
+  const stagesAll=S.stages||{};
+  const cal=((stagesAll.P0||{}).credible||{}).calibration_ratio;
+  push(cal==null?"muted":(cal>=0.85&&cal<=1.15)?"green"
+      :(cal>=0.6&&cal<=1.4)?"amber":"red",
+    "说得准不准", cal==null?"—":cal.toFixed(2)+"×",
+    "命中率 ÷ 声称胜率，1.00× 是说得准",
+    "第四节与第七节：概率分档校准");
+
+  // 7. What the one book is worth now.
+  const capital=S.initial_capital_usdc||1000;
+  const equity=capital+(cs.realized_usdc||0);
+  push(equity>=capital?"green":equity>=capital*0.85?"amber":"red",
+    "纸面权益", equity.toFixed(0),
+    `本金 ${capital} · ${h(S.stats_start_event_date||"")} 起 ${
+      cs.settled_count||0} 条链`,
+    "一本账：P0 建仓，P0-M 与 P1 加仓，一个站日结算一次");
+
+  // 8. Per USDC put at risk, what came back.
+  const roi=cs.staked_usdc>0?(cs.realized_usdc||0)/cs.staked_usdc:null;
+  push(roi==null?"muted":roi>=0?"green":roi>=-0.15?"amber":"red",
+    "回报率", roi==null?"—":(roi*100).toFixed(1)+"%",
+    `${h(S.stats_start_event_date||"")} 起 · 投入 ${
+      (cs.staked_usdc||0).toFixed(0)} · 实得 ${
+      (cs.realized_usdc||0).toFixed(0)}`,
+    "第七节：覆盖 · 价格 · EV");
+
+  return `<div class="kpi" style="margin:10px 0 4px">${cards.join("")}</div>`;
+}
+
 
 function members(){
   // Four across, two lines each.  A table was tried and is taller: four
@@ -3564,7 +3677,7 @@ function scorecard(){
 }
 
 document.getElementById("app").innerHTML = [
-  [head, "页头"], [members, "成员"], [chain, "链路"], [tables, "表"],
+  [head, "页头"], [overview, "总览"], [members, "成员"], [chain, "链路"], [tables, "表"],
   [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
   [coverage, "覆盖"], [stationSummary, "站汇总"], [roster, "站名册"],
   [anomalies, "异常"], [basketHit, "篮子命中率"],
