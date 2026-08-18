@@ -2175,6 +2175,14 @@ td.st-hit{background:var(--pill-green-bg);border-left-color:var(--green)}
 td.st-miss{background:var(--pill-red-bg);border-left-color:var(--red)}
 td.st-open{background:var(--pill-amber-bg);border-left-color:var(--amber)}
 td.st-flat{background:var(--why-bg);border-left-color:var(--accent)}
+/* The fold that hides the prose.  A pill rather than a triangle, because it
+   sits under a heading where a bare disclosure arrow reads as an artifact. */
+details.note>summary{color:var(--muted);font-size:12px;cursor:pointer;
+list-style:none;display:inline-block;border:1px solid var(--line);
+border-radius:99px;padding:1px 10px;margin:2px 0 6px;user-select:none}
+details.note>summary::-webkit-details-marker{display:none}
+details.note>summary:hover{color:var(--text)}
+details.note[open]>summary{margin-bottom:8px}
 .big{font-size:26px;font-weight:650;letter-spacing:-.4px}
 .muted{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -3472,6 +3480,25 @@ document.getElementById("app").innerHTML = [
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
 document.querySelectorAll("table").forEach(makeSortable);
+
+// Prose folds away by default (user ruling, 2026-08-18).  Forty-six
+// explanation blocks is most of the page's height, and every one of them is
+// something a reader needs once and then never again -- while the numbers
+// they explain are what the page is opened for.  Done here rather than in
+// each section because the rule is "all of it", and forty-six hand-written
+// wrappers is forty-six chances to miss one.
+//
+// Consecutive blocks share a fold: three separate "说明" toggles in a row
+// is the same clutter in a smaller font.
+document.querySelectorAll(".why,.sub").forEach(node=>{
+  const prev=node.previousElementSibling;
+  if(prev&&prev.classList.contains("note")){prev.appendChild(node);return;}
+  const box=document.createElement("details");
+  box.className="note";
+  box.innerHTML="<summary>说明</summary>";
+  node.parentNode.insertBefore(box,node);
+  box.appendChild(node);
+});
 
 // The button lives in the static body rather than in a rendered section, so
 // it still works on a page where every section failed to draw -- which is
