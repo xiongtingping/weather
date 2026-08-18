@@ -50,3 +50,7 @@ last_verified_commit: working-tree-2026-07-16-production-dynamic-three-leg-v5
 | 策略 v6（当前） | `target_realization_v6` generation 2：main YES 四态/风险×时段、second YES<5、trajectory NO≤100 或 hard NO≤200、默认 0.999 | 概率模型 v6；策略与概率版本没有继承关系 |
 | `main_yes_position_cycle_id` | 当前主 YES 一次可管理暴露周期；stage watermark 只在周期内单调 | 冻结桶排名、当日永久禁买或旧 wave cycle |
 | `capital_scale_factor` | 当前 Transaction C 对同一计划全部合格新增 BUY 使用的统一缩量比例，hard NO 200 只是缩量前绝对上限 | EV/Edge、赔率或先到先得 |
+| `settlement_unit` | 站属性，取 `C` 或 `F`，唯一权威是 `basket_target_market_registry.settlement_unit` | 全局常数、按国家/时区推导的单位或 UI 显示单位 |
+| 桶宽（bucket width） | 一个有限市场桶覆盖的连续温度跨度：**C 市场 1°C；F 市场 2°F ＝ 1.111°C**（`2 × 5/9`）。只能从同行 `registry_json.lower/upper` 现算 | 按单位硬编码的常数（`1.0 if unit=="C" else 5/9` 写的是 1°F 而非 2°F）；开放边桶的宽度 |
+| 桶序数差（bucket offset） | 梯子上的**级数**，跨单位同义：±1/±2 偏移、3–4 桶窗、两层扩展都按序数走 | 温度差；F 站一级序数等于 1.111°C，不等于 C 站的一级 |
+| 交易全域 45 站 | 已绑站的站点全域 ＝ **34 个 C 站 ＋ 11 个 F 站**（F 全为美国 ASOS：`KATL/KAUS/KBKF/KDAL/KHOU/KLAX/KLGA/KMIA/KORD/KSEA/KSFO`），与 `calibration_station_registry` 45 行相等 | 市场城市数（含 `tel-aviv/moscow/istanbul/hong-kong` 四个无绑定站的 C 单位城市，会读成 35 或 38） |
