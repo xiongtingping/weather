@@ -748,6 +748,16 @@ def _fit_parameters(
         climate_samples.append(float(case["actual_tmax_c"]))
     bias = sum(errors) / len(errors)
     rmse = math.sqrt(sum(error * error for error in errors) / len(errors))
+    # The scale the served distribution actually has to cover.  ``rmse`` is
+    # taken about zero and so carries the bias, but the bias is exactly what
+    # the centre shift above removes: sizing a width by it charges the
+    # distribution twice for an offset that has already been corrected.
+    # Measured over 231 scopes, rmse/sigma runs 1.26 at the median and 2.43
+    # at the ninetieth percentile -- a per-scope inflation that a single
+    # global width factor downstream can centre but cannot flatten.
+    residual_sigma = math.sqrt(
+        sum((error - bias) ** 2 for error in errors) / len(errors)
+    )
     mean_spread = sum(spreads) / len(spreads)
     # The cap was 3.0 and it bound: 199 of 614 fitted parameter sets sat on
     # it, and that group measured a z standard deviation of 1.66 -- still
@@ -759,7 +769,7 @@ def _fit_parameters(
     # refusing a runaway fit on a degenerate spread.
     spread_factor = min(
         5.0,
-        max(0.5, rmse / max(mean_spread, 0.1)),
+        max(0.5, residual_sigma / max(mean_spread, 0.1)),
     )
     reliability_weight = len(cases) / (len(cases) + 10.0)
     # Every key returned here has to reach an artifact column, or serving
@@ -775,6 +785,7 @@ def _fit_parameters(
         "reliability_weight": reliability_weight,
         "climate_samples_c": climate_samples[-180:],
         "train_rmse_c": rmse,
+        "train_residual_sigma_c": residual_sigma,
         "train_mean_spread_c": mean_spread,
     }
 
@@ -815,7 +826,11 @@ def _apply_parameters(
     member_bandwidth = (
         max(
             KERNEL_BANDWIDTH_C,
-            float(parameters.get("train_rmse_c") or 0.0),
+            float(
+                parameters.get("train_residual_sigma_c")
+                or parameters.get("train_rmse_c")
+                or 0.0
+            ),
         )
         if len(current) == 1
         else KERNEL_BANDWIDTH_C
@@ -4456,6 +4471,9 @@ def _system_artifact_identity(
         "spread_parameters_json": _json({
             "spread_factor": parameters["spread_factor"],
             "train_rmse_c": parameters["train_rmse_c"],
+            "train_residual_sigma_c": parameters[
+                "train_residual_sigma_c"
+            ],
             "train_mean_spread_c": parameters[
                 "train_mean_spread_c"
             ],

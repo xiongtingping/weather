@@ -415,7 +415,11 @@ def _calibrated_system_probability(
     if len(current) == 1:
         single_member_bandwidth = max(
             0.5,
-            float(spread_parameters.get("train_rmse_c") or 0.0),
+            float(
+                spread_parameters.get("train_residual_sigma_c")
+                or spread_parameters.get("train_rmse_c")
+                or 0.0
+            ),
         )
     member_probability = _interval_probability(
         corrected,

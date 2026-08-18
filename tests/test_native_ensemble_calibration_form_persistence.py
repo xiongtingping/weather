@@ -60,6 +60,7 @@ PERSISTED_BY_COLUMN = {
     "spread_parameters_json": {
         "spread_factor",
         "train_rmse_c",
+        "train_residual_sigma_c",
         "train_mean_spread_c",
     },
     "reliability_parameters_json": {
