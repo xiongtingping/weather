@@ -143,7 +143,37 @@ RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
 # constant: a served distribution has to be shifted by the coefficient its own
 # holdout was scored under, and an artifact built before the pin existed
 # carries none and is served the legacy value below.
-# Raising it to 0.35 was tried and withdrawn.  A probe over served envelopes
+# Per lead bucket, because the coefficient's value is not a property of the
+# fleet.  A sweep of ten coefficients over a frozen data window found a clean
+# single peak at 0.35 -- four consecutive falls to it and five consecutive
+# rises after -- but pooled it is worth only +0.008 bits and 63% of scopes get
+# *worse*.  Split by lead the gain is not spread thin, it is concentrated:
+# h12_24 wins 75% of its scopes at +0.088, while h00_12 and h24_48 are both
+# net negative and were being pushed off centre for nothing.
+#
+# The mechanism fits the shape.  At h12_24 the run is issued the night before
+# and the target day's heating is entirely forecast, so radiation is the main
+# lever and the coupling error it corrects has full expression.  At h00_12 the
+# day is already under way and the models have seen where it is going; at
+# h24_48 the radiation forecast is itself losing skill.  Both ends decay.
+#
+# Held deliberately thin: h12_24 rests on 20 scopes across 7 stations and 6
+# days, and removing the single strongest station takes it from p=0.02 to
+# p=0.11.  Wired at the user's decision with that stated.  The review test is
+# significance that survives dropping any one station.
+RADIATION_SHIFT_SIGMA_BY_LEAD = {"h12_24": 0.35}
+
+
+def radiation_shift_sigma_for_lead(lead_bucket: str | None) -> float:
+    """The coefficient this lead is fitted and served at."""
+
+    return RADIATION_SHIFT_SIGMA_BY_LEAD.get(
+        str(lead_bucket or ""), RADIATION_SHIFT_SIGMA
+    )
+
+
+# The value every lead that has not earned its own is fitted and served at.
+# Raising *this* to 0.35 was tried and withdrawn.  A probe over served envelopes
 # said +0.142 bits, and the gate's own holdout said +0.005 with an interval
 # spanning zero over 354 paired days.  The probe was wrong twice, both mine:
 # it standardised radiation within its own sample rather than against the

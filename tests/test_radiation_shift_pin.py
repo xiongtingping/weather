@@ -17,9 +17,35 @@ from bayes_basket_target.cross_consensus import (
     RADIATION_SHIFT_SIGMA,
     forecast_radiation_shift_sigma,
     pinned_radiation_shift_sigma,
+    radiation_shift_sigma_for_lead,
 )
 
 HISTORY = [float(value) for value in range(10, 40)]
+
+
+class PerLeadCoefficientTest(unittest.TestCase):
+    """The coefficient is a property of the lead, not of the fleet.
+
+    Pooled, raising it is worth +0.008 bits and makes 63% of scopes worse.
+    Split by lead the gain concentrates: h12_24 wins 75% of its scopes at
+    +0.088 while both other leads are net negative, so a fleet constant was
+    paying the two that lose to help the one that wins.
+    """
+
+    def test_only_the_lead_that_earned_it_is_raised(self) -> None:
+        self.assertEqual(radiation_shift_sigma_for_lead("h12_24"), 0.35)
+        for lead in ("h00_12", "h24_48", "h48_plus"):
+            self.assertEqual(
+                radiation_shift_sigma_for_lead(lead), RADIATION_SHIFT_SIGMA
+            )
+
+    def test_an_unknown_lead_gets_the_unearned_default(self) -> None:
+        """A lead nobody has measured is not a lead to experiment on."""
+
+        for lead in (None, "", "d2", "h96_plus"):
+            self.assertEqual(
+                radiation_shift_sigma_for_lead(lead), RADIATION_SHIFT_SIGMA
+            )
 
 
 class PinTest(unittest.TestCase):
@@ -81,8 +107,12 @@ class PinTest(unittest.TestCase):
         self.assertAlmostEqual(large / small, 0.35 / 0.15, places=9)
         self.assertEqual(receipt["shift_sigma_per_unit"], 0.35)
 
-    def test_the_gate_pins_the_constant_it_scores_with(self) -> None:
-        """A default on either side lets the two drift silently."""
+    def test_the_gate_pins_the_value_it_scores_with(self) -> None:
+        """One number resolved once: scored, pinned, read back.
+
+        A default on any of the three lets them drift silently, which is the
+        whole failure this pin exists to prevent.
+        """
 
         from pathlib import Path
 
@@ -90,8 +120,16 @@ class PinTest(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "bayes_basket_target" / "native_ensemble_oos.py"
         ).read_text()
-        self.assertIn("shift_sigma_per_unit=RADIATION_SHIFT_SIGMA", source)
-        self.assertIn("radiation_shift_sigma=", source)
+        self.assertIn(
+            "scope_radiation_sigma = radiation_shift_sigma_for_lead(",
+            source,
+        )
+        self.assertIn(
+            "radiation_shift_sigma=scope_radiation_sigma", source
+        )
+        self.assertIn(
+            "candidate['radiation_shift_sigma']", source
+        )
 
     def test_the_server_reads_the_pin_and_not_the_constant(self) -> None:
         from pathlib import Path

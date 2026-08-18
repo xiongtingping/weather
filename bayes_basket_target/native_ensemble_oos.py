@@ -38,6 +38,7 @@ from .cross_consensus import (
     apply_neighbour_direction_tilt,
     RADIATION_SHIFT_SIGMA,
     forecast_radiation_shift_sigma,
+    radiation_shift_sigma_for_lead,
     synoptic_cooling_index,
     bridged_cross_probability,
 )
@@ -1058,6 +1059,7 @@ def _holdout_conditioning_signals(
     station_id: str,
     holdout_days: Sequence[str],
     predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    radiation_shift_sigma: float = RADIATION_SHIFT_SIGMA,
 ) -> dict[str, dict[str, float | None]]:
     """Per-day direction signals for the conditional tail skew.
 
@@ -1192,7 +1194,7 @@ def _holdout_conditioning_signals(
         # artifact will pin and serving will read back, and a default here
         # would let the two drift the moment the constant moves.
         shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
-            shift_sigma_per_unit=RADIATION_SHIFT_SIGMA,
+            shift_sigma_per_unit=radiation_shift_sigma,
             radiation_sum=radiation_by_day.get(key),
             station_history=[
                 value
@@ -3402,11 +3404,15 @@ def build_native_ensemble_oos(
         # per holdout day from the same sources P0 uses: this station's own
         # same-calendar-day truth record and the TAF TX issued for that day.
         # Scoring must see exactly what serving will see.
+        # Resolved once here so the value the holdout scores, the value the
+        # artifact pins and the value serving reads back are one number.
+        scope_radiation_sigma = radiation_shift_sigma_for_lead(lead_bucket)
         conditioning_by_day = _holdout_conditioning_signals(
             conn,
             station_id=station_id,
             holdout_days=common_holdout,
             predictions_by_system=predictions_by_system,
+            radiation_shift_sigma=scope_radiation_sigma,
         )
         weights, subset_selection = _select_minimum_crps_subset(
             station_latitude=station_latitude,
@@ -3949,6 +3955,7 @@ def build_native_ensemble_oos(
             "run_cycle_by_system_sha256": cycle_mapping_sha,
             "band_table_sha256": band_table_sha,
             "center_width_sha256": center_width_sha,
+            "radiation_shift_sigma": scope_radiation_sigma,
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
             "settlement_definition": next(
@@ -5085,7 +5092,7 @@ def persist_native_ensemble_oos(
                     # Absent on artifacts built before this existed, which are
                     # served the legacy value and so keep their own math.
                     + "::radiation_shift_sigma="
-                    + f"{RADIATION_SHIFT_SIGMA:g}"
+                    + f"{float(candidate['radiation_shift_sigma']):g}"
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
                     + "::" + BAND_RELIABILITY_METHOD_TAG
                     # Pin the DB table version the holdout above was scored
