@@ -162,7 +162,10 @@ def _bucket_geometry_c(
             )
             if right > left
         ),
-        default=(1.0 if unit == "C" else 5.0 / 9.0),
+        # Degenerate ladder (fewer than two distinct finite uppers): fall back to
+        # the settled per-unit rung. C markets ladder in 1°C; F markets ladder in
+        # 2°F = 10/9 °C, never 1°F (charter clause 53).
+        default=(1.0 if unit == "C" else 10.0 / 9.0),
     )
     centers: dict[str, float] = {}
     uppers: dict[str, float] = {}

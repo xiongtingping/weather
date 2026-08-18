@@ -123,4 +123,4 @@ last_verified_commit: working-tree-2026-07-16-target-realization-v6-generation-2
 
 **（c）固定概率常数跨单位不可比。** 同一份天气不确定性摊在更宽的桶上必然给出更高的单桶概率。第 42 条已据此把席位判据从「单桶概率下限」改成「与核重叠」；任何新的单桶概率阈值同样**不得跨单位复用**——要么按单位分别定，要么改写成跨单位同义的结构判据。
 
-**桶宽禁止按单位硬编码。** 唯一合法来源是从 registry 的 `lower/upper` 现算（`bayes_basket_target/p0_producer.py` 的 `bucket_intervals_from_registry_rows` 即以 `lower−0.5 / upper+0.5` 换算，对两种单位自动正确）。凡出现 `1.0 if unit == "C" else 5/9` 形态的常数，写下的是 **1°F 而非 2°F**，正是本条要防的确切缺陷（判例：`bayes_basket_target/p1_compiler.py` 的 `step` 回退默认即为该形态，只在市场只剩一个有限桶的退化路径上生效，属待修缺陷）。
+**桶宽禁止按单位硬编码。** 唯一合法来源是从 registry 的 `lower/upper` 现算（`bayes_basket_target/p0_producer.py` 的 `bucket_intervals_from_registry_rows` 即以 `lower−0.5 / upper+0.5` 换算，对两种单位自动正确）。凡出现 `1.0 if unit == "C" else 5/9` 形态的常数，写下的是 **1°F 而非 2°F**，正是本条要防的确切缺陷（判例：`bayes_basket_target/p1_compiler.py` 的 `step` 回退默认即为该形态，只在市场只剩一个有限桶的退化路径上生效，**已于 2026-08-18 修复为 `1.0 if unit == "C" else 10/9`**；该缺陷始终为潜伏态，全 registry 实测每个 scope 至少有 10 个不同有限桶上沿，退化路径从未在生产触发）。
